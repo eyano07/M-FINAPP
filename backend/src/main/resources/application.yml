@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: mbsc-finapp
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mbsc}
+    username: ${SPRING_DATASOURCE_USERNAME:mbsc}
+    password: ${SPRING_DATASOURCE_PASSWORD:mbsc_secret}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+    show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:Y2hhbmdlLW1lLXdpdGgtYS1sb25nLXJhbmRvbS1iYXNlNjQta2V5LWZvci1tYnNjLWZpbmFwcC0yMDI2}
+    expiration: ${APP_JWT_EXPIRATION:3600000}         # 1h en ms (le refresh token prend le relais)
+    refresh-expiration: ${APP_JWT_REFRESH_EXPIRATION:604800000}  # 7j en ms
+    issuer: mbsc-finapp
+    require-custom-secret: ${APP_JWT_REQUIRE_CUSTOM_SECRET:false}  # true en production
+  cors:
+    allowed-origins: ${APP_CORS_ORIGINS:http://localhost:3000,http://localhost:80,http://localhost}
+  storage:
+    location: ${APP_STORAGE_LOCATION:./data/uploads}
+  seed:
+    enabled: ${APP_SEED_ENABLED:true}       # false en production
+  swagger:
+    public: ${APP_SWAGGER_PUBLIC:true}      # false en production (reserve ADMIN)
+  security:
+    login-max-attempts: ${APP_LOGIN_MAX_ATTEMPTS:5}
+    login-lock-minutes: ${APP_LOGIN_LOCK_MINUTES:15}
+  ia:
+    # Agent IA (suggestion de compte OHADA + reformulation des libelles de
+    # caisse). Sans cle API, le systeme applique automatiquement un mode
+    # degrade (heuristique locale) : la fonctionnalite reste operationnelle.
+    enabled: ${APP_IA_ENABLED:true}
+    openai-api-key: ${APP_OPENAI_API_KEY:}
+    openai-model: ${APP_OPENAI_MODEL:gpt-5}
+    # Vide = api.openai.com (a renseigner uniquement derriere un proxy).
+    openai-base-url: ${APP_OPENAI_BASE_URL:}
+    # Appels courts et interactifs (suggestion de compte, libelle).
+    timeout-ms: ${APP_IA_TIMEOUT_MS:8000}
+    # Analyse des etats financiers : reponse longue, budget plus large.
+    timeout-analyse-ms: ${APP_IA_TIMEOUT_ANALYSE_MS:60000}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.mbsc.finapp: INFO
+    org.springframework.security: INFO

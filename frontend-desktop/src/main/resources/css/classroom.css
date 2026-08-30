@@ -1,0 +1,482 @@
+/* ============================================================
+   MBSC Finapp Desktop — Design Épuré 2026  (JavaFX CSS)
+   Syntaxe gradients JavaFX : from X% Y% to X% Y%
+   ============================================================ */
+
+.root {
+    -fx-font-family: "Roboto", "Segoe UI", "Arial", sans-serif;
+    -fx-background-color: #eef2f7;
+}
+
+.app-root {
+    -fx-background-color: #eef2f7;
+}
+
+/* ─── App Bar — dégradé gauche→droite ──────────────────────── */
+.app-bar {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 0%, #0d6e2a 0%, #1e8e3e 55%, #00897b 100%);
+    -fx-border-color: transparent;
+    -fx-effect: dropshadow(gaussian, rgba(13,110,42,0.50), 14, 0, 0, 4);
+}
+
+.app-bar-logo {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.app-bar-logo-light {
+    -fx-font-size: 20px;
+    -fx-text-fill: rgba(255,255,255,0.72);
+}
+
+.user-label {
+    -fx-text-fill: rgba(255,255,255,0.88);
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+/* ─── Badges état ──────────────────────────────────────────── */
+.status-online {
+    -fx-text-fill: #1e8e3e;
+    -fx-background-color: #e6f4ea;
+    -fx-background-radius: 20;
+    -fx-padding: 5 14 5 14;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.status-offline {
+    -fx-text-fill: white;
+    -fx-background-color: #d93025;
+    -fx-background-radius: 20;
+    -fx-padding: 5 14 5 14;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.sync-badge {
+    -fx-text-fill: rgba(255,255,255,0.92);
+    -fx-background-color: rgba(255,255,255,0.18);
+    -fx-background-radius: 20;
+    -fx-padding: 5 12 5 12;
+    -fx-font-size: 12px;
+}
+
+/* ─── Stat Cards dégradés (syntaxe JavaFX correcte) ───────── */
+.stat-card-green {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #0a5a22 0%, #1e8e3e 55%, #43c878 100%);
+    -fx-background-radius: 18;
+    -fx-effect: dropshadow(gaussian, rgba(13,110,42,0.52), 22, 0.05, 0, 7);
+}
+
+.stat-card-amber {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #bf360c 0%, #f57c00 55%, #ffb74d 100%);
+    -fx-background-radius: 18;
+    -fx-effect: dropshadow(gaussian, rgba(191,54,12,0.48), 22, 0.05, 0, 7);
+}
+
+.stat-card-blue {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #1251b5 0%, #1a73e8 55%, #64b5f6 100%);
+    -fx-background-radius: 18;
+    -fx-effect: dropshadow(gaussian, rgba(18,81,181,0.48), 22, 0.05, 0, 7);
+}
+
+.stat-card-label {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: rgba(255,255,255,0.82);
+}
+
+.stat-card-value {
+    -fx-font-size: 32px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.stat-card-value-neutral {
+    -fx-font-size: 32px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.stat-card-value-blue {
+    -fx-font-size: 32px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+/* ─── Cards standard (bordure gauche verte) ───────────────── */
+.card {
+    -fx-background-color: white;
+    -fx-background-radius: 16;
+    -fx-border-color: transparent transparent transparent #1e8e3e;
+    -fx-border-width: 0 0 0 4;
+    -fx-effect: dropshadow(gaussian, rgba(30,60,114,0.12), 20, 0, 0, 5);
+}
+
+.card-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1a202c;
+}
+
+.field-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: #64748b;
+}
+
+/* ─── Champ de recherche ─────────────────────────────────── */
+.search-field {
+    -fx-background-color: #f8fafc;
+    -fx-border-color: #d1d9e0;
+    -fx-border-radius: 20;
+    -fx-background-radius: 20;
+    -fx-padding: 5 12 5 12;
+    -fx-font-size: 12px;
+    -fx-prompt-text-fill: #a0aec0;
+}
+
+.search-field:focused {
+    -fx-border-color: #1e8e3e;
+    -fx-border-width: 1.5;
+    -fx-background-color: white;
+}
+
+/* ─── Champs de saisie ────────────────────────────────────── */
+.input-field {
+    -fx-background-color: #f8fafc;
+    -fx-border-color: #d1d9e0;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 8 12 8 12;
+    -fx-font-size: 13px;
+}
+
+.input-field:focused {
+    -fx-border-color: #1e8e3e;
+    -fx-border-width: 2;
+    -fx-background-color: white;
+}
+
+/* ─── Boutons ──────────────────────────────────────────────── */
+.primary-button {
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #197b35 0%, #0d6e2a 100%);
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 10;
+    -fx-padding: 11 20 11 20;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(13,110,42,0.40), 10, 0, 0, 3);
+}
+
+.primary-button:hover {
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #1e8e3e 0%, #0a5a22 100%);
+}
+
+/* Boutons nav bar (fond vert) */
+.ghost-button {
+    -fx-background-color: derive(#1e8e3e, 25%);
+    -fx-text-fill: white;
+    -fx-font-size: 13px;
+    -fx-background-radius: 8;
+    -fx-padding: 6 14 6 14;
+    -fx-cursor: hand;
+    -fx-border-color: rgba(255,255,255,0.30);
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+}
+
+.ghost-button:hover {
+    -fx-background-color: derive(#1e8e3e, 40%);
+}
+
+/* Boutons lien dans cartes blanches */
+.link-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #1a73e8;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-padding: 5 10 5 10;
+    -fx-cursor: hand;
+}
+
+.link-btn:hover {
+    -fx-background-color: #e8f0fe;
+}
+
+/* ─── Bouton Export Excel ──────────────────────────────────── */
+.export-btn {
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #2e7d32 0%, #1e8e3e 100%);
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 7;
+    -fx-padding: 4 10 4 10;
+    -fx-cursor: hand;
+}
+
+.export-btn:hover {
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #1b5e20 0%, #2e7d32 100%);
+    -fx-effect: dropshadow(gaussian, rgba(30,142,62,0.4), 8, 0, 0, 2);
+}
+
+/* ─── Bouton Plein écran ───────────────────────────────────── */
+.fullview-btn {
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #1565c0 0%, #1a73e8 100%);
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 7;
+    -fx-padding: 3 7 3 7;
+    -fx-cursor: hand;
+}
+
+.fullview-btn:hover {
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #0d47a1 0%, #1565c0 100%);
+    -fx-effect: dropshadow(gaussian, rgba(26,115,232,0.4), 8, 0, 0, 2);
+}
+
+/* ─── Bouton Imprimer ──────────────────────────────────────── */
+.print-btn {
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #5e35b1 0%, #7e57c2 100%);
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 7;
+    -fx-padding: 3 7 3 7;
+    -fx-cursor: hand;
+}
+
+.print-btn:hover {
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #4527a0 0%, #5e35b1 100%);
+    -fx-effect: dropshadow(gaussian, rgba(94,53,177,0.4), 8, 0, 0, 2);
+}
+
+/* ─── DatePicker compact ───────────────────────────────────── */
+.date-picker-compact {
+    -fx-background-radius: 8;
+    -fx-font-size: 11px;
+}
+
+.date-picker-compact .text-field {
+    -fx-background-color: #f1f3f4;
+    -fx-background-radius: 8;
+    -fx-padding: 4 8 4 8;
+    -fx-font-size: 11px;
+}
+
+.date-picker-compact .arrow-button {
+    -fx-background-color: #e8f0fe;
+    -fx-background-radius: 0 8 8 0;
+}
+
+.date-picker-compact .arrow-button:hover {
+    -fx-background-color: #c5d8fc;
+}
+
+/* ─── Badges priorité dans la table notes ─────────────────── */
+.badge-haute {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 0%, #b71c1c 0%, #e53935 100%);
+    -fx-text-fill: white;
+    -fx-background-radius: 12;
+    -fx-padding: 3 10 3 10;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+}
+
+.badge-moyenne {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 0%, #e65100 0%, #fb8c00 100%);
+    -fx-text-fill: white;
+    -fx-background-radius: 12;
+    -fx-padding: 3 10 3 10;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+}
+
+.badge-basse {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 0%, #1b5e20 0%, #43a047 100%);
+    -fx-text-fill: white;
+    -fx-background-radius: 12;
+    -fx-padding: 3 10 3 10;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+}
+
+/* Bouton secondaire (encaissement) */
+.secondary-button {
+    -fx-background-color: white;
+    -fx-text-fill: #1a73e8;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 10;
+    -fx-padding: 10 20 10 20;
+    -fx-cursor: hand;
+    -fx-border-color: #1a73e8;
+    -fx-border-radius: 10;
+    -fx-border-width: 1.5;
+}
+
+.secondary-button:hover {
+    -fx-background-color: #e8f0fe;
+}
+
+/* ─── Feedback ────────────────────────────────────────────── */
+.feedback-ok {
+    -fx-text-fill: #1e8e3e;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.feedback-error {
+    -fx-text-fill: #d93025;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+/* ─── Tables ──────────────────────────────────────────────── */
+.table-view {
+    -fx-background-color: transparent;
+    -fx-border-color: #e2e8f0;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 0%, #edf7f1, #e8f0fe);
+    -fx-background-radius: 8 8 0 0;
+}
+
+.table-view .filler {
+    -fx-background-color: #e8f0fe;
+}
+
+.table-view .column-header {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent #d1d9e0 transparent;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: #1e8e3e;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+    -fx-padding: 8 6 8 6;
+}
+
+.table-row-cell {
+    -fx-background-color: white;
+    -fx-border-color: transparent transparent #f1f5f9 transparent;
+    -fx-cell-size: 36px;
+}
+
+.table-row-cell:odd {
+    -fx-background-color: #fafbfc;
+}
+
+.table-row-cell:hover {
+    -fx-background-color: #edfaf2;
+}
+
+.table-row-cell:selected {
+    -fx-background-color: #d4edda;
+}
+
+.table-row-cell:selected .text {
+    -fx-fill: #1a202c;
+}
+
+/* ─── ScrollPane panneau gauche ───────────────────────────── */
+.card-scroll {
+    -fx-background-color: white;
+    -fx-background-radius: 16;
+    -fx-border-color: transparent transparent transparent #f57c00;
+    -fx-border-width: 0 0 0 4;
+    -fx-effect: dropshadow(gaussian, rgba(30,60,114,0.12), 20, 0, 0, 5);
+    -fx-padding: 0;
+}
+
+.card-scroll > .viewport {
+    -fx-background-color: white;
+}
+
+.card-scroll > .scroll-bar:vertical {
+    -fx-pref-width: 14;
+    -fx-background-color: #f1f3f4;
+    -fx-background-radius: 7;
+}
+
+.card-scroll > .scroll-bar:vertical > .thumb {
+    -fx-background-color: #b0bec5;
+    -fx-background-radius: 7;
+    -fx-padding: 2;
+}
+
+.card-scroll > .scroll-bar:vertical > .thumb:hover {
+    -fx-background-color: #1e8e3e;
+}
+
+.card-inner {
+    -fx-background-color: white;
+}
+
+/* ─── Grand Livre (bordure gauche bleue) ──────────────────── */
+.gl-card {
+    -fx-background-color: white;
+    -fx-background-radius: 16;
+    -fx-border-color: transparent transparent transparent #1a73e8;
+    -fx-border-width: 0 0 0 4;
+    -fx-effect: dropshadow(gaussian, rgba(26,115,232,0.14), 20, 0, 0, 5);
+}
+
+/* ─── Séparateur ──────────────────────────────────────────── */
+.separator *.line {
+    -fx-background-color: #e2e8f0;
+    -fx-border-color: transparent;
+}
+
+/* ============================================================
+   Écran de connexion
+   ============================================================ */
+.login-shell {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #0d6e2a 0%, #1e8e3e 50%, #00897b 100%);
+}
+
+.login-card {
+    -fx-background-color: white;
+    -fx-background-radius: 20;
+    -fx-border-color: transparent;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.28), 32, 0, 0, 10);
+}
+
+.login-logo {
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #43c878 0%, #1e8e3e 100%);
+    -fx-text-fill: white;
+    -fx-font-size: 28px;
+    -fx-font-weight: bold;
+    -fx-min-width: 68;
+    -fx-min-height: 68;
+    -fx-max-width: 68;
+    -fx-max-height: 68;
+    -fx-background-radius: 34;
+    -fx-alignment: CENTER;
+    -fx-effect: dropshadow(gaussian, rgba(30,142,62,0.55), 14, 0, 0, 4);
+}
+
+.login-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1a202c;
+}
+
+.login-subtitle {
+    -fx-font-size: 13px;
+    -fx-text-fill: #64748b;
+}
+
+.error-label {
+    -fx-text-fill: #d93025;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}

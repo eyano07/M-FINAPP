@@ -1,0 +1,21 @@
+# Profil PRODUCTION : durcissement de la configuration.
+#   Activer avec SPRING_PROFILES_ACTIVE=prod
+app:
+  jwt:
+    # Refus de demarrer si la cle JWT par defaut est encore utilisee.
+    require-custom-secret: true
+  seed:
+    # Aucun compte de demonstration en production.
+    enabled: false
+  swagger:
+    # Documentation API reservee aux administrateurs authentifies.
+    public: false
+
+spring:
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    com.mbsc.finapp: INFO
+    org.springframework.security: WARN

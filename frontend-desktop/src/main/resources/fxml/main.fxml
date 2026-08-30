@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.control.cell.PropertyValueFactory?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.DatePicker?>
+
+<BorderPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.mbsc.desktop.controller.MainController"
+            styleClass="app-root">
+
+    <!-- ═══ Barre de navigation ════════════════════════════════════════════ -->
+    <top>
+        <HBox alignment="CENTER_LEFT" spacing="12" styleClass="app-bar">
+            <padding><Insets top="11" right="20" bottom="11" left="20"/></padding>
+            <Label text="MBSC" styleClass="app-bar-logo"/>
+            <Label text="Caisse" styleClass="app-bar-logo-light"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Label fx:id="notesBadge" text="0 notes" styleClass="sync-badge"/>
+            <Label fx:id="syncBadge" text="0 sync" styleClass="sync-badge"/>
+            <Label fx:id="connStatus" text="Hors-ligne" styleClass="status-offline"/>
+            <Button fx:id="syncButton" text="Synchroniser" onAction="#onSync" styleClass="ghost-button"/>
+            <Separator orientation="VERTICAL"
+                       style="-fx-background-color: rgba(255,255,255,0.25); -fx-pref-width:1;"/>
+            <Label text="●" style="-fx-text-fill: #43c878; -fx-font-size: 14px; -fx-font-weight: bold;"/>
+            <Label fx:id="userLabel" text="" styleClass="user-label"/>
+            <Button text="Deconnexion" onAction="#onLogout" styleClass="ghost-button"/>
+        </HBox>
+    </top>
+
+    <!-- ═══ Contenu ════════════════════════════════════════════════════════ -->
+    <center>
+        <VBox spacing="14">
+            <padding><Insets top="16" right="22" bottom="16" left="22"/></padding>
+
+            <!-- ── Cartes de synthèse ─────────────────────────────────── -->
+            <HBox spacing="14">
+                <VBox styleClass="stat-card-green" HBox.hgrow="ALWAYS" alignment="CENTER" spacing="6">
+                    <padding><Insets top="22" right="24" bottom="22" left="24"/></padding>
+                    <Label text="TRESORERIE (CAISSE)" styleClass="stat-card-label"/>
+                    <Label fx:id="soldeLabel" text="0,00 FC" styleClass="stat-card-value"/>
+                </VBox>
+                <VBox styleClass="stat-card-amber" HBox.hgrow="ALWAYS" alignment="CENTER" spacing="6">
+                    <padding><Insets top="22" right="24" bottom="22" left="24"/></padding>
+                    <Label text="NOTES PRIORITÉ HAUTE" styleClass="stat-card-label"/>
+                    <Label fx:id="notesAttenteLabel" text="0" styleClass="stat-card-value-neutral"/>
+                </VBox>
+                <VBox styleClass="stat-card-blue" HBox.hgrow="ALWAYS" alignment="CENTER" spacing="6">
+                    <padding><Insets top="22" right="24" bottom="22" left="24"/></padding>
+                    <Label text="NOTES PAYEES AUJOURD'HUI" styleClass="stat-card-label"/>
+                    <Label fx:id="notesPayeesLabel" text="0" styleClass="stat-card-value-blue"/>
+                </VBox>
+            </HBox>
+
+            <!-- ── Zone principale ───────────────────────────────────── -->
+            <HBox spacing="14" VBox.vgrow="ALWAYS">
+
+                <!-- COLONNE GAUCHE : formulaires scrollables -->
+                <ScrollPane fitToWidth="true" styleClass="card-scroll"
+                            minWidth="460" maxWidth="500"
+                            hbarPolicy="NEVER" vbarPolicy="AS_NEEDED"
+                            VBox.vgrow="ALWAYS">
+                    <VBox spacing="11" styleClass="card-inner">
+                        <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
+
+                        <!-- Notes à payer + recherche -->
+                        <HBox alignment="CENTER_LEFT" spacing="8">
+                            <Label text="Notes a payer" styleClass="card-title"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <TextField fx:id="notesSearch" promptText="Rechercher..."
+                                       styleClass="search-field" prefWidth="120"/>
+                            <Button text="↓ Excel" onAction="#onExportNotes" styleClass="export-btn"/>
+                            <Button text="Rafraichir" onAction="#onRefreshNotes" styleClass="link-btn"/>
+                        </HBox>
+                        <TableView fx:id="notesTable" prefHeight="160">
+                            <columns>
+                                <TableColumn fx:id="colNotePriorite" text="Priorite"  prefWidth="72"/>
+                                <TableColumn fx:id="colNoteRef"      text="Reference" prefWidth="112"/>
+                                <TableColumn fx:id="colNoteObjet"    text="Objet"     prefWidth="136"/>
+                                <TableColumn fx:id="colNoteMontant"  text="Montant"   prefWidth="98"/>
+                            </columns>
+                            <placeholder><Label text="Aucune note en attente"/></placeholder>
+                        </TableView>
+
+                        <Separator/>
+
+                        <!-- DÉCAISSEMENT -->
+                        <Label text="Decaissement — Note de frais" styleClass="card-title"/>
+
+                        <Label text="Reference note" styleClass="field-label"/>
+                        <TextField fx:id="noteRefField" promptText="(aucune note selectionnee)"
+                                   styleClass="input-field" editable="false"/>
+
+                        <Label text="Objet" styleClass="field-label"/>
+                        <TextField fx:id="objetField" promptText="Auto-rempli"
+                                   styleClass="input-field" editable="false"/>
+
+                        <Label text="Compte de charge (OHADA)" styleClass="field-label"/>
+                        <TextField fx:id="compteField" promptText="Auto-rempli"
+                                   styleClass="input-field" editable="false"/>
+
+                        <Label text="Montant ($)" styleClass="field-label"/>
+                        <TextField fx:id="montantField" promptText="0"
+                                   styleClass="input-field" editable="false"/>
+
+                        <Button text="Payer la note selectionnee et generer le recu"
+                                onAction="#onPayer" maxWidth="Infinity" styleClass="primary-button"/>
+
+                        <Separator/>
+
+                        <!-- ENCAISSEMENT -->
+                        <Label text="Encaissement" styleClass="card-title"/>
+
+                        <Label text="Libelle" styleClass="field-label"/>
+                        <TextField fx:id="encLibelleField" promptText="Motif de l'encaissement"
+                                   styleClass="input-field"/>
+
+                        <Label text="Compte contrepartie (OHADA)" styleClass="field-label"/>
+                        <TextField fx:id="encCompteField" promptText="7xxx" styleClass="input-field"/>
+
+                        <Label text="Montant (FC)" styleClass="field-label"/>
+                        <TextField fx:id="encMontantField" promptText="0" styleClass="input-field"/>
+
+                        <Button text="Enregistrer l'encaissement et generer le recu"
+                                onAction="#onEncaisser" maxWidth="Infinity" styleClass="secondary-button"/>
+
+                        <Label fx:id="feedbackLabel" text="" styleClass="feedback-label" wrapText="true"/>
+                    </VBox>
+                </ScrollPane>
+
+                <!-- COLONNE DROITE : Historique + Grand Livre -->
+                <VBox spacing="14" HBox.hgrow="ALWAYS">
+
+                    <!-- Historique des transactions + recherche -->
+                    <VBox spacing="10" styleClass="card" prefHeight="280">
+                        <padding><Insets top="18" right="18" bottom="18" left="18"/></padding>
+                        <HBox alignment="CENTER_LEFT" spacing="6">
+                            <Label text="Historique des transactions" styleClass="card-title"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <TextField fx:id="histoSearch" promptText="Rechercher..."
+                                       styleClass="search-field" prefWidth="110"/>
+                            <DatePicker fx:id="histoDateDu" promptText="Du" prefWidth="122" styleClass="date-picker-compact"/>
+                            <DatePicker fx:id="histoDateAu" promptText="Au" prefWidth="122" styleClass="date-picker-compact"/>
+                            <Button text="↓ Excel" onAction="#onExportHisto" styleClass="export-btn"/>
+                            <Button text="🖶" onAction="#onPrintHisto" styleClass="print-btn" prefWidth="32"/>
+                            <Button text="⛶" onAction="#onFullHisto" styleClass="fullview-btn" prefWidth="32"/>
+                            <Button text="Actualiser" onAction="#onRefresh" styleClass="link-btn"/>
+                        </HBox>
+                        <Separator/>
+                        <TableView fx:id="table" VBox.vgrow="ALWAYS">
+                            <columns>
+                                <TableColumn fx:id="colRef" text="Reference" prefWidth="155">
+                                    <cellValueFactory>
+                                        <PropertyValueFactory property="reference"/>
+                                    </cellValueFactory>
+                                </TableColumn>
+                                <TableColumn fx:id="colSens" text="Sens" prefWidth="125"/>
+                                <TableColumn fx:id="colNote" text="Note" prefWidth="110">
+                                    <cellValueFactory>
+                                        <PropertyValueFactory property="noteReference"/>
+                                    </cellValueFactory>
+                                </TableColumn>
+                                <TableColumn fx:id="colMontant" text="Montant ($)" prefWidth="130">
+                                    <cellValueFactory>
+                                        <PropertyValueFactory property="montant"/>
+                                    </cellValueFactory>
+                                </TableColumn>
+                                <TableColumn fx:id="colSynced" text="Synchro" prefWidth="75">
+                                    <cellValueFactory>
+                                        <PropertyValueFactory property="synced"/>
+                                    </cellValueFactory>
+                                </TableColumn>
+                            </columns>
+                            <placeholder><Label text="Aucune transaction enregistree"/></placeholder>
+                        </TableView>
+                    </VBox>
+
+                    <!-- Grand Livre + recherche -->
+                    <VBox spacing="10" styleClass="gl-card" VBox.vgrow="ALWAYS">
+                        <padding><Insets top="18" right="18" bottom="18" left="18"/></padding>
+                        <HBox alignment="CENTER_LEFT" spacing="6">
+                            <Label text="Grand Livre" styleClass="card-title"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <TextField fx:id="glSearch" promptText="Rechercher..."
+                                       styleClass="search-field" prefWidth="110"/>
+                            <DatePicker fx:id="glDateDu" promptText="Du" prefWidth="122" styleClass="date-picker-compact"/>
+                            <DatePicker fx:id="glDateAu" promptText="Au" prefWidth="122" styleClass="date-picker-compact"/>
+                            <Button text="↓ Excel" onAction="#onExportGl" styleClass="export-btn"/>
+                            <Button text="🖶" onAction="#onPrintGl" styleClass="print-btn" prefWidth="32"/>
+                            <Button text="⛶" onAction="#onFullGl" styleClass="fullview-btn" prefWidth="32"/>
+                            <Button text="Actualiser" onAction="#onRefresh" styleClass="link-btn"/>
+                        </HBox>
+                        <Label text="Ecritures comptables OHADA issues des paiements de caisse."
+                               styleClass="field-label"/>
+                        <Separator/>
+                        <TableView fx:id="grandLivreTable" VBox.vgrow="ALWAYS"
+                                   maxHeight="1.7976931348623157E308">
+                            <columns>
+                                <TableColumn fx:id="colGlNumero"   text="N°"       prefWidth="50"/>
+                                <TableColumn fx:id="colGlDate"     text="Date"     prefWidth="100"/>
+                                <TableColumn fx:id="colGlCompte"   text="Compte"   prefWidth="110"/>
+                                <TableColumn fx:id="colGlLibelle"  text="Libelles" prefWidth="230"/>
+                                <TableColumn fx:id="colGlCaissier" text="Caissier" prefWidth="140"/>
+                                <TableColumn text="Montants ($)">
+                                    <columns>
+                                        <TableColumn fx:id="colGlDebit"  text="Debit"  prefWidth="130"/>
+                                        <TableColumn fx:id="colGlCredit" text="Credit" prefWidth="130"/>
+                                    </columns>
+                                </TableColumn>
+                            </columns>
+                            <placeholder><Label text="Aucune ecriture comptable"/></placeholder>
+                        </TableView>
+                    </VBox>
+
+                </VBox>
+                <!-- fin colonne droite -->
+
+            </HBox>
+
+        </VBox>
+    </center>
+</BorderPane>

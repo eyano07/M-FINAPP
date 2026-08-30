@@ -1,0 +1,62 @@
+HELP.md
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### IDE ###
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+### Build ###
+build/
+*.log
+dist/
+
+### Node / Nuxt ###
+node_modules/
+.nuxt/
+.output/
+.nitro/
+.cache/
+
+### Environnement / secrets ###
+.env
+.env.local
+.env.*.local
+*.pem
+*.p12
+*.key
+
+### Uploads / data locale ###
+data/
+uploads/
+
+### Sauvegardes de base de donnees ###
+# Les dumps contiennent les donnees reelles de l'entreprise : grand livre,
+# notes de frais, transactions bancaires et de caisse, ainsi que la table
+# users avec les mots de passe haches. Ils ne doivent jamais quitter la
+# machine, meme vers un depot prive.
+backups/
+*.sql.gz
+*.sql.bz2
+*.dump
+
+### Classeurs de travail contenant des donnees reelles ###
+# Les modeles OHADA/IFRS versionnes servent de reference au module d'export ;
+# les relevés d'exploitation, eux, sont des donnees d'entreprise.
+EVOLUTION CAISSE *.xlsx
+
+### Fichiers temporaires LibreOffice ###
+.~lock.*#
+
+### Artefacts d'execution locaux de Claude Code ###
+.claude/scheduled_tasks.lock
+
+### OS ###
+.DS_Store
+Thumbs.db

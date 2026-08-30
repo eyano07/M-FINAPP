@@ -1,0 +1,278 @@
+/* ============================================================
+   MBSC Finapp - Design System 2026
+   ============================================================ */
+
+:root {
+  --mbsc-radius: 16px;
+  --mbsc-border: #f0f0f0;
+  --mbsc-text-secondary: #6b7280;
+  --mbsc-appbar-h: 60px;
+}
+
+html,
+body {
+  font-family: 'Inter', 'Roboto', Arial, sans-serif;
+  background-color: #f8f9fa;
+}
+
+/* Shared surface card */
+.classroom-card {
+  border: 1px solid var(--mbsc-border) !important;
+  border-radius: var(--mbsc-radius) !important;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+  box-shadow: none !important;
+}
+.classroom-card:hover {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07) !important;
+}
+
+/* ── Page header (modern 2026) ─────────────────────────────── */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+.page-title {
+  font-size: clamp(1.4rem, 2.6vw, 1.85rem);
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: #111827;
+  margin: 0;
+  line-height: 1.2;
+}
+.page-sub {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 4px 0 0;
+}
+
+/* ── Data table modern styling ─────────────────────────────── */
+.v-data-table {
+  border-radius: var(--mbsc-radius);
+}
+.v-data-table .v-data-table__th {
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #9ca3af !important;
+  background: #fafafa !important;
+}
+.v-data-table .v-data-table__td {
+  font-size: 0.875rem !important;
+}
+
+/* ── Data table mobile cards (sous 600px, mode "mobile" natif de
+   Vuetify : chaque <tr> devient une carte, chaque <td> une paire
+   libelle/valeur — voir mobile-breakpoint:'sm' dans plugins/vuetify.ts).
+   Regle globale et unique : s'applique aux 17 v-data-table de l'appli
+   sans repeter le style dans chaque page. ─────────────────────────── */
+@media (max-width: 599px) {
+  .v-table__wrapper { overflow-x: hidden; background: transparent; }
+
+  .v-data-table__tr--mobile {
+    display: block;
+    background: #fff;
+    border: 1px solid #eef0f2;
+    border-left: 3px solid #16a34a;
+    border-radius: 16px;
+    margin: 0 0 14px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  .v-data-table__tr--mobile:last-child { margin-bottom: 0; }
+
+  .v-data-table__tr--mobile > .v-data-table__td {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    height: auto !important;
+    padding: 12px 16px !important;
+    border-bottom: 1px solid #f4f5f6;
+  }
+  .v-data-table__tr--mobile > .v-data-table__td:last-child { border-bottom: none; }
+  .v-data-table__tr--mobile > .v-data-table__td:nth-child(even) { background: #fafbfc; }
+
+  /* Premier champ = en-tete de la carte (identifiant principal de la ligne) */
+  .v-data-table__tr--mobile > .v-data-table__td:first-child {
+    background: linear-gradient(180deg, #f5faf7 0%, #ffffff 100%);
+    padding: 14px 16px 13px !important;
+    border-bottom: 1px solid #eef2f0;
+  }
+  .v-data-table__tr--mobile > .v-data-table__td:first-child .v-data-table__td-title {
+    color: #16a34a;
+  }
+  .v-data-table__tr--mobile > .v-data-table__td:first-child .v-data-table__td-value {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #0f172a;
+  }
+
+  /* Colonne d'actions (boutons) : pleine largeur, alignes en ligne, sans etiquette repetee */
+  .v-data-table__tr--mobile > .v-data-table__td:has(.v-btn) {
+    background: #fafbfc;
+  }
+  .v-data-table__tr--mobile > .v-data-table__td:has(.v-btn) .v-data-table__td-title {
+    display: none;
+  }
+  .v-data-table__tr--mobile > .v-data-table__td:has(.v-btn) .v-data-table__td-value {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .v-data-table__tr--mobile .v-data-table__td-title {
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #9ca3af;
+    flex-shrink: 0;
+  }
+  .v-data-table__tr--mobile .v-data-table__td-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #111827;
+    text-align: right;
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+
+  /* Ligne de tri mobile (remplace les en-tetes de colonnes cliquables) */
+  .v-data-table .v-data-table__mobile-sort {
+    padding: 0 4px 12px !important;
+  }
+}
+
+/* ── Pastel chips (status) ─────────────────────────────────── */
+.chip-soft {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+/* FAB en bas a droite */
+.classroom-fab {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  z-index: 6;
+}
+
+.content-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ============================================================
+   Impression : ne conserver que le contenu imprimable des pages
+   (barre d'application, menu lateral et marges de mise en page
+   sont retires pour laisser toute la place au document).
+   ============================================================ */
+/* En-tete de document imprime (etats financiers, rapports) : masquee a
+   l'ecran, visible uniquement sur le PDF/impression genere via window.print()
+   — memes classes reutilisables par toute page qui a besoin d'un "papier a
+   en-tete" imprimable (voir pages/comptabilite/{bilan,compte-resultat,
+   balance-verification}). */
+.etat-print-header { display: none; }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .v-application {
+    background: #fff !important;
+  }
+
+  .v-app-bar,
+  .v-navigation-drawer,
+  .v-overlay__scrim,
+  .v-overlay-container {
+    display: none !important;
+  }
+
+  .v-main {
+    padding: 0 !important;
+    --v-layout-left: 0px !important;
+    --v-layout-right: 0px !important;
+    --v-layout-top: 0px !important;
+  }
+
+  .v-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .no-print,
+  .v-data-table-footer { display: none !important; }
+
+  * { box-shadow: none !important; }
+
+  .etat-print-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    border-bottom: 3px solid #16a34a;
+  }
+  .etat-print-header__brand { display: flex; align-items: center; gap: 10px; }
+  .etat-print-header__logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: #16a34a;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .etat-print-header__logo--image { background: #fff; border: 1px solid #e5e7eb; }
+  .etat-print-header__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
+  .etat-print-header__company { display: block; font-size: 1.1rem; font-weight: 800; color: #111827; }
+  .etat-print-header__doc {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #16a34a;
+    margin-top: 1px;
+  }
+  .etat-print-header__service {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: #6b7280;
+    margin-top: 1px;
+  }
+  .etat-print-header__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: right;
+    font-size: 0.75rem;
+    color: #374151;
+  }
+  .etat-print-header__meta strong { color: #111827; }
+}
