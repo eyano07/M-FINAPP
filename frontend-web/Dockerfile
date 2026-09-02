@@ -1,8 +1,13 @@
 # ---- Build stage ----
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+# Le lockfile est copie avec le manifeste : sans lui, "npm install" re-resolvait
+# tout l'arbre a chaque build, si bien que la publication d'une version
+# transitive suffisait a casser un build jusque-la vert (npm 10 echouait sur
+# « Cannot read properties of null (reading 'edgesOut') »). "npm ci" installe
+# exactement l'arbre verrouille et rend le build reproductible.
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 
