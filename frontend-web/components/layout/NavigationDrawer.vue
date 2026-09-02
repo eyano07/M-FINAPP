@@ -83,15 +83,22 @@ const venteItems: NavItem[] = [
   { title: 'Clients', icon: 'mdi-account-multiple-outline', to: '/ventes/clients', module: 'VENTES' },
 ]
 
+// Le caissier garde le module LOGISTIQUE en LECTURE — V29 le lui a accorde
+// exactement pour que « Nouvelle vente » puisse charger le catalogue via
+// /logistique/articles — mais les ecrans du domaine ne relevent pas de son
+// metier. On les reserve donc aux roles qui exploitent reellement le stock,
+// sans toucher a la permission de module dont depend la saisie d'une vente.
+// GEST_PATRIMOINE y figure : il a lui aussi LOGISTIQUE en LECTURE.
+const LOGISTIQUE_HORS_CAISSIER = ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN']
 const logistiqueItems: NavItem[] = [
-  { title: 'Articles', icon: 'mdi-package-variant-closed', to: '/logistique/articles', module: 'LOGISTIQUE' },
-  { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE' },
+  { title: 'Articles', icon: 'mdi-package-variant-closed', to: '/logistique/articles', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
+  { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   // Mouvements et grand livre stock : StockService en reserve la lecture aux
   // roles logistiques et financiers. Le caissier a bien le module en LECTURE
   // (catalogue + disponibilite necessaires a une vente) mais pas ces deux
   // ecrans, qui lui renverraient 403.
   { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/logistique/mouvements', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
-  { title: 'État du stock', icon: 'mdi-clipboard-list-outline', to: '/logistique/stock', module: 'LOGISTIQUE' },
+  { title: 'État du stock', icon: 'mdi-clipboard-list-outline', to: '/logistique/stock', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   { title: 'Grand livre stock', icon: 'mdi-book-open-page-variant-outline', to: '/logistique/stock/grand-livre', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
 ]
 const patrimoineItems: NavItem[] = [

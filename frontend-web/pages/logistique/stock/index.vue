@@ -1,5 +1,7 @@
 <script setup lang="ts">
-definePageMeta({ module: 'LOGISTIQUE' })
+// Voir /logistique/articles : le module en LECTURE du caissier sert la vente,
+// pas la consultation des ecrans logistiques.
+definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN'] })
 
 interface Niveau {
   articleCode: string
