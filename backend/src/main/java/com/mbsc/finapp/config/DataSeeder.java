@@ -100,11 +100,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, priorite, date_creation, date_maj)
+                 createur_id, beneficiaire, priorite, date_creation, date_maj)
             SELECT 'NF-2026-000001', 'Achat fournitures bureau',
                    'Stylos, ramettes papier A4 et enveloppes pour le departement administratif.',
                    45000.00, 'CDF', 'PAYEE',
-                   u.id, 'HAUTE',
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')), 'HAUTE',
                    NOW() - INTERVAL '12 days', NOW() - INTERVAL '2 days'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
@@ -114,11 +114,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, priorite, date_creation, date_maj)
+                 createur_id, beneficiaire, priorite, date_creation, date_maj)
             SELECT 'NF-2026-000002', 'Transport mission terrain Kinshasa',
                    'Frais de deplacement pour supervision des chantiers — 3 jours.',
                    120000.00, 'CDF', 'TRANSMISE_CAISSE',
-                   u.id, 'HAUTE',
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')), 'HAUTE',
                    NOW() - INTERVAL '7 days', NOW() - INTERVAL '1 day'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
@@ -128,11 +128,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, priorite, date_creation, date_maj)
+                 createur_id, beneficiaire, priorite, date_creation, date_maj)
             SELECT 'NF-2026-000003', 'Abonnement logiciels SaaS',
                    'Renouvellement annuel Microsoft 365 et Zoom — 5 licences.',
                    284000.00, 'CDF', 'TRANSMISE_CAISSE',
-                   u.id, 'MOYENNE',
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')), 'MOYENNE',
                    NOW() - INTERVAL '5 days', NOW() - INTERVAL '12 hours'
             FROM users u
             WHERE u.email = 'dfin@mbsc.cd'
@@ -142,11 +142,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, beneficiaire, date_creation, date_maj)
             SELECT 'NF-2026-000004', 'Reparation vehicule de service',
                    'Remplacement plaquettes de frein et vidange — 4x4 terrain.',
                    67500.00, 'CDF', 'VERIFIEE_DFIN',
-                   u.id,
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')),
                    NOW() - INTERVAL '3 days', NOW() - INTERVAL '1 day'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
@@ -156,11 +156,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, beneficiaire, date_creation, date_maj)
             SELECT 'NF-2026-000005', 'Frais de reception clients',
                    'Dejeuner de travail avec partenaires — 8 personnes.',
                    52000.00, 'CDF', 'SOUMISE',
-                   u.id,
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')),
                    NOW() - INTERVAL '1 day', NOW() - INTERVAL '10 hours'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
@@ -170,11 +170,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, beneficiaire, date_creation, date_maj)
             SELECT 'NF-2026-000006', 'Formation Excel avance',
                    'Session pour 3 agents comptables, 2 jours.',
                    38000.00, 'CDF', 'BROUILLON',
-                   u.id,
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')),
                    NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours'
             FROM users u
             WHERE u.email = 'dfin@mbsc.cd'
@@ -184,11 +184,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, beneficiaire, date_creation, date_maj)
             SELECT 'NF-2026-000007', 'Achat mobilier de bureau',
                    'Chaises ergonomiques — 10 unites open space.',
                    230000.00, 'CDF', 'REJETEE_DA',
-                   u.id,
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')),
                    NOW() - INTERVAL '14 days', NOW() - INTERVAL '9 days'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
