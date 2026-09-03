@@ -1,5 +1,6 @@
 <script setup lang="ts">
-definePageMeta({ module: 'COMPTABILITE' })
+// DA exclu explicitement : voir NavigationDrawer.vue (comptabiliteItems).
+definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 interface LigneBalance {
   compteNumero: string

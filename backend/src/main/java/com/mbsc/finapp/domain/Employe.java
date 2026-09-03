@@ -47,6 +47,10 @@ public class Employe {
     @Column(length = 30)
     private String categorie;
 
+    /** Intitule du poste occupe (ex. "Chef de chantier"), distinct de la categorie CNSS. */
+    @Column(length = 100)
+    private String poste;
+
     @Column(length = 100)
     private String affectation;
 

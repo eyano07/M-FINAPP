@@ -186,10 +186,38 @@ body {
    balance-verification}). */
 .etat-print-header { display: none; }
 
+/* @page doit rester une regle de premier niveau : imbriquee dans @media
+   print (comme c'etait le cas ici), certains moteurs de rendu l'ignorent
+   silencieusement au moment de l'impression — le navigateur retombe alors
+   sur l'orientation par defaut de la boite de dialogue (souvent paysage),
+   sans qu'aucune erreur ne le signale. @page n'a de toute facon d'effet
+   qu'a l'impression : l'envelopper dans @media print n'apportait rien. */
+@page {
+  size: A4 portrait;
+  margin: 10mm 12mm;
+}
+
+/* Page nommee, reservee aux impressions qui doivent etre en paysage (grilles
+   larges : fiche de presence). Seuls les documents qui portent la classe
+   `print-paysage` sur <html> (ajoutee/retiree par le composant concerne via
+   onMounted/onUnmounted — voir pages/drh/presences/index.vue) basculent sur
+   cette page — contrairement a une regle @page anonyme, qui s'appliquerait a
+   toute impression suivante et peut "fuiter" d'une page a l'autre lors d'une
+   navigation cote client dans la SPA (incident deja rencontre et corrige sur
+   fiche-manuelle.vue : @page anonyme retire au profit de cette approche
+   nommee). La classe est portee par <html> plutot que par un element scope
+   profondement imbrique dans l'arbre flex de Vuetify (.v-application >
+   .v-application__wrap > .v-main) : appliquer `page` via un selecteur scope
+   sur un tel element faisait deraper le calcul de pagination de Chromium
+   (grand espace vide puis 2e feuille quasi blanche). */
+@page fiche-paysage {
+  size: A4 landscape;
+  margin: 10mm 12mm;
+}
+
 @media print {
-  @page {
-    size: A4 portrait;
-    margin: 10mm 12mm;
+  html.print-paysage {
+    page: fiche-paysage;
   }
 
   html,
@@ -206,6 +234,23 @@ body {
   .v-overlay__scrim,
   .v-overlay-container {
     display: none !important;
+  }
+
+  /* L'app-shell Vuetify (.v-application > .v-application__wrap > .v-main)
+     est en display:flex avec .v-main en flex:1 0 auto, pour occuper l'espace
+     restant a cote de la barre d'appli/du menu lateral a l'ecran — deux
+     elements deja masques ci-dessus a l'impression. Sans ce reset, ce
+     flex-grow peut fausser la hauteur budgetee par Chromium pour la
+     pagination (meme symptome que ci-dessus : grand vide puis page
+     supplementaire quasi blanche). Aucune page imprimee n'a besoin de ce
+     comportement flex : le contenu doit simplement occuper sa hauteur
+     naturelle. */
+  .v-application,
+  .v-application__wrap,
+  .v-main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
 
   .v-main {

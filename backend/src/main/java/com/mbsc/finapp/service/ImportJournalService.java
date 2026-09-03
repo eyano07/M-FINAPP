@@ -133,9 +133,18 @@ public class ImportJournalService {
         AJOUTER
     }
 
-    /** Une ligne du fichier, deja typee. */
+    /**
+     * Une ligne du fichier, deja typee.
+     *
+     * @param intituleCompte nom du compte tel qu'il figure dans le fichier
+     *        (colonne « Intitule du compte »). Sert uniquement de repli quand
+     *        le compte est absent du plan comptable : tant qu'il y existe,
+     *        c'est l'intitule du referentiel qui fait foi — voir
+     *        {@link #libelleCompte}.
+     */
     private record LigneImport(int numeroLigne, LocalDate date, String referencePiece,
-                                JournalComptable journal, String compte, String libelle,
+                                JournalComptable journal, String compte, String intituleCompte,
+                                String libelle,
                                 BigDecimal debit, BigDecimal credit,
                                 /** Montant en devise etrangere, si le fichier porte des colonnes dediees. */
                                 BigDecimal montantDevise) {}
@@ -171,28 +180,11 @@ public class ImportJournalService {
                 "Fichier illisible : " + e.getMessage());
         }
 
-        // Correction orthographique des libelles, avant tout autre traitement :
-        // le regroupement par piece (cle de secours = date + hashCode du
-        // libelle pour les lignes sans reference), le controle d'equilibre et
-        // l'ecriture en base doivent tous voir le texte corrige. Automatique
-        // (pas de validation prealable, contrairement aux substitutions de
-        // compte) : une faute de frappe ne change ni le sens ni l'imputation
-        // de l'ecriture — voir ImportIaService.corrigerOrthographe.
-        if (!lignes.isEmpty()) {
-            Set<String> libellesDistincts = lignes.stream()
-                .map(LigneImport::libelle).filter(StringUtils::hasText).collect(java.util.stream.Collectors.toSet());
-            Map<String, String> corrections = assistance.corrigerOrthographe(libellesDistincts);
-            if (!corrections.isEmpty()) {
-                lignes = lignes.stream()
-                    .map(l -> {
-                        String corrige = corrections.get(l.libelle());
-                        return corrige == null ? l : new LigneImport(l.numeroLigne(), l.date(),
-                            l.referencePiece(), l.journal(), l.compte(), corrige, l.debit(), l.credit(),
-                            l.montantDevise());
-                    })
-                    .toList();
-            }
-        }
+        // Aucune correction orthographique n'est appliquee : les libelles
+        // d'ecriture et les intitules de compte sont repris exactement tels
+        // que le fichier les porte. Une reecriture automatique, meme limitee
+        // a l'orthographe, modifiait un texte comptable sans trace ni
+        // validation — et renommait au passage des comptes du plan.
 
         // Substitutions validees par l'administrateur (ex. 101 -> 1011),
         // appliquees avant tout controle pour que le fichier soit juge corrige.
@@ -200,8 +192,8 @@ public class ImportJournalService {
             lignes = lignes.stream().map(l -> {
                 String remplacement = substitutions.get(l.compte());
                 return remplacement == null ? l : new LigneImport(l.numeroLigne(), l.date(),
-                    l.referencePiece(), l.journal(), remplacement, l.libelle(), l.debit(), l.credit(),
-                    l.montantDevise());
+                    l.referencePiece(), l.journal(), remplacement, l.intituleCompte(), l.libelle(),
+                    l.debit(), l.credit(), l.montantDevise());
             }).toList();
         }
 
@@ -239,7 +231,13 @@ public class ImportJournalService {
         // fichier valide et decouvrait l'anomalie en tentant de l'appliquer.
         Set<String> comptesVus = new LinkedHashSet<>();
         Map<String, String> comptesFautifs = new LinkedHashMap<>();
+        // Intitules portes par le fichier, pour les seuls comptes a creer :
+        // un compte deja au plan comptable garde l'intitule du referentiel.
+        Map<String, String> intitulesFichier = new LinkedHashMap<>();
         for (LigneImport l : lignes) {
+            if (StringUtils.hasText(l.intituleCompte())) {
+                intitulesFichier.putIfAbsent(l.compte(), l.intituleCompte().trim());
+            }
             if (!comptesVus.add(l.compte())) {
                 continue;
             }
@@ -325,7 +323,7 @@ public class ImportJournalService {
         // Assistance : uniquement en simulation et seulement si le fichier
         // coince, pour ne pas appeler le modele quand tout va bien.
         List<SuggestionImport> suggestions = (simulation && !comptesFautifs.isEmpty())
-            ? assistance.suggererComptes(comptesFautifs)
+            ? assistance.suggererComptes(comptesFautifs, intitulesFichier)
             : List.of();
 
         return new ImportJournalResponse(simulation, lignes.size(), parPiece.size(), importees,
@@ -419,8 +417,8 @@ public class ImportJournalService {
      *
      * @param journal -1 si la colonne est absente (valeur par defaut appliquee)
      */
-    private record Mapping(int date, int piece, int journal, int compte, int libelle,
-                            int debit, int credit, int debitUsd, int creditUsd) {
+    private record Mapping(int date, int piece, int journal, int compte, int intituleCompte,
+                            int libelle, int debit, int credit, int debitUsd, int creditUsd) {
         boolean complet() {
             return date >= 0 && compte >= 0 && debit >= 0 && credit >= 0;
         }
@@ -436,6 +434,12 @@ public class ImportJournalService {
             // explicitement, sinon il serait pris pour la colonne du numero.
             chercher(enTetes, List.of("compte", "comptegeneral", "numerocompte", "ncompte"),
                      List.of("intitule", "libelle", "nom")),
+            // Intitule du compte porte par le fichier. Repli seulement : il ne
+            // sert qu'aux comptes absents du plan comptable (creation), jamais
+            // a renommer un compte du referentiel.
+            chercher(enTetes, List.of("intitulecompte", "intituleducompte", "libelleducompte",
+                                      "libellecompte", "nomducompte", "nomcompte", "intitule"),
+                     List.of("ecriture")),
             chercher(enTetes, List.of("libelleecriture", "libelle", "designation", "objet"),
                      List.of("compte")),
             // Colonnes en devise de base : on exclut celles marquees USD/devise,
@@ -606,7 +610,7 @@ public class ImportJournalService {
             int numero = 0;
             boolean enteteVue = false;
             // Positions canoniques par defaut si le fichier n'a pas d'en-tete.
-            Mapping map = new Mapping(0, 1, 2, 3, 5, 6, 7, -1, -1);
+            Mapping map = new Mapping(0, 1, 2, 3, 4, 5, 6, 7, -1, -1);
             while ((ligne = r.readLine()) != null) {
                 numero++;
                 if (ligne.isBlank()) continue;
@@ -667,6 +671,7 @@ public class ImportJournalService {
         String reference = lire(v, map.piece());
         String journalTexte = lire(v, map.journal());
         String compte = lire(v, map.compte());
+        String intituleCompte = lire(v, map.intituleCompte());
         String libelle = lire(v, map.libelle());
         String debitTexte = lire(v, map.debit());
         String creditTexte = lire(v, map.credit());
@@ -736,7 +741,7 @@ public class ImportJournalService {
             .add(cUsd == null ? BigDecimal.ZERO : cUsd);
 
         return Optional.of(new LigneImport(numero, date, refPiece, lireJournal(journalTexte),
-            compte.trim(), libelle, debit, credit,
+            compte.trim(), intituleCompte, libelle, debit, credit,
             enDevise.signum() > 0 ? enDevise : null));
     }
 
@@ -868,10 +873,31 @@ public class ImportJournalService {
      * Cree le sous-compte propose sous son parent, dont il herite du type et
      * de la classe. Sans effet si le compte existe deja — la correction doit
      * pouvoir etre relancee sans creer de doublon.
+     *
+     * <p>Un compte deja cree par un import precedent voit en revanche son
+     * intitule reactualise depuis le fichier. Ces comptes-la n'existent que
+     * parce qu'un import les a crees : leur nom vient du fichier, et rien ne
+     * doit figer la premiere valeur retenue. Sans cela, un compte nomme par
+     * erreur d'apres un libelle d'ecriture (« Paiement courses de service
+     * MIKE FLO » au lieu de « Transports Administratifs ») gardait ce nom
+     * pour toujours — y compris dans les etats financiers — puisque la
+     * creation etait court-circuitee des la deuxieme execution.</p>
+     *
+     * <p>Les comptes du referentiel OHADA ({@code manuel = false}) ne sont
+     * jamais renommes : leur intitule fait autorite.</p>
      */
     private Optional<String> creerCompteManquant(SuggestionImport s) {
         String numero = s.valeurProposee();
-        if (compteRepository.findByNumero(numero).isPresent()) {
+        Optional<CompteOHADA> existant = compteRepository.findByNumero(numero);
+        if (existant.isPresent()) {
+            CompteOHADA c = existant.get();
+            if (c.isManuel() && StringUtils.hasText(s.libelle())
+                && !s.libelle().equals(c.getLibelle())) {
+                log.info("Intitule reactualise depuis le fichier : {} « {} » -> « {} »",
+                    numero, c.getLibelle(), s.libelle());
+                c.setLibelle(s.libelle());
+                compteRepository.save(c);
+            }
             return Optional.of(numero);
         }
         int sep = numero.lastIndexOf('.');
@@ -975,7 +1001,7 @@ public class ImportJournalService {
                 ecrireTexte(row, 1, l.referencePiece(), modifiee ? corrige : null);
                 ecrireTexte(row, 2, l.journal().name(), modifiee ? corrige : null);
                 ecrireTexte(row, 3, compteFinal, modifiee ? corrige : null);
-                ecrireTexte(row, 4, libelleCompte(compteFinal), modifiee ? corrige : null);
+                ecrireTexte(row, 4, libelleCompte(compteFinal, l.intituleCompte()), modifiee ? corrige : null);
                 ecrireTexte(row, 5, l.libelle() == null ? "" : l.libelle(), modifiee ? corrige : null);
                 ecrireNombre(row, 6, l.debit(), modifiee ? corrige : null);
                 ecrireNombre(row, 7, l.credit(), modifiee ? corrige : null);
@@ -1007,11 +1033,19 @@ public class ImportJournalService {
         }
     }
 
-    /** Intitule du compte, pour que le fichier corrige reste lisible. */
-    private String libelleCompte(String numero) {
+    /**
+     * Intitule du compte, pour que le fichier corrige reste lisible.
+     *
+     * <p>Le plan comptable fait autorite : son intitule ecrase celui du
+     * fichier des que le compte y figure. Celui du fichier n'est repris que
+     * pour un compte encore inconnu du referentiel, ou il est la seule
+     * information disponible.</p>
+     */
+    private String libelleCompte(String numero, String intituleFichier) {
         return compteRepository.findByNumero(numero)
             .map(c -> c.getLibelle() == null ? "" : c.getLibelle())
-            .orElse("");
+            .filter(StringUtils::hasText)
+            .orElseGet(() -> intituleFichier == null ? "" : intituleFichier.trim());
     }
 
     private void ecrireTexte(Row row, int col, String valeur, CellStyle style) {

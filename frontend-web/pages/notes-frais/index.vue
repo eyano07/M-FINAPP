@@ -1,4 +1,10 @@
 <script setup lang="ts">
+// Ni le DRH (paie/RH, pas de notes personnelles) ni LOGISTIQUE (son suivi
+// passe par son propre tableau de bord, /logistique) ne gerent leurs notes
+// de frais via cet ecran (voir NavigationDrawer.vue, AVEC_NOTES_FRAIS) :
+// garde repetee ici pour que l'URL directe /notes-frais reste elle aussi fermee.
+definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT'] })
+
 interface NoteFrais {
   id: number
   reference: string
@@ -131,6 +137,93 @@ function iconeFichier(type: string) {
   if (type === 'application/pdf') return 'mdi-file-pdf-box'
   if (type.startsWith('image/')) return 'mdi-file-image-outline'
   return 'mdi-file-outline'
+}
+
+// ── Capture photo (webcam sur desktop, caméra arrière sur mobile) ────────
+// Un seul flux getUserMedia sert les deux cas : facingMode 'environment' est
+// ignoré sans erreur sur un poste sans caméra arrière (webcam classique), et
+// pris en compte sur un téléphone — évite de détecter la plateforme.
+const dialogCamera = ref(false)
+const cameraVideo = ref<HTMLVideoElement | null>(null)
+const cameraCanvas = ref<HTMLCanvasElement | null>(null)
+const cameraStream = ref<MediaStream | null>(null)
+const erreurCamera = ref('')
+const photoCapturee = ref<string | null>(null)
+
+function messageErreurCamera(e: any): string {
+  if (e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError') {
+    return "Accès à la caméra refusé. Autorisez-le dans les paramètres du navigateur pour ce site."
+  }
+  if (e?.name === 'NotFoundError' || e?.name === 'DevicesNotFoundError') {
+    return 'Aucune caméra détectée sur cet appareil.'
+  }
+  if (e?.name === 'NotReadableError') {
+    return 'La caméra est déjà utilisée par une autre application.'
+  }
+  if (import.meta.client && location.protocol !== 'https:' && location.hostname !== 'localhost') {
+    return 'La caméra nécessite une connexion sécurisée (HTTPS).'
+  }
+  return "Impossible d'accéder à la caméra."
+}
+
+function arreterCamera() {
+  cameraStream.value?.getTracks().forEach((t) => t.stop())
+  cameraStream.value = null
+}
+
+async function ouvrirCamera() {
+  erreurCamera.value = ''
+  photoCapturee.value = null
+  dialogCamera.value = true
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    })
+    cameraStream.value = stream
+    await nextTick()
+    if (cameraVideo.value) cameraVideo.value.srcObject = stream
+  } catch (e: any) {
+    erreurCamera.value = messageErreurCamera(e)
+  }
+}
+
+function fermerCamera() {
+  dialogCamera.value = false
+}
+// Couvre aussi la fermeture par Échap/clic hors dialog (pas seulement le
+// bouton de fermeture explicite) : une caméra qu'on oublie de couper reste
+// un temoin allume tant que l'onglet est ouvert.
+watch(dialogCamera, (ouvert) => {
+  if (!ouvert) {
+    arreterCamera()
+    photoCapturee.value = null
+  }
+})
+watch(dialog, (ouvert) => { if (!ouvert) dialogCamera.value = false })
+
+function capturerPhoto() {
+  const video = cameraVideo.value
+  const canvas = cameraCanvas.value
+  if (!video || !canvas || !video.videoWidth) return
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+  canvas.getContext('2d')?.drawImage(video, 0, 0)
+  photoCapturee.value = canvas.toDataURL('image/jpeg', 0.92)
+}
+
+function reprendrePhoto() {
+  photoCapturee.value = null
+}
+
+function utiliserPhoto() {
+  const canvas = cameraCanvas.value
+  if (!canvas) return
+  canvas.toBlob((blob) => {
+    if (!blob) return
+    fichiersAJoindre.value.push(new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+    fermerCamera()
+  }, 'image/jpeg', 0.92)
 }
 
 function resetForm() {
@@ -401,9 +494,14 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
           <div class="nf-field">
             <div class="nf-pieces__head">
               <label class="nf-label">Pièces justificatives</label>
-              <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-paperclip" @click="declencherAjoutFichier">
-                Joindre un fichier
-              </v-btn>
+              <div class="nf-pieces__actions">
+                <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-paperclip" @click="declencherAjoutFichier">
+                  Joindre un fichier
+                </v-btn>
+                <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-camera-outline" @click="ouvrirCamera">
+                  Prendre une photo
+                </v-btn>
+              </div>
               <input
                 ref="nouvelleNoteUploadInput"
                 type="file"
@@ -454,6 +552,57 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
           >
             {{ form.sens === 'ENCAISSEMENT' ? 'Créer et encaisser' : 'Créer et soumettre' }}
           </v-btn>
+        </div>
+      </div>
+    </v-dialog>
+
+    <!-- ── Dialog capture photo (webcam / caméra mobile) ────────────── -->
+    <v-dialog v-model="dialogCamera" max-width="520" persistent>
+      <div class="nf-dialog">
+        <div class="nf-dialog__head">
+          <div class="nf-dialog__head-blob" />
+          <div class="nf-dialog__head-icon">
+            <v-icon icon="mdi-camera-outline" size="22" color="white" />
+          </div>
+          <div>
+            <p class="nf-dialog__head-title">Prendre une photo</p>
+            <p class="nf-dialog__head-sub">Webcam sur ordinateur, caméra arrière sur mobile</p>
+          </div>
+          <button class="nf-dialog__close" @click="fermerCamera">
+            <v-icon icon="mdi-close" size="18" />
+          </button>
+        </div>
+
+        <div class="nf-dialog__body">
+          <v-alert v-if="erreurCamera" type="error" variant="tonal" rounded="lg" density="compact">
+            {{ erreurCamera }}
+          </v-alert>
+
+          <template v-else>
+            <div class="nf-camera__viewport">
+              <video v-show="!photoCapturee" ref="cameraVideo" autoplay muted playsinline class="nf-camera__media" />
+              <img v-if="photoCapturee" :src="photoCapturee" alt="Photo capturée" class="nf-camera__media">
+            </div>
+            <canvas ref="cameraCanvas" class="nf-camera__canvas" />
+          </template>
+        </div>
+
+        <div class="nf-dialog__footer">
+          <template v-if="erreurCamera">
+            <button class="nf-btn nf-btn--ghost" @click="fermerCamera">Fermer</button>
+          </template>
+          <template v-else-if="!photoCapturee">
+            <button class="nf-btn nf-btn--ghost" @click="fermerCamera">Annuler</button>
+            <v-btn color="primary" rounded="lg" elevation="0" prepend-icon="mdi-camera" @click="capturerPhoto">
+              Capturer
+            </v-btn>
+          </template>
+          <template v-else>
+            <button class="nf-btn nf-btn--ghost" @click="reprendrePhoto">Reprendre</button>
+            <v-btn color="primary" rounded="lg" elevation="0" prepend-icon="mdi-check" @click="utiliserPhoto">
+              Utiliser cette photo
+            </v-btn>
+          </template>
         </div>
       </div>
     </v-dialog>
@@ -692,7 +841,30 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
 }
+.nf-pieces__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Capture photo ─────────────────────────────────────────────────── */
+.nf-camera__viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #111827;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.nf-camera__media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.nf-camera__canvas { display: none; }
 .nf-pieces__empty {
   font-size: 0.78rem;
   color: #9ca3af;

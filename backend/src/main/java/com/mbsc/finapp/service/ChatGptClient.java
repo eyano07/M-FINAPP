@@ -128,21 +128,48 @@ public class ChatGptClient {
     }
 
     private ChatCompletionCreateParams.Builder requete(String systeme, String utilisateur, int maxTokens) {
-        return ChatCompletionCreateParams.builder()
+        ChatCompletionCreateParams.Builder builder = ChatCompletionCreateParams.builder()
             .model(modele)
-            .maxCompletionTokens(maxTokens)
-            // Equivalent du thinking desactive cote Claude : sur les modeles
-            // GPT a raisonnement (gpt-5...), les tokens de raisonnement sont
-            // pris sur le meme budget que maxCompletionTokens. Sans ce
-            // reglage, un maxTokens serre (12 pour une suggestion de compte)
-            // est integralement consomme par le raisonnement invisible et ne
-            // laisse aucun token pour la reponse — contenu vide, repli
-            // silencieux sur le compte par defaut. Ces appels sont des taches
-            // cadrees (donnees deja fournies) : le raisonnement etendu n'y
-            // apporte rien.
-            .reasoningEffort(ReasoningEffort.MINIMAL)
+            .maxCompletionTokens(maxTokens);
+        // Equivalent du thinking desactive cote Claude : sur les modeles
+        // GPT a raisonnement (gpt-5...), les tokens de raisonnement sont
+        // pris sur le meme budget que maxCompletionTokens. Sans ce
+        // reglage, un maxTokens serre (12 pour une suggestion de compte)
+        // est integralement consomme par le raisonnement invisible et ne
+        // laisse aucun token pour la reponse — contenu vide, repli
+        // silencieux sur le compte par defaut. Ces appels sont des taches
+        // cadrees (donnees deja fournies) : le raisonnement etendu n'y
+        // apporte rien.
+        //
+        // Conditionnel : les modeles SANS raisonnement (gpt-4o, gpt-4o-mini,
+        // gpt-4.1...) rejettent le parametre — « 400 Unrecognized request
+        // argument supplied: reasoning_effort ». L'envoyer a tous rendait
+        // donc TOUTE fonction IA silencieusement inoperante des que
+        // APP_OPENAI_MODEL designait un de ces modeles : chaque appel
+        // echouait en 400 et chaque appelant retombait sur son repli local,
+        // sans que rien ne le signale a l'utilisateur.
+        if (supporteRaisonnement(modele)) {
+            builder.reasoningEffort(ReasoningEffort.MINIMAL);
+        }
+        return builder
             .addSystemMessage(systeme)
             .addUserMessage(utilisateur);
+    }
+
+    /**
+     * Le modele accepte-t-il {@code reasoning_effort} ?
+     *
+     * <p>Vrai pour les familles a raisonnement : serie « o » (o1, o3, o4-mini)
+     * et gpt-5. Faux pour gpt-4o / gpt-4.1 et anterieurs. Un modele inconnu
+     * est traite comme sans raisonnement : ne pas envoyer le parametre est
+     * sans consequence sur un modele qui le supporte (il retombe sur son
+     * effort par defaut), alors que l'envoyer a un modele qui l'ignore fait
+     * echouer l'appel entier.</p>
+     */
+    private static boolean supporteRaisonnement(String modele) {
+        if (!StringUtils.hasText(modele)) return false;
+        String m = modele.toLowerCase(java.util.Locale.ROOT).trim();
+        return m.startsWith("gpt-5") || m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4");
     }
 
     private RequestOptions options(Duration delai) {

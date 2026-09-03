@@ -155,7 +155,17 @@ public class BulletinPaie {
     @Builder.Default
     private StatutBulletin statut = StatutBulletin.BROUILLON;
 
-    /** Renseignée à la clôture (transition VALIDE -> pièce postée) ; l'état "comptabilisé" se lit sur piece.statut. */
+    /**
+     * Renseignée à la clôture, que la paie soit comptabilisée ou non (voir
+     * {@code ParametresPaie.comptabiliserPaie}) ; l'état "comptabilisé" se lit
+     * lui sur {@code pieceComptable}/{@code pieceComptable.statut}. C'est ce
+     * champ, et non plus la seule présence de {@code pieceComptable}, qui
+     * verrouille le bulletin — voir {@code BulletinPaieService.exigerModifiable}.
+     */
+    @Column(name = "date_cloture")
+    private Instant dateCloture;
+
+    /** Renseignée à la clôture uniquement si la paie est comptabilisée ; null sinon. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "piece_comptable_id")
     @ToString.Exclude

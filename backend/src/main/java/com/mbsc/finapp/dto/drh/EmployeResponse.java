@@ -11,6 +11,7 @@ public record EmployeResponse(
     String matricule,
     String nomComplet,
     String categorie,
+    String poste,
     String affectation,
     String email,
     String telephone,
@@ -28,7 +29,7 @@ public record EmployeResponse(
 ) {
     public static EmployeResponse from(Employe e) {
         return new EmployeResponse(
-            e.getId(), e.getMatricule(), e.getNomComplet(), e.getCategorie(), e.getAffectation(),
+            e.getId(), e.getMatricule(), e.getNomComplet(), e.getCategorie(), e.getPoste(), e.getAffectation(),
             e.getEmail(), e.getTelephone(), e.getDateEmbauche(), e.getSalaireBaseUsd(),
             e.getSituationFamiliale(), e.getNombreEnfants(), e.getDiplome(), e.getAncienneteAnnees(),
             e.getRendementPct(), e.isConforme(), e.isSuperviseur(), e.isExpatrie(), e.isActif());

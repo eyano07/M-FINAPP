@@ -5,6 +5,8 @@ interface Employe {
   id: number
   matricule: string
   nomComplet: string
+  poste?: string | null
+  affectation?: string | null
   salaireBaseUsd: number
   nombreEnfants: number
 }
@@ -21,6 +23,8 @@ interface Bulletin {
   statut: 'BROUILLON' | 'VALIDE' | 'ANNULE'
   pieceReference: string | null
   pieceStatut: string | null
+  /** Vrai dès la clôture de la période, avec ou sans pièce comptable (voir Paramètres de paie). */
+  cloture: boolean
 }
 
 /** Écarts au droit congolais — consultatif, n'influence aucun montant. */
@@ -92,6 +96,9 @@ const formVide = () => ({
   datePaiement: new Date().toISOString().slice(0, 10),
 })
 const form = reactive(formVide())
+// Poste/affectation viennent du dossier employe : simple rappel a la
+// selection, pas un champ du bulletin (rien a saisir ni a enregistrer ici).
+const employeSelectionne = computed(() => employes.value.find(e => e.id === form.employeId) ?? null)
 
 async function charger() {
   loading.value = true
@@ -206,7 +213,9 @@ async function cloturer() {
   erreur.value = ''
   try {
     const res = await api<Bulletin[]>('/drh/bulletins/cloturer', { method: 'POST', params: { mois: mois.value, annee: annee.value } })
-    succes.value = `${res.length} bulletin(s) clôturé(s) — pièces BROUILLON générées, à comptabiliser dans Pièces comptables.`
+    succes.value = res[0]?.pieceReference
+      ? `${res.length} bulletin(s) clôturé(s) — pièces BROUILLON générées, à comptabiliser dans Pièces comptables.`
+      : `${res.length} bulletin(s) clôturé(s) — comptabilisation désactivée (Paramètres de paie), aucune écriture générée.`
     await charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Échec de la clôture.')
@@ -237,7 +246,7 @@ const statutMeta: Record<string, { label: string; bg: string; color: string }> =
 const fmtUsd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v || 0)
 const fmtFc = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v || 0) + ' FC'
 
-const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALIDE').length)
+const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALIDE' && !b.cloture).length)
 </script>
 
 <template>
@@ -245,7 +254,7 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
     <div class="page-head">
       <div>
         <h1 class="page-title">Bulletins de paie</h1>
-        <p class="page-sub">Calcul du salaire net, cotisations et IPR — clôture génère une pièce comptable par employé</p>
+        <p class="page-sub">Calcul du salaire net, cotisations et IPR — la clôture verrouille la période et génère une pièce comptable par employé si activé dans Paramètres de paie</p>
       </div>
       <div class="d-flex ga-2">
         <v-btn color="success" variant="tonal" rounded="lg" prepend-icon="mdi-file-excel-outline"
@@ -298,10 +307,14 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
             {{ statutMeta[item.statut]?.label ?? item.statut }}
           </span>
         </template>
-        <template #item.pieceReference="{ item }">{{ item.pieceReference ?? '—' }}</template>
+        <template #item.pieceReference="{ item }">
+          <span v-if="item.pieceReference">{{ item.pieceReference }}</span>
+          <span v-else-if="item.cloture" class="text-medium-emphasis font-italic">Non comptabilisé</span>
+          <span v-else>—</span>
+        </template>
         <template #item.actions="{ item }">
           <v-btn size="small" variant="text" icon="mdi-eye-outline" title="Détail" :to="`/drh/bulletins/${item.id}`" />
-          <template v-if="canWrite && !item.pieceReference">
+          <template v-if="canWrite && !item.cloture">
             <v-btn v-if="item.statut === 'BROUILLON'" size="small" variant="text" color="success"
               icon="mdi-check-circle-outline" title="Valider" @click="action(item, 'valider')" />
             <v-btn v-if="item.statut === 'VALIDE'" size="small" variant="text" icon="mdi-undo"
@@ -326,6 +339,11 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
             <v-col cols="12" md="6">
               <v-select v-model="form.employeId" :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
                 label="Employé *" variant="outlined" density="comfortable" @update:model-value="onEmployeChange" />
+              <p v-if="employeSelectionne && (employeSelectionne.poste || employeSelectionne.affectation)" class="text-caption text-medium-emphasis mt-1 mb-0">
+                <template v-if="employeSelectionne.poste">{{ employeSelectionne.poste }}</template>
+                <template v-if="employeSelectionne.poste && employeSelectionne.affectation"> · </template>
+                <template v-if="employeSelectionne.affectation">{{ employeSelectionne.affectation }}</template>
+              </p>
             </v-col>
             <v-col cols="12" md="3"><v-text-field v-model="form.datePaiement" type="date" label="Date de paiement" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="3"><v-text-field v-model.number="form.presencePct" type="number" suffix="%" label="Présence *" variant="outlined" density="comfortable" /></v-col>

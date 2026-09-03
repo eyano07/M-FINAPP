@@ -1,6 +1,5 @@
 package com.mbsc.finapp.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.dto.admin.SuggestionImport;
 import com.mbsc.finapp.repository.CompteOHADARepository;
@@ -17,7 +16,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Assistance a l'import de journal : propose des corrections plutot que de se
@@ -52,19 +50,21 @@ public class ImportIaService {
     private static final Logger log = LoggerFactory.getLogger(ImportIaService.class);
     /** Au-dela, on n'interroge plus l'IA : le fichier a un probleme de fond. */
     private static final int MAX_SUGGESTIONS_IA = 25;
-    /** Au-dela, le fichier a trop de libelles distincts pour un seul appel raisonnable. */
-    private static final int MAX_LIBELLES_CORRECTION = 300;
 
     private final CompteOHADARepository compteRepository;
     private final ChatGptClient chatGptClient;
-    private final ObjectMapper objectMapper;
 
     /**
      * Propose une substitution pour chaque compte inutilisable du fichier.
      *
-     * @param comptesFautifs numero du compte -> libelle rencontre dans le fichier
+     * @param comptesFautifs   numero du compte -> libelle d'ecriture rencontre dans le fichier
+     * @param intitulesFichier numero du compte -> intitule porte par le fichier
+     *        (colonne « Intitule du compte »). Utilise pour NOMMER un compte
+     *        a creer ; le libelle d'ecriture, lui, sert a CHOISIR entre des
+     *        sous-comptes existants, ou il est le seul signal pertinent.
      */
-    public List<SuggestionImport> suggererComptes(Map<String, String> comptesFautifs) {
+    public List<SuggestionImport> suggererComptes(Map<String, String> comptesFautifs,
+                                                   Map<String, String> intitulesFichier) {
         List<SuggestionImport> suggestions = new ArrayList<>();
         int appelsIa = 0;
 
@@ -75,7 +75,8 @@ public class ImportIaService {
             List<CompteOHADA> candidats = candidatsImputables(numero);
 
             if (candidats.isEmpty()) {
-                suggestions.add(proposerCreation(numero, libelleLigne));
+                suggestions.add(proposerCreation(numero, libelleLigne,
+                    intitulesFichier == null ? null : intitulesFichier.get(numero)));
                 continue;
             }
 
@@ -119,7 +120,7 @@ public class ImportIaService {
      * alors l'un a l'autre. Le libelle propose est celui lu dans le fichier,
      * qui decrit deja l'usage voulu.</p>
      */
-    private SuggestionImport proposerCreation(String numero, String libelleLigne) {
+    private SuggestionImport proposerCreation(String numero, String libelleLigne, String intituleFichier) {
         Optional<CompteOHADA> parent = parentExistant(numero);
         if (parent.isEmpty()) {
             return new SuggestionImport("COMPTE", numero, null, null,
@@ -129,7 +130,14 @@ public class ImportIaService {
         CompteOHADA p = parent.get();
         String suffixe = numero.substring(p.getNumero().length());
         String propose = p.getNumero() + "." + suffixe;
-        String libelle = StringUtils.hasText(libelleLigne) ? abreger(libelleLigne) : "Compte " + numero;
+        // L'intitule du compte prime sur le libelle d'ecriture : ce dernier
+        // decrit UNE operation (« Achat papier »), pas le compte lui-meme, et
+        // le retenir comme nom de compte polluait durablement le plan
+        // comptable — donc tous les etats financiers, qui en tirent leurs
+        // intitules.
+        String libelle = StringUtils.hasText(intituleFichier)
+            ? abreger(intituleFichier)
+            : (StringUtils.hasText(libelleLigne) ? abreger(libelleLigne) : "Compte " + numero);
         return new SuggestionImport("CREATION", numero, propose, libelle,
             "Compte absent du plan comptable. Il peut etre cree sous « " + p.getNumero()
             + " " + p.getLibelle() + " », dont il heritera du type et de la classe."
@@ -198,104 +206,7 @@ public class ImportIaService {
         }
     }
 
-    /** Reponse JSON attendue du modele pour la correction orthographique. */
-    private record CorrectionsJson(List<CorrectionJson> corrections) {}
-    private record CorrectionJson(String original, String corrige) {}
 
-    private static final Map<String, Object> SCHEMA_CORRECTIONS = Map.of(
-        "type", "object",
-        "properties", Map.of(
-            "corrections", Map.of(
-                "type", "array",
-                "items", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "original", Map.of("type", "string"),
-                        "corrige", Map.of("type", "string")),
-                    "required", List.of("original", "corrige"),
-                    "additionalProperties", false))),
-        "required", List.of("corrections"),
-        "additionalProperties", false);
-
-    /**
-     * Corrige l'orthographe des libelles distincts d'un fichier a importer, en
-     * un seul appel IA groupe (pas un par ligne : un journal peut en compter
-     * des centaines, souvent quasi identiques).
-     *
-     * <p><b>Automatique et non soumis a validation</b>, contrairement au choix
-     * d'un compte : corriger une faute de frappe ne change ni le sens ni
-     * l'imputation de l'ecriture, seulement son orthographe — meme principe
-     * que la reformulation deja automatique du libelle d'un paiement en caisse
-     * (voir {@code IaAssistantService.reformulerLibelle}). L'IA a pour
-     * consigne explicite de ne pas reformuler ni traduire, seulement de
-     * corriger l'orthographe/grammaire/ponctuation : le texte reste
-     * reconnaissable par l'utilisateur qui l'a saisi.</p>
-     *
-     * <p>Degrade sans jamais bloquer l'import : sans cle API, en cas d'erreur,
-     * ou au-dela de {@link #MAX_LIBELLES_CORRECTION} libelles distincts, la
-     * map retournee est vide et les libelles d'origine sont conserves tels
-     * quels par l'appelant.</p>
-     *
-     * @param libellesDistincts libelles distincts rencontres dans le fichier
-     * @return original -> corrige, uniquement pour les libelles reellement modifies
-     */
-    public Map<String, String> corrigerOrthographe(Set<String> libellesDistincts) {
-        List<String> retenus = libellesDistincts.stream()
-            .filter(StringUtils::hasText)
-            .distinct()
-            .limit(MAX_LIBELLES_CORRECTION)
-            .toList();
-        if (retenus.isEmpty() || !chatGptClient.disponible()) {
-            return Map.of();
-        }
-
-        String systeme = "Tu es un correcteur orthographique et grammatical pour des libelles"
-            + " d'ecritures comptables en francais (RDC, Republique Democratique du Congo)."
-            + " Corrige UNIQUEMENT l'orthographe, les accords et la ponctuation manifestement"
-            + " fautifs. Ne traduis pas, ne reformule pas, ne developpe pas les abreviations"
-            + " usuelles (montants, sigles, noms propres, noms de lieux congolais) et ne"
-            + " change jamais le sens. Si un libelle est deja correct, renvoie-le identique"
-            + " a l'original. Renvoie une correction pour CHAQUE libelle fourni, dans le meme"
-            + " ordre, en reprenant le texte original exact dans le champ \"original\".";
-        String utilisateur = "Libelles a corriger :\n" + String.join("\n", retenus);
-
-        try {
-            String reponse = chatGptClient.json(systeme, utilisateur, 4000, SCHEMA_CORRECTIONS);
-            if (reponse == null) {
-                return Map.of();
-            }
-            CorrectionsJson json = objectMapper.readValue(nettoyerJson(reponse), CorrectionsJson.class);
-            Map<String, String> resultat = new LinkedHashMap<>();
-            if (json.corrections() != null) {
-                for (CorrectionJson c : json.corrections()) {
-                    if (c.original() != null && StringUtils.hasText(c.corrige())
-                        && !c.corrige().equals(c.original())) {
-                        resultat.put(c.original(), c.corrige());
-                    }
-                }
-            }
-            if (!resultat.isEmpty()) {
-                log.info("Correction orthographique : {} libelle(s) corrige(s) sur {} distinct(s)",
-                    resultat.size(), retenus.size());
-            }
-            return resultat;
-        } catch (Exception e) {
-            // Englobe RuntimeException (reseau, quota, timeout) et
-            // JsonProcessingException (reponse mal formee) : la correction
-            // orthographique ne doit jamais faire echouer un import.
-            log.warn("Correction orthographique indisponible ({}) : libelles d'origine conserves", e.getMessage());
-            return Map.of();
-        }
-    }
-
-    /** Retire une eventuelle cloture markdown (```json ... ```) que le modele ajouterait malgre la consigne. */
-    private String nettoyerJson(String contenu) {
-        String nettoye = contenu.strip();
-        if (nettoye.startsWith("```")) {
-            nettoye = nettoye.replaceFirst("^```[a-zA-Z]*\\s*", "").replaceFirst("```\\s*$", "").strip();
-        }
-        return nettoye;
-    }
 
     /**
      * Propose une correspondance entre les en-tetes du fichier et les colonnes

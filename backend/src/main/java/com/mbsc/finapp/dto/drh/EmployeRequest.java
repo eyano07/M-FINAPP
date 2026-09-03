@@ -14,6 +14,7 @@ import java.time.LocalDate;
 public record EmployeRequest(
     @NotBlank @Size(max = 150) String nomComplet,
     @Size(max = 30) String categorie,
+    @Size(max = 100) String poste,
     @Size(max = 100) String affectation,
     @Email @Size(max = 150) String email,
     @Size(max = 30) String telephone,

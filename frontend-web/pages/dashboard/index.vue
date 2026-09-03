@@ -4,7 +4,10 @@ import { Bar, Line, Pie, Doughnut, Radar, Scatter, Bubble } from 'vue-chartjs'
 
 // Le Directeur metier (DIRECTEUR) n'a pas acces au tableau de bord
 // (statistiques/graphiques globaux) : il ne voit que ses notes de frais.
-definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE'] })
+// LOGISTIQUE non plus : son tableau de bord est /logistique (voir
+// NavigationDrawer.vue) - celui-ci n'a rien de pertinent pour son metier
+// (tresorerie, budgets, notes de frais).
+definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE'] })
 
 interface Note {
   id: number

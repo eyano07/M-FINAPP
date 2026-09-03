@@ -14,6 +14,8 @@ public record AuthResponse(
         String email,
         String nom,
         String prenom,
+        String telephone,
+        String photoUrl,
         Set<String> roles
     ) {}
 }

@@ -185,6 +185,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
                   <td>{{ l.numero }}</td><td>{{ l.libelle }}</td><td class="num">{{ fmt(l.montant) }}</td>
                 </tr>
               </tbody>
+              <tfoot><tr><td colspan="2">Total produits</td><td class="num">{{ fmt(resultat.totalProduits) }}</td></tr></tfoot>
             </table>
           </v-col>
           <v-col cols="12" md="6">
@@ -195,6 +196,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
                   <td>{{ l.numero }}</td><td>{{ l.libelle }}</td><td class="num">{{ fmt(l.montant) }}</td>
                 </tr>
               </tbody>
+              <tfoot><tr><td colspan="2">Total charges</td><td class="num">{{ fmt(resultat.totalCharges) }}</td></tr></tfoot>
             </table>
           </v-col>
         </v-row>

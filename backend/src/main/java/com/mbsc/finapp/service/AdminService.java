@@ -8,6 +8,7 @@ import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.dto.admin.CompteDetailResponse;
 import com.mbsc.finapp.dto.admin.CompteRequest;
 import com.mbsc.finapp.dto.admin.CompteResponse;
+import com.mbsc.finapp.dto.admin.CompteUpdateRequest;
 import com.mbsc.finapp.dto.admin.TauxChangeRequest;
 import com.mbsc.finapp.dto.admin.TauxChangeResponse;
 import com.mbsc.finapp.dto.admin.UserCreateRequest;
@@ -70,8 +71,8 @@ public class AdminService {
             .orElseThrow(() -> RessourceIntrouvableException.of("CompteOHADA", id)));
     }
 
-    /** Ajoute un compte manuellement, héritant du type et de la classe de son parent (ADMIN). */
-    @PreAuthorize("hasRole('ADMIN')")
+    /** Ajoute un compte manuellement, héritant du type et de la classe de son parent (ADMIN, DFIN). */
+    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
     @Transactional
     public CompteResponse ajouterCompte(CompteRequest req) {
         CompteOHADA parent = compteRepository.findByNumero(req.parentNumero())
@@ -96,11 +97,11 @@ public class AdminService {
     }
 
     /**
-     * Supprime un compte manuel (ADMIN). Les comptes pré-chargés ne peuvent pas
-     * être supprimés, ni aucun compte déjà mouvementé dans le Grand Livre
+     * Supprime un compte manuel (ADMIN, DFIN). Les comptes pré-chargés ne peuvent
+     * pas être supprimés, ni aucun compte déjà mouvementé dans le Grand Livre
      * (règle Sage/QuickBooks : on désactive, on ne supprime pas l'historique).
      */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
     @Transactional
     public void supprimerCompte(Long id) {
         CompteOHADA c = compteRepository.findById(id)
@@ -114,6 +115,28 @@ public class AdminService {
                 "Ce compte a déjà des écritures : il ne peut pas être supprimé. Désactivez-le à la place.");
         }
         compteRepository.delete(c);
+    }
+
+    /**
+     * Renomme un compte manuel (ADMIN, DFIN). Autorisé même si le compte est
+     * déjà mouvementé : contrairement à la suppression, corriger un libellé
+     * ne remet en cause ni le numéro ni l'historique des écritures qui s'y
+     * rattachent — c'est au contraire le cas d'usage principal (un compte
+     * créé automatiquement à l'import hérite parfois d'un libellé impropre).
+     * Les comptes du référentiel officiel (non manuels) restent en lecture
+     * seule ici.
+     */
+    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
+    @Transactional
+    public CompteResponse modifierCompte(Long id, CompteUpdateRequest req) {
+        CompteOHADA c = compteRepository.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Compte introuvable."));
+        if (!c.isManuel()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Seuls les comptes ajoutés manuellement peuvent être renommés.");
+        }
+        c.setLibelle(req.libelle().trim());
+        return CompteResponse.from(compteRepository.save(c));
     }
 
     /** Active ou désactive un compte (ADMIN). Un compte désactivé n'accepte plus d'imputation. */

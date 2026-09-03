@@ -2,6 +2,7 @@
 definePageMeta({ module: 'DRH_PRESENCES' })
 
 interface Agent { id: number; nomComplet: string; fonction: string | null; ordreAffichage: number | null }
+interface Employe { id: number; matricule: string; nomComplet: string; poste: string | null }
 
 const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
@@ -32,6 +33,7 @@ const saving = ref(false)
 const erreur = ref('')
 const succes = ref('')
 const agents = ref<Agent[]>([])
+const employes = ref<Employe[]>([])
 const dialog = ref(false)
 const editing = ref<Agent | null>(null)
 const form = reactive({ nomComplet: '', fonction: '' })
@@ -42,13 +44,20 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [a, p] = await Promise.all([
+    const [a, p, e] = await Promise.all([
       api<Agent[]>('/drh/agents-presence-manuelle'),
       api<{ directeurDrh: string | null; fonctionDirecteur: string | null }>('/drh/parametres-paie'),
+      // Module DRH_PERSONNEL, distinct de DRH_PRESENCES : un utilisateur qui
+      // n'a acces qu'a cet ecran (sans RESP_DRH) recevrait un 403 sur cet
+      // appel — meme garde que bulletins/index.vue, la liste sert seulement
+      // au raccourci "ajouter depuis les employes", pas a l'affichage
+      // principal de la page.
+      canWrite.value ? api<Employe[]>('/drh/employes') : Promise.resolve([]),
     ])
     agents.value = a
     directeurDrh.value = p.directeurDrh ?? ''
     fonctionDirecteur.value = p.fonctionDirecteur || 'Directeur des Ressources Humaines'
+    employes.value = e
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger la liste.')
   } finally {
@@ -56,6 +65,42 @@ async function charger() {
   }
 }
 onMounted(() => { charger(); parametresStore.charger() })
+
+// ── Ajout rapide depuis les employés déjà enregistrés ──────────────────────
+const dialogEmployes = ref(false)
+const employesChoisis = ref<number[]>([])
+const employesDisponibles = computed(() => {
+  const nomsDejaListes = new Set(agents.value.map(a => a.nomComplet.trim().toLowerCase()))
+  return employes.value.filter(e => !nomsDejaListes.has(e.nomComplet.trim().toLowerCase()))
+})
+
+function ouvrirAjoutDepuisEmployes() {
+  employesChoisis.value = []
+  erreur.value = ''
+  dialogEmployes.value = true
+}
+
+async function ajouterDepuisEmployes() {
+  if (!employesChoisis.value.length) return
+  saving.value = true
+  erreur.value = ''
+  try {
+    await Promise.all(employesChoisis.value.map((id) => {
+      const emp = employes.value.find(e => e.id === id)!
+      return api('/drh/agents-presence-manuelle', {
+        method: 'POST',
+        body: { nomComplet: emp.nomComplet, fonction: emp.poste || null },
+      })
+    }))
+    dialogEmployes.value = false
+    succes.value = `${employesChoisis.value.length} employé(s) ajouté(s) à la liste.`
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Échec de l'ajout.")
+  } finally {
+    saving.value = false
+  }
+}
 
 function ouvrirAjout() {
   editing.value = null
@@ -126,6 +171,9 @@ function libelleJour(j: number): string {
       <div class="d-flex ga-2">
         <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-printer-outline" :disabled="!agents.length" @click="imprimer">
           Imprimer
+        </v-btn>
+        <v-btn v-if="canWrite" color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-account-multiple-plus-outline" @click="ouvrirAjoutDepuisEmployes">
+          Depuis les employés
         </v-btn>
         <v-btn v-if="canWrite" color="success" variant="flat" rounded="lg" prepend-icon="mdi-plus" @click="ouvrirAjout">
           Ajouter un agent
@@ -244,6 +292,41 @@ function libelleJour(j: number): string {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="dialogEmployes" max-width="520">
+      <v-card>
+        <v-card-title>Ajouter depuis les employés enregistrés</v-card-title>
+        <v-divider />
+        <v-card-text>
+          <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
+          <v-autocomplete
+            v-model="employesChoisis"
+            :items="employesDisponibles.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
+            label="Employés à ajouter"
+            variant="outlined"
+            density="comfortable"
+            multiple
+            chips
+            closable-chips
+            clearable
+          />
+          <p v-if="!employesDisponibles.length" class="text-caption text-medium-emphasis mb-0">
+            Tous les employés enregistrés figurent déjà dans la liste.
+          </p>
+          <p v-else class="text-caption text-medium-emphasis mb-0">
+            Le nom et le poste de chaque employé sélectionné sont repris tels quels — modifiables ensuite via « Modifier ».
+          </p>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="saving" @click="dialogEmployes = false">Annuler</v-btn>
+          <v-btn color="success" variant="flat" :loading="saving" :disabled="!employesChoisis.length" @click="ajouterDepuisEmployes">
+            Ajouter ({{ employesChoisis.length }})
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -271,7 +354,15 @@ function libelleJour(j: number): string {
 .fiche-signature-directeur__fonction { display: block; font-size: 8.5pt; color: #374151; }
 
 @media print {
-  @page { size: landscape; }
+  /* Pas de @page ici : cette regle n'est pas isolee par page dans une SPA —
+     une fois chargee en visitant cet ecran, elle reste active et s'applique
+     aussi aux prochains documents imprimes ailleurs dans l'application
+     durant la meme session (bulletins de paie, etats financiers...), qui se
+     retrouvaient alors en paysage sans raison apparente. Le format A4
+     portrait global (classroom.scss) s'applique donc aussi ici desormais ;
+     si ce tableau (large, plusieurs colonnes par jour) a besoin du paysage,
+     le choisir manuellement dans la boite de dialogue d'impression reste
+     possible au cas par cas, sans effet de bord sur les autres documents. */
   .print-only { display: block; }
   .page-bloc--saut-page { break-after: page; }
 }

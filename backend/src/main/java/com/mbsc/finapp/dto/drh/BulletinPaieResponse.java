@@ -1,6 +1,7 @@
 package com.mbsc.finapp.dto.drh;
 
 import com.mbsc.finapp.domain.BulletinPaie;
+import com.mbsc.finapp.domain.enums.SituationFamiliale;
 import com.mbsc.finapp.domain.enums.StatutBulletin;
 import com.mbsc.finapp.domain.enums.StatutPiece;
 
@@ -12,6 +13,12 @@ public record BulletinPaieResponse(
     Long employeId,
     String employeMatricule,
     String employeNomComplet,
+    String employePoste,
+    String employeAffectation,
+    LocalDate employeDateEmbauche,
+    SituationFamiliale employeSituationFamiliale,
+    /** Numero CNSS + lettre de categorie de l'employe (voir Employe.categorie). */
+    String employeCategorie,
     Integer mois,
     Integer annee,
     BigDecimal salaireBaseUsd,
@@ -46,12 +53,18 @@ public record BulletinPaieResponse(
     String pieceReference,
     /** Statut de la pièce liée (BROUILLON tant que le DFIN ne l'a pas comptabilisée), ou null. */
     StatutPiece pieceStatut,
+    /** Vrai dès que la période a été clôturée — verrouille le bulletin, indépendamment de pieceReference (voir ParametresPaie.comptabiliserPaie). */
+    boolean cloture,
     /** Pilote le document imprimé : bulletin complet si vrai, reçu de paiement simplifié sinon. */
-    boolean employeConforme
+    boolean employeConforme,
+    /** Nom complet du titulaire actuel du rôle RESP_DRH, pour la signature du bulletin imprimé (null si aucun). */
+    String drhNom
 ) {
-    public static BulletinPaieResponse from(BulletinPaie b) {
+    public static BulletinPaieResponse from(BulletinPaie b, String drhNom) {
         return new BulletinPaieResponse(
             b.getId(), b.getEmploye().getId(), b.getEmploye().getMatricule(), b.getEmploye().getNomComplet(),
+            b.getEmploye().getPoste(), b.getEmploye().getAffectation(),
+            b.getEmploye().getDateEmbauche(), b.getEmploye().getSituationFamiliale(), b.getEmploye().getCategorie(),
             b.getMois(), b.getAnnee(), b.getSalaireBaseUsd(), b.getPresencePct(), b.getNombreEnfants(),
             b.getConge(), b.getHeuresSupplementaires(), b.getAllocationFamiliale(), b.getPrimeDiplome(),
             b.getPrimeAnciennete(), b.getPrimeRendement(), b.getAvanceSalaire(), b.getPret(),
@@ -61,6 +74,7 @@ public record BulletinPaieResponse(
             b.getNetFc(), b.getDatePaiement(), b.getStatut(),
             b.getPieceComptable() != null ? b.getPieceComptable().getReference() : null,
             b.getPieceComptable() != null ? b.getPieceComptable().getStatut() : null,
-            b.getEmploye().isConforme());
+            b.getDateCloture() != null,
+            b.getEmploye().isConforme(), drhNom);
     }
 }

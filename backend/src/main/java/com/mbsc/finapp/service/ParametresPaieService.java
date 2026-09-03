@@ -55,6 +55,7 @@ public class ParametresPaieService {
         p.setPlancherIprFc(req.plancherIprFc());
         p.setJoursOuvrablesStandard(req.joursOuvrablesStandard());
         p.setCnssDeductibleIpr(req.cnssDeductibleIpr());
+        p.setComptabiliserPaie(req.comptabiliserPaie());
         p.setSmigJournalierFc(req.smigJournalierFc());
         p.setDiviseurAllocationFamiliale(req.diviseurAllocationFamiliale());
         p.setPlafondRetenuePct(req.plafondRetenuePct());

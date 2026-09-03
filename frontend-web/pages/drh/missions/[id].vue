@@ -1,9 +1,14 @@
 <script setup lang="ts">
 definePageMeta({ module: 'DRH_MISSIONS' })
 
-interface AgentMission { id: number; employeId: number; employeNomComplet: string; fonctionMission: string | null; civilite: string | null }
+interface AgentMission {
+  id: number; employeId: number | null; employeNomComplet: string | null; nomLibre: string | null
+  nomAffiche: string; nationalite: string | null; numeroPasseport: string | null
+  fonctionMission: string | null; civilite: string | null
+}
 interface Mission {
   id: number; numero: string; lieuMission: string; distanceVille: number | null; province: string | null
+  territoire: string | null; superviseurNomComplet: string | null; superviseurCivilite: string | null
   butMission: string; dureeMission: string | null; dateDepart: string; dateRetour: string
   moyenTransport: string | null; fraisMission: string | null; collective: boolean; agents: AgentMission[]
 }
@@ -94,8 +99,13 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
 
       <v-card class="classroom-card pa-6 mb-4">
         <v-row>
-          <v-col cols="12" md="6"><span class="calc-label">Lieu de mission</span><br><strong>{{ mission.lieuMission }}</strong></v-col>
-          <v-col cols="12" md="3"><span class="calc-label">Province</span><br><strong>{{ mission.province ?? '—' }}</strong></v-col>
+          <v-col cols="12" md="4"><span class="calc-label">Site de la mission</span><br><strong>{{ mission.lieuMission }}</strong></v-col>
+          <v-col cols="12" md="4"><span class="calc-label">Territoire</span><br><strong>{{ mission.territoire ?? '—' }}</strong></v-col>
+          <v-col cols="12" md="4"><span class="calc-label">Province</span><br><strong>{{ mission.province ?? '—' }}</strong></v-col>
+          <v-col v-if="mission.collective" cols="12" md="6">
+            <span class="calc-label">Superviseur de la mission</span><br>
+            <strong>{{ mission.superviseurCivilite }} {{ mission.superviseurNomComplet ?? '—' }}</strong>
+          </v-col>
           <v-col cols="12" md="3"><span class="calc-label">Distance</span><br><strong>{{ mission.distanceVille ?? '—' }} km</strong></v-col>
           <v-col cols="12" md="3"><span class="calc-label">Date de départ</span><br><strong>{{ fmtDate(mission.dateDepart) }}</strong></v-col>
           <v-col cols="12" md="3"><span class="calc-label">Date de retour</span><br><strong>{{ fmtDate(mission.dateRetour) }}</strong></v-col>
@@ -109,10 +119,12 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       <section class="etat-bloc">
         <h2 class="etat-titre">Agents en mission</h2>
         <table class="etat-table">
-          <thead><tr><th>Civilité</th><th>Nom complet</th><th>Fonction en mission</th></tr></thead>
+          <thead><tr><th>Civilité</th><th>Nom complet</th><th>Nationalité</th><th>N° Passeport</th><th>Fonction en mission</th></tr></thead>
           <tbody>
             <tr v-for="a in mission.agents" :key="a.id">
-              <td>{{ a.civilite ?? '—' }}</td><td>{{ a.employeNomComplet }}</td><td>{{ a.fonctionMission ?? '—' }}</td>
+              <td>{{ a.civilite ?? '—' }}</td><td>{{ a.nomAffiche }}</td>
+              <td>{{ a.nationalite ?? '—' }}</td><td>{{ a.numeroPasseport ?? '—' }}</td>
+              <td>{{ a.fonctionMission ?? '—' }}</td>
             </tr>
           </tbody>
         </table>

@@ -1,9 +1,8 @@
 <script setup lang="ts">
 // Constitution/reprise reservees au DFIN cote serveur (ProvisionService) ;
-// la consultation est ouverte a DA/DG/COMPTABLE. CAISSIER a COMPTABILITE en
-// LECTURE (pour Balance/Compte de resultat uniquement) mais ne voit pas les
-// Provisions.
-definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
+// la consultation est ouverte a DG/COMPTABLE. DA exclu explicitement : voir
+// NavigationDrawer.vue (comptabiliteItems).
+definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 interface Reprise {
   id: number

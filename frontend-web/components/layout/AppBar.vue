@@ -71,7 +71,7 @@ async function ouvrirNotification(n: NotificationItem) {
       <v-icon icon="mdi-help-circle-outline" size="20" />
     </v-btn>
 
-    <v-btn icon variant="text" size="small" aria-label="Parametres" class="modern-appbar__action">
+    <v-btn icon variant="text" size="small" aria-label="Parametres" class="modern-appbar__action" to="/profil">
       <v-icon icon="mdi-cog-outline" size="20" />
     </v-btn>
 
@@ -131,13 +131,17 @@ async function ouvrirNotification(n: NotificationItem) {
     <v-menu location="bottom end">
       <template #activator="{ props }">
         <button v-bind="props" class="modern-appbar__avatar" aria-label="Compte">
-          {{ auth.initials }}
+          <img v-if="auth.photoObjectUrl" :src="auth.photoObjectUrl" alt="">
+          <template v-else>{{ auth.initials }}</template>
         </button>
       </template>
 
       <div class="user-menu">
         <div class="user-menu__header">
-          <div class="user-menu__avatar">{{ auth.initials }}</div>
+          <div class="user-menu__avatar">
+            <img v-if="auth.photoObjectUrl" :src="auth.photoObjectUrl" alt="">
+            <template v-else>{{ auth.initials }}</template>
+          </div>
           <div>
             <p class="user-menu__name">{{ auth.fullName || auth.user?.email }}</p>
             <p class="user-menu__email">{{ auth.user?.email }}</p>
@@ -147,6 +151,10 @@ async function ouvrirNotification(n: NotificationItem) {
           <span v-for="r in auth.roles" :key="r" class="user-menu__role">{{ r }}</span>
         </div>
         <div class="user-menu__divider" />
+        <NuxtLink to="/profil" class="user-menu__profile-link">
+          <v-icon icon="mdi-account-cog-outline" size="16" class="mr-2" />
+          Mon profil
+        </NuxtLink>
         <button class="user-menu__logout" @click="logout">
           <v-icon icon="mdi-logout" size="16" class="mr-2" />
           Se déconnecter
@@ -221,6 +229,7 @@ async function ouvrirNotification(n: NotificationItem) {
   transition: opacity 0.15s;
 }
 .modern-appbar__avatar:hover { opacity: 0.85; }
+.modern-appbar__avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 
 /* ── Notifications ───────────────────────────────────────── */
 .notif-panel {
@@ -361,7 +370,9 @@ async function ouvrirNotification(n: NotificationItem) {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
 }
+.user-menu__avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 .user-menu__name {
   font-size: 0.875rem;
@@ -396,6 +407,7 @@ async function ouvrirNotification(n: NotificationItem) {
   margin: 0 6px;
 }
 
+.user-menu__profile-link,
 .user-menu__logout {
   display: flex;
   align-items: center;
@@ -409,7 +421,12 @@ async function ouvrirNotification(n: NotificationItem) {
   border-radius: 8px;
   cursor: pointer;
   margin-top: 4px;
+  text-decoration: none;
   transition: background 0.15s, color 0.15s;
+}
+.user-menu__profile-link:hover {
+  background: #f0fdf4;
+  color: #16a34a;
 }
 .user-menu__logout:hover {
   background: #fef2f2;

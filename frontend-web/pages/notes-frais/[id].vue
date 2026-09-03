@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// Voir pages/notes-frais/index.vue : ni le DRH ni LOGISTIQUE n'ont acces a cet ecran.
+definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT'] })
+
 interface Observation {
   auteurNom?: string
   auteur?: string
@@ -80,6 +83,18 @@ const prioriteOptions = [
 const statutMeta = computed(() => statutNoteMeta(note.value?.statut, note.value?.sens))
 const heroGradient = computed(() => statutMeta.value.gradient)
 const estEncaissement = computed(() => note.value?.sens === 'ENCAISSEMENT')
+
+// Nom de l'auteur de l'étape ayant amené la note au statut donné (ex.
+// VERIFIEE_DFIN), retrouvé dans l'historique : c'est la seule trace de QUI a
+// vérifié/validé/payé — la note elle-même ne porte que le statut courant, pas
+// l'identité de chaque intervenant. N'affiche donc un nom sur la ligne de
+// signature que si l'étape a réellement eu lieu ; sinon la ligne reste vide,
+// prête à être signée à la main.
+function signataire(statutCible: string): string {
+  const o = note.value?.observations.find((o) => (o.statutAuMoment || o.statut) === statutCible)
+  return o?.auteurNom || o?.auteur || ''
+}
+
 const prioMeta: Record<string, { label: string; bg: string; color: string }> = {
   HAUTE:   { label: 'Haute',   bg: '#fee2e2', color: '#dc2626' },
   MOYENNE: { label: 'Moyenne', bg: '#ffedd5', color: '#ea580c' },
@@ -534,8 +549,9 @@ const peutGererPieces = computed(() =>
           </div>
         </div>
 
-        <!-- Pièces jointes -->
-        <div class="nd-card">
+        <!-- Pièces jointes : masquée à l'impression si vide, la carte vide
+             (icône + texte) n'apportant rien sur un document imprimé. -->
+        <div class="nd-card" :class="{ 'nd-print-hide-if-empty': note.piecesJointes.length === 0 }">
           <div class="nd-card__section-title nd-card__section-title--row">
             <span>Pièces jointes ({{ note.piecesJointes.length }})</span>
             <v-btn
@@ -586,8 +602,9 @@ const peutGererPieces = computed(() =>
           </div>
         </div>
 
-        <!-- Timeline -->
-        <div class="nd-card">
+        <!-- Timeline : masquée à l'impression (le document imprimé sert de
+             pièce justificative signée, pas de journal d'activité). -->
+        <div class="nd-card nd-noprint">
           <p class="nd-card__section-title">Historique du circuit</p>
           <div v-if="note.observations.length === 0" class="nd-timeline-empty">
             <v-icon icon="mdi-timeline-outline" size="28" color="#d1d5db" />
@@ -624,20 +641,29 @@ const peutGererPieces = computed(() =>
               <div class="nd-print-sign__line" />
               <span class="nd-print-sign__hint">Signature et cachet</span>
             </div>
+            <div class="nd-print-sign">
+              <span class="nd-print-sign__label">Bénéficiaire</span>
+              <span class="nd-print-sign__name">{{ note.beneficiaire || '—' }}</span>
+              <div class="nd-print-sign__line" />
+              <span class="nd-print-sign__hint">Signature et cachet</span>
+            </div>
             <template v-if="!estEncaissement">
               <div class="nd-print-sign">
                 <span class="nd-print-sign__label">Vérifié DFIN</span>
+                <span v-if="signataire('VERIFIEE_DFIN')" class="nd-print-sign__name">{{ signataire('VERIFIEE_DFIN') }}</span>
                 <div class="nd-print-sign__line" />
                 <span class="nd-print-sign__hint">Signature et cachet</span>
               </div>
               <div class="nd-print-sign">
                 <span class="nd-print-sign__label">Validé DA</span>
+                <span v-if="signataire('VALIDEE_DA')" class="nd-print-sign__name">{{ signataire('VALIDEE_DA') }}</span>
                 <div class="nd-print-sign__line" />
                 <span class="nd-print-sign__hint">Signature et cachet</span>
               </div>
             </template>
             <div class="nd-print-sign">
               <span class="nd-print-sign__label">Caissier</span>
+              <span v-if="signataire('PAYEE')" class="nd-print-sign__name">{{ signataire('PAYEE') }}</span>
               <div class="nd-print-sign__line" />
               <span class="nd-print-sign__hint">Signature et cachet</span>
             </div>
@@ -1075,9 +1101,15 @@ const peutGererPieces = computed(() =>
 
   * { box-shadow: none !important; }
 
-  .nd-page { max-width: 100%; padding: 0; font-size: 12.5px; color: #1f2937; }
+  /* padding-bottom : degage la place du pied de page fixe (approbations)
+     pour qu'aucun contenu ne passe dessous. */
+  .nd-page { max-width: 100%; padding: 0 0 95px; font-size: 11.5px; color: #1f2937; }
   .nd-layout { display: block; }
   .nd-left { width: 100%; }
+
+  /* Carte sans contenu utile a l'impression (ex. aucune piece jointe) :
+     l'etat vide (icone + texte) n'a de sens qu'a l'ecran. */
+  .nd-print-hide-if-empty { display: none !important; }
 
   /* ── Entête à en-tête ─────────────────────────────────────── */
   .nd-print-header {
@@ -1085,8 +1117,8 @@ const peutGererPieces = computed(() =>
     align-items: flex-end;
     justify-content: space-between;
     gap: 16px;
-    padding-bottom: 12px;
-    margin-bottom: 14px;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
     border-bottom: 3px solid #16a34a;
   }
   .nd-print-header__brand { display: flex; align-items: center; gap: 11px; }
@@ -1140,9 +1172,9 @@ const peutGererPieces = computed(() =>
     background: var(--print-tint, #f3f4f6) !important;
     border: 1px solid var(--print-text, #d1d5db);
     border-left: 4px solid var(--print-accent, #9ca3af);
-    border-radius: 12px;
-    margin-bottom: 10px;
-    padding: 14px 18px;
+    border-radius: 10px;
+    margin-bottom: 7px;
+    padding: 9px 16px;
     gap: 8px;
     display: flex;
     flex-direction: row;
@@ -1156,14 +1188,14 @@ const peutGererPieces = computed(() =>
   .nd-hero__body { text-align: right; }
   .nd-hero__objet {
     color: var(--print-text, #111827) !important;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
     opacity: 0.85;
   }
   .nd-hero__montant {
     color: var(--print-text, #111827) !important;
-    font-size: 1.6rem;
+    font-size: 1.35rem;
     letter-spacing: -0.5px;
   }
   .nd-badge {
@@ -1180,8 +1212,8 @@ const peutGererPieces = computed(() =>
   .nd-card {
     break-inside: avoid;
     border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    margin-bottom: 9px;
+    border-radius: 10px;
+    margin-bottom: 6px;
   }
   /* Le circuit d'approbation peut compter de nombreuses etapes : on
      l'autorise a se repartir sur plusieurs pages plutot que de forcer toute
@@ -1191,32 +1223,32 @@ const peutGererPieces = computed(() =>
   .nd-card:has(.nd-timeline) { break-inside: auto; }
 
   .nd-card__section-title {
-    padding: 8px 14px 6px 27px;
-    font-size: 0.62rem;
+    padding: 6px 14px 4px 25px;
+    font-size: 0.6rem;
     position: relative;
   }
   .nd-card__section-title::before {
     content: '';
     position: absolute;
     left: 14px;
-    top: 11px;
-    width: 7px;
-    height: 7px;
+    top: 9px;
+    width: 6px;
+    height: 6px;
     border-radius: 2px;
     background: #16a34a;
   }
-  .nd-card__section-title--row { padding-bottom: 8px; }
+  .nd-card__section-title--row { padding-bottom: 6px; }
 
   .nd-info-grid { padding: 0; }
-  .nd-info-row { padding: 6px 14px; gap: 8px; }
+  .nd-info-row { padding: 4px 14px; gap: 8px; }
   .nd-info-row:hover { background: none; }
   .nd-info-icon { width: 22px; height: 22px; background: #f3f4f6 !important; }
   .nd-info-label { font-size: 0.62rem; margin-bottom: 0; }
   .nd-info-val { font-size: 0.78rem; }
 
   /* ── Lignes de depense : presentation facture ─────────────── */
-  .nd-lignes { padding: 2px 14px; }
-  .nd-ligne { padding: 7px 0; gap: 2px 10px; }
+  .nd-lignes { padding: 0 14px; }
+  .nd-ligne { padding: 4px 0; gap: 2px 10px; }
   .nd-ligne__compte {
     font-size: 0.7rem;
     font-weight: 700;
@@ -1230,60 +1262,76 @@ const peutGererPieces = computed(() =>
   .nd-ligne__desc { font-size: 0.7rem; margin-top: 2px; }
   .nd-ligne__montant { font-size: 0.82rem; }
   .nd-lignes-total {
-    margin: 4px 14px 10px;
-    padding: 8px 12px;
+    margin: 2px 14px 6px;
+    padding: 5px 12px;
     background: #f0fdf4;
-    border-radius: 8px;
-    font-size: 0.8rem;
+    border-radius: 7px;
+    font-size: 0.78rem;
     color: #15803d;
   }
 
-  .nd-pieces { padding: 0 14px 8px; gap: 0; }
-  .nd-piece { padding: 5px 0; gap: 8px; }
-  .nd-piece__nom { font-size: 0.74rem; }
-  .nd-piece__meta { font-size: 0.62rem; }
+  .nd-pieces { padding: 0 14px 5px; gap: 0; }
+  .nd-piece { padding: 3px 0; gap: 8px; }
+  .nd-piece__nom { font-size: 0.72rem; }
+  .nd-piece__meta { font-size: 0.6rem; }
 
   /* ── Timeline ─────────────────────────────────────────────── */
-  .nd-timeline { padding: 3px 14px 10px; }
-  .nd-timeline-item { padding: 5px 0; gap: 10px; break-inside: avoid; }
-  .nd-timeline-item__dot { width: 9px; height: 9px; border-width: 2px; margin-top: 2px; }
-  .nd-timeline-item:not(:last-child)::after { top: 20px; background: #d1d5db; }
-  .nd-timeline-item__author { font-size: 0.76rem; }
-  .nd-timeline-item__date { font-size: 0.62rem; }
-  .nd-timeline-item__statut { font-size: 0.62rem; padding: 1px 8px; margin-bottom: 2px; }
-  .nd-timeline-item__comment { font-size: 0.76rem; }
+  .nd-timeline { padding: 1px 14px 6px; }
+  .nd-timeline-item { padding: 3px 0; gap: 10px; break-inside: avoid; }
+  .nd-timeline-item__dot { width: 8px; height: 8px; border-width: 2px; margin-top: 2px; }
+  .nd-timeline-item:not(:last-child)::after { top: 17px; background: #d1d5db; }
+  .nd-timeline-item__author { font-size: 0.74rem; }
+  .nd-timeline-item__date { font-size: 0.6rem; }
+  .nd-timeline-item__statut { font-size: 0.6rem; padding: 1px 8px; margin-bottom: 1px; }
+  .nd-timeline-item__comment { font-size: 0.74rem; }
 
   /* ── Signatures ───────────────────────────────────────────── */
+  /* Épinglées en pied de page (et non a la suite du contenu) : une note
+     signee doit presenter ses approbations au meme endroit quel que soit
+     son nombre de lignes. position:fixed est repris sur CHAQUE page si le
+     document en compte plusieurs — c'est le comportement natif de Chrome en
+     impression, il n'existe pas d'equivalent "derniere page seulement"
+     fiable en CSS ; sans consequence ici, une note tient presque toujours
+     sur une page. Le padding-bottom de .nd-page (plus bas) reserve la place
+     necessaire pour que le contenu qui defile ne passe jamais dessous. */
   .nd-print-signatures {
     display: block;
-    margin-top: 20px;
-    padding: 16px 18px 14px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #fff;
+    padding: 10px 16px 9px;
     border: 1px solid #e5e7eb;
-    border-radius: 12px;
+    border-radius: 10px;
     break-inside: avoid;
   }
   .nd-print-signatures__title {
-    margin: 0 0 16px;
-    font-size: 0.62rem;
+    margin: 0 0 9px;
+    font-size: 0.6rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
     color: #9ca3af;
   }
-  .nd-print-signatures__row { display: flex; justify-content: space-between; gap: 16px; }
+  /* wrap plutôt que d'écraser : 5 colonnes (Demandeur, Bénéficiaire, DFIN,
+     DA, Caissier) sur une feuille A4 restent lisibles, mais mieux vaut
+     passer sur deux lignes que les compresser sur un format plus étroit. */
+  .nd-print-signatures__row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 14px; }
   /* Colonne en flex avec le trait pousse en bas (margin-top:auto) : seul le
-     demandeur porte un nom pre-rempli, sans cela son trait de signature se
-     retrouvait plus bas que celui des autres approbateurs. */
+     demandeur et le beneficiaire portent un nom pre-rempli, sans cela leur
+     trait de signature se retrouvait plus bas que celui des approbateurs. */
   .nd-print-sign {
     flex: 1;
+    min-width: 90px;
     text-align: center;
     display: flex;
     flex-direction: column;
-    min-height: 58px;
+    min-height: 42px;
   }
   .nd-print-sign__label {
     display: block;
-    font-size: 0.66rem;
+    font-size: 0.64rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
@@ -1291,18 +1339,18 @@ const peutGererPieces = computed(() =>
   }
   .nd-print-sign__name {
     display: block;
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     color: #111827;
-    margin: auto 0 3px;
+    margin: auto 0 2px;
   }
   .nd-print-sign__line { border-top: 1px solid #111827; margin-top: auto; }
   .nd-print-sign__name + .nd-print-sign__line { margin-top: 0; }
   .nd-print-sign__hint {
     display: block;
-    font-size: 0.58rem;
+    font-size: 0.56rem;
     color: #9ca3af;
     font-style: italic;
-    margin-top: 4px;
+    margin-top: 3px;
   }
 }
 </style>

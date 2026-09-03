@@ -53,6 +53,19 @@ function statutDe(employeId: number, jour: number): string {
   return p ? p.statut : statutParDefaut(jour)
 }
 
+// Bascule le document entier sur la page nommee paysage (voir classroom.scss)
+// pendant la duree de vie de ce composant : appliquer `page` sur <html> plutot
+// que sur un element scope profondement imbrique dans l'arbre flex de
+// Vuetify (.v-application > .v-application__wrap > .v-main, tous en
+// display:flex) evite un bug d'impression Chromium ou la hauteur de page
+// budgetee pour la pagination ne correspondait pas a la page nommee reelle
+// (grand espace vide puis 2e feuille quasi blanche). Nettoyage garanti par
+// le hook onUnmounted, pas par un stylesheet injecte : aucun risque de fuite
+// vers une autre page lors d'une navigation cote client (meme incident que
+// fiche-manuelle.vue, corrige differemment ici).
+onMounted(() => document.documentElement.classList.add('print-paysage'))
+onUnmounted(() => document.documentElement.classList.remove('print-paysage'))
+
 async function charger() {
   loading.value = true
   erreur.value = ''
@@ -129,7 +142,7 @@ const pourcentagePresence = (employeId: number) => {
 </script>
 
 <template>
-  <div>
+  <div class="presence-page">
     <div class="page-head no-print">
       <div>
         <h1 class="page-title">Présences</h1>
@@ -250,5 +263,30 @@ const pourcentagePresence = (employeId: number) => {
 .presence-grid__badge {
   display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: 5px; font-size: 0.7rem; font-weight: 700;
+}
+
+@media print {
+  /* L'activation de la page nommee paysage se fait sur <html> (classe
+     print-paysage, voir onMounted/onUnmounted et classroom.scss) — pas ici,
+     un @page nomme applique via un selecteur scope profondement imbrique
+     dans l'arbre flex de Vuetify faisait planter le calcul de pagination
+     de Chromium (grand vide puis 2e feuille quasi blanche). */
+
+  .legende { gap: 8px; margin-bottom: 8px; }
+  .legende__item { font-size: 0.64rem; }
+  .legende__badge { width: 15px; height: 15px; font-size: 0.56rem; }
+
+  /* overflow-x:auto ne sert qu'au scroll ecran ; en laissant "visible" on
+     evite qu'un moteur de rendu applique quand meme une boite de defilement
+     au lieu de simplement etaler la grille sur la largeur de la page. */
+  .presence-scroll { overflow: visible; }
+  .presence-grid { font-size: 0.6rem; }
+  .presence-grid th, .presence-grid td { padding: 2px 3px; }
+  .presence-grid__day { min-width: 0; font-size: 0.56rem; }
+  .presence-grid__badge { width: 15px; height: 15px; font-size: 0.54rem; border-radius: 3px; }
+  /* position:sticky n'a aucune utilite hors d'un conteneur qui defile —
+     la neutraliser evite qu'un moteur de pagination l'interprete comme une
+     contrainte de mise en page a l'impression. */
+  .presence-grid__emp-head, .presence-grid__emp { position: static; }
 }
 </style>

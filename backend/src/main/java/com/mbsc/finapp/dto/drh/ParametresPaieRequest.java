@@ -17,6 +17,8 @@ public record ParametresPaieRequest(
     @NotNull @Min(1) @Max(31) Integer joursOuvrablesStandard,
     // Conformité RDC — voir V47__drh_conformite_rdc.sql
     boolean cnssDeductibleIpr,
+    // Comptabilisation optionnelle de la paie — voir V57__paie_comptabilisation_optionnelle.sql
+    boolean comptabiliserPaie,
     @NotNull @DecimalMin("0") BigDecimal smigJournalierFc,
     @NotNull @Min(1) @Max(31) Integer diviseurAllocationFamiliale,
     @NotNull @DecimalMin("0") @DecimalMax("1") BigDecimal plafondRetenuePct,

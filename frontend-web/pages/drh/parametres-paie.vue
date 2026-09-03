@@ -24,6 +24,9 @@ const form = reactive({
   plafondEnfantsIpr: 9,
   plancherIprFc: 2000,
   joursOuvrablesStandard: 26,
+  // Comptabilisation optionnelle : desactivee, la cloture de periode
+  // verrouille les bulletins sans poster aucune ecriture comptable.
+  comptabiliserPaie: true,
   // Conformité RDC — références légales, purement consultatives (aucun
   // montant du bulletin n'est modifié automatiquement).
   cnssDeductibleIpr: false,
@@ -56,6 +59,7 @@ async function charger() {
       plafondEnfantsIpr: p.plafondEnfantsIpr,
       plancherIprFc: Number(p.plancherIprFc),
       joursOuvrablesStandard: p.joursOuvrablesStandard,
+      comptabiliserPaie: p.comptabiliserPaie !== false,
       cnssDeductibleIpr: !!p.cnssDeductibleIpr,
       smigJournalierFc: Number(p.smigJournalierFc),
       diviseurAllocationFamiliale: p.diviseurAllocationFamiliale,
@@ -95,6 +99,7 @@ async function enregistrer() {
         plafondEnfantsIpr: form.plafondEnfantsIpr,
         plancherIprFc: form.plancherIprFc,
         joursOuvrablesStandard: form.joursOuvrablesStandard,
+        comptabiliserPaie: form.comptabiliserPaie,
         cnssDeductibleIpr: form.cnssDeductibleIpr,
         smigJournalierFc: form.smigJournalierFc,
         diviseurAllocationFamiliale: form.diviseurAllocationFamiliale,
@@ -133,6 +138,23 @@ async function enregistrer() {
     <v-skeleton-loader v-if="loading" type="article" />
 
     <template v-else>
+      <v-card class="classroom-card pa-5 mb-4">
+        <div class="section-title">Comptabilisation de la paie</div>
+        <v-switch
+          v-model="form.comptabiliserPaie"
+          color="primary"
+          :disabled="!canWrite"
+          hide-details
+          class="mb-2"
+          label="Comptabiliser la paie à la clôture de période"
+        />
+        <p class="text-caption text-medium-emphasis mb-0">
+          Activé : clôturer une période poste automatiquement une pièce comptable BROUILLON par employé (salaire net
+          à payer et charges patronales — CNSS, ONEM, INPP) dans Pièces comptables. Désactivé : la clôture verrouille
+          simplement les bulletins de la période, sans générer aucune écriture comptable.
+        </p>
+      </v-card>
+
       <v-card class="classroom-card pa-5 mb-4">
         <div class="section-title">Indemnités (fraction du salaire brut prorata présence)</div>
         <v-row>

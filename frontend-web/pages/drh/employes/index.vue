@@ -6,6 +6,7 @@ interface Employe {
   matricule: string
   nomComplet: string
   categorie: string | null
+  poste: string | null
   affectation: string | null
   email: string | null
   telephone: string | null
@@ -44,7 +45,7 @@ const dialog = ref(false)
 const editing = ref<Employe | null>(null)
 
 const formVide = () => ({
-  nomComplet: '', categorie: '', affectation: '', email: '', telephone: '',
+  nomComplet: '', categorie: '', poste: '', affectation: '', email: '', telephone: '',
   dateEmbauche: new Date().toISOString().slice(0, 10),
   salaireBaseUsd: null as number | null,
   situationFamiliale: 'CELIBATAIRE',
@@ -81,7 +82,7 @@ function ouvrirAjout() {
 function ouvrirEdition(e: Employe) {
   editing.value = e
   Object.assign(form, {
-    nomComplet: e.nomComplet, categorie: e.categorie ?? '', affectation: e.affectation ?? '',
+    nomComplet: e.nomComplet, categorie: e.categorie ?? '', poste: e.poste ?? '', affectation: e.affectation ?? '',
     email: e.email ?? '', telephone: e.telephone ?? '', dateEmbauche: e.dateEmbauche ?? '',
     salaireBaseUsd: e.salaireBaseUsd, situationFamiliale: e.situationFamiliale ?? 'CELIBATAIRE',
     nombreEnfants: e.nombreEnfants, diplome: e.diplome ?? '', ancienneteAnnees: e.ancienneteAnnees,
@@ -177,6 +178,7 @@ const situationLabel = (v: string | null) => SITUATIONS.find(s => s.value === v)
           { title: 'Matricule', key: 'matricule' },
           { title: 'Nom complet', key: 'nomComplet' },
           { title: 'Catégorie', key: 'categorie' },
+          { title: 'Poste', key: 'poste' },
           { title: 'Affectation', key: 'affectation' },
           { title: 'Salaire de base', key: 'salaireBaseUsd', align: 'end' },
           { title: 'Situation', key: 'situationFamiliale' },
@@ -214,8 +216,9 @@ const situationLabel = (v: string | null) => SITUATIONS.find(s => s.value === v)
         <v-card-text>
           <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
           <v-row>
-            <v-col cols="12" md="8"><v-text-field v-model="form.nomComplet" label="Nom complet *" variant="outlined" density="comfortable" /></v-col>
-            <v-col cols="12" md="4"><v-text-field v-model="form.categorie" label="Catégorie (n° CNSS + lettre)" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="form.nomComplet" label="Nom complet *" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="3"><v-text-field v-model="form.poste" label="Poste" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="3"><v-text-field v-model="form.categorie" label="Catégorie (n° CNSS + lettre)" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="6"><v-text-field v-model="form.affectation" label="Affectation" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="6"><v-text-field v-model="form.dateEmbauche" type="date" label="Date d'embauche" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="6"><v-text-field v-model="form.email" type="email" label="Email" variant="outlined" density="comfortable" /></v-col>

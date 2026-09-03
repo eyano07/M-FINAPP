@@ -4,10 +4,19 @@ export interface Parametres {
   nom: string
   nomComplet?: string | null
   slogan?: string | null
+  adresse?: string | null
+  telephone?: string | null
+  email?: string | null
+  rccm?: string | null
+  idNat?: string | null
+  nif?: string | null
   logoUrl?: string | null
 }
 
-const DEFAUT: Parametres = { nom: 'MBSC Finapp', nomComplet: null, slogan: null, logoUrl: null }
+const DEFAUT: Parametres = {
+  nom: 'MBSC Finapp', nomComplet: null, slogan: null, adresse: null, telephone: null,
+  email: null, rccm: null, idNat: null, nif: null, logoUrl: null,
+}
 
 /**
  * Identite visuelle de l'entreprise. Chargee via $fetch brut (pas useApi()) :

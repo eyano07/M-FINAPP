@@ -102,6 +102,8 @@ public class AuthService {
             user.getEmail(),
             user.getNom(),
             user.getPrenom(),
+            user.getTelephone(),
+            user.getPhotoCheminStockage() != null ? "/profil/photo" : null,
             user.getRoles().stream().map(Role::getNom).map(Enum::name).collect(Collectors.toSet())
         );
 

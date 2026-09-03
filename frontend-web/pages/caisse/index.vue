@@ -11,6 +11,7 @@ interface Transaction {
   caissierNom?: string
   noteFraisId?: number
   noteFraisReference?: string
+  beneficiaire?: string
   dateOperation: string
   tauxJournalier?: number
 }
@@ -65,6 +66,27 @@ onMounted(() => { parametresStore.charger() })
 const loading = ref(false)
 const erreur = ref('')
 const transactions = ref<Transaction[]>([])
+const filtreLibelle = ref('')
+const filtreNoteFrais = ref('')
+const filtreRecu = ref('')
+const filtreBeneficiaire = ref('')
+const transactionsFiltrees = computed(() => {
+  // Vuetify (clearable) remet le modele a null, pas '' : sans ce filet,
+  // .trim() y jetait une exception qui figeait le calcul sur son dernier
+  // resultat reussi (le tableau vide du filtre precedent), au lieu de
+  // revenir a la liste complete une fois le champ videmait vide.
+  const l = (filtreLibelle.value || '').trim().toLowerCase()
+  const n = (filtreNoteFrais.value || '').trim().toLowerCase()
+  const r = (filtreRecu.value || '').trim().toLowerCase()
+  const b = (filtreBeneficiaire.value || '').trim().toLowerCase()
+  if (!l && !n && !r && !b) return transactions.value
+  return transactions.value.filter((t) =>
+    (!l || (t.libelle || '').toLowerCase().includes(l)) &&
+    (!n || (t.noteFraisReference || '').toLowerCase().includes(n)) &&
+    (!r || (t.numeroRecu || '').toLowerCase().includes(r)) &&
+    (!b || (t.beneficiaire || '').toLowerCase().includes(b))
+  )
+})
 const comptes = ref<Compte[]>([])
 const soldeComptable = ref<LigneBalance | null>(null)
 const tauxChange = ref(1)
@@ -501,8 +523,50 @@ const fmtTaux = computed(() =>
         et dans la Balance ; seules les opérations enregistrées ici apparaissent
         dans le tableau ci-dessous.
       </v-alert>
+      <div class="d-flex flex-wrap ga-3 px-4 pb-3">
+        <v-text-field
+          v-model="filtreLibelle"
+          label="Libellé"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          style="max-width: 240px"
+        />
+        <v-text-field
+          v-model="filtreNoteFrais"
+          label="Note de frais"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          style="max-width: 200px"
+        />
+        <v-text-field
+          v-model="filtreRecu"
+          label="Reçu"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          style="max-width: 200px"
+        />
+        <v-text-field
+          v-model="filtreBeneficiaire"
+          label="Bénéficiaire"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          style="max-width: 220px"
+        />
+      </div>
       <v-data-table
-        :items="transactions"
+        :items="transactionsFiltrees"
         :loading="loading"
         density="comfortable"
         items-per-page="15"
@@ -512,6 +576,7 @@ const fmtTaux = computed(() =>
           { title: 'Référence', key: 'reference' },
           { title: 'Libellé', key: 'libelle', sortable: false },
           { title: 'Note de frais', key: 'noteFraisReference', sortable: false },
+          { title: 'Bénéficiaire', key: 'beneficiaire', sortable: false },
           { title: 'Sens', key: 'sens', align: 'center' },
           { title: 'Montant (USD)', key: 'montant', align: 'end' },
           { title: 'Taux du jour', key: 'tauxJournalier', align: 'end', sortable: false },
@@ -546,6 +611,9 @@ const fmtTaux = computed(() =>
         <template #[`item.noteFraisReference`]="{ item }">
           <code v-if="item.noteFraisReference" class="text-caption text-primary">{{ item.noteFraisReference }}</code>
           <span v-else class="text-medium-emphasis">—</span>
+        </template>
+        <template #[`item.beneficiaire`]="{ item }">
+          <span class="text-medium-emphasis">{{ item.beneficiaire || '—' }}</span>
         </template>
         <template #[`item.numeroRecu`]="{ item }">
           <span v-if="item.numeroRecu" class="d-flex align-center ga-1">
@@ -755,10 +823,12 @@ const fmtTaux = computed(() =>
         <div class="recu-doc__signatures">
           <div class="recu-doc__sign">
             <span>{{ recuData.sens === 'ENCAISSEMENT' ? 'Payeur' : 'Bénéficiaire' }}</span>
+            <strong v-if="recuData.beneficiaire" class="recu-doc__sign-name">{{ recuData.beneficiaire }}</strong>
             <div class="recu-doc__sign-line" />
           </div>
           <div class="recu-doc__sign">
             <span>Caissier</span>
+            <strong v-if="recuData.caissierNom" class="recu-doc__sign-name">{{ recuData.caissierNom }}</strong>
             <div class="recu-doc__sign-line" />
           </div>
         </div>
@@ -1017,9 +1087,14 @@ const fmtTaux = computed(() =>
 .recu-doc__montant span { font-size: 0.78rem; font-weight: 600; color: #166534; text-transform: uppercase; letter-spacing: 0.4px; }
 .recu-doc__montant strong { font-size: 1.15rem; color: #15803d; }
 .recu-doc__signatures { display: flex; gap: 24px; margin-bottom: 16px; }
-.recu-doc__sign { flex: 1; text-align: center; }
-.recu-doc__sign span { display: block; font-size: 0.7rem; color: #9ca3af; margin-bottom: 24px; }
-.recu-doc__sign-line { border-top: 1px solid #d1d5db; }
+/* Colonne en flex, ligne poussee en bas (margin-top:auto) : avec ou sans nom
+   pre-rempli, la ligne de signature reste alignee entre Beneficiaire et
+   Caissier plutot que de suivre la hauteur variable du nom. */
+.recu-doc__sign { flex: 1; text-align: center; display: flex; flex-direction: column; min-height: 46px; }
+.recu-doc__sign span { display: block; font-size: 0.7rem; color: #9ca3af; }
+.recu-doc__sign-name { display: block; font-size: 0.78rem; color: #111827; margin: 4px 0 auto; }
+.recu-doc__sign-line { border-top: 1px solid #d1d5db; margin-top: 24px; }
+.recu-doc__sign-name + .recu-doc__sign-line { margin-top: 0; }
 .recu-doc__footer { text-align: center; font-size: 0.68rem; color: #d1d5db; margin: 0 0 4px; }
 
 .recu-card__actions {

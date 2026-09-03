@@ -101,6 +101,7 @@ public class EmployeService {
     private void appliquer(Employe e, EmployeRequest req) {
         e.setNomComplet(req.nomComplet());
         e.setCategorie(req.categorie());
+        e.setPoste(req.poste());
         e.setAffectation(req.affectation());
         e.setEmail(req.email());
         e.setTelephone(req.telephone());

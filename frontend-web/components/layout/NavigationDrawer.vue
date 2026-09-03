@@ -26,10 +26,16 @@ interface NavItem {
 
 // Le Directeur metier (DIRECTEUR) n'a pas acces au tableau de bord
 // (statistiques/graphiques globaux) : il ne voit que ses notes de frais.
-const NON_DIRECTEUR = ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'LOGISTIQUE', 'COMPTABLE']
+// LOGISTIQUE non plus : il a son propre tableau de bord (logistiqueItems,
+// route /logistique), sans rapport avec la tresorerie/les notes de frais.
+const NON_DIRECTEUR = ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE']
+// Roles qui gerent leurs propres notes de frais via cet ecran : ni RESP_DRH
+// (paie/RH, pas de notes personnelles), ni LOGISTIQUE (son suivi passe par
+// son propre tableau de bord) - a mettre a jour si un nouveau role est ajoute.
+const AVEC_NOTES_FRAIS = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT']
 const items: NavItem[] = [
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/dashboard', roles: NON_DIRECTEUR },
-  { title: 'Notes de frais', icon: 'mdi-receipt-text-outline', to: '/notes-frais' },
+  { title: 'Notes de frais', icon: 'mdi-receipt-text-outline', to: '/notes-frais', roles: AVEC_NOTES_FRAIS },
   // Le comptable consulte la tresorerie (journal/grand livre/balance) mais
   // n'opere pas la caisse (encaissement/decaissement direct) : cet ecran-ci
   // reste reserve aux roles qui en avaient deja l'usage.
@@ -49,29 +55,26 @@ const items: NavItem[] = [
 ]
 
 const comptabiliteItems: NavItem[] = [
-  // Plan comptable reste hors systeme de modules : reference partagee
-  // consultee par la caisse/la logistique bien au-dela du seul module
-  // Comptabilite (voir definePageMeta de la page elle-meme, inchange).
-  { title: 'Plan comptable', icon: 'mdi-format-list-numbered', to: '/admin/plan-comptable', roles: ['DFIN', 'DA', 'DG', 'LOGISTIQUE', 'COMPTABLE', 'ADMIN'] },
-  // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
-  // uniquement) mais ne voit pas les Pieces comptables.
-  { title: 'Pièces comptables', icon: 'mdi-file-document-edit-outline', to: '/comptabilite/pieces', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  // Plan comptable reste hors systeme de modules (voir definePageMeta de la
+  // page elle-meme, inchange). DA et LOGISTIQUE exclus explicitement.
+  { title: 'Plan comptable', icon: 'mdi-format-list-numbered', to: '/admin/plan-comptable', roles: ['DFIN', 'DG', 'COMPTABLE', 'ADMIN'] },
+  // DA exclu explicitement (comme Bilan/Gestion TVA plus bas) : le DA ne
+  // doit voir aucune page de Comptabilite. CAISSIER et LOGISTIQUE n'ont de
+  // toute facon plus le module depuis V30 (COMPTABILITE = AUCUN) : cette
+  // liste couvre juste les roles qui l'ont reellement aujourd'hui.
+  { title: 'Pièces comptables', icon: 'mdi-file-document-edit-outline', to: '/comptabilite/pieces', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   // Creation de piece : reservee au DFIN cote serveur (ADMIN ne modifie que
   // les pages dediees a l'administration).
   { title: "Solde d'ouverture", icon: 'mdi-flag-outline', to: '/comptabilite/solde-ouverture', module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['DFIN'] },
-  // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
-  // uniquement) mais ne voit pas le GL par compte ni le Livre-journal.
-  { title: 'GL par compte', icon: 'mdi-book-account-outline', to: '/comptabilite/grand-livre', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
-  // Balance de verification et Compte de resultat : accessibles au CAISSIER.
-  { title: 'Balance de vérification', icon: 'mdi-table-check', to: '/comptabilite/balance-verification', module: 'COMPTABILITE', essentiel: true },
-  { title: 'Livre-journal', icon: 'mdi-notebook-outline', to: '/comptabilite/livre-journal', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
-  { title: 'Compte de résultat', icon: 'mdi-finance', to: '/comptabilite/compte-resultat', module: 'COMPTABILITE', essentiel: true },
+  { title: 'GL par compte', icon: 'mdi-book-account-outline', to: '/comptabilite/grand-livre', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
+  { title: 'Balance de vérification', icon: 'mdi-table-check', to: '/comptabilite/balance-verification', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
+  { title: 'Livre-journal', icon: 'mdi-notebook-outline', to: '/comptabilite/livre-journal', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
+  { title: 'Compte de résultat', icon: 'mdi-finance', to: '/comptabilite/compte-resultat', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   // DA exclu explicitement de la consultation du Bilan.
   { title: 'Bilan', icon: 'mdi-scale-balance', to: '/comptabilite/bilan', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   // COMPTABLE, DA et DG exclus explicitement.
   { title: 'États financiers', icon: 'mdi-file-document-multiple-outline', to: '/comptabilite/etats-financiers', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN'] },
-  // Consultation ouverte a DA/DG ; constitution et reprise reservees au DFIN.
-  { title: 'Provisions', icon: 'mdi-shield-alert-outline', to: '/comptabilite/provisions', module: 'COMPTABILITE', roles: ['DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
+  { title: 'Provisions', icon: 'mdi-shield-alert-outline', to: '/comptabilite/provisions', module: 'COMPTABILITE', roles: ['DFIN', 'DG', 'COMPTABLE', 'ADMIN'] },
   // DA exclu explicitement de la consultation de la Gestion TVA.
   { title: 'Gestion TVA', icon: 'mdi-percent-box-outline', to: '/comptabilite/tva', module: 'COMPTABILITE', roles: ['DFIN', 'DG', 'COMPTABLE', 'ADMIN'] },
   // PeriodeComptableService.definirDateCloture est reserve a ADMIN.
@@ -91,6 +94,10 @@ const venteItems: NavItem[] = [
 // GEST_PATRIMOINE y figure : il a lui aussi LOGISTIQUE en LECTURE.
 const LOGISTIQUE_HORS_CAISSIER = ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN']
 const logistiqueItems: NavItem[] = [
+  // Remplace le tableau de bord financier (notes de frais/tresorerie) pour ce
+  // role : voir pages/logistique/index.vue. Meme place en tete de section
+  // que 'Tableau de bord' dans restaurantItems.
+  { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/logistique', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   { title: 'Articles', icon: 'mdi-package-variant-closed', to: '/logistique/articles', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   // Mouvements et grand livre stock : StockService en reserve la lecture aux

@@ -3,6 +3,7 @@ package com.mbsc.finapp.controller;
 import com.mbsc.finapp.dto.admin.CompteDetailResponse;
 import com.mbsc.finapp.dto.admin.CompteRequest;
 import com.mbsc.finapp.dto.admin.CompteResponse;
+import com.mbsc.finapp.dto.admin.CompteUpdateRequest;
 import com.mbsc.finapp.dto.admin.ImportJournalResponse;
 import com.mbsc.finapp.dto.admin.TauxChangeRequest;
 import com.mbsc.finapp.dto.admin.TauxChangeResponse;
@@ -71,6 +72,12 @@ public class AdminController {
     @ResponseStatus(HttpStatus.CREATED)
     public CompteResponse ajouterCompte(@Valid @RequestBody CompteRequest req) {
         return service.ajouterCompte(req);
+    }
+
+    /** Renomme un compte manuel (ADMIN, DFIN). */
+    @PutMapping("/comptes/{id}")
+    public CompteResponse modifierCompte(@PathVariable Long id, @Valid @RequestBody CompteUpdateRequest req) {
+        return service.modifierCompte(id, req);
     }
 
     /** Supprime un compte manuel (ADMIN). */

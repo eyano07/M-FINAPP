@@ -16,6 +16,7 @@ public record ParametresPaieResponse(
     BigDecimal plancherIprFc,
     Integer joursOuvrablesStandard,
     boolean cnssDeductibleIpr,
+    boolean comptabiliserPaie,
     BigDecimal smigJournalierFc,
     Integer diviseurAllocationFamiliale,
     BigDecimal plafondRetenuePct,
@@ -33,7 +34,7 @@ public record ParametresPaieResponse(
             p.getTauxLogement(), p.getTauxTransport(), p.getTauxCnssOuvriere(), p.getTauxCnssPatronale(),
             p.getTauxOnem(), p.getTauxInpp(), p.getReductionIprParEnfant(), p.getPlafondEnfantsIpr(),
             p.getPlancherIprFc(), p.getJoursOuvrablesStandard(),
-            p.isCnssDeductibleIpr(), p.getSmigJournalierFc(), p.getDiviseurAllocationFamiliale(),
+            p.isCnssDeductibleIpr(), p.isComptabiliserPaie(), p.getSmigJournalierFc(), p.getDiviseurAllocationFamiliale(),
             p.getPlafondRetenuePct(), p.getPlafondTransportExonereFcJour(), p.getHeuresLegalesHebdo(),
             p.getTauxMajorationHs1(), p.getTauxMajorationHs2(), p.getTauxMajorationHsFerie(),
             p.getDirecteurDrh(), p.getFonctionDirecteur(), p.getVilleSignature());

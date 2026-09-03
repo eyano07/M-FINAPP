@@ -34,6 +34,26 @@ public class ParametresEntreprise {
     @Column(length = 255)
     private String slogan;
 
+    @Column(length = 255)
+    private String adresse;
+
+    @Column(length = 30)
+    private String telephone;
+
+    @Column(length = 255)
+    private String email;
+
+    /** Numero de Registre du Commerce et du Credit Mobilier. */
+    @Column(length = 80)
+    private String rccm;
+
+    @Column(name = "id_nat", length = 80)
+    private String idNat;
+
+    /** Numero d'Identification Fiscale. */
+    @Column(length = 40)
+    private String nif;
+
     @Column(name = "logo_chemin_stockage", length = 500)
     private String logoCheminStockage;
 

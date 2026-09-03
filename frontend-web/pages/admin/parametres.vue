@@ -15,6 +15,12 @@ const form = reactive({
   nom: '',
   nomComplet: '',
   slogan: '',
+  adresse: '',
+  telephone: '',
+  email: '',
+  rccm: '',
+  idNat: '',
+  nif: '',
 })
 
 async function charger() {
@@ -25,6 +31,12 @@ async function charger() {
     form.nom = parametresStore.parametres.nom || ''
     form.nomComplet = parametresStore.parametres.nomComplet || ''
     form.slogan = parametresStore.parametres.slogan || ''
+    form.adresse = parametresStore.parametres.adresse || ''
+    form.telephone = parametresStore.parametres.telephone || ''
+    form.email = parametresStore.parametres.email || ''
+    form.rccm = parametresStore.parametres.rccm || ''
+    form.idNat = parametresStore.parametres.idNat || ''
+    form.nif = parametresStore.parametres.nif || ''
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les paramètres.')
   } finally {
@@ -44,7 +56,11 @@ async function enregistrer() {
   try {
     await api('/parametres', {
       method: 'PUT',
-      body: { nom: form.nom, nomComplet: form.nomComplet || null, slogan: form.slogan || null },
+      body: {
+        nom: form.nom, nomComplet: form.nomComplet || null, slogan: form.slogan || null,
+        adresse: form.adresse || null, telephone: form.telephone || null,
+        email: form.email || null, rccm: form.rccm || null, idNat: form.idNat || null, nif: form.nif || null,
+      },
     })
     await parametresStore.charger()
     succes.value = 'Paramètres enregistrés.'
@@ -159,22 +175,55 @@ async function onLogoChoisi(e: Event) {
             <label class="param-label">Slogan</label>
             <v-text-field v-model="form.slogan" placeholder="ex: La finance d'entreprise, simplement." hide-details="auto" />
           </div>
+          <div class="param-field">
+            <label class="param-label">Adresse</label>
+            <v-text-field v-model="form.adresse" placeholder="ex: 12 Avenue du Commerce, Kinshasa/Gombe" hide-details="auto" />
+          </div>
+          <div class="param-field">
+            <label class="param-label">Téléphone</label>
+            <v-text-field v-model="form.telephone" placeholder="ex: +243 000 000 000" hide-details="auto" />
+          </div>
+          <div class="param-field">
+            <label class="param-label">Email</label>
+            <v-text-field
+              v-model="form.email"
+              placeholder="ex: contact@societe.com"
+              hide-details="auto"
+              hint="Plusieurs adresses possibles, séparées par « · »"
+              persistent-hint
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Registre legal ──────────────────────────────────── -->
+      <div class="param-card">
+        <p class="param-card__title">
+          <v-icon icon="mdi-bank-outline" size="16" class="mr-2" />
+          Registre légal
+        </p>
+
+        <div v-if="loading" class="param-loading">
+          <v-progress-circular indeterminate color="primary" size="24" />
         </div>
 
-        <v-btn
-          color="primary"
-          block
-          rounded="lg"
-          elevation="0"
-          size="large"
-          class="param-save-btn"
-          :loading="saving"
-          :disabled="loading"
-          prepend-icon="mdi-content-save-outline"
-          @click="enregistrer"
-        >
-          Enregistrer
-        </v-btn>
+        <div v-else class="param-fields">
+          <div class="param-field">
+            <label class="param-label">RCCM</label>
+            <v-text-field v-model="form.rccm" placeholder="ex: CD/LSH/RCCM/24-B-1162" hide-details="auto" />
+          </div>
+          <div class="param-field">
+            <label class="param-label">ID. Nat</label>
+            <v-text-field v-model="form.idNat" placeholder="ex: 05-B-0500-N49144X" hide-details="auto" />
+          </div>
+          <div class="param-field">
+            <label class="param-label">NIF</label>
+            <v-text-field v-model="form.nif" placeholder="ex: A2420976C" hide-details="auto" />
+          </div>
+        </div>
+        <p class="param-registre-hint">
+          Affichés sur le papier à en-tête des documents officiels (ordres de mission…).
+        </p>
       </div>
 
       <!-- ── Logo ────────────────────────────────────────────── -->
@@ -214,6 +263,21 @@ async function onLogoChoisi(e: Event) {
         <p class="param-logo-hint">Formats acceptés : JPEG, PNG, WEBP, SVG (5 Mo max).</p>
       </div>
     </div>
+
+    <v-btn
+      color="primary"
+      block
+      rounded="lg"
+      elevation="0"
+      size="large"
+      class="param-save-btn mt-5"
+      :loading="saving"
+      :disabled="loading"
+      prepend-icon="mdi-content-save-outline"
+      @click="enregistrer"
+    >
+      Enregistrer
+    </v-btn>
   </div>
 </template>
 
@@ -290,4 +354,5 @@ async function onLogoChoisi(e: Event) {
 }
 .param-hidden-input { display: none; }
 .param-logo-hint { font-size: 0.75rem; color: #9ca3af; margin: 10px 0 0; text-align: center; }
+.param-registre-hint { font-size: 0.75rem; color: #9ca3af; margin: 14px 0 0; }
 </style>

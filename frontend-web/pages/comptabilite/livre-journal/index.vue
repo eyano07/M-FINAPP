@@ -1,7 +1,6 @@
 <script setup lang="ts">
-// CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
-// uniquement) mais ne voit pas le Livre-journal.
-definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
+// DA exclu explicitement : voir NavigationDrawer.vue (comptabiliteItems).
+definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 interface LignePiece {
   compteNumero: string

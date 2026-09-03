@@ -21,6 +21,7 @@ public record TransactionCaisseResponse(
     String caissierNom,
     Long noteFraisId,
     String noteFraisReference,
+    String beneficiaire,
     Instant dateOperation,
     Instant dateEnregistrement,
     BigDecimal tauxJournalier
@@ -42,6 +43,7 @@ public record TransactionCaisseResponse(
             nom,
             note == null ? null : note.getId(),
             note == null ? null : note.getReference(),
+            note == null ? null : note.getBeneficiaire(),
             t.getDateOperation(),
             t.getDateEnregistrement(),
             t.getTauxJournalier()

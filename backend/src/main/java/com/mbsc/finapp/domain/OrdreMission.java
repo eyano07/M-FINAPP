@@ -35,6 +35,21 @@ public class OrdreMission {
     @Column(length = 80)
     private String province;
 
+    /** Subdivision administrative RDC (province > territoire), distincte de {@link #province}. */
+    @Column(length = 120)
+    private String territoire;
+
+    /** Requis uniquement pour une mission collective ({@link #isCollective()}) : "Sous la supervision de
+     * Monsieur/Madame X, agent de [société]..." sur le document imprimé — voir OrdreMissionPdfService. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "superviseur_employe_id")
+    @ToString.Exclude
+    private Employe superviseur;
+
+    @Column(name = "superviseur_civilite", length = 10)
+    @Builder.Default
+    private String superviseurCivilite = "Monsieur";
+
     @Column(name = "but_mission", nullable = false, length = 1000)
     private String butMission;
 

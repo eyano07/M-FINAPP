@@ -125,6 +125,16 @@ public class ParametresPaie {
     @Builder.Default
     private BigDecimal tauxMajorationHsFerie = BigDecimal.ONE;
 
+    /**
+     * Si vrai, la clôture d'une période de paie poste une pièce comptable
+     * BROUILLON par bulletin (salaire net + charges patronales CNSS/ONEM/INPP,
+     * voir {@code PaieComptabilisationService}). Si faux, la clôture
+     * verrouille les bulletins sans générer aucune écriture comptable.
+     */
+    @Column(name = "comptabiliser_paie", nullable = false)
+    @Builder.Default
+    private boolean comptabiliserPaie = true;
+
     @Column(name = "directeur_drh", length = 150)
     private String directeurDrh;
 

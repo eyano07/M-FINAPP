@@ -1,10 +1,13 @@
 <script setup lang="ts">
-definePageMeta({ roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'LOGISTIQUE'] })
+definePageMeta({ roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 import { useDisplay } from 'vuetify'
 
 const auth = useAuthStore()
-const isAdmin = computed(() => auth.hasRole('ADMIN'))
+// Ajout/suppression de comptes reserves a ADMIN et DFIN (AdminService,
+// ajouterCompte/supprimerCompte) : DFIN pilote le referentiel comptable au
+// quotidien, ADMIN le supervise.
+const peutGererComptes = computed(() => auth.hasAnyRole(['ADMIN', 'DFIN']))
 
 // Bascule table <-> cartes sous 600px. Base sur la largeur reactive de
 // Vuetify plutot que $vuetify.display.mobile (seuil global a 1280px, non
@@ -60,6 +63,11 @@ const filtreType = ref<string | null>(null)
 const dialog = ref(false)
 const dialogDel = ref(false)
 const comptePourSuppr = ref<Compte | null>(null)
+const dialogEdit = ref(false)
+const comptePourEdit = ref<Compte | null>(null)
+const formEdit = reactive({ libelle: '' })
+const savingEdit = ref(false)
+const erreurEdit = ref('')
 
 // ── Fiche du référentiel commenté ─────────────────────────────────────────
 // Les rubriques pèsent plusieurs centaines de Ko sur l'ensemble du plan :
@@ -183,6 +191,40 @@ async function ajouter() {
   }
 }
 
+// ── Modification (renommage) ───────────────────────────────────────────────
+function demanderEdit(c: Compte) {
+  comptePourEdit.value = c
+  formEdit.libelle = c.libelle
+  erreurEdit.value = ''
+  dialogEdit.value = true
+}
+
+async function confirmerEdit() {
+  const c = comptePourEdit.value
+  if (!c) return
+  if (!formEdit.libelle.trim()) {
+    erreurEdit.value = 'Le libellé est obligatoire.'
+    return
+  }
+  savingEdit.value = true
+  erreurEdit.value = ''
+  try {
+    const maj = await api<Compte>(`/comptes/${c.id}`, {
+      method: 'PUT',
+      body: { libelle: formEdit.libelle.trim() },
+    })
+    const i = comptes.value.findIndex((x) => x.id === c.id)
+    if (i !== -1) comptes.value[i] = { ...comptes.value[i], libelle: maj.libelle }
+    cacheFiches.delete(c.id)
+    succes.value = `Compte ${fmtNumero(c.numero)} renommé.`
+    dialogEdit.value = false
+  } catch (e: any) {
+    erreurEdit.value = e?.data?.message || 'Échec de la modification.'
+  } finally {
+    savingEdit.value = false
+  }
+}
+
 // ── Suppression ───────────────────────────────────────────────────────────
 function demanderSuppr(c: Compte) {
   comptePourSuppr.value = c
@@ -241,7 +283,7 @@ const parentOptions = computed(() =>
         <button class="pc-refresh-btn" :disabled="loading" @click="charger">
           <v-icon icon="mdi-refresh" size="16" />
         </button>
-        <button v-if="isAdmin" class="pc-new-btn" @click="ouvrirDialog">
+        <button v-if="peutGererComptes" class="pc-new-btn" @click="ouvrirDialog">
           <v-icon icon="mdi-plus" size="18" class="mr-1" />
           Ajouter un compte
         </button>
@@ -328,10 +370,15 @@ const parentOptions = computed(() =>
             </td>
             <td><span class="pc-classe">{{ c.classe }} — {{ classeLabel(c.classe) }}</span></td>
             <td>
-              <button v-if="c.manuel && isAdmin" class="pc-del-btn" :disabled="deleting === c.id" @click="demanderSuppr(c)" title="Supprimer">
-                <v-progress-circular v-if="deleting === c.id" indeterminate size="14" width="2" color="currentColor" />
-                <v-icon v-else icon="mdi-delete-outline" size="16" />
-              </button>
+              <div v-if="c.manuel && peutGererComptes" class="pc-row-actions">
+                <button class="pc-edit-btn" @click.stop="demanderEdit(c)" title="Modifier le libellé">
+                  <v-icon icon="mdi-pencil-outline" size="16" />
+                </button>
+                <button class="pc-del-btn" :disabled="deleting === c.id" @click.stop="demanderSuppr(c)" title="Supprimer">
+                  <v-progress-circular v-if="deleting === c.id" indeterminate size="14" width="2" color="currentColor" />
+                  <v-icon v-else icon="mdi-delete-outline" size="16" />
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -369,14 +416,66 @@ const parentOptions = computed(() =>
 
           <div class="pc-card-item__footer">
             <span class="pc-classe">Cl. {{ c.classe }} — {{ classeLabel(c.classe) }}</span>
-            <button v-if="c.manuel && isAdmin" class="pc-del-btn" :disabled="deleting === c.id" @click.stop="demanderSuppr(c)" title="Supprimer">
-              <v-progress-circular v-if="deleting === c.id" indeterminate size="14" width="2" color="currentColor" />
-              <v-icon v-else icon="mdi-delete-outline" size="16" />
-            </button>
+            <div v-if="c.manuel && peutGererComptes" class="pc-row-actions">
+              <button class="pc-edit-btn" @click.stop="demanderEdit(c)" title="Modifier le libellé">
+                <v-icon icon="mdi-pencil-outline" size="16" />
+              </button>
+              <button class="pc-del-btn" :disabled="deleting === c.id" @click.stop="demanderSuppr(c)" title="Supprimer">
+                <v-progress-circular v-if="deleting === c.id" indeterminate size="14" width="2" color="currentColor" />
+                <v-icon v-else icon="mdi-delete-outline" size="16" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- ── Dialog modification ─────────────────────────────── -->
+    <v-dialog v-model="dialogEdit" max-width="460">
+      <div class="pc-dialog">
+        <div class="pc-dialog__head">
+          <div class="pc-dialog__blob pc-dialog__blob--a" />
+          <div class="pc-dialog__blob pc-dialog__blob--b" />
+          <div class="pc-dialog__icon">
+            <v-icon icon="mdi-pencil-outline" size="22" color="white" />
+          </div>
+          <div class="pc-dialog__head-text">
+            <p class="pc-dialog__head-title">Modifier le libellé</p>
+            <p class="pc-dialog__head-sub" v-if="comptePourEdit">{{ fmtNumero(comptePourEdit.numero) }} — numéro et classe inchangés</p>
+          </div>
+          <button class="pc-dialog__close" @click="dialogEdit = false">
+            <v-icon icon="mdi-close" size="18" color="rgba(255,255,255,0.75)" />
+          </button>
+        </div>
+
+        <div class="pc-dialog__body">
+          <v-alert v-if="erreurEdit" type="error" variant="tonal" rounded="lg" density="compact" class="mb-3" closable @click:close="erreurEdit = ''">
+            {{ erreurEdit }}
+          </v-alert>
+
+          <div class="pc-field">
+            <label class="pc-label">Libellé *</label>
+            <v-text-field
+              v-model="formEdit.libelle"
+              placeholder="Ex: Transports Administratifs"
+              prepend-inner-icon="mdi-text"
+              hide-details="auto"
+              autofocus
+              @keyup.enter="confirmerEdit"
+            />
+          </div>
+        </div>
+
+        <div class="pc-dialog__footer">
+          <button class="pc-cancel-btn" :disabled="savingEdit" @click="dialogEdit = false">Annuler</button>
+          <button class="pc-submit-btn" :disabled="savingEdit || !formEdit.libelle.trim()" @click="confirmerEdit">
+            <v-progress-circular v-if="savingEdit" indeterminate size="16" width="2" color="white" class="mr-2" />
+            <v-icon v-else icon="mdi-content-save-outline" size="17" class="mr-1" />
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </v-dialog>
 
     <!-- ── Dialog suppression ───────────────────────────────── -->
     <v-dialog v-model="dialogDel" max-width="420">
@@ -683,6 +782,8 @@ const parentOptions = computed(() =>
 }
 .pc-classe { font-size: 0.78rem; color: #6b7280; }
 
+.pc-row-actions { display: inline-flex; align-items: center; gap: 6px; }
+
 .pc-del-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border-radius: 8px;
@@ -692,6 +793,15 @@ const parentOptions = computed(() =>
 }
 .pc-del-btn:hover:not(:disabled) { background: #fee2e2; }
 .pc-del-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pc-edit-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 8px;
+  background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+  cursor: pointer; transition: background 0.15s;
+  flex-shrink: 0;
+}
+.pc-edit-btn:hover { background: #dbeafe; }
 
 /* ── Cartes (mobile) ─────────────────────────────────────────────────────── */
 .pc-cards { display: flex; flex-direction: column; gap: 10px; padding: 12px; }

@@ -34,6 +34,15 @@ public class User {
     @Column(length = 100)
     private String prenom;
 
+    @Column(length = 30)
+    private String telephone;
+
+    @Column(name = "photo_chemin_stockage")
+    private String photoCheminStockage;
+
+    @Column(name = "photo_type_mime", length = 100)
+    private String photoTypeMime;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean actif = true;

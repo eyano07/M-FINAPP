@@ -29,9 +29,20 @@ public class ParametresEntrepriseService {
     private final ParametresEntrepriseRepository repository;
     private final StorageService storage;
 
-    @Transactional(readOnly = true)
+    // Pas readOnly : premier appel sur une base sans ligne encore creee,
+    // charger() doit pouvoir executer l'INSERT paresseux ci-dessous (une
+    // transaction en lecture seule le refuse : "cannot execute INSERT in a
+    // read-only transaction").
+    @Transactional
     public ParametresEntrepriseResponse obtenir() {
         return ParametresEntrepriseResponse.from(charger());
+    }
+
+    /** Entité brute, pour les autres services qui ont besoin de champs non exposés par {@link ParametresEntrepriseResponse}
+     * (ex. {@code OrdreMissionPdfService}, qui recompose le papier à en-tête à partir des valeurs courantes). */
+    @Transactional
+    public ParametresEntreprise obtenirEntite() {
+        return charger();
     }
 
     private ParametresEntreprise charger() {
@@ -46,6 +57,12 @@ public class ParametresEntrepriseService {
         p.setNom(req.nom());
         p.setNomComplet(req.nomComplet());
         p.setSlogan(req.slogan());
+        p.setAdresse(req.adresse());
+        p.setTelephone(req.telephone());
+        p.setEmail(req.email());
+        p.setRccm(req.rccm());
+        p.setIdNat(req.idNat());
+        p.setNif(req.nif());
         p = repository.save(p);
         return ParametresEntrepriseResponse.from(p);
     }
@@ -75,7 +92,8 @@ public class ParametresEntrepriseService {
         return ParametresEntrepriseResponse.from(p);
     }
 
-    @Transactional(readOnly = true)
+    // Meme raison que obtenir() : charger() peut inserer la ligne par defaut.
+    @Transactional
     public LogoTelechargement telechargerLogo() {
         ParametresEntreprise p = charger();
         if (p.getLogoCheminStockage() == null) {
