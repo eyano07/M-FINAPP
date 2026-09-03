@@ -2,8 +2,10 @@ package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.drh.BulletinPaieRequest;
 import com.mbsc.finapp.dto.drh.BulletinPaieResponse;
+import com.mbsc.finapp.dto.drh.DeclarationSocialeResponse;
 import com.mbsc.finapp.dto.drh.ResultatCalculPaie;
 import com.mbsc.finapp.service.BulletinPaieService;
+import com.mbsc.finapp.service.DeclarationSocialeService;
 import com.mbsc.finapp.service.DrhExcelService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,10 +28,18 @@ public class BulletinPaieController {
 
     private final BulletinPaieService service;
     private final DrhExcelService excelService;
+    private final DeclarationSocialeService declarationService;
 
     @GetMapping
     public List<BulletinPaieResponse> lister(@RequestParam Integer mois, @RequestParam Integer annee) {
         return service.listerParPeriode(mois, annee);
+    }
+
+    /** Bordereau recapitulatif CNSS / ONEM / INPP / IPR de la periode. */
+    @GetMapping("/declaration-sociale")
+    public DeclarationSocialeResponse declarationSociale(
+        @RequestParam Integer mois, @RequestParam Integer annee) {
+        return declarationService.etablir(mois, annee);
     }
 
     @GetMapping("/{id}")

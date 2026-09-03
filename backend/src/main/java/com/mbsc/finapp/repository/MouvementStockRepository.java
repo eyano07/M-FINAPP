@@ -55,6 +55,27 @@ public interface MouvementStockRepository extends JpaRepository<MouvementStock, 
     """)
     List<MouvementStock> sortiesProvisionsPeriode(@Param("du") LocalDate du, @Param("au") LocalDate au);
 
+    /**
+     * Sorties de boissons validees sur une periode : ventes, casse d'une
+     * bouteille pleine, peremption, cadeau — toutes passent par une SORTIE de
+     * stock valorisee au CMP du moment ({@code StockService.appliquerLigne}).
+     *
+     * <p>Alimente le cout des ventes du tableau de bord Restaurant, qui
+     * l'estimait auparavant au CMP <i>courant</i> : le cout historique reel
+     * est deja porte par {@code LigneMouvementStock.montant}, il suffit de le
+     * lire plutot que de le recalculer.</p>
+     */
+    @Query("""
+        select distinct m from MouvementStock m
+        join fetch m.lignes l
+        join fetch l.article a
+        where m.type = com.mbsc.finapp.domain.enums.TypeMouvementStock.SORTIE
+          and m.statut = com.mbsc.finapp.domain.enums.StatutMouvement.VALIDE
+          and m.dateMouvement between :du and :au
+          and a.type = com.mbsc.finapp.domain.enums.TypeArticle.BOISSON
+    """)
+    List<MouvementStock> sortiesBoissonsPeriode(@Param("du") LocalDate du, @Param("au") LocalDate au);
+
     @Query("""
         select distinct m from MouvementStock m
         left join fetch m.lignes l

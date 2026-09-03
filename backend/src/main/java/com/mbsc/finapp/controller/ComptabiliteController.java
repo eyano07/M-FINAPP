@@ -5,7 +5,9 @@ import com.mbsc.finapp.service.AnalyseFinanciereIaService;
 import com.mbsc.finapp.service.ClotureAnnuelleService;
 import com.mbsc.finapp.service.ComptabiliteService;
 import com.mbsc.finapp.service.EtatsFinanciersExcelService;
+import com.mbsc.finapp.service.BalanceAgeeService;
 import com.mbsc.finapp.service.PeriodeComptableService;
+import com.mbsc.finapp.service.SoldesIntermediairesService;
 import com.mbsc.finapp.service.TvaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,8 @@ public class ComptabiliteController {
     private final AnalyseFinanciereIaService analyseIaService;
     private final ClotureAnnuelleService clotureAnnuelleService;
     private final TvaService tvaService;
+    private final SoldesIntermediairesService sigService;
+    private final BalanceAgeeService balanceAgeeService;
 
     @PostMapping("/pieces")
     @ResponseStatus(HttpStatus.CREATED)
@@ -172,6 +176,23 @@ public class ComptabiliteController {
         return analyseIaService.analyser(du, au);
     }
 
+    /** Balance agee des creances clients : ventilation du 4111 par anciennete. */
+    @GetMapping("/balance-agee")
+    public BalanceAgeeResponse balanceAgee(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        return balanceAgeeService.calculer(au);
+    }
+
+    /** Soldes intermediaires de gestion (cascade SYSCOHADA : marge, VA, EBE, resultats). */
+    @GetMapping("/soldes-intermediaires")
+    public SoldesIntermediairesResponse soldesIntermediaires(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        return sigService.calculer(du, au);
+    }
+
     // ── TVA ─────────────────────────────────────────────────────────────
 
     @GetMapping("/tva")
@@ -180,6 +201,15 @@ public class ComptabiliteController {
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
     ) {
         return tvaService.situation(du, au);
+    }
+
+    /** Arrete la TVA de la periode : genere la piece BROUILLON qui solde 443x/445x vers 4441 ou 4449. */
+    @PostMapping("/tva/declarer")
+    public DeclarationTvaResponse declarerTva(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        return tvaService.declarer(du, au);
     }
 
     // ── Clôture de période ───────────────────────────────────────────────

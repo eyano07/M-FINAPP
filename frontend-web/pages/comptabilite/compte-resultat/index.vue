@@ -1,5 +1,6 @@
 <script setup lang="ts">
-definePageMeta({ module: 'COMPTABILITE' })
+// DA exclu explicitement : voir NavigationDrawer.vue (comptabiliteItems).
+definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 interface LigneEtat {
   numero: string
@@ -83,7 +84,11 @@ const benefice = computed(() => (etat.value?.resultatNet ?? 0) >= 0)
     <div class="page-head no-print">
       <div>
         <h1 class="page-title">Compte de résultat</h1>
-        <p class="page-sub">Produits (classe 7) − Charges (classe 6) sur la période — devise de base : USD</p>
+        <!-- Le calcul retient tous les comptes de gestion (classes 6, 7 et 8) via leur
+             TYPE : la classe 8 H.A.O. porte aussi des charges et des produits, et
+             entre au resultat net comme les autres. Le sous-titre disait « classe 7 −
+             classe 6 », ce qui laissait croire que les H.A.O. en etaient exclus. -->
+        <p class="page-sub">Produits − Charges de la période, H.A.O. inclus (classes 6, 7 et 8) — devise de base : USD</p>
       </div>
       <div class="d-flex ga-2 flex-wrap">
         <v-btn

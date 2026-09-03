@@ -125,7 +125,8 @@ public class PatrimoineService {
             .valeurAcquisition(req.valeurAcquisition())
             .valeurResiduelle(req.valeurResiduelle() == null ? BigDecimal.ZERO : req.valeurResiduelle())
             .dureeMois(req.dureeMois())
-            .modeAmortissement(ModeAmortissement.LINEAIRE)
+            .modeAmortissement(req.modeAmortissement() == null
+                ? ModeAmortissement.LINEAIRE : req.modeAmortissement())
             .statut(StatutImmobilisation.EN_SERVICE)
             .localisation(req.localisation())
             .responsable(resoudreResponsable(req.responsableId()))
@@ -165,20 +166,50 @@ public class PatrimoineService {
     // -----------------------------------------------------------------
 
     /**
-     * Construit le plan mensuel complet. La dotation de chaque mois est la
-     * base divisee par la duree ; la derniere echeance recoit le residu pour
-     * que le cumul final egale exactement la base amortissable.
+     * Construit le plan mensuel complet.
+     *
+     * <p><b>Lineaire</b> : la dotation de chaque mois est la base divisee par
+     * la duree.</p>
+     *
+     * <p><b>Degressif</b> : la dotation se calcule sur la valeur restant a
+     * amortir, au taux lineaire majore du coefficient fiscal
+     * ({@link ModeAmortissement#coefficient}). Des que l'annuite lineaire du
+     * temps restant depasse l'annuite degressive, on bascule sur le lineaire
+     * pour le solde — c'est la regle du bareme, sans laquelle un degressif pur
+     * n'atteindrait jamais zero.</p>
+     *
+     * <p>Dans les deux cas, la derniere echeance recoit le residu pour que le
+     * cumul final egale exactement la base amortissable, au centime pres.</p>
      */
     private void construirePlan(Immobilisation immo) {
         BigDecimal base = immo.baseAmortissable();
         int duree = immo.getDureeMois();
-        BigDecimal mensualite = base.divide(BigDecimal.valueOf(duree), 2, RoundingMode.HALF_UP);
+        boolean degressif = immo.getModeAmortissement() == ModeAmortissement.DEGRESSIF;
+        BigDecimal tauxMensuelDegressif = degressif
+            ? BigDecimal.valueOf(ModeAmortissement.coefficient(duree))
+                .divide(BigDecimal.valueOf(duree), 10, RoundingMode.HALF_UP)
+            : BigDecimal.ZERO;
+        BigDecimal mensualiteLineaire = base.divide(BigDecimal.valueOf(duree), 2, RoundingMode.HALF_UP);
 
         LocalDate periode = immo.getDateMiseService().withDayOfMonth(1);
         BigDecimal cumul = BigDecimal.ZERO;
 
         for (int i = 0; i < duree; i++) {
-            BigDecimal dotation = (i == duree - 1) ? base.subtract(cumul) : mensualite;
+            BigDecimal dotation;
+            if (i == duree - 1) {
+                dotation = base.subtract(cumul);          // solde exact
+            } else if (degressif) {
+                BigDecimal restant = base.subtract(cumul);
+                BigDecimal parDegressif = restant.multiply(tauxMensuelDegressif).setScale(2, RoundingMode.HALF_UP);
+                // Annuite lineaire recalculee sur le temps restant : c'est elle
+                // qui prend le relais en fin de plan.
+                BigDecimal parLineaire = restant.divide(BigDecimal.valueOf(duree - i), 2, RoundingMode.HALF_UP);
+                dotation = parDegressif.max(parLineaire);
+            } else {
+                dotation = mensualiteLineaire;
+            }
+            // Ne jamais amortir au-dela de la base, quel que soit l'arrondi.
+            dotation = dotation.min(base.subtract(cumul));
             cumul = cumul.add(dotation);
             immo.addLigne(LigneAmortissement.builder()
                 .periode(periode)

@@ -25,9 +25,37 @@ interface Situation {
 }
 
 const api = useApi()
+const auth = useAuthStore()
 const loading = ref(false)
 const erreur = ref('')
+const succes = ref('')
 const situation = ref<Situation | null>(null)
+
+// L'arrete pose une ecriture : reserve au DFIN et a l'ADMIN, comme la cloture
+// annuelle. Le COMPTABLE et le DG gardent la consultation.
+const peutDeclarer = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
+const declarant = ref(false)
+const dialogDeclaration = ref(false)
+
+async function declarer() {
+  declarant.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    const params = new URLSearchParams({ du: filtres.du, au: filtres.au })
+    const res = await api<{ pieceReference: string | null; message: string }>(
+      `/comptabilite/tva/declarer?${params}`, { method: 'POST' })
+    succes.value = res.pieceReference
+      ? `${res.message} — pièce ${res.pieceReference}.`
+      : res.message
+    dialogDeclaration.value = false
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Échec de l'arrêté de TVA.")
+  } finally {
+    declarant.value = false
+  }
+}
 
 const debutAnnee = new Date().getFullYear() + '-01-01'
 const aujourdhui = new Date().toISOString().slice(0, 10)
@@ -80,9 +108,53 @@ function fmtDate(d: string) {
           TVA collectée sur les ventes (443x) face à la TVA récupérable sur les achats (445x) — traçabilité complète
         </p>
       </div>
+      <v-btn
+        v-if="peutDeclarer" color="primary" variant="flat" rounded="lg"
+        prepend-icon="mdi-file-check-outline" :loading="declarant"
+        :disabled="!situation || (!situation.tvaCollectee && !situation.tvaRecuperable)"
+        @click="dialogDeclaration = true"
+      >
+        Arrêter la TVA
+      </v-btn>
     </div>
 
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4">{{ erreur }}</v-alert>
+    <v-alert v-if="succes" type="success" variant="tonal" class="mb-4" closable @click:close="succes = ''">
+      {{ succes }}
+    </v-alert>
+
+    <!-- L'arrete solde 443x/445x vers 4441 ou 4449 : c'est une ecriture, donc
+         une confirmation explicite plutot qu'un simple clic. -->
+    <v-dialog v-model="dialogDeclaration" max-width="540">
+      <v-card>
+        <v-card-title>Arrêter la TVA de la période</v-card-title>
+        <v-divider />
+        <v-card-text>
+          <p class="text-body-2 mb-3">
+            Une pièce <strong>brouillon</strong> va être générée : elle solde la TVA collectée
+            contre la TVA récupérable et porte le net sur le compte de l'État.
+          </p>
+          <div v-if="situation" class="decl-recap">
+            <div><span>TVA collectée</span><strong>{{ fmt(situation.tvaCollectee) }}</strong></div>
+            <div><span>TVA récupérable</span><strong>{{ fmt(situation.tvaRecuperable) }}</strong></div>
+            <div class="decl-recap__net">
+              <span>{{ situation.soldeNet >= 0 ? 'TVA due à l\'État (4441)' : 'Crédit à reporter (4449)' }}</span>
+              <strong>{{ fmt(Math.abs(situation.soldeNet)) }}</strong>
+            </div>
+          </div>
+          <p class="text-caption text-medium-emphasis mt-3 mb-0">
+            Période du {{ filtres.du }} au {{ filtres.au }}. Rien n'impacte le Grand Livre
+            tant que la pièce n'est pas comptabilisée depuis Pièces comptables.
+          </p>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="declarant" @click="dialogDeclaration = false">Annuler</v-btn>
+          <v-btn color="primary" variant="flat" :loading="declarant" @click="declarer">Générer la pièce</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-card class="classroom-card pa-6 mb-4">
       <v-row align="end">
@@ -166,6 +238,12 @@ function fmtDate(d: string) {
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
 .page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
+
+/* Recapitulatif de l'arrete, avant generation de la piece. */
+.decl-recap { display: flex; flex-direction: column; gap: 8px; background: #f9fafb; border-radius: 10px; padding: 14px 16px; }
+.decl-recap > div { display: flex; justify-content: space-between; gap: 20px; font-size: 0.9rem; color: #374151; }
+.decl-recap > div strong { font-variant-numeric: tabular-nums; color: #111827; }
+.decl-recap__net { border-top: 1px solid #e5e7eb; padding-top: 8px; font-weight: 600; }
 .kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
 .kpi-value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; color: #111827; }
 </style>

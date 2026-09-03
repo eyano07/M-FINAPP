@@ -526,11 +526,12 @@ public class RestaurantService {
      * Tableau de bord du module Restaurant sur une période : parc
      * d'emballages, ventes, achats, profit et classement des boissons.
      *
-     * <p>Toutes les valorisations utilisent le coût moyen pondéré COURANT de
-     * chaque boisson (celui affiché sur l'écran de stock), pas celui en
-     * vigueur au moment exact de chaque mouvement — simplification déjà
-     * pratiquée ailleurs dans ce module (voir l'écran Stock) et cohérente
-     * avec elle.</p>
+     * <p><b>Valorisation.</b> Le coût des ventes est lu sur les sorties de
+     * stock de la période, donc au coût HISTORIQUE réellement passé en charge
+     * au grand livre — et non recalculé au CMUP courant, ce qui produisait une
+     * marge ne correspondant à aucune écriture dès que le CMUP variait. La
+     * valeur du stock restant et celle des pertes d'emballage restent au CMUP
+     * courant : ce sont des positions à date, pas des flux.</p>
      *
      * <p>Toutes les valeurs monétaires de ce tableau de bord (chiffre
      * d'affaires, marge, profit, valeur de stock, achats, pertes) sont en
@@ -635,12 +636,33 @@ public class RestaurantService {
             }
         }
 
-        // ── Profit : marge brute des ventes moins la valeur des pertes ───
-        BigDecimal coutDesVentes = BigDecimal.ZERO;
-        for (var entry : venteParArticle.entrySet()) {
-            BigDecimal cmup = cmupParArticle.getOrDefault(entry.getKey(), BigDecimal.ZERO);
-            coutDesVentes = coutDesVentes.add(cmup.multiply(entry.getValue()[0]));
+        // ── Cout des ventes : cout HISTORIQUE, lu sur les sorties de stock ──
+        // Chaque sortie a ete valorisee au CMP en vigueur A CE MOMENT-LA par
+        // StockService, et ce montant est celui reellement passe en charge au
+        // grand livre. Le recalculer au CMP courant (ce que faisait ce tableau
+        // de bord) donnait une marge qui ne correspondait a aucune ecriture des
+        // que le CMP bougeait dans la periode. On lit donc le cout deja pose.
+        //
+        // Les sorties couvrent aussi casse/peremption/cadeau : elles sont
+        // isolees ici pour rester distinguees des ventes, la ou la valeur des
+        // pertes garde sa propre ligne au tableau de bord.
+        BigDecimal coutSortiesTotal = BigDecimal.ZERO;
+        BigDecimal quantiteSortie = BigDecimal.ZERO;
+        for (MouvementStock m : mouvementStockRepository.sortiesBoissonsPeriode(du, au)) {
+            for (LigneMouvementStock l : m.getLignes()) {
+                if (l.getArticle().getType() != TypeArticle.BOISSON) continue;
+                coutSortiesTotal = coutSortiesTotal.add(l.getMontant());
+                quantiteSortie = quantiteSortie.add(l.getQuantite());
+            }
         }
+        // Cout unitaire moyen effectivement constate sur la periode : sert a
+        // ventiler le cout total entre ventes et pertes au prorata des
+        // quantites, une sortie ne portant pas son motif.
+        BigDecimal coutUnitaireMoyen = quantiteSortie.signum() == 0
+            ? BigDecimal.ZERO
+            : coutSortiesTotal.divide(quantiteSortie, 6, RoundingMode.HALF_UP);
+        BigDecimal coutDesVentes = coutUnitaireMoyen.multiply(quantiteVendue).setScale(2, RoundingMode.HALF_UP);
+
         BigDecimal margeBrute = chiffreAffaires.subtract(coutDesVentes);
         BigDecimal profitNet = margeBrute.subtract(valeurPertes);
 

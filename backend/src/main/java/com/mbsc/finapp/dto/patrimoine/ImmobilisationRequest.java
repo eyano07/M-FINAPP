@@ -1,6 +1,7 @@
 package com.mbsc.finapp.dto.patrimoine;
 
 import com.mbsc.finapp.domain.enums.CategorieImmobilisation;
+import com.mbsc.finapp.domain.enums.ModeAmortissement;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
@@ -22,6 +23,8 @@ public record ImmobilisationRequest(
     @NotNull @Positive BigDecimal valeurAcquisition,
     @PositiveOrZero BigDecimal valeurResiduelle,
     @NotNull @Positive @Max(1200) Integer dureeMois,
+    /** Lineaire si absent : preserve le comportement des biens deja saisis. */
+    ModeAmortissement modeAmortissement,
     @Size(max = 255) String localisation,
     Long responsableId,
     @Size(max = 200) String fournisseur,
