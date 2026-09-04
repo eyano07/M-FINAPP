@@ -17,6 +17,12 @@ const annee = ref(aujourdhui.getFullYear())
 const jours = computed(() => {
   const n = new Date(annee.value, mois.value, 0).getDate()
   return Array.from({ length: n }, (_, i) => i + 1)
+    // Exclut samedi (6) et dimanche (0) : la fiche papier n'a pas besoin
+    // d'une page d'émargement pour des jours non travaillés.
+    .filter((j) => {
+      const jourSemaine = new Date(annee.value, mois.value - 1, j).getDay()
+      return jourSemaine !== 0 && jourSemaine !== 6
+    })
 })
 // 2 jours par page (papier physique MBSC) : chaque page repete son propre
 // en-tete et sa propre signature DRH en pied de page — voir le gabarit.

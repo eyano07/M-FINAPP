@@ -11,6 +11,9 @@ interface UserRow {
   nom: string
   prenom: string
   email: string
+  telephone: string | null
+  fonction: string | null
+  affectation: string | null
   roles: string[]
   actif: boolean
   nomComplet?: string
@@ -35,6 +38,9 @@ const form = reactive({
   prenom: '',
   email: '',
   motDePasse: '',
+  telephone: '',
+  fonction: '',
+  affectation: '',
   roles: [] as string[],
 })
 
@@ -45,6 +51,9 @@ function ouvrirAjouter() {
   form.prenom = ''
   form.email = ''
   form.motDePasse = ''
+  form.telephone = ''
+  form.fonction = ''
+  form.affectation = ''
   form.roles = []
   erreur.value = ''
   dialog.value = true
@@ -57,6 +66,9 @@ function ouvrirModifier(u: UserRow) {
   form.prenom = u.prenom
   form.email = u.email
   form.motDePasse = ''
+  form.telephone = u.telephone ?? ''
+  form.fonction = u.fonction ?? ''
+  form.affectation = u.affectation ?? ''
   form.roles = [...u.roles]
   erreur.value = ''
   dialog.value = true
@@ -94,13 +106,23 @@ async function enregistrer() {
     if (editMode.value) {
       await api(`/admin/users/${editId.value}`, {
         method: 'PUT',
-        body: { nom: form.nom, prenom: form.prenom, motDePasse: form.motDePasse || null, roles: form.roles },
+        body: {
+          nom: form.nom, prenom: form.prenom, motDePasse: form.motDePasse || null,
+          telephone: form.telephone.trim() || null,
+          fonction: form.fonction.trim() || null, affectation: form.affectation.trim() || null,
+          roles: form.roles,
+        },
       })
       succes.value = 'Utilisateur modifié avec succès.'
     } else {
       await api('/admin/users', {
         method: 'POST',
-        body: { nom: form.nom, prenom: form.prenom, email: form.email, motDePasse: form.motDePasse, roles: form.roles },
+        body: {
+          nom: form.nom, prenom: form.prenom, email: form.email, motDePasse: form.motDePasse,
+          telephone: form.telephone.trim() || null,
+          fonction: form.fonction.trim() || null, affectation: form.affectation.trim() || null,
+          roles: form.roles,
+        },
       })
       succes.value = 'Utilisateur créé avec succès.'
     }
@@ -319,6 +341,28 @@ const roleColor: Record<string, string> = {
               :disabled="editMode"
             />
           </div>
+
+          <div class="usr-field">
+            <label class="usr-label">Téléphone</label>
+            <v-text-field
+              v-model="form.telephone"
+              placeholder="Ex: +243 999 123 456"
+              prepend-inner-icon="mdi-phone-outline"
+              hide-details="auto"
+            />
+          </div>
+
+          <div class="usr-form-row">
+            <div class="usr-field">
+              <label class="usr-label">Fonction</label>
+              <v-text-field v-model="form.fonction" placeholder="Ex: Comptable" hide-details="auto" />
+            </div>
+            <div class="usr-field">
+              <label class="usr-label">Affectation</label>
+              <v-text-field v-model="form.affectation" placeholder="Ex: Siège Lubumbashi" hide-details="auto" />
+            </div>
+          </div>
+          <p class="usr-hint">Utilisées sur le papier à en-tête individuel de cet utilisateur.</p>
 
           <div class="usr-field">
             <label class="usr-label">{{ editMode ? 'Nouveau mot de passe (laisser vide = inchangé)' : 'Mot de passe *' }}</label>
@@ -549,6 +593,7 @@ const roleColor: Record<string, string> = {
 .usr-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .usr-field { display: flex; flex-direction: column; gap: 6px; }
 .usr-label { font-size: 0.8125rem; font-weight: 600; color: #374151; }
+.usr-hint { font-size: 0.72rem; color: #9ca3af; margin: -8px 0 0; }
 
 /* rôles toggles */
 .usr-roles-grid { display: flex; flex-wrap: wrap; gap: 8px; }

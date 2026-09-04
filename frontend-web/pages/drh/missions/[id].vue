@@ -15,7 +15,6 @@ interface Mission {
 
 const route = useRoute()
 const api = useApi()
-const parametresStore = useParametresStore()
 
 const loading = ref(true)
 const erreur = ref('')
@@ -32,12 +31,41 @@ async function charger() {
     loading.value = false
   }
 }
-onMounted(() => { charger(); parametresStore.charger() })
+onMounted(charger)
 
-const dateImpression = ref('')
-function imprimer() {
-  dateImpression.value = new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
-  nextTick(() => window.print())
+/**
+ * "Imprimer" ouvre le PDF officiel (papier à en-tête) dans un nouvel onglet
+ * plutôt que d'imprimer l'aperçu HTML de cette page : l'aperçu ne reprend
+ * qu'un résumé des champs, alors que le PDF est le document réel, déjà
+ * calé sur le papier à en-tête de l'entreprise (texte, signature, pied de
+ * page) — dupliquer sa mise en forme en HTML aurait tôt ou tard divergé du
+ * PDF, comme n'importe quel contenu maintenu à deux endroits.
+ */
+const impression = ref(false)
+async function imprimer() {
+  if (!mission.value) return
+  // Ouverture synchrone de l'onglet, avant tout await : un window.open()
+  // déclenché après une attente asynchrone — même née du même clic — est
+  // bloqué comme popup par plusieurs navigateurs.
+  const onglet = window.open('', '_blank')
+  impression.value = true
+  erreur.value = ''
+  try {
+    const reponse = await api.raw<Blob>(`/drh/missions/${mission.value.id}/pdf`, { responseType: 'blob' })
+    const url = URL.createObjectURL(reponse._data as Blob)
+    if (onglet) {
+      onglet.location.href = url
+    } else {
+      // Bloqueur de popup malgré l'ouverture synchrone (rare) : lien direct,
+      // que l'utilisateur ouvre lui-même.
+      window.open(url, '_blank')
+    }
+  } catch (e: any) {
+    onglet?.close()
+    erreur.value = messageErreurApi(e, 'Impossible de générer le PDF.')
+  } finally {
+    impression.value = false
+  }
 }
 
 const telechargementPdf = ref(false)
@@ -66,7 +94,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       </div>
       <div class="d-flex ga-2">
         <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/drh/missions">Retour</v-btn>
-        <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-printer-outline" :disabled="!mission" @click="imprimer">
+        <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-printer-outline"
+          :loading="impression" :disabled="!mission" @click="imprimer">
           Imprimer
         </v-btn>
         <v-btn color="primary" variant="flat" rounded="lg" prepend-icon="mdi-file-pdf-box"
@@ -79,24 +108,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4 no-print">{{ erreur }}</v-alert>
     <v-skeleton-loader v-if="loading" type="article" />
 
+    <!-- Aperçu à l'écran uniquement : le document imprimable est le PDF sur
+         papier à en-tête (bouton Imprimer, voir imprimer() ci-dessus), pas
+         cette page — inutile donc de lui donner un habillage d'impression. -->
     <template v-else-if="mission">
-      <div class="etat-print-header">
-        <div class="etat-print-header__brand">
-          <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
-            <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
-            <v-icon v-else icon="mdi-finance" size="16" color="white" />
-          </div>
-          <div>
-            <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
-            <span class="etat-print-header__service">Direction des Ressources Humaines</span>
-            <span class="etat-print-header__doc">Ordre de mission {{ mission.numero }}</span>
-          </div>
-        </div>
-        <div class="etat-print-header__meta">
-          <span>Imprimé le : {{ dateImpression }}</span>
-        </div>
-      </div>
-
       <v-card class="classroom-card pa-6 mb-4">
         <v-row>
           <v-col cols="12" md="4"><span class="calc-label">Site de la mission</span><br><strong>{{ mission.lieuMission }}</strong></v-col>

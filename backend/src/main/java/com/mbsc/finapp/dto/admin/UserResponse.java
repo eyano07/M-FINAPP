@@ -13,6 +13,9 @@ public record UserResponse(
     String nom,
     String prenom,
     String email,
+    String telephone,
+    String fonction,
+    String affectation,
     boolean actif,
     List<String> roles
 ) {
@@ -27,6 +30,9 @@ public record UserResponse(
             u.getNom(),
             u.getPrenom(),
             u.getEmail(),
+            u.getTelephone(),
+            u.getFonction(),
+            u.getAffectation(),
             u.isActif(),
             roles
         );

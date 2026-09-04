@@ -37,6 +37,12 @@ public class User {
     @Column(length = 30)
     private String telephone;
 
+    @Column(length = 100)
+    private String fonction;
+
+    @Column(length = 100)
+    private String affectation;
+
     @Column(name = "photo_chemin_stockage")
     private String photoCheminStockage;
 

@@ -155,6 +155,10 @@ async function ouvrirNotification(n: NotificationItem) {
           <v-icon icon="mdi-account-cog-outline" size="16" class="mr-2" />
           Mon profil
         </NuxtLink>
+        <NuxtLink to="/papier-entete" class="user-menu__profile-link">
+          <v-icon icon="mdi-printer-outline" size="16" class="mr-2" />
+          Papier à en-tête
+        </NuxtLink>
         <button class="user-menu__logout" @click="logout">
           <v-icon icon="mdi-logout" size="16" class="mr-2" />
           Se déconnecter

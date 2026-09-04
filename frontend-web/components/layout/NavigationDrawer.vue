@@ -36,6 +36,9 @@ const AVEC_NOTES_FRAIS = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 
 const items: NavItem[] = [
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/dashboard', roles: NON_DIRECTEUR },
   { title: 'Notes de frais', icon: 'mdi-receipt-text-outline', to: '/notes-frais', roles: AVEC_NOTES_FRAIS },
+  // Ni role ni module : accessible a tout compte authentifie, comme /profil
+  // (auto-service, pas une fonctionnalite metier a activer/desactiver).
+  { title: 'Papier à en-tête', icon: 'mdi-printer-outline', to: '/papier-entete' },
   // Le comptable consulte la tresorerie (journal/grand livre/balance) mais
   // n'opere pas la caisse (encaissement/decaissement direct) : cet ecran-ci
   // reste reserve aux roles qui en avaient deja l'usage.

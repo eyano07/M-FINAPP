@@ -240,6 +240,9 @@ public class AdminService {
             .prenom(req.prenom())
             .email(req.email())
             .motDePasse(passwordEncoder.encode(req.motDePasse()))
+            .telephone(videEnNull(req.telephone()))
+            .fonction(videEnNull(req.fonction()))
+            .affectation(videEnNull(req.affectation()))
             .actif(true)
             .roles(resoudreRoles(req.roles()))
             .build();
@@ -257,8 +260,16 @@ public class AdminService {
         if (req.motDePasse() != null && !req.motDePasse().isBlank()) {
             u.setMotDePasse(passwordEncoder.encode(req.motDePasse()));
         }
+        u.setTelephone(videEnNull(req.telephone()));
+        u.setFonction(videEnNull(req.fonction()));
+        u.setAffectation(videEnNull(req.affectation()));
         u.setRoles(resoudreRoles(req.roles()));
         return UserResponse.from(userRepository.save(u));
+    }
+
+    /** {@code null}/vide -> {@code null} (evite de stocker une chaine vide plutot qu'une absence de valeur). */
+    private String videEnNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     /** Active ou désactive un utilisateur (ADMIN). */
