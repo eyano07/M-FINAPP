@@ -1,6 +1,10 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.Article;
+import com.mbsc.finapp.domain.CamionMinerai;
+import com.mbsc.finapp.domain.ChargeCamionMinerai;
 import com.mbsc.finapp.domain.CompteOHADA;
+import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.LigneNoteFrais;
 import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.PieceComptable;
@@ -12,6 +16,8 @@ import com.mbsc.finapp.domain.enums.SensTransaction;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeCompte;
+import com.mbsc.finapp.dto.caisse.AchatMarchandiseRequest;
+import com.mbsc.finapp.dto.caisse.ReglementCamionsRequest;
 import com.mbsc.finapp.dto.caisse.EcritureResponse;
 import com.mbsc.finapp.dto.caisse.LigneBalanceResponse;
 import com.mbsc.finapp.dto.caisse.TransactionCaisseRequest;
@@ -32,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -75,6 +82,8 @@ public class CaisseService {
     private final StockService stockService;
     /** Échange de consigne des achats de boissons du module Restaurant, déclenché au paiement. */
     private final RestaurantService restaurantService;
+    /** Camions de minerais : reglement de la dette fournisseur nee a la reception. */
+    private final MineraiService mineraiService;
 
     // ---------------------------------------------------------------------
     // Saisie directe
@@ -101,6 +110,177 @@ public class CaisseService {
 
         TransactionCaisse saved = comptabilite.enregistrer(transaction, contrepartie, req.libelle());
         log.info("Operation de caisse saisie [ref={}, par={}]", saved.getReference(), caissier.getEmail());
+        return TransactionCaisseResponse.from(saved);
+    }
+
+    // ---------------------------------------------------------------------
+    // Achat de marchandise au comptant
+    // ---------------------------------------------------------------------
+
+    /**
+     * Achat d'une marchandise regle en especes, saisi par le caissier.
+     *
+     * <p><b>Deux ecritures indissociables, conformes a l'inventaire permanent
+     * du SYSCOHADA revise :</b></p>
+     * <ol>
+     *   <li><b>D 601x Achats de marchandises / C 571 Caisse</b> — l'achat et
+     *       la sortie de tresorerie. C'est une transaction de caisse
+     *       ordinaire (journal CAISSE), qui apparait donc dans l'historique
+     *       des operations comme n'importe quel decaissement.</li>
+     *   <li><b>D 311x Marchandises / C 6031 Variations des stocks</b> —
+     *       l'entree en stock (journal STOCK), portee par
+     *       {@code StockService.enregistrerEntreeAchatInterne}.</li>
+     * </ol>
+     *
+     * <p>Imputer directement le compte de stock au decaissement (D 311 /
+     * C 571) aurait produit un bilan juste mais un compte de resultat faux :
+     * ni l'achat (601) ni sa variation de stock (6031) n'apparaitraient, or
+     * c'est precisement leur difference qui forme le « cout d'achat des
+     * marchandises vendues » du compte de resultat SYSCOHADA. Le couple
+     * 601/6031 est donc obligatoire, meme si le net sur le stock est le
+     * meme.</p>
+     *
+     * <p>Symetrie avec la vente : celle-ci deconstate le stock par
+     * <b>D 6031 / C 311</b> puis enregistre le produit <b>D 571 / C 70x</b>
+     * (voir {@code VenteService.valider}). 6031 recoit ainsi les entrees au
+     * credit et les sorties au debit, et se solde en cout des marchandises
+     * vendues.</p>
+     */
+    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @Transactional
+    public TransactionCaisseResponse acheterMarchandise(AchatMarchandiseRequest req) {
+        User caissier = currentUser.requireUser();
+
+        Article article = stockService.articleParIdInterne(req.articleId());
+        if (article.getType() == TypeArticle.SERVICE) {
+            throw new IllegalArgumentException(
+                "\"" + article.getLibelle() + "\" est un service : il ne peut pas entrer en stock.");
+        }
+        Entrepot entrepot = stockService.entrepotParIdInterne(req.entrepotId());
+
+        CompteOHADA compteAchat = comptabilite.compteParNumero(req.compteAchatNumero());
+        CompteOHADA compteStock = comptabilite.compteParNumero(req.compteStockNumero());
+        CompteOHADA compteVariation = comptabilite.compteParNumero(req.compteVariationNumero());
+        // Un achat est un decaissement : la contrepartie doit etre une charge
+        // (601x). La regle partagee refuserait par exemple un compte de produit.
+        regleTresorerie.validerSensContrepartie(SensTransaction.DECAISSEMENT, compteAchat);
+
+        BigDecimal montant = req.prixUnitaire()
+            .multiply(req.quantite())
+            .setScale(2, RoundingMode.HALF_UP);
+        if (montant.signum() <= 0) {
+            throw new IllegalArgumentException("Le montant de l'achat doit etre strictement positif.");
+        }
+        String libelle = StringUtils.hasText(req.libelle())
+            ? req.libelle()
+            : "Achat " + article.getLibelle() + " x" + req.quantite().stripTrailingZeros().toPlainString();
+
+        // 1. Achat au comptant : D 601x / C 571
+        TransactionCaisse transaction = TransactionCaisse.builder()
+            .uuid(UUID.randomUUID())
+            .reference(referenceGenerator.pourTransaction())
+            .montant(montant)
+            .sens(SensTransaction.DECAISSEMENT)
+            .libelle(libelle)
+            .caissier(caissier)
+            .numeroRecu(referenceGenerator.pourRecu())
+            .dateOperation(Instant.now())
+            .tauxJournalier(conversionDevise.tauxCourant())
+            .build();
+        TransactionCaisse saved = comptabilite.enregistrer(transaction, compteAchat, libelle);
+
+        // 2. Entree en stock : D 311x / C 6031
+        stockService.enregistrerEntreeAchatInterne(
+            LocalDate.now(), libelle,
+            new StockService.AchatMarchandise(article, entrepot, req.quantite(), montant,
+                compteStock, compteVariation),
+            caissier);
+
+        log.info("Achat de marchandise a la caisse [ref={}, article={}, montant={}, par={}]",
+            saved.getReference(), article.getCode(), montant, caissier.getEmail());
+        return TransactionCaisseResponse.from(saved);
+    }
+
+    // ---------------------------------------------------------------------
+    // Reglement des camions de minerais receptionnes
+    // ---------------------------------------------------------------------
+
+    /**
+     * Solde en especes la dette fournisseur nee de la reception d'un ou
+     * plusieurs camions de minerais : <b>D 4011 Fournisseurs / C 571
+     * Caisse</b>.
+     *
+     * <p>Ni le stock ni le resultat ne bougent ici : la marchandise est deja
+     * entree (D 311x / C 6031) et l'achat deja constate (D 601x / C 4011) a la
+     * reception par la logistique — voir {@code MineraiService.receptionner}.
+     * Ce decaissement ne fait que solder la dette, ce qui explique qu'il soit
+     * independant de la vente : un camion peut etre paye avant ou apres avoir
+     * ete revendu.</p>
+     */
+    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @Transactional
+    public TransactionCaisseResponse reglerCamionsMinerai(ReglementCamionsRequest req) {
+        User caissier = currentUser.requireUser();
+        CompteOHADA fournisseurs = comptabilite.compteParNumero(MineraiService.COMPTE_FOURNISSEURS);
+
+        List<CamionMinerai> camions = new ArrayList<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (Long id : req.camionIds()) {
+            CamionMinerai camion = mineraiService.charger(id);
+            if (camion.isRegle()) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.designation() + " est deja regle.");
+            }
+            camions.add(camion);
+            // Le prix d'achat seul : les frais accessoires portent leur propre
+            // dette, soldee via chargeIds — les additionner ici les paierait deux fois.
+            total = total.add(camion.getPrixAchat());
+        }
+        List<ChargeCamionMinerai> charges = new ArrayList<>();
+        for (Long id : req.chargeIds()) {
+            ChargeCamionMinerai charge = mineraiService.chargerCharge(id);
+            if (charge.isRegle()) {
+                throw new IllegalArgumentException(
+                    "La charge « " + charge.getLibelle() + " » du camion "
+                    + charge.getCamion().getPlaque() + " est deja reglee.");
+            }
+            charges.add(charge);
+            total = total.add(charge.getMontant());
+        }
+        if (camions.isEmpty() && charges.isEmpty()) {
+            throw new IllegalArgumentException("Aucun camion ni frais a regler.");
+        }
+        total = total.setScale(2, RoundingMode.HALF_UP);
+
+        String libelle = StringUtils.hasText(req.libelle())
+            ? req.libelle()
+            : "Reglement minerais - " + camions.size() + " camion(s), " + charges.size() + " frais";
+
+        TransactionCaisse transaction = TransactionCaisse.builder()
+            .uuid(UUID.randomUUID())
+            .reference(referenceGenerator.pourTransaction())
+            .montant(total)
+            .sens(SensTransaction.DECAISSEMENT)
+            .libelle(libelle)
+            .caissier(caissier)
+            .numeroRecu(referenceGenerator.pourRecu())
+            .dateOperation(Instant.now())
+            .tauxJournalier(conversionDevise.tauxCourant())
+            .build();
+        TransactionCaisse saved = comptabilite.enregistrer(transaction, fournisseurs, libelle);
+
+        for (CamionMinerai camion : camions) {
+            camion.setRegle(true);
+            camion.setTransactionReglement(saved);
+        }
+        for (ChargeCamionMinerai charge : charges) {
+            charge.setRegle(true);
+            charge.setTransactionReglement(saved);
+        }
+        mineraiService.marquerReglesInterne(camions, charges);
+
+        log.info("Reglement minerais [camions={}, frais={}, ref={}, montant={}, par={}]",
+            camions.size(), charges.size(), saved.getReference(), total, caissier.getEmail());
         return TransactionCaisseResponse.from(saved);
     }
 

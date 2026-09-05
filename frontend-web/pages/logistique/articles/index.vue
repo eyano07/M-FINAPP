@@ -13,7 +13,10 @@ interface Article {
   compteStockNumero?: string
   compteChargeNumero?: string
   compteProduitNumero?: string
+  compteAchatNumero?: string
+  minerais?: boolean
   prixVente?: number
+  prixAchat?: number
   soumisTva: boolean
   stockMin: number
   actif: boolean
@@ -22,6 +25,7 @@ interface Article {
 
 const api = useApi()
 const auth = useAuthStore()
+const parametresStore = useParametresStore()
 const loading = ref(false)
 const saving = ref(false)
 const erreur = ref('')
@@ -57,13 +61,55 @@ const form = reactive({
   compteStockNumero: '' as string | null,
   compteChargeNumero: '' as string | null,
   compteProduitNumero: '' as string | null,
+  compteAchatNumero: '' as string | null,
+  minerais: false,
   prixVenteUSD: null as number | null,
+  prixAchatUSD: null as number | null,
   soumisTva: true,
   stockMin: 0,
   actif: true,
 })
 
 const estService = computed(() => form.type === 'SERVICE')
+
+// ── Filtres (écran + impression, qui n'imprime que le résultat filtré) ────
+const filtreRecherche = ref('')
+const filtreType = ref('TOUS')
+const filtreStatut = ref<'TOUS' | 'ACTIFS' | 'INACTIFS'>('TOUS')
+
+const typesPresents = computed(() => {
+  const presents = [...new Set(articles.value.map(a => a.type))]
+  return presents.map(t => ({ title: META_TYPE[t]?.label ?? t, value: t }))
+})
+
+const articlesFiltres = computed(() => {
+  const q = filtreRecherche.value.trim().toLowerCase()
+  return articles.value.filter((a) => {
+    if (q && !a.code.toLowerCase().includes(q) && !a.libelle.toLowerCase().includes(q)) return false
+    if (filtreType.value !== 'TOUS' && a.type !== filtreType.value) return false
+    if (filtreStatut.value === 'ACTIFS' && !a.actif) return false
+    if (filtreStatut.value === 'INACTIFS' && a.actif) return false
+    return true
+  })
+})
+
+const resumeFiltres = computed(() => {
+  const parts: string[] = []
+  if (filtreType.value !== 'TOUS') parts.push(META_TYPE[filtreType.value]?.label ?? filtreType.value)
+  if (filtreStatut.value !== 'TOUS') parts.push(filtreStatut.value === 'ACTIFS' ? 'Actifs' : 'Inactifs')
+  if (filtreRecherche.value.trim()) parts.push(`« ${filtreRecherche.value.trim()} »`)
+  return parts.length ? parts.join(' · ') : 'Tous les articles'
+})
+
+// Le tableau pagine ne rend que la page courante dans le DOM : sans bascule
+// vers "toutes les lignes" au moment d'imprimer, seule la 1re page sortirait
+// sur le papier — meme mecanique que balance-verification/index.vue.
+const lignesParPage = ref(15)
+const dateImpression = ref('')
+function imprimer() {
+  dateImpression.value = new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
+  window.print()
+}
 
 async function charger() {
   loading.value = true
@@ -86,14 +132,18 @@ async function charger() {
     loading.value = false
   }
 }
-onMounted(charger)
+onMounted(() => {
+  charger()
+  window.addEventListener('beforeprint', () => { lignesParPage.value = -1 })
+  window.addEventListener('afterprint', () => { lignesParPage.value = 15 })
+})
 
 function ouvrirCreation() {
   editId.value = null
   Object.assign(form, {
     code: '', libelle: '', uniteMesure: '', type: 'MARCHANDISE',
-    compteStockNumero: '', compteChargeNumero: '', compteProduitNumero: '',
-    prixVenteUSD: null, soumisTva: true, stockMin: 0, actif: true,
+    compteStockNumero: '', compteChargeNumero: '', compteProduitNumero: '', compteAchatNumero: '', minerais: false,
+    prixVenteUSD: null, prixAchatUSD: null, soumisTva: true, stockMin: 0, actif: true,
   })
   dialog.value = true
 }
@@ -108,7 +158,10 @@ function ouvrirEdition(a: Article) {
     compteStockNumero: a.compteStockNumero || '',
     compteChargeNumero: a.compteChargeNumero || '',
     compteProduitNumero: a.compteProduitNumero || '',
+    compteAchatNumero: a.compteAchatNumero || '',
+    minerais: !!a.minerais,
     prixVenteUSD: a.prixVente != null && tauxChange.value > 0 ? a.prixVente / tauxChange.value : null,
+    prixAchatUSD: a.prixAchat != null && tauxChange.value > 0 ? a.prixAchat / tauxChange.value : null,
     soumisTva: a.soumisTva,
     stockMin: a.stockMin,
     actif: a.actif,
@@ -134,8 +187,15 @@ async function enregistrer() {
       type: form.type,
       compteStockNumero: estService.value ? null : form.compteStockNumero,
       compteChargeNumero: estService.value ? null : form.compteChargeNumero,
+      compteAchatNumero: estService.value ? null : form.compteAchatNumero,
+      minerais: estService.value ? false : form.minerais,
       compteProduitNumero: form.compteProduitNumero,
       prixVente: form.prixVenteUSD != null ? form.prixVenteUSD * tauxChange.value : null,
+      // Un minerais n'a pas de prix d'achat au niveau de l'article : il se
+      // saisit chargement par chargement a la reception du camion.
+      prixAchat: form.minerais || form.prixAchatUSD == null
+        ? null
+        : form.prixAchatUSD * tauxChange.value,
       soumisTva: form.soumisTva,
       stockMin: estService.value ? 0 : form.stockMin,
       actif: form.actif,
@@ -162,19 +222,63 @@ const fmtUSD = (fc?: number) =>
 
 <template>
   <div>
-    <div class="page-head">
+    <div class="page-head no-print">
       <div>
         <h1 class="page-title">Articles</h1>
         <p class="page-sub">Catalogue : marchandises stockées et services vendables</p>
       </div>
-      <v-btn v-if="canWrite" color="primary" prepend-icon="mdi-plus" rounded="lg" @click="ouvrirCreation">
-        Nouvel article
-      </v-btn>
+      <div class="d-flex ga-2">
+        <v-btn v-if="articlesFiltres.length" color="error" variant="tonal" rounded="lg"
+          prepend-icon="mdi-printer-outline" @click="imprimer">
+          Imprimer
+        </v-btn>
+        <v-btn v-if="canWrite" color="primary" prepend-icon="mdi-plus" rounded="lg" @click="ouvrirCreation">
+          Nouvel article
+        </v-btn>
+      </div>
     </div>
 
-    <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4" closable @click:close="erreur = ''">
+    <!-- En-tête d'impression : masquée à l'écran, visible uniquement sur le papier. -->
+    <div class="etat-print-header">
+      <div class="etat-print-header__brand">
+        <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
+          <v-icon v-else icon="mdi-finance" size="16" color="white" />
+        </div>
+        <div>
+          <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+          <span class="etat-print-header__doc">Catalogue des articles</span>
+          <span class="etat-print-header__service">{{ resumeFiltres }}</span>
+        </div>
+      </div>
+      <div class="etat-print-header__meta">
+        <span>Imprimé le : {{ dateImpression }}</span>
+      </div>
+    </div>
+
+    <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4 no-print" closable @click:close="erreur = ''">
       {{ erreur }}
     </v-alert>
+
+    <v-card class="classroom-card pa-4 mb-4 no-print">
+      <v-row align="center" dense>
+        <v-col cols="12" md="5">
+          <v-text-field v-model="filtreRecherche" label="Rechercher (code, libellé)" variant="outlined"
+            density="comfortable" hide-details prepend-inner-icon="mdi-magnify" clearable />
+        </v-col>
+        <v-col cols="6" md="4">
+          <v-select v-model="filtreType" :items="[{ title: 'Tous les types', value: 'TOUS' }, ...typesPresents]"
+            label="Type" variant="outlined" density="comfortable" hide-details />
+        </v-col>
+        <v-col cols="6" md="3">
+          <v-select v-model="filtreStatut" :items="[
+            { title: 'Tous statuts', value: 'TOUS' },
+            { title: 'Actifs', value: 'ACTIFS' },
+            { title: 'Inactifs', value: 'INACTIFS' },
+          ]" label="Statut" variant="outlined" density="comfortable" hide-details />
+        </v-col>
+      </v-row>
+    </v-card>
 
     <v-card class="classroom-card">
       <v-data-table
@@ -189,13 +293,16 @@ const fmtUSD = (fc?: number) =>
           { title: 'Actif', key: 'actif' },
           { title: '', key: 'actions', sortable: false },
         ]"
-        :items="articles"
+        :items="articlesFiltres"
         :loading="loading"
-        items-per-page="15"
+        :items-per-page="lignesParPage"
       >
         <template #item.type="{ item }">
           <v-chip :color="META_TYPE[item.type]?.couleur ?? 'grey'" size="small" variant="tonal">
             {{ META_TYPE[item.type]?.label ?? item.type }}
+          </v-chip>
+          <v-chip v-if="item.minerais" color="amber-darken-3" size="x-small" variant="tonal" class="ml-1">
+            Minerais
           </v-chip>
         </template>
         <template #item.prixVente="{ item }">
@@ -222,7 +329,7 @@ const fmtUSD = (fc?: number) =>
           </v-chip>
         </template>
         <template #item.actions="{ item }">
-          <v-btn v-if="canWrite" size="small" variant="text" icon="mdi-pencil" @click="ouvrirEdition(item)" />
+          <v-btn v-if="canWrite" class="no-print" size="small" variant="text" icon="mdi-pencil" @click="ouvrirEdition(item)" />
         </template>
       </v-data-table>
     </v-card>
@@ -242,29 +349,63 @@ const fmtUSD = (fc?: number) =>
           Article de type « {{ META_TYPE[form.type]?.label }} » : il se crée et se modifie depuis le module Restaurant,
           avec ses comptes d'imputation propres. Le type n'est pas modifiable ici.
         </v-alert>
-        <v-btn-toggle
-          v-else
-          v-model="form.type"
-          mandatory
-          color="primary"
-          variant="outlined"
-          rounded="lg"
-          class="mb-4 w-100"
-        >
-          <v-btn value="MARCHANDISE" class="flex-1-1">
-            <v-icon icon="mdi-package-variant-closed" class="mr-1" size="18" />Marchandise
-          </v-btn>
-          <v-btn value="SERVICE" class="flex-1-1">
-            <v-icon icon="mdi-hand-extended-outline" class="mr-1" size="18" />Service
-          </v-btn>
-          <v-btn value="CONSOMMABLE" class="flex-1-1">
-            <v-icon icon="mdi-package-variant" class="mr-1" size="18" />Consommable
-          </v-btn>
-        </v-btn-toggle>
+        <div v-else class="type-switch mb-4">
+          <button
+            v-for="t in [
+              { value: 'MARCHANDISE', label: 'Marchandise', icon: 'mdi-package-variant-closed' },
+              { value: 'SERVICE', label: 'Service', icon: 'mdi-hand-extended-outline' },
+              { value: 'CONSOMMABLE', label: 'Consommable', icon: 'mdi-package-variant' },
+            ]"
+            :key="t.value"
+            type="button"
+            class="type-switch__btn"
+            :class="{ 'type-switch__btn--active': form.type === t.value }"
+            @click="form.type = t.value as typeof form.type"
+          >
+            <v-icon :icon="t.icon" size="17" />
+            {{ t.label }}
+          </button>
+        </div>
+
+        <!-- Minerais : suivi camion par camion, chaque chargement ayant son
+             propre prix de vente (voir Logistique > Camions de minerais). -->
+        <div v-if="!estService && !typeExterne" class="minerai-toggle mb-4">
+          <div class="minerai-toggle__texte">
+            <span class="minerai-toggle__titre">
+              <v-icon icon="mdi-dump-truck" size="18" class="mr-1" />Minerais
+            </span>
+            <span class="minerai-toggle__desc">
+              Suivi camion par camion : chaque chargement (plaque + date) se revend à son propre prix.
+            </span>
+          </div>
+          <v-switch v-model="form.minerais" color="primary" density="compact" hide-details inset />
+        </div>
 
         <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model="form.uniteMesure" label="Unité de mesure" variant="outlined" density="comfortable" class="mb-3" />
+
+        <!-- ── Achat (facultatif) ────────────────────────────────── -->
+        <!-- Masqué pour un minerais : son prix d'achat n'est pas une propriété
+             de l'article mais du chargement, saisi camion par camion à la
+             réception (voir Camions de minerais). Le laisser visible ici
+             laissait croire qu'il servait, alors qu'aucune écriture ne le lit. -->
+        <template v-if="!estService && !form.minerais">
+          <p class="art-section">Achat</p>
+          <v-text-field
+            v-model.number="form.prixAchatUSD"
+            label="Prix d'achat HT (USD)"
+            type="number"
+            min="0"
+            step="0.01"
+            prepend-inner-icon="mdi-cart-outline"
+            variant="outlined"
+            density="comfortable"
+            :hint="form.prixAchatUSD ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round(form.prixAchatUSD * tauxChange))} FC` : 'Facultatif : prérempli à l\'achat en caisse, corrigeable au prix réellement payé'"
+            persistent-hint
+            class="mb-3"
+          />
+        </template>
 
         <!-- ── Vente ─────────────────────────────────────────────── -->
         <p class="art-section">Vente</p>
@@ -300,6 +441,10 @@ const fmtUSD = (fc?: number) =>
           <!-- 6031 et non 6012 : V23 a réaffecté 6012 en « Achats de
                marchandises hors Région », le déstockage passe par 6031. -->
           <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de charge (ex. 6031)" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (ex. 6011)" class="mb-1" />
+          <p class="text-caption text-medium-emphasis mb-3">
+            Débité au règlement d'une note de frais d'achat de cette marchandise (voir « Note de frais »).
+          </p>
           <v-text-field v-model.number="form.stockMin" label="Stock minimum" type="number" variant="outlined" density="comfortable" class="mb-3" />
         </template>
         <v-alert v-else type="info" variant="tonal" density="compact" class="mb-3">
@@ -325,5 +470,51 @@ const fmtUSD = (fc?: number) =>
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 4px 0 10px;
+}
+
+/* Selecteur de type d'article : piste grise avec pastille blanche active
+   (type "iOS"), plus lisible que l'ancien v-btn-toggle a plat borde. */
+.type-switch {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #f3f4f6;
+  border-radius: 12px;
+}
+.type-switch__btn {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.type-switch__btn:hover { color: #374151; }
+.minerai-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fffbeb;
+}
+.minerai-toggle__texte { display: flex; flex-direction: column; gap: 2px; }
+.minerai-toggle__titre { font-size: 0.9rem; font-weight: 700; color: #92400e; display: flex; align-items: center; }
+.minerai-toggle__desc { font-size: 0.75rem; color: #a16207; line-height: 1.35; }
+
+.type-switch__btn--active {
+  background: #fff;
+  color: #16a34a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }
 </style>

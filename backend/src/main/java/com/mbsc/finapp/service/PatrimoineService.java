@@ -77,7 +77,7 @@ public class PatrimoineService {
     // Consultation
     // -----------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'LOGISTIQUE', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<ImmobilisationResponse> lister() {
         return immobilisationRepository.findAllWithComptes().stream()
@@ -85,13 +85,13 @@ public class PatrimoineService {
             .toList();
     }
 
-    @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'LOGISTIQUE', 'ADMIN')")
     @Transactional(readOnly = true)
     public ImmobilisationResponse consulter(Long id) {
         return ImmobilisationResponse.from(charger(id));
     }
 
-    @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'LOGISTIQUE', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<LigneAmortissementResponse> planAmortissement(Long id) {
         return charger(id).getPlanAmortissement().stream()
@@ -103,7 +103,7 @@ public class PatrimoineService {
     // Creation
     // -----------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'LOGISTIQUE', 'ADMIN')")
     @Transactional
     public ImmobilisationResponse creer(ImmobilisationRequest req) {
         User auteur = currentUser.requireUser();

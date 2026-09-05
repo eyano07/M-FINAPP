@@ -153,7 +153,7 @@ public class ImportJournalService {
     // Point d'entree
     // -----------------------------------------------------------------
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
     @Transactional
     public ImportJournalResponse importer(MultipartFile fichier, boolean simulation,
                                           Map<String, String> substitutions,
@@ -384,11 +384,22 @@ public class ImportJournalService {
             BigDecimal credit = aConvertir
                 ? conversionDevise.enDeviseBase(l.credit(), devise, taux).montantBase() : l.credit();
 
+            // Libelle repris du PLAN COMPTABLE, pas du fichier : le compte est
+            // le meme, son intitule fait donc autorite. Un journal exporte d'un
+            // autre outil porte des libelles saisis a la main, souvent fautifs
+            // (« CAARBURANT ») ou propres a une operation ; les afficher tels
+            // quels faisait ressortir ces erreurs dans le grand livre et les
+            // etats financiers. Le libelle du fichier ne sert plus que de repli
+            // si le compte du plan n'a pas d'intitule.
+            String libelleLigne = StringUtils.hasText(compte.getLibelle())
+                ? compte.getLibelle()
+                : (StringUtils.hasText(l.libelle()) ? l.libelle() : libelle);
+
             var ligne = EcritureGrandLivre.builder()
                 .compte(compte)
                 .debit(debit)
                 .credit(credit)
-                .libelle(StringUtils.hasText(l.libelle()) ? l.libelle() : libelle)
+                .libelle(libelleLigne)
                 .dateEcriture(l.date());
             // Devise d'origine, montant d'origine et taux conserves : la
             // contre-valeur reste verifiable apres coup.
@@ -848,7 +859,7 @@ public class ImportJournalService {
      *
      * @return substitutions « ancien:nouveau » a transmettre a l'import
      */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
     @Transactional
     public Map<String, String> corrigerAutomatiquement(MultipartFile fichier, ModeRegroupement mode) {
         ImportJournalResponse analyse = importer(fichier, true, Map.of(), mode, null, ModeImport.AJOUTER);
@@ -874,30 +885,21 @@ public class ImportJournalService {
      * de la classe. Sans effet si le compte existe deja — la correction doit
      * pouvoir etre relancee sans creer de doublon.
      *
-     * <p>Un compte deja cree par un import precedent voit en revanche son
-     * intitule reactualise depuis le fichier. Ces comptes-la n'existent que
-     * parce qu'un import les a crees : leur nom vient du fichier, et rien ne
-     * doit figer la premiere valeur retenue. Sans cela, un compte nomme par
-     * erreur d'apres un libelle d'ecriture (« Paiement courses de service
-     * MIKE FLO » au lieu de « Transports Administratifs ») gardait ce nom
-     * pour toujours — y compris dans les etats financiers — puisque la
-     * creation etait court-circuitee des la deuxieme execution.</p>
-     *
-     * <p>Les comptes du referentiel OHADA ({@code manuel = false}) ne sont
-     * jamais renommes : leur intitule fait autorite.</p>
+     * <p><b>Aucun compte existant n'est jamais renomme depuis le fichier</b>,
+     * qu'il vienne du referentiel OHADA ou d'un import precedent : le plan
+     * comptable fait autorite sur les intitules. Une version anterieure
+     * reactualisait le nom des comptes crees par import, au motif que leur nom
+     * venait de toute facon du fichier ; mais cela reinjectait a chaque import
+     * les fautes du fichier source (« CAARBURANT ») dans le plan comptable, et
+     * donc dans le bilan et tous les etats financiers. Un intitule errone se
+     * corrige desormais une fois pour toutes dans l'ecran Plan comptable, sans
+     * qu'un import ulterieur ne le recouvre.</p>
      */
     private Optional<String> creerCompteManquant(SuggestionImport s) {
         String numero = s.valeurProposee();
         Optional<CompteOHADA> existant = compteRepository.findByNumero(numero);
         if (existant.isPresent()) {
-            CompteOHADA c = existant.get();
-            if (c.isManuel() && StringUtils.hasText(s.libelle())
-                && !s.libelle().equals(c.getLibelle())) {
-                log.info("Intitule reactualise depuis le fichier : {} « {} » -> « {} »",
-                    numero, c.getLibelle(), s.libelle());
-                c.setLibelle(s.libelle());
-                compteRepository.save(c);
-            }
+            // Le compte existe : on s'y rattache tel quel, intitule du plan compris.
             return Optional.of(numero);
         }
         int sep = numero.lastIndexOf('.');
@@ -910,7 +912,9 @@ public class ImportJournalService {
         }
         CompteOHADA cree = compteRepository.save(CompteOHADA.builder()
             .numero(numero)
-            .libelle(StringUtils.hasText(s.libelle()) ? s.libelle() : "Compte " + s.valeurActuelle())
+            // A defaut d'intitule propose, le compte herite de celui de son
+            // parent — jamais un texte reconstruit a partir du fichier.
+            .libelle(StringUtils.hasText(s.libelle()) ? s.libelle() : parent.getLibelle())
             .type(parent.getType())
             .classe(parent.getClasse())
             .parent(parent)
@@ -942,7 +946,7 @@ public class ImportJournalService {
      * lecture disparaissent, ce qui evite qu'un second import bute sur un
      * detail de format.</p>
      */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
     public byte[] genererFichierCorrige(MultipartFile fichier, Map<String, String> substitutions) {
         if (fichier == null || fichier.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Aucun fichier fourni.");
@@ -1069,7 +1073,7 @@ public class ImportJournalService {
     // -----------------------------------------------------------------
 
     /** Classeur vierge aux bonnes colonnes, avec une ecriture d'exemple. */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
     public byte[] modele() {
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
             Sheet sh = wb.createSheet("Journal");

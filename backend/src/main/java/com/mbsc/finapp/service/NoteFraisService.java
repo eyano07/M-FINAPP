@@ -384,9 +384,14 @@ public class NoteFraisService {
                     throw new IllegalArgumentException(
                         "L'article \"" + article.getLibelle() + "\" est un service : il n'a pas de stock.");
                 }
-                if (article.getCompteStock() == null) {
+                if (article.getCompteStock() == null || article.getCompteCharge() == null) {
                     throw new IllegalArgumentException(
-                        "Aucun compte de stock n'est défini pour l'article \"" + article.getLibelle() + "\".");
+                        "Le compte de stock et le compte de variation de stock doivent être définis pour l'article \""
+                        + article.getLibelle() + "\".");
+                }
+                if (article.getCompteAchat() == null) {
+                    throw new IllegalArgumentException(
+                        "Aucun compte d'achat n'est défini pour l'article \"" + article.getLibelle() + "\".");
                 }
                 // L'entrepot n'est plus choisi par l'utilisateur : une seule
                 // destination possible en pratique, retenue automatiquement.
@@ -396,11 +401,17 @@ public class NoteFraisService {
                     : entrepotRepository.findFirstByActifTrueOrderByIdAsc()
                         .orElseThrow(() -> new IllegalStateException(
                             "Aucun entrepôt actif n'est configuré : impossible de réceptionner la marchandise."));
-                // Le compte de stock de l'article prime : c'est lui qui sera
-                // débité au paiement (voir RegleTresorerieService), exactement
-                // comme une entrée de stock ordinaire — la quantité ne peut pas
-                // entrer en stock sans que sa valeur soit portée au même compte.
-                compteImputation = article.getCompteStock();
+                // Le compte d'ACHAT (601x) est débité au paiement — jamais le
+                // compte de stock : un achat au comptant s'impute en deux
+                // écritures indissociables, conformes à l'inventaire permanent
+                // du SYSCOHADA révisé (D 601x/C règlement ici, puis D 311x/C
+                // 6031 à l'entrée en stock — voir StockService
+                // .entreesDepuisNoteFraisInterne). Imputer directement le
+                // compte de stock au règlement (comme une version antérieure
+                // le faisait) produisait un bilan juste mais un compte de
+                // résultat faux : ni l'achat (601) ni sa variation de stock
+                // (6031) n'y apparaissaient jamais.
+                compteImputation = article.getCompteAchat();
             } else {
                 compteImputation = resoudreCompte(l.compteImputation());
             }

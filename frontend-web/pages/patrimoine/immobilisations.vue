@@ -39,7 +39,12 @@ const statutMeta: Record<string, { label: string; bg: string; color: string }> =
 
 const api = useApi()
 const auth = useAuthStore()
-const canWrite = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE']))
+// LOGISTIQUE saisit les biens et definit leur amortissement (createur reel du
+// materiel au quotidien) mais ne cede/ne met pas au rebut : cette decision
+// reste a GEST_PATRIMOINE — voir les memes roles cote serveur (creer() vs
+// sortir() dans PatrimoineService).
+const canCreer = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'LOGISTIQUE']))
+const canSortir = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE']))
 
 // Le montant est stocke en devise de base (FC) au grand livre ; la saisie et
 // l'affichage se font en USD, comme sur le catalogue articles.
@@ -181,7 +186,7 @@ const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE
         <h1 class="page-title">Immobilisations</h1>
         <p class="page-sub">Registre des biens, valeur nette et plan d’amortissement</p>
       </div>
-      <v-btn v-if="canWrite" color="success" variant="flat" rounded="lg"
+      <v-btn v-if="canCreer" color="success" variant="flat" rounded="lg"
         prepend-icon="mdi-plus" @click="ouvrirAjout">
         Ajouter un bien
       </v-btn>
@@ -247,7 +252,7 @@ const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE
         <template #item.actions="{ item }">
           <v-btn size="small" variant="text" icon="mdi-chart-timeline-variant-shimmer"
             :to="`/patrimoine/amortissements?bien=${item.id}`" title="Plan d'amortissement" />
-          <v-btn v-if="canWrite && item.statut === 'EN_SERVICE'" size="small" variant="text"
+          <v-btn v-if="canSortir && item.statut === 'EN_SERVICE'" size="small" variant="text"
             color="error" icon="mdi-logout" title="Céder / mettre au rebut" @click="ouvrirSortie(item)" />
         </template>
         <template #no-data>

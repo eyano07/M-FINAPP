@@ -130,14 +130,17 @@ public class ImportIaService {
         CompteOHADA p = parent.get();
         String suffixe = numero.substring(p.getNumero().length());
         String propose = p.getNumero() + "." + suffixe;
-        // L'intitule du compte prime sur le libelle d'ecriture : ce dernier
-        // decrit UNE operation (« Achat papier »), pas le compte lui-meme, et
-        // le retenir comme nom de compte polluait durablement le plan
-        // comptable — donc tous les etats financiers, qui en tirent leurs
-        // intitules.
+        // Seule la colonne « Intitule du compte » peut nommer un compte : elle
+        // porte bien un nom de compte. Le libelle d'ecriture, lui, decrit UNE
+        // operation (« Paiement courses de service MIKE FLO ») et n'a jamais
+        // ete un nom de compte — le retenir polluait durablement le plan
+        // comptable, donc le bilan et tous les etats qui en tirent leurs
+        // intitules. A defaut d'intitule, le compte cree herite du libelle de
+        // son parent, comme il herite deja de son type et de sa classe : le
+        // plan comptable reste ainsi la seule source de ses intitules.
         String libelle = StringUtils.hasText(intituleFichier)
             ? abreger(intituleFichier)
-            : (StringUtils.hasText(libelleLigne) ? abreger(libelleLigne) : "Compte " + numero);
+            : p.getLibelle();
         return new SuggestionImport("CREATION", numero, propose, libelle,
             "Compte absent du plan comptable. Il peut etre cree sous « " + p.getNumero()
             + " " + p.getLibelle() + " », dont il heritera du type et de la classe."

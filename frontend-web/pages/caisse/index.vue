@@ -110,6 +110,126 @@ const form = reactive({
   noteFraisId: null as number | null,
 })
 
+// ── Achat de marchandise au comptant ──────────────────────────────────────
+interface ArticleAchat {
+  id: number
+  code: string
+  libelle: string
+  type: string
+  uniteMesure?: string
+  prixAchat?: number
+  compteStockNumero?: string
+  compteChargeNumero?: string
+}
+interface EntrepotAchat { id: number; nom: string; actif: boolean }
+
+const dialogAchat = ref(false)
+const envoiAchat = ref(false)
+const erreurAchat = ref('')
+const articlesAchat = ref<ArticleAchat[]>([])
+const entrepotsAchat = ref<EntrepotAchat[]>([])
+
+const formAchat = reactive({
+  articleId: null as number | null,
+  entrepotId: null as number | null,
+  quantite: 1,
+  prixUnitaireUSD: null as number | null,
+  compteAchatNumero: '' as string | null,
+  compteStockNumero: '' as string | null,
+  compteVariationNumero: '' as string | null,
+  libelle: '',
+})
+
+// Seules les marchandises stockables : un service n'entre pas en stock.
+const articlesStockables = computed(() =>
+  articlesAchat.value.filter(a => a.type !== 'SERVICE'))
+
+const articleChoisi = computed(() =>
+  articlesAchat.value.find(a => a.id === formAchat.articleId) || null)
+
+const totalAchatUSD = computed(() =>
+  (formAchat.prixUnitaireUSD || 0) * (formAchat.quantite || 0))
+
+/**
+ * Choix d'un article : préremplit le prix d'achat indicatif (stocké en FC,
+ * converti en USD comme partout ailleurs) et les comptes de stock/variation
+ * définis par la logistique. Les trois restent modifiables — c'est le prix
+ * réellement payé qui fait foi pour le CMP.
+ */
+function onArticleAchatChoisi() {
+  const a = articleChoisi.value
+  if (!a) return
+  formAchat.prixUnitaireUSD = a.prixAchat != null && tauxChange.value > 0
+    ? Number((a.prixAchat / tauxChange.value).toFixed(2))
+    : null
+  formAchat.compteStockNumero = a.compteStockNumero || ''
+  formAchat.compteVariationNumero = a.compteChargeNumero || ''
+}
+
+async function ouvrirDialogAchat() {
+  erreurAchat.value = ''
+  Object.assign(formAchat, {
+    articleId: null, entrepotId: null, quantite: 1, prixUnitaireUSD: null,
+    compteAchatNumero: '', compteStockNumero: '', compteVariationNumero: '', libelle: '',
+  })
+  dialogAchat.value = true
+  try {
+    const [arts, ents] = await Promise.all([
+      api<ArticleAchat[]>('/logistique/articles'),
+      api<EntrepotAchat[]>('/logistique/entrepots'),
+    ])
+    articlesAchat.value = arts
+    entrepotsAchat.value = ents.filter(e => e.actif)
+    if (entrepotsAchat.value.length === 1) {
+      formAchat.entrepotId = entrepotsAchat.value[0].id
+    }
+  } catch (e: any) {
+    erreurAchat.value = messageErreurApi(e, 'Impossible de charger le catalogue.')
+  }
+}
+
+async function enregistrerAchat() {
+  if (!formAchat.articleId || !formAchat.entrepotId) {
+    erreurAchat.value = 'Marchandise et entrepôt sont obligatoires.'
+    return
+  }
+  if (!formAchat.quantite || formAchat.quantite <= 0) {
+    erreurAchat.value = 'La quantité doit être strictement positive.'
+    return
+  }
+  if (!formAchat.prixUnitaireUSD || formAchat.prixUnitaireUSD <= 0) {
+    erreurAchat.value = "Le prix d'achat unitaire doit être strictement positif."
+    return
+  }
+  if (!formAchat.compteAchatNumero || !formAchat.compteStockNumero || !formAchat.compteVariationNumero) {
+    erreurAchat.value = 'Les trois comptes sont obligatoires (achat, stock, variation de stock).'
+    return
+  }
+  envoiAchat.value = true
+  erreurAchat.value = ''
+  try {
+    await api('/caisse/achats', {
+      method: 'POST',
+      body: {
+        articleId: formAchat.articleId,
+        entrepotId: formAchat.entrepotId,
+        quantite: formAchat.quantite,
+        prixUnitaire: formAchat.prixUnitaireUSD,
+        compteAchatNumero: formAchat.compteAchatNumero,
+        compteStockNumero: formAchat.compteStockNumero,
+        compteVariationNumero: formAchat.compteVariationNumero,
+        libelle: formAchat.libelle || null,
+      },
+    })
+    dialogAchat.value = false
+    await charger()
+  } catch (e: any) {
+    erreurAchat.value = messageErreurApi(e, "Échec de l'achat.")
+  } finally {
+    envoiAchat.value = false
+  }
+}
+
 const rules = {
   montant: [(v: any) => (v && v > 0) || 'Montant obligatoire et positif'],
   compte: [(v: any) => !!v || 'Compte obligatoire'],
@@ -393,6 +513,9 @@ const fmtTaux = computed(() =>
         </v-btn>
         <v-btn variant="outlined" color="primary" prepend-icon="mdi-notebook-outline" rounded="lg" to="/caisse/journal">
           Journal de caisse
+        </v-btn>
+        <v-btn variant="tonal" color="teal" prepend-icon="mdi-cart-outline" rounded="lg" @click="ouvrirDialogAchat">
+          Achat
         </v-btn>
         <v-btn color="primary" prepend-icon="mdi-cash-plus" rounded="lg" @click="ouvrirDialog">
           Encaissement
@@ -759,6 +882,89 @@ const fmtTaux = computed(() =>
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- ── Achat de marchandise au comptant ────────────────────────── -->
+    <v-dialog v-model="dialogAchat" max-width="640" persistent scrollable>
+      <v-card>
+        <v-card-title class="d-flex align-center ga-2">
+          <v-icon icon="mdi-cart-outline" color="teal" />
+          Achat de marchandise
+        </v-card-title>
+        <v-divider />
+        <v-card-text>
+          <v-alert v-if="erreurAchat" type="error" variant="tonal" density="compact" class="mb-3">
+            {{ erreurAchat }}
+          </v-alert>
+
+          <v-select
+            v-model="formAchat.articleId"
+            :items="articlesStockables.map(a => ({ title: `${a.code} — ${a.libelle}`, value: a.id }))"
+            label="Marchandise *"
+            variant="outlined" density="comfortable" class="mb-3"
+            hint="Enregistrée en amont par la logistique" persistent-hint
+            @update:model-value="onArticleAchatChoisi"
+          />
+
+          <v-row dense>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="formAchat.entrepotId"
+                :items="entrepotsAchat.map(e => ({ title: e.nom, value: e.id }))"
+                label="Entrepôt de destination *"
+                variant="outlined" density="comfortable" class="mb-3"
+              />
+            </v-col>
+            <v-col cols="6" md="3">
+              <v-text-field v-model.number="formAchat.quantite" type="number" min="0" step="0.001"
+                :suffix="articleChoisi?.uniteMesure || ''"
+                label="Quantité *" variant="outlined" density="comfortable" class="mb-3" />
+            </v-col>
+            <v-col cols="6" md="3">
+              <v-text-field v-model.number="formAchat.prixUnitaireUSD" type="number" min="0" step="0.01"
+                label="Prix unitaire (USD) *" prepend-inner-icon="mdi-currency-usd"
+                variant="outlined" density="comfortable" class="mb-3" />
+            </v-col>
+          </v-row>
+
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            Total décaissé : <strong>{{ fmtUSD(totalAchatUSD) }}</strong>
+            <span v-if="articleChoisi?.prixAchat && tauxChange > 0" class="text-caption d-block mt-1">
+              Prix indicatif catalogue : {{ fmtUSD(articleChoisi.prixAchat / tauxChange) }} / unité — corrigez-le
+              si le prix réellement payé diffère, c'est lui qui valorise le stock.
+            </span>
+          </v-alert>
+
+          <p class="achat-section">Imputation comptable</p>
+          <ComptabiliteSelecteurCompte v-model="formAchat.compteAchatNumero"
+            label="Compte d'achat (ex. 6011) *" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="formAchat.compteStockNumero"
+            label="Compte de stock (ex. 3111) *" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="formAchat.compteVariationNumero"
+            label="Compte de variation de stock (ex. 6031) *" class="mb-3" />
+
+          <v-alert type="success" variant="tonal" density="compact" class="mb-3">
+            <div class="text-caption font-weight-bold mb-1">Écritures générées (SYSCOHADA — inventaire permanent)</div>
+            <div class="text-caption">
+              1. Achat : <strong>D {{ formAchat.compteAchatNumero || '601…' }}</strong> /
+              <strong>C 571 Caisse</strong><br>
+              2. Entrée en stock : <strong>D {{ formAchat.compteStockNumero || '311…' }}</strong> /
+              <strong>C {{ formAchat.compteVariationNumero || '6031' }}</strong>
+            </div>
+          </v-alert>
+
+          <v-text-field v-model="formAchat.libelle" label="Libellé (facultatif)"
+            variant="outlined" density="comfortable" hide-details />
+        </v-card-text>
+        <v-divider />
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="envoiAchat" @click="dialogAchat = false">Annuler</v-btn>
+          <v-btn color="teal" variant="flat" :loading="envoiAchat" @click="enregistrerAchat">
+            Enregistrer l'achat
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 
   <!-- ── Reçu de paiement (imprimable) ─────────────────────────────── -->
@@ -849,6 +1055,15 @@ const fmtTaux = computed(() =>
 </template>
 
 <style scoped>
+.achat-section {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 4px 0 10px;
+}
+
 .page-head {
   display: flex;
   align-items: flex-start;

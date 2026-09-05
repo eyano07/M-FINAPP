@@ -6,6 +6,7 @@ interface Article {
   code: string
   libelle: string
   type: 'MARCHANDISE' | 'SERVICE'
+  minerais?: boolean
   prixVente?: number
   soumisTva: boolean
   actif: boolean
@@ -22,7 +23,11 @@ interface LigneForm {
   // Prix saisi dans la devise de la vente (form.devise), jamais converti ici :
   // c'est le serveur qui ramène la vente en devise de base.
   prixUnitaire: number | null
+  /** Minerais uniquement : chargement cédé, chacun ayant son propre prix. */
+  camionId: number | null
 }
+
+interface CamionDispo { id: number; plaque: string; dateAchat: string; prixAchat: number }
 
 const api = useApi()
 const router = useRouter()
@@ -52,7 +57,7 @@ const form = reactive({
   devise: 'CDF' as 'CDF' | 'USD',
   etablissementId: null as number | null,
   entrepotId: null as number | null,
-  lignes: [{ articleId: null, quantite: 1, prixUnitaire: null }] as LigneForm[],
+  lignes: [{ articleId: null, quantite: 1, prixUnitaire: null, camionId: null }] as LigneForm[],
 })
 
 async function charger() {
@@ -110,7 +115,7 @@ const contientMarchandise = computed(() =>
   form.lignes.some((l) => articleDe(l.articleId)?.type === 'MARCHANDISE'))
 
 function ajouterLigne() {
-  form.lignes.push({ articleId: null, quantite: 1, prixUnitaire: null })
+  form.lignes.push({ articleId: null, quantite: 1, prixUnitaire: null, camionId: null })
 }
 function supprimerLigne(i: number) {
   if (form.lignes.length <= 1) return
@@ -130,9 +135,43 @@ const prixCatalogue = (article: Article | null) => {
 function onArticleSelect(i: number, articleId: number | null) {
   const article = articleDe(articleId)
   form.lignes[i].articleId = articleId
+  form.lignes[i].camionId = null
   const prix = prixCatalogue(article)
   if (prix != null) form.lignes[i].prixUnitaire = prix
+  // Minerais : un camion se vend entier, la quantité n'est pas saisissable.
+  if (article?.minerais) {
+    form.lignes[i].quantite = 1
+    chargerCamions(articleId!)
+  }
 }
+
+/**
+ * Camions encore en stock d'un minerais, chargés à la demande et mis en cache
+ * par article : la liste ne dépend pas de la ligne, et une vente peut porter
+ * plusieurs camions du même minerais.
+ */
+const camionsParArticle = ref<Record<number, CamionDispo[]>>({})
+async function chargerCamions(articleId: number) {
+  if (camionsParArticle.value[articleId]) return
+  try {
+    camionsParArticle.value[articleId] =
+      await api<CamionDispo[]>(`/logistique/minerais/camions/disponibles?articleId=${articleId}`)
+  } catch {
+    camionsParArticle.value[articleId] = []
+  }
+}
+
+/** Camions proposables sur la ligne i : ceux en stock, moins ceux déjà pris par une autre ligne. */
+function camionsDisponibles(i: number): CamionDispo[] {
+  const l = form.lignes[i]
+  if (!l.articleId) return []
+  const tous = camionsParArticle.value[l.articleId] || []
+  const prisAilleurs = new Set(
+    form.lignes.filter((autre, j) => j !== i && autre.camionId).map(autre => autre.camionId))
+  return tous.filter(c => !prisAilleurs.has(c.id))
+}
+
+const estMinerais = (articleId: number | null) => !!articleDe(articleId)?.minerais
 
 // Changer de devise en cours de saisie reconvertit les prix déjà tapés, pour
 // que le caissier retrouve le même montant réel dans l'autre unité.
@@ -193,8 +232,15 @@ const raisonsBlocage = computed(() => {
     raisons.push('Ajoutez au moins un article à la vente.')
   }
   for (const l of lignesRemplies) {
-    if (!l.quantite || l.quantite <= 0) {
-      raisons.push(`Renseignez une quantité valide pour « ${articleDe(l.articleId)?.libelle ?? "l'article"} ».`)
+    const nom = articleDe(l.articleId)?.libelle ?? "l'article"
+    // Un minerais se vend camion par camion : la quantité vaut toujours 1,
+    // c'est le camion qui doit être désigné.
+    if (estMinerais(l.articleId)) {
+      if (!l.camionId) {
+        raisons.push(`Choisissez le camion vendu pour « ${nom} ».`)
+      }
+    } else if (!l.quantite || l.quantite <= 0) {
+      raisons.push(`Renseignez une quantité valide pour « ${nom} ».`)
     }
   }
 
@@ -250,8 +296,9 @@ async function enregistrer(validerEnsuite: boolean) {
         .filter((l) => l.articleId && l.quantite)
         .map((l) => ({
           articleId: l.articleId,
-          quantite: l.quantite,
+          quantite: estMinerais(l.articleId) ? 1 : l.quantite,
           prixUnitaire: l.prixUnitaire ?? 0,
+          camionId: l.camionId,
         })),
     }
     const vente = await api<{ id: number }>('/ventes', { method: 'POST', body })
@@ -451,7 +498,25 @@ const contreValeur = computed(() => {
           class="vn-ligne__article"
           @update:model-value="(v: number | null) => onArticleSelect(i, v)"
         />
+        <!-- Minerais : on ne saisit pas une quantité mais LE camion cédé,
+             puisque chaque chargement se revend à son propre prix. -->
+        <v-select
+          v-if="estMinerais(ligne.articleId)"
+          v-model="ligne.camionId"
+          :items="camionsDisponibles(i).map(c => ({
+            title: `${c.plaque} — ${new Date(c.dateAchat).toLocaleDateString('fr-FR')}`,
+            value: c.id,
+          }))"
+          label="Camion"
+          variant="outlined"
+          density="comfortable"
+          rounded="lg"
+          hide-details="auto"
+          no-data-text="Aucun camion en stock"
+          class="vn-ligne__qte"
+        />
         <v-text-field
+          v-else
           v-model.number="ligne.quantite"
           label="Quantité"
           type="number"

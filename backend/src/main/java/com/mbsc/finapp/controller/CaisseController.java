@@ -1,5 +1,7 @@
 package com.mbsc.finapp.controller;
 
+import com.mbsc.finapp.dto.caisse.AchatMarchandiseRequest;
+import com.mbsc.finapp.dto.caisse.ReglementCamionsRequest;
 import com.mbsc.finapp.dto.caisse.EcritureResponse;
 import com.mbsc.finapp.dto.caisse.LigneBalanceResponse;
 import com.mbsc.finapp.dto.caisse.TransactionCaisseRequest;
@@ -29,6 +31,28 @@ public class CaisseController {
     @ResponseStatus(HttpStatus.CREATED)
     public TransactionCaisseResponse enregistrer(@Valid @RequestBody TransactionCaisseRequest req) {
         return service.enregistrer(req);
+    }
+
+    /**
+     * Achat de marchandise regle en especes : genere le decaissement
+     * (D 601 / C 571) ET l'entree en stock (D 311 / C 6031) — voir
+     * {@code CaisseService.acheterMarchandise}.
+     */
+    @PostMapping("/achats")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TransactionCaisseResponse acheterMarchandise(@Valid @RequestBody AchatMarchandiseRequest req) {
+        return service.acheterMarchandise(req);
+    }
+
+    /**
+     * Reglement en especes des camions de minerais receptionnes
+     * (D 4011 Fournisseurs / C 571 Caisse) — voir
+     * {@code CaisseService.reglerCamionsMinerai}.
+     */
+    @PostMapping("/reglements-minerais")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TransactionCaisseResponse reglerCamionsMinerai(@Valid @RequestBody ReglementCamionsRequest req) {
+        return service.reglerCamionsMinerai(req);
     }
 
     @GetMapping("/transactions")

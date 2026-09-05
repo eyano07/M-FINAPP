@@ -88,6 +88,7 @@ public class StockService {
         article.setUniteMesure(req.uniteMesure());
         article.setType(type);
         article.setPrixVente(req.prixVente());
+        article.setPrixAchat(req.prixAchat());
         article.setSoumisTva(req.soumisTva() == null || req.soumisTva());
         article.setStockMin(req.stockMin() == null ? BigDecimal.ZERO : req.stockMin());
         article.setActif(req.actif() == null || req.actif());
@@ -99,11 +100,16 @@ public class StockService {
         if (type == TypeArticle.SERVICE) {
             article.setCompteStock(null);
             article.setCompteCharge(null);
+            article.setCompteAchat(null);
             article.setStockMin(BigDecimal.ZERO);
             article.setEntrepot(null);
+            // Un service n'a pas de stock : le suivi camion par camion n'a pas de sens.
+            article.setMinerais(false);
         } else {
+            article.setMinerais(Boolean.TRUE.equals(req.minerais()));
             article.setCompteStock(resoudreCompteOuNull(req.compteStockNumero()));
             article.setCompteCharge(resoudreCompteOuNull(req.compteChargeNumero()));
+            article.setCompteAchat(resoudreCompteOuNull(req.compteAchatNumero()));
             // L'entrepot d'affectation n'est plus exige a la creation : la
             // quantite en stock se gere entrepot par entrepot depuis l'etat
             // du stock (StockNiveau), pas depuis une affectation unique
@@ -326,7 +332,21 @@ public class StockService {
     }
 
     /** Une ligne de sortie demandée par une vente : un article et sa quantité. */
-    public record SortieVente(Article article, BigDecimal quantite) {}
+    /**
+     * @param coutImpose cout de sortie a retenir au lieu du cout moyen pondere,
+     *        ou {@code null} pour le CMP habituel. Renseigne pour un camion de
+     *        minerais : chaque chargement sort du stock a SON propre cout
+     *        d'acquisition (prix d'achat + frais accessoires), le SYSCOHADA
+     *        admettant l'identification specifique pour des biens non
+     *        interchangeables. Sans cela, le CMP moyennerait des chargements
+     *        de teneurs et de frais de route differents, et la marge camion par
+     *        camion — la raison d'etre de ce suivi — serait faussee.
+     */
+    public record SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose) {
+        public SortieVente(Article article, BigDecimal quantite) {
+            this(article, quantite, null);
+        }
+    }
 
     /**
      * Crée et valide en une passe le mouvement de SORTIE correspondant aux
@@ -365,8 +385,12 @@ public class StockService {
         MouvementStock saved = mouvementRepository.save(mouvement);
 
         List<EcritureGrandLivre> ecrituresCompta = new ArrayList<>();
-        for (LigneMouvementStock ligne : saved.getLignes()) {
-            appliquerLigne(saved, ligne, ecrituresCompta);
+        // Les lignes sont creees dans l'ordre des sorties : l'index fait donc
+        // correspondre chaque ligne au cout impose eventuel de sa sortie.
+        List<LigneMouvementStock> lignesSortie = saved.getLignes();
+        for (int i = 0; i < lignesSortie.size(); i++) {
+            BigDecimal coutImpose = i < sorties.size() ? sorties.get(i).coutImpose() : null;
+            appliquerLigne(saved, lignesSortie.get(i), ecrituresCompta, coutImpose);
         }
         if (!ecrituresCompta.isEmpty()) {
             PieceComptable piece = comptabilite.creerPieceInterne(
@@ -440,17 +464,24 @@ public class StockService {
 
     /**
      * Entrée en stock issue d'un achat de marchandises réglé par note de
-     * frais : met à jour le niveau de stock (CMP) et le grand livre de stock,
-     * sans générer de pièce comptable.
+     * frais : met à jour le niveau de stock (CMP), le grand livre de stock,
+     * et génère la pièce d'inventaire permanent — symétrique à
+     * {@link #enregistrerEntreeAchatInterne} (achat saisi à la caisse).
      *
-     * <p>Contrairement à une entrée ordinaire ({@link #valider}), la pièce
-     * comptable n'est PAS créée ici : chaque ligne "achat de marchandise"
-     * impute automatiquement le compte de stock de l'article (voir
-     * {@code NoteFraisService.creerLignes}), donc le débit a déjà été porté
-     * par la pièce de règlement de la note elle-même — en générer une
-     * seconde dupliquerait la charge. Le mouvement est rattaché à cette
-     * pièce de règlement pour rester traçable depuis le grand livre de
-     * stock.</p>
+     * <p><b>Inventaire permanent SYSCOHADA révisé, deux écritures
+     * indissociables.</b> Le règlement de la note impute déjà le compte
+     * d'ACHAT de l'article (601x — voir {@code NoteFraisService.creerLignes})
+     * face au compte de règlement (caisse, banque ou mobile money) : c'est la
+     * première écriture, <b>D 601x / C règlement</b>. Cette méthode-ci
+     * produit la SECONDE, celle qui constate l'entrée en stock :
+     * <b>D 311x Marchandises / C 6031 Variations des stocks</b>, dans le
+     * journal STOCK. Une version antérieure imputait directement le compte
+     * de stock au règlement (D 311 / C règlement) et ne générait aucune
+     * pièce ici, au motif que le débit était déjà porté ; le bilan en
+     * ressortait juste, mais le compte de résultat était faux : ni l'achat
+     * (601) ni sa variation de stock (6031) n'y apparaissaient jamais, alors
+     * que c'est précisément leur différence qui forme le coût d'achat des
+     * marchandises vendues.</p>
      */
     @Transactional
     public void entreesDepuisNoteFraisInterne(LocalDate date, String libelle, List<EntreeNoteFrais> entrees,
@@ -465,7 +496,6 @@ public class StockService {
             .dateMouvement(date)
             .libelle(libelle)
             .statut(StatutMouvement.BROUILLON)
-            .piece(pieceReglement)
             .createdBy(auteur)
             .build();
 
@@ -484,16 +514,95 @@ public class StockService {
         }
 
         MouvementStock saved = mouvementRepository.save(mouvement);
+        List<EcritureGrandLivre> ecritures = new ArrayList<>();
         for (LigneMouvementStock ligne : saved.getLignes()) {
             StockNiveau niveau = entree(ligne.getArticle(), ligne.getEntrepotCible(),
                 ligne.getQuantite(), ligne.getMontant());
             ecrireStockGrandLivre(ligne.getArticle(), ligne.getEntrepotCible(),
                 saved, ligne.getQuantite(), BigDecimal.ZERO, niveau);
+            ajouterEcriture(ecritures, compteStock(ligne.getArticle()), ligne.getMontant(), BigDecimal.ZERO, saved);
+            ajouterEcriture(ecritures, compteCharge(ligne.getArticle()), BigDecimal.ZERO, ligne.getMontant(), saved);
         }
+        PieceComptable piece = comptabilite.creerPieceInterne(
+            JournalComptable.STOCK, libelle, date, ecritures, auteur);
+        saved.setPiece(piece);
         saved.setStatut(StatutMouvement.VALIDE);
 
-        log.info("Entrée de stock pour note de frais [pieceReglement={}, lignes={}]",
-            pieceReglement.getReference(), entrees.size());
+        log.info("Entrée de stock pour note de frais [pieceReglement={}, pieceStock={}, lignes={}]",
+            pieceReglement.getReference(), piece.getReference(), entrees.size());
+    }
+
+    public record AchatMarchandise(Article article, Entrepot entrepot, BigDecimal quantite,
+                                   BigDecimal montant, CompteOHADA compteStock,
+                                   CompteOHADA compteVariation) {}
+
+    /**
+     * Entrée en stock d'une marchandise achetée au comptant depuis la caisse
+     * (bouton « Achat ») : applique le CMP, écrit le grand livre de stock et
+     * génère la pièce d'inventaire permanent.
+     *
+     * <p><b>Inventaire permanent SYSCOHADA révisé.</b> L'achat lui-même
+     * (D 601 Achats de marchandises / C 571 Caisse) est porté par la
+     * transaction de caisse, comme tout décaissement — voir
+     * {@code CaisseService.acheterMarchandise}. Cette méthode-ci ne produit
+     * que la SECONDE écriture, celle qui constate l'entrée en stock :
+     * <b>D 311 Marchandises / C 6031 Variations des stocks de
+     * marchandises</b>. Les deux écritures sont indissociables : sans la
+     * première, la sortie de trésorerie ne serait pas constatée ; sans la
+     * seconde, la charge d'achat resterait au résultat alors que la
+     * marchandise est encore en stock. C'est exactement l'image inverse du
+     * déstockage sur vente (D 6031 / C 311, voir {@link #appliquerLigne}),
+     * ce qui garantit que 6031 se solde en « coût d'achat des marchandises
+     * vendues » à la clôture.</p>
+     *
+     * <p>Les deux comptes sont passés explicitement plutôt que lus sur
+     * l'article : le caissier peut les corriger au moment de l'achat (une
+     * marchandise peut entrer dans un autre compte de stock que celui
+     * prévu par défaut), l'article ne fournissant que la valeur proposée.</p>
+     */
+    @Transactional
+    public MouvementStock enregistrerEntreeAchatInterne(LocalDate date, String libelle,
+                                                        AchatMarchandise achat, User auteur) {
+        exigerMarchandise(achat.article());
+        BigDecimal cout = achat.quantite().signum() != 0
+            ? achat.montant().divide(achat.quantite(), 6, RoundingMode.HALF_UP)
+            : BigDecimal.ZERO;
+
+        MouvementStock mouvement = MouvementStock.builder()
+            .reference(referenceGenerator.pourMouvementStock())
+            .type(TypeMouvementStock.ENTREE)
+            .dateMouvement(date)
+            .libelle(libelle)
+            .statut(StatutMouvement.BROUILLON)
+            .compteContrepartie(achat.compteVariation())
+            .createdBy(auteur)
+            .build();
+        mouvement.addLigne(LigneMouvementStock.builder()
+            .article(achat.article())
+            .entrepotCible(achat.entrepot())
+            .quantite(achat.quantite())
+            .coutUnitaire(cout)
+            .montant(achat.montant())
+            .build());
+
+        MouvementStock saved = mouvementRepository.save(mouvement);
+        LigneMouvementStock ligne = saved.getLignes().get(0);
+        StockNiveau niveau = entree(ligne.getArticle(), ligne.getEntrepotCible(),
+            ligne.getQuantite(), ligne.getMontant());
+        ecrireStockGrandLivre(ligne.getArticle(), ligne.getEntrepotCible(), saved,
+            ligne.getQuantite(), BigDecimal.ZERO, niveau);
+
+        List<EcritureGrandLivre> ecritures = new ArrayList<>();
+        ajouterEcriture(ecritures, achat.compteStock(), ligne.getMontant(), BigDecimal.ZERO, saved);
+        ajouterEcriture(ecritures, achat.compteVariation(), BigDecimal.ZERO, ligne.getMontant(), saved);
+        PieceComptable piece = comptabilite.creerPieceInterne(
+            JournalComptable.STOCK, libelle, date, ecritures, auteur);
+        saved.setPiece(piece);
+        saved.setStatut(StatutMouvement.VALIDE);
+
+        log.info("Entrée de stock sur achat caisse [ref={}, article={}, qte={}]",
+            saved.getReference(), achat.article().getCode(), achat.quantite());
+        return saved;
     }
 
     /** Réintègre le stock et extourne la pièce d'un mouvement issu d'une vente annulée. */
@@ -526,6 +635,17 @@ public class StockService {
 
     private void appliquerLigne(MouvementStock mouvement, LigneMouvementStock ligne,
                                 List<EcritureGrandLivre> ecrituresCompta) {
+        appliquerLigne(mouvement, ligne, ecrituresCompta, null);
+    }
+
+    /**
+     * @param coutImpose cout unitaire de SORTIE a retenir au lieu du cout moyen
+     *        pondere, ou {@code null} pour le CMP habituel — voir
+     *        {@link SortieVente}. Sans effet sur une entree ou un transfert,
+     *        dont le cout ne se deduit pas du stock existant.
+     */
+    private void appliquerLigne(MouvementStock mouvement, LigneMouvementStock ligne,
+                                List<EcritureGrandLivre> ecrituresCompta, BigDecimal coutImpose) {
         Article article = ligne.getArticle();
         BigDecimal qte = ligne.getQuantite();
 
@@ -542,7 +662,9 @@ public class StockService {
             }
             case SORTIE -> {
                 Entrepot source = exigerEntrepot(ligne.getEntrepotSource(), "entrepôt source", mouvement);
-                BigDecimal cmp = coutMoyen(article, source);
+                // Identification specifique si un cout est impose (camion de
+                // minerais), CMP sinon — voir SortieVente.coutImpose.
+                BigDecimal cmp = coutImpose != null ? coutImpose : coutMoyen(article, source);
                 BigDecimal montant = cmp.multiply(qte).setScale(2, RoundingMode.HALF_UP);
                 StockNiveau niveau = sortie(article, source, qte, montant);
                 ligne.setCoutUnitaire(cmp);
@@ -813,4 +935,73 @@ public class StockService {
         return entrepotRepository.findById(id)
             .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", id));
     }
+
+    // Sans @PreAuthorize : simples resolutions d'identifiant, appelees par un
+    // service qui porte deja sa propre garde (achat de marchandise a la caisse).
+
+    @Transactional(readOnly = true)
+    public Article articleParIdInterne(Long id) {
+        return articleRepository.findById(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("Article", id));
+    }
+
+    @Transactional(readOnly = true)
+    public Entrepot entrepotParIdInterne(Long id) {
+        return entrepotRepository.findById(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", id));
+    }
+
+    /**
+     * Entrée en stock d'un chargement de minerais réceptionné par la
+     * logistique : une unité de l'article (un camion), valorisée à son prix
+     * d'achat.
+     *
+     * <p>Ne produit que l'écriture de stock <b>D 311x / C 6031</b> (journal
+     * STOCK). La contrepartie de l'achat lui-même — <b>D 601x / C 4011
+     * Fournisseurs</b> — est portée par {@code MineraiService.receptionner},
+     * qui appelle cette méthode : la réception fait naître la dette
+     * fournisseur, que la caisse soldera plus tard. Les deux écritures sont
+     * indissociables, exactement comme pour un achat au comptant (voir
+     * {@link #enregistrerEntreeAchatInterne}) — seule la contrepartie du
+     * débit d'achat change (4011 au lieu de 571), le règlement étant
+     * différé.</p>
+     */
+    @Transactional
+    public MouvementStock enregistrerEntreeMineraiInterne(LocalDate date, String libelle, Article article,
+                                                          Entrepot entrepot, BigDecimal prixAchat, User auteur) {
+        exigerMarchandise(article);
+        BigDecimal uneUnite = BigDecimal.ONE;
+
+        MouvementStock mouvement = MouvementStock.builder()
+            .reference(referenceGenerator.pourMouvementStock())
+            .type(TypeMouvementStock.ENTREE)
+            .dateMouvement(date)
+            .libelle(libelle)
+            .statut(StatutMouvement.BROUILLON)
+            .compteContrepartie(compteCharge(article))
+            .createdBy(auteur)
+            .build();
+        mouvement.addLigne(LigneMouvementStock.builder()
+            .article(article)
+            .entrepotCible(entrepot)
+            .quantite(uneUnite)
+            .coutUnitaire(prixAchat)
+            .montant(prixAchat)
+            .build());
+
+        MouvementStock saved = mouvementRepository.save(mouvement);
+        LigneMouvementStock ligne = saved.getLignes().get(0);
+        StockNiveau niveau = entree(article, entrepot, uneUnite, prixAchat);
+        ecrireStockGrandLivre(article, entrepot, saved, uneUnite, BigDecimal.ZERO, niveau);
+
+        List<EcritureGrandLivre> ecritures = new ArrayList<>();
+        ajouterEcriture(ecritures, compteStock(article), ligne.getMontant(), BigDecimal.ZERO, saved);
+        ajouterEcriture(ecritures, compteCharge(article), BigDecimal.ZERO, ligne.getMontant(), saved);
+        PieceComptable piece = comptabilite.creerPieceInterne(
+            JournalComptable.STOCK, libelle, date, ecritures, auteur);
+        saved.setPiece(piece);
+        saved.setStatut(StatutMouvement.VALIDE);
+        return saved;
+    }
+
 }

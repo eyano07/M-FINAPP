@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ roles: ['ADMIN'] })
+definePageMeta({ roles: ['ADMIN', 'DFIN'] })
 
 interface Rapport {
   simulation: boolean

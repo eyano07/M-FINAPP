@@ -109,6 +109,9 @@ const logistiqueItems: NavItem[] = [
   // ecrans, qui lui renverraient 403.
   { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/logistique/mouvements', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
   { title: 'État du stock', icon: 'mdi-clipboard-list-outline', to: '/logistique/stock', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
+  // Minerais : suivi camion par camion, chaque chargement ayant son propre
+  // prix de vente (voir pages/logistique/minerais.vue).
+  { title: 'Camions de minerais', icon: 'mdi-dump-truck', to: '/logistique/minerais', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   { title: 'Grand livre stock', icon: 'mdi-book-open-page-variant-outline', to: '/logistique/stock/grand-livre', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
 ]
 const patrimoineItems: NavItem[] = [
@@ -157,7 +160,7 @@ const adminItems: NavItem[] = [
   { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/admin/parametres', roles: ['ADMIN'] },
   { title: 'Modules', icon: 'mdi-view-grid-outline', to: '/admin/modules', roles: ['ADMIN'] },
   { title: 'Permissions', icon: 'mdi-shield-key-outline', to: '/admin/permissions', roles: ['ADMIN'] },
-  { title: 'Importer un journal', icon: 'mdi-database-import-outline', to: '/admin/import-journal', roles: ['ADMIN'] },
+  { title: 'Importer un journal', icon: 'mdi-database-import-outline', to: '/admin/import-journal', roles: ['ADMIN', 'DFIN'] },
 ]
 
 /**
@@ -183,14 +186,47 @@ const proxyModel = computed({
   set: (v: boolean) => emit('update:modelValue', v),
 })
 
-const showAdmin = computed(() => auth.hasRole('ADMIN'))
-const showVentes = computed(() => venteItems.some(item => visible(item)))
-const showComptabilite = computed(() => comptabiliteItems.some(item => visible(item)))
-const showLogistique = computed(() => logistiqueItems.some(item => visible(item)))
-const showTransport = computed(() => transportItems.some(item => visible(item)))
-const showPatrimoine = computed(() => patrimoineItems.some(item => visible(item)))
-const showDrh = computed(() => drhItems.some(item => visible(item)))
-const showRestaurant = computed(() => restaurantItems.some(item => visible(item)))
+interface NavGroup { id: string; label: string; items: NavItem[] }
+
+// Chaque rubrique (auparavant une liste a plat, toujours depliee) devient un
+// groupe repliable : un menu principal plus court, chaque rubrique masquant
+// ses propres ecrans jusqu'a un clic sur son entete — voir `ouverts`/`basculer`.
+const GROUPES: NavGroup[] = [
+  { id: 'ventes', label: 'Ventes', items: venteItems },
+  { id: 'comptabilite', label: 'Comptabilité', items: comptabiliteItems },
+  { id: 'logistique', label: 'Logistique', items: logistiqueItems },
+  { id: 'patrimoine', label: 'Patrimoine', items: patrimoineItems },
+  { id: 'restaurant', label: 'Restaurant', items: restaurantItems },
+  { id: 'drh', label: 'DRH', items: drhItems },
+  { id: 'transport', label: 'Transport', items: transportItems },
+  { id: 'admin', label: 'Administration', items: adminItems },
+]
+const groupesVisibles = computed(() => GROUPES.filter(g => g.items.some(visible)))
+
+/** Rubrique(s) actuellement depliee(s) — independantes les unes des autres (pas
+ * l'exclusivite d'un accordeon strict) : replier Logistique en consultant DRH
+ * serait plus genant qu'utile ici. Repliee par defaut, sauf la rubrique de la
+ * page courante (voir plus bas), pour ne pas reafficher tout le menu ouvert. */
+const route = useRoute()
+function groupeDeRoute(chemin: string) {
+  return GROUPES.find(g => g.items.some(item => chemin.startsWith(item.to)))?.id
+}
+const ouverts = ref<Set<string>>(new Set([groupeDeRoute(route.path)].filter((id): id is string => !!id)))
+function basculer(id: string) {
+  const s = new Set(ouverts.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  ouverts.value = s
+}
+// Navigation directe (lien externe, rechargement) vers une page d'une rubrique
+// repliee : la deplie automatiquement plutot que de laisser la page active
+// invisible dans un menu ferme. N'ajoute que la rubrique concernee, ne
+// referme jamais les autres.
+watch(() => route.path, (chemin) => {
+  const id = groupeDeRoute(chemin)
+  if (id && !ouverts.value.has(id)) {
+    ouverts.value = new Set([...ouverts.value, id])
+  }
+})
 </script>
 
 <template>
@@ -227,11 +263,14 @@ const showRestaurant = computed(() => restaurantItems.some(item => visible(item)
       </template>
     </nav>
 
-    <template v-if="showVentes">
+    <template v-for="g in groupesVisibles" :key="g.id">
       <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Ventes</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in venteItems" :key="item.to">
+      <button type="button" class="modern-drawer__group-toggle" :aria-expanded="ouverts.has(g.id)" @click="basculer(g.id)">
+        <span>{{ g.label }}</span>
+        <v-icon :icon="ouverts.has(g.id) ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="15" />
+      </button>
+      <nav v-show="ouverts.has(g.id)" class="modern-drawer__nav">
+        <template v-for="item in g.items" :key="item.to">
           <nuxt-link
             v-if="visible(item)"
             :to="item.to"
@@ -244,145 +283,6 @@ const showRestaurant = computed(() => restaurantItems.some(item => visible(item)
             <span class="modern-drawer__item-label">{{ item.title }}</span>
           </nuxt-link>
         </template>
-      </nav>
-    </template>
-
-    <template v-if="showComptabilite">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Comptabilité</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in comptabiliteItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showLogistique">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Logistique</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in logistiqueItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showPatrimoine">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Patrimoine</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in patrimoineItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showRestaurant">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Restaurant</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in restaurantItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showDrh">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">DRH</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in drhItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showTransport">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Transport</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in transportItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showAdmin">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Administration</div>
-      <nav class="modern-drawer__nav">
-        <nuxt-link
-          v-for="item in adminItems"
-          :key="item.to"
-          :to="item.to"
-          :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-          active-class="modern-drawer__item--active"
-        >
-          <span class="modern-drawer__item-icon">
-            <v-icon :icon="item.icon" size="18" />
-          </span>
-          <span class="modern-drawer__item-label">{{ item.title }}</span>
-        </nuxt-link>
       </nav>
     </template>
 
@@ -443,6 +343,40 @@ const showRestaurant = computed(() => restaurantItems.some(item => visible(item)
   height: 1px;
   background: #f3f4f6;
   margin: 10px 6px;
+}
+
+/* En-tete de rubrique repliable : reprend le style du simple label qu'il
+   remplace (voir modern-drawer__section-label), en plus fonce puisqu'il est
+   desormais cliquable, pas juste decoratif. */
+.modern-drawer__group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0 0 2px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.modern-drawer__group-toggle:hover {
+  background: #f9fafb;
+  color: #374151;
+}
+.modern-drawer__group-toggle .v-icon {
+  color: #d1d5db;
+  transition: color 0.15s;
+}
+.modern-drawer__group-toggle:hover .v-icon {
+  color: #9ca3af;
 }
 
 .modern-drawer__nav {

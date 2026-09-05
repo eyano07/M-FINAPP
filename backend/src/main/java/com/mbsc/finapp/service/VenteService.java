@@ -72,6 +72,8 @@ public class VenteService {
     // bouteilles vides. Dependance a sens unique (RestaurantService ne connait
     // pas VenteService), donc aucun cycle.
     private final RestaurantService restaurantService;
+    /** Suivi camion par camion des minerais : identite du chargement et statut de vente. */
+    private final MineraiService mineraiService;
     private final TauxTvaService tauxTvaService;
     private final ClientService clientService;
     private final EtablissementTresorerieService etablissements;
@@ -144,10 +146,39 @@ public class VenteService {
             BigDecimal prix = l.prixUnitaire();
             contientMarchandise |= article.getType().estStocke();
 
+            // Minerais : la ligne cede UN camion identifie, a son propre prix.
+            // Le camion vaut une unite de l'article, d'ou la quantite forcee a
+            // 1 : accepter une quantite libre ferait sortir du stock plus (ou
+            // moins) que le chargement reellement cede.
+            CamionMinerai camion = null;
+            String designation = article.getLibelle();
+            BigDecimal quantite = l.quantite();
+            if (article.isMinerais()) {
+                if (l.camionId() == null) {
+                    throw new IllegalArgumentException(
+                        "\"" + article.getLibelle() + "\" est un minerais : precisez le camion vendu.");
+                }
+                camion = mineraiService.charger(l.camionId());
+                if (!camion.getArticle().getId().equals(article.getId())) {
+                    throw new IllegalArgumentException(
+                        "Le camion " + camion.getPlaque() + " ne porte pas \"" + article.getLibelle() + "\".");
+                }
+                if (camion.getStatut() != StatutCamionMinerai.EN_STOCK) {
+                    throw new IllegalArgumentException(
+                        "Le camion " + camion.designation() + " n'est plus en stock.");
+                }
+                designation = article.getLibelle() + " - camion " + camion.getPlaque();
+                quantite = BigDecimal.ONE;
+            } else if (l.camionId() != null) {
+                throw new IllegalArgumentException(
+                    "\"" + article.getLibelle() + "\" n'est pas un minerais : aucun camion ne peut lui etre rattache.");
+            }
+
             vente.addLigne(LigneVente.builder()
                 .article(article)
-                .designation(article.getLibelle())
-                .quantite(l.quantite())
+                .camion(camion)
+                .designation(designation)
+                .quantite(quantite)
                 .prixUnitaire(prix.setScale(2, RoundingMode.HALF_UP))
                 .soumisTva(article.isSoumisTva())
                 .ordre(ordre++)
@@ -224,9 +255,14 @@ public class VenteService {
         //    plats et boissons du module Restaurant doivent sortir du stock au
         //    même titre, faute de quoi la vente créditerait le produit sans
         //    jamais constater le coût (voir TypeArticle.estStocke).
+        //    Un camion de minerais sort a SON cout d'acquisition (prix d'achat
+        //    + frais accessoires incorpores) et non au CMP : des chargements de
+        //    teneurs et de frais de route differents ne sont pas
+        //    interchangeables — identification specifique, voir MineraiService.
         List<StockService.SortieVente> sorties = vente.getLignes().stream()
             .filter(l -> l.getArticle().getType().estStocke())
-            .map(l -> new StockService.SortieVente(l.getArticle(), l.getQuantite()))
+            .map(l -> new StockService.SortieVente(l.getArticle(), l.getQuantite(),
+                l.getCamion() == null ? null : l.getCamion().getCoutAcquisition()))
             .toList();
         if (!sorties.isEmpty()) {
             MouvementStock mouvement = stockService.enregistrerSortieVenteInterne(
@@ -236,7 +272,16 @@ public class VenteService {
             vente.setMouvement(mouvement);
         }
 
-        // 2 bis. Consigne : chaque bouteille vendue revient en stock de vides
+        // 2 bis. Minerais : chaque camion cédé passe à VENDU, ce qui empêche de
+        //        le vendre deux fois et fige son coût d'acquisition (plus aucun
+        //        frais accessoire ne peut lui être incorporé après coup).
+        for (LigneVente ligne : vente.getLignes()) {
+            if (ligne.getCamion() != null) {
+                mineraiService.marquerVenduInterne(ligne.getCamion());
+            }
+        }
+
+        // 2 ter. Consigne : chaque bouteille vendue revient en stock de vides
         //        (module Restaurant). Sans effet si la boisson n'a pas de
         //        conditionnement défini, et aucune écriture comptable.
         restaurantService.enregistrerVidesSurVenteInterne(vente, auteur);
@@ -269,7 +314,14 @@ public class VenteService {
             comptabilite.annulerInterne(vente.getPiece().getId(), auteur);
         }
         stockService.annulerMouvementInterne(vente.getMouvement(), auteur);
-        // Miroir de l'étape 2 bis de valider() : on reprend les bouteilles
+        // Miroir de l'étape 2 bis de valider() : les camions cédés reviennent
+        // en stock et redeviennent vendables.
+        for (LigneVente ligne : vente.getLignes()) {
+            if (ligne.getCamion() != null) {
+                mineraiService.remettreEnStockInterne(ligne.getCamion());
+            }
+        }
+        // Miroir de l'étape 2 ter de valider() : on reprend les bouteilles
         // vides que cette vente avait fait entrer.
         restaurantService.annulerVidesSurVenteInterne(vente, auteur);
 

@@ -42,6 +42,21 @@ public class Article {
     @JoinColumn(name = "compte_charge_id")
     private CompteOHADA compteCharge;
 
+    /** Compte d'achat (601x), débité au règlement d'une note de frais d'achat de marchandise — voir NoteFraisService. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "compte_achat_id")
+    private CompteOHADA compteAchat;
+
+    /**
+     * true pour un minerais : le stock se suit camion par camion
+     * ({@link CamionMinerai}), chacun ayant son propre prix de vente. Réservé
+     * aux marchandises stockées ; sans effet sur les comptes d'imputation,
+     * identiques pour tous les chargements d'un même minerais.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean minerais = false;
+
     /** Entrepot d'affectation, obligatoire pour une marchandise, toujours nul pour un service. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "entrepot_id")
@@ -55,6 +70,15 @@ public class Article {
     /** Prix de vente unitaire hors taxes, en devise de base (FC). */
     @Column(name = "prix_vente", precision = 15, scale = 2)
     private BigDecimal prixVente;
+
+    /**
+     * Prix d'achat unitaire indicatif, en devise de base (FC). Facultatif :
+     * il ne sert qu'a preremplir le montant d'un achat saisi a la caisse, que
+     * le caissier corrige au prix reellement paye. Le cout d'entree en stock
+     * (CMP) reste toujours celui effectivement saisi, jamais cette valeur.
+     */
+    @Column(name = "prix_achat", precision = 15, scale = 2)
+    private BigDecimal prixAchat;
 
     /** false = article exonere de TVA. */
     @Column(name = "soumis_tva", nullable = false)
