@@ -70,10 +70,15 @@ public class MineraiController {
         return service.listerChargesARegler();
     }
 
+    /**
+     * Ajoute un frais accessoire. Renvoie une liste : un seul element en
+     * saisie normale, un par camion en stock si {@code appliquerATousLesCamions}
+     * est demande — voir {@code ChargeCamionRequest}.
+     */
     @PostMapping("/{id}/charges")
     @ResponseStatus(HttpStatus.CREATED)
-    public ChargeCamionResponse ajouterCharge(@PathVariable Long id,
-                                              @Valid @RequestBody ChargeCamionRequest req) {
+    public List<ChargeCamionResponse> ajouterCharge(@PathVariable Long id,
+                                                    @Valid @RequestBody ChargeCamionRequest req) {
         return service.ajouterCharge(id, req);
     }
 

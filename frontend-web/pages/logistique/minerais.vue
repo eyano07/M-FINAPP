@@ -143,18 +143,31 @@ const formCharge = reactive({
   compteChargeNumero: '' as string | null,
   montantUSD: null as number | null,
   dateCharge: new Date().toISOString().slice(0, 10),
+  tousLesCamions: false,
 })
 
-// Frais les plus courants sur un chargement de minerais : evite de retaper
-// le libelle a chaque camion.
-const LIBELLES_COURANTS = [
-  'Transport sur achat',
-  'Pont bascule',
-  'Péage routier',
-  'Document de chargement',
-  'Document de déchargement',
-  'Manutention',
+// Frais courants sur un chargement de minerais, chacun avec son compte de
+// charge : choisir la nature preselectionne le compte, plus personne n'a a
+// connaitre le plan comptable pour saisir un peage. Le compte reste
+// modifiable ensuite — la preselection n'est qu'un defaut.
+const NATURES_FRAIS = [
+  { libelle: 'Transport sur achat', compte: '618.3' },
+  { libelle: 'Péage routier', compte: '618.1' },
+  { libelle: 'Per diem de route', compte: '618.2' },
+  { libelle: 'Pont bascule', compte: '638.1' },
+  { libelle: 'Manutention', compte: '638.2' },
+  { libelle: 'Document de chargement', compte: '646.1' },
+  { libelle: 'Document de déchargement', compte: '646.1' },
 ]
+const LIBELLES_COURANTS = NATURES_FRAIS.map(n => n.libelle)
+
+/** Nature choisie -> compte correspondant. Sans effet sur un libelle libre. */
+function onNatureChoisie(valeur: string | null) {
+  const nature = NATURES_FRAIS.find(n => n.libelle === (valeur ?? '').trim())
+  if (nature) {
+    formCharge.compteChargeNumero = nature.compte
+  }
+}
 
 const totalCharges = computed(() => charges.value.reduce((s, c) => s + Number(c.montant), 0))
 
@@ -163,6 +176,7 @@ async function ouvrirCharges(c: Camion) {
   Object.assign(formCharge, {
     libelle: '', compteChargeNumero: '', montantUSD: null,
     dateCharge: new Date().toISOString().slice(0, 10),
+    tousLesCamions: false,
   })
   erreur.value = ''
   dialogCharges.value = true
@@ -190,17 +204,23 @@ async function ajouterCharge() {
   saving.value = true
   erreur.value = ''
   try {
-    await api(`/logistique/minerais/camions/${camionCharges.value.id}/charges`, {
+    const creees = await api<Charge[]>(`/logistique/minerais/camions/${camionCharges.value.id}/charges`, {
       method: 'POST',
       body: {
         libelle: formCharge.libelle.trim(),
         compteChargeNumero: formCharge.compteChargeNumero,
         montant: formCharge.montantUSD,
         dateCharge: formCharge.dateCharge,
+        appliquerATousLesCamions: formCharge.tousLesCamions,
       },
     })
-    Object.assign(formCharge, { libelle: '', compteChargeNumero: '', montantUSD: null })
-    succes.value = 'Frais incorporé au coût d\'acquisition du camion.'
+    const nb = Array.isArray(creees) ? creees.length : 1
+    Object.assign(formCharge, {
+      libelle: '', compteChargeNumero: '', montantUSD: null, tousLesCamions: false,
+    })
+    succes.value = nb > 1
+      ? `Frais incorporé au coût d'acquisition de ${nb} camions.`
+      : 'Frais incorporé au coût d\'acquisition du camion.'
     await Promise.all([chargerCharges(), charger()])
     camionCharges.value = camions.value.find(c => c.id === camionCharges.value?.id) || camionCharges.value
   } catch (e: any) {
@@ -482,7 +502,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         <v-row dense align="center">
           <v-col cols="12" md="4">
             <v-combobox v-model="formCharge.libelle" :items="LIBELLES_COURANTS" label="Nature du frais *"
-              variant="outlined" density="comfortable" hide-details />
+              variant="outlined" density="comfortable" hide-details
+              @update:model-value="onNatureChoisie" />
           </v-col>
           <v-col cols="12" md="4">
             <ComptabiliteSelecteurCompte v-model="formCharge.compteChargeNumero"
@@ -497,6 +518,24 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
               :disabled="camionCharges?.statut === 'VENDU'" @click="ajouterCharge">
               Ajouter
             </v-btn>
+          </v-col>
+          <v-col cols="12">
+            <!-- Beaucoup de frais (pont bascule, autorisation) sont identiques
+                 sur tout un arrivage : les saisir une fois plutot que camion
+                 par camion. Chaque camion recoit malgre tout sa propre ligne,
+                 modifiable ou supprimable individuellement ensuite. -->
+            <v-checkbox v-model="formCharge.tousLesCamions" color="primary" density="compact" hide-details
+              :disabled="camionCharges?.statut === 'VENDU'">
+              <template #label>
+                <span class="text-body-2">
+                  Appliquer à <strong>tous les camions en stock</strong> de
+                  « {{ camionCharges?.articleLibelle }} »
+                  <span class="text-medium-emphasis">
+                    — une ligne par camion, modifiable individuellement ensuite
+                  </span>
+                </span>
+              </template>
+            </v-checkbox>
           </v-col>
         </v-row>
 

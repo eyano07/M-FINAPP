@@ -241,9 +241,33 @@ public class MineraiService {
      */
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'ADMIN')")
     @Transactional
-    public ChargeCamionResponse ajouterCharge(Long camionId, ChargeCamionRequest req) {
-        User auteur = currentUser.requireUser();
+    public List<ChargeCamionResponse> ajouterCharge(Long camionId, ChargeCamionRequest req) {
         CamionMinerai camion = charger(camionId);
+        if (!Boolean.TRUE.equals(req.appliquerATousLesCamions())) {
+            return List.of(incorporerCharge(camion, req));
+        }
+        // Saisie groupee : le meme frais sur chaque camion encore en stock du
+        // minerais. Chacun recoit sa propre ligne et ses propres ecritures —
+        // elles restent donc modifiables camion par camion ensuite.
+        List<CamionMinerai> cibles = camionRepository
+            .findByArticleIdAndStatutOrderByDateAchatAscIdAsc(
+                camion.getArticle().getId(), StatutCamionMinerai.EN_STOCK);
+        if (cibles.isEmpty()) {
+            throw new IllegalStateException(
+                "Aucun camion en stock pour " + camion.getArticle().getLibelle() + ".");
+        }
+        List<ChargeCamionResponse> creees = new ArrayList<>();
+        for (CamionMinerai cible : cibles) {
+            creees.add(incorporerCharge(cible, req));
+        }
+        log.info("Frais « {} » applique a {} camion(s) de {}",
+            req.libelle(), creees.size(), camion.getArticle().getLibelle());
+        return creees;
+    }
+
+    /** Incorpore un frais accessoire au cout d'acquisition d'UN camion. */
+    private ChargeCamionResponse incorporerCharge(CamionMinerai camion, ChargeCamionRequest req) {
+        User auteur = currentUser.requireUser();
         if (camion.getStatut() == StatutCamionMinerai.VENDU) {
             throw new IllegalStateException(
                 "Le camion " + camion.designation() + " est vendu : son cout d'acquisition est fige."
