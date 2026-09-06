@@ -1,6 +1,7 @@
 package com.mbsc.finapp.service;
 
 import com.mbsc.finapp.domain.Article;
+import com.mbsc.finapp.domain.CamionMinerai;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.LigneNoteFrais;
@@ -12,10 +13,12 @@ import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
 import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.domain.enums.SensTransaction;
+import com.mbsc.finapp.domain.enums.StatutCamionMinerai;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeNotification;
 import com.mbsc.finapp.dto.notes.ActionWorkflowRequest;
+import com.mbsc.finapp.dto.notes.CreerNoteReglementCamionsRequest;
 import com.mbsc.finapp.dto.notes.LigneCompteRequest;
 import com.mbsc.finapp.dto.notes.LigneNoteFraisRequest;
 import com.mbsc.finapp.dto.notes.ModifierComptesRequest;
@@ -26,6 +29,7 @@ import com.mbsc.finapp.dto.notes.PrioriteRequest;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.ArticleRepository;
+import com.mbsc.finapp.repository.CamionMineraiRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EmballageBoissonRepository;
 import com.mbsc.finapp.repository.EntrepotRepository;
@@ -42,6 +46,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -97,6 +102,8 @@ public class NoteFraisService {
     private final ArticleRepository articleRepository;
     private final EntrepotRepository entrepotRepository;
     private final EmballageBoissonRepository emballageBoissonRepository;
+    /** Camions rattaches a une note de reglement de minerais — voir creerReglementCamionsMinerai. */
+    private final CamionMineraiRepository camionRepository;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     private final StorageService storage;
@@ -138,9 +145,10 @@ public class NoteFraisService {
      *       dans le circuit de validation (DFIN/DA/Caissier) et n'a donc pas
      *       a consulter les notes des autres createurs ;</li>
      *   <li>de meme, le responsable restaurant (RESP_RESTAURANT seul) ne voit
-     *       que ses propres notes d'achat de boissons — il n'a pas a
-     *       consulter les depenses des autres services, memes regles que le
-     *       Directeur metier ;</li>
+     *       que ses propres notes d'achat de boissons, et la logistique
+     *       (LOGISTIQUE seul) que ses propres notes de reglement de camions
+     *       minerais — ni l'un ni l'autre n'a a consulter les depenses des
+     *       autres services, memes regles que le Directeur metier ;</li>
      *   <li>le caissier "pur" (sans role DFIN/DA/DG/ADMIN) voit les notes
      *       deja validees par le DA ({@link #STATUTS_VISIBLES_CAISSIER}),
      *       quel qu'en soit le createur, plus ses propres notes a n'importe
@@ -172,8 +180,19 @@ public class NoteFraisService {
                          || "ROLE_DFIN".equals(a.getAuthority())
                          || "ROLE_CAISSIER".equals(a.getAuthority()));
         boolean estCaissierSeul = estCaissier && !estDfinOuAdmin && !estDA && !estDG;
+        // La logistique ne cree que des notes de reglement de camions
+        // minerais : meme logique que le Directeur metier, elle ne consulte
+        // pas les depenses des autres services.
+        boolean estLogistiqueSeul = authorities.stream()
+            .anyMatch(a -> "ROLE_LOGISTIQUE".equals(a.getAuthority()))
+            && authorities.stream()
+            .noneMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
+                         || "ROLE_DG".equals(a.getAuthority())
+                         || "ROLE_DA".equals(a.getAuthority())
+                         || "ROLE_DFIN".equals(a.getAuthority())
+                         || "ROLE_CAISSIER".equals(a.getAuthority()));
 
-        if (estDirecteurSeul || estRespRestaurantSeul()) {
+        if (estDirecteurSeul || estRespRestaurantSeul() || estLogistiqueSeul) {
             return note.getCreateur() != null
                 && note.getCreateur().getId().equals(currentUser.requireUserId());
         }
@@ -261,6 +280,116 @@ public class NoteFraisService {
 
         log.info("Note de frais modifiee [ref={}, montant={}]", note.getReference(), note.getMontant());
         return NoteFraisDetailResponse.from(note);
+    }
+
+    /**
+     * Cree, pour la logistique, une note de reglement de la dette
+     * fournisseur d'un ou plusieurs camions de minerais — une ligne par
+     * camion, imputee au compte Fournisseurs (4011) pour son montant TTC
+     * (prix hors taxes + TVA recuperable, reel si l'achat est deja valide,
+     * sinon estime au taux du jour de reception — voir {@link
+     * #detteEstimee}). Contrairement a {@link #creer}, la note est
+     * immediatement soumise au DFIN (BROUILLON -> SOUMISE en un seul geste,
+     * cote ecran) : la logistique ne compose pas une note comme un
+     * comptable, elle demande le paiement d'une dette, constatee ou non.
+     *
+     * <p>Un camion encore A_VALIDER peut etre selectionne : c'est precisement
+     * le paiement de cette note, en bout de circuit, qui constatera son
+     * achat — voir {@code MineraiService.finaliserReglementNoteInterne}. La
+     * validation et le reglement ne sont plus deux actions separees de la
+     * caisse : ils n'en font plus qu'une, au bout du circuit logistique ->
+     * DFIN -> DA -> DFIN -> tresorerie.</p>
+     *
+     * <p>Chaque camion selectionne est rattache a la note ({@code
+     * CamionMinerai.noteFraisReglement}) pour empecher qu'il figure dans une
+     * seconde demande tant que celle-ci est en cours — voir {@link
+     * MineraiService#listerARegler}. Le lien est libere si la note est
+     * annulee ({@link #annuler}).</p>
+     */
+    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'ADMIN')")
+    @Transactional
+    public NoteFraisDetailResponse creerReglementCamionsMinerai(CreerNoteReglementCamionsRequest req) {
+        User auteur = currentUser.requireUser();
+        List<CamionMinerai> camions = camionRepository.findAllById(req.camionIds());
+        if (camions.size() != req.camionIds().size()) {
+            throw new RessourceIntrouvableException("Un ou plusieurs camions selectionnes sont introuvables.");
+        }
+        for (CamionMinerai camion : camions) {
+            if (camion.isRegle()) {
+                throw new IllegalArgumentException("Le camion " + camion.designation() + " est deja regle.");
+            }
+            if (camion.getNoteFraisReglement() != null) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.designation() + " a deja une note de reglement en cours ("
+                    + camion.getNoteFraisReglement().getReference() + ").");
+            }
+        }
+
+        List<LigneNoteFraisRequest> lignesReq = camions.stream()
+            .map(c -> new LigneNoteFraisRequest(
+                detteEstimee(c), COMPTE_FOURNISSEURS,
+                "Camion " + c.getPlaque() + " - " + c.getArticle().getLibelle(),
+                false, null, null, null, null, false, null, null))
+            .toList();
+        String objet = camions.size() == 1
+            ? "Règlement fournisseur minerais - camion " + camions.get(0).getPlaque()
+            : "Règlement fournisseur minerais - " + camions.size() + " camions";
+
+        NoteFrais note = NoteFrais.builder()
+            .reference(referenceGenerator.pourNoteFrais())
+            .objet(objet)
+            .beneficiaire(req.beneficiaire())
+            .description(req.description())
+            .montant(BigDecimal.ZERO)
+            // Les montants des camions (prix d'achat, dette fournisseur) sont
+            // deja en devise de base (USD) : aucune conversion a faire.
+            .devise(ConversionDeviseService.DEVISE_BASE)
+            .statut(StatutNote.BROUILLON)
+            .sens(SensTransaction.DECAISSEMENT)
+            .createur(auteur)
+            .build();
+        construireLignes(note, lignesReq);
+        note.recalculerMontant();
+        note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Creation de la note"));
+        note = noteRepository.save(note);
+
+        for (CamionMinerai camion : camions) {
+            camion.setNoteFraisReglement(note);
+        }
+        camionRepository.saveAll(camions);
+
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, null, "Soumission au DFIN");
+        notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
+            "Note à vérifier", note.getReference() + " — " + note.getObjet(),
+            "/notes-frais/" + note.getId(), note);
+
+        log.info("Note de reglement camions minerais creee et soumise [ref={}, montant={}, camions={}, par={}]",
+            note.getReference(), note.getMontant(), camions.size(), auteur.getEmail());
+        return reponse;
+    }
+
+    /** Compte Fournisseurs, meme convention que {@code MineraiService.COMPTE_FOURNISSEURS}. */
+    private static final String COMPTE_FOURNISSEURS = "4011";
+
+    /**
+     * Dette fournisseur reelle (achat deja valide) ou, pour un camion encore
+     * A_VALIDER, estimee TTC au taux de TVA du jour de reception — meme
+     * calcul que {@code MineraiService.detteEstimee}, duplique ici plutot
+     * qu'expose : ce service ne reagit qu'aux repositories des domaines
+     * qu'il touche (voir {@code ArticleRepository}, {@code
+     * EntrepotRepository}), jamais a leurs services.
+     */
+    private BigDecimal detteEstimee(CamionMinerai c) {
+        if (c.getStatut() != StatutCamionMinerai.A_VALIDER) {
+            return c.detteFournisseur();
+        }
+        BigDecimal prixHt = c.getPrixAchat();
+        if (!c.getArticle().isSoumisTva()) {
+            return prixHt;
+        }
+        BigDecimal tva = prixHt.multiply(tauxTvaService.tauxALaDate(c.getDateReception()))
+            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        return prixHt.add(tva);
     }
 
     /**
@@ -673,7 +802,7 @@ public class NoteFraisService {
     }
 
     /** Annulation par le createur ou le DFIN (etats non terminaux -> ANNULEE). */
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'RESP_RESTAURANT', 'LOGISTIQUE', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse annuler(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -691,6 +820,14 @@ public class NoteFraisService {
             exigerCreateur(note);
         }
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.ANNULEE, action, "Annulation de la note");
+        // Note de reglement de camions minerais : les camions rattaches
+        // redeviennent disponibles pour une nouvelle demande — voir
+        // MineraiService.listerARegler, qui les exclurait sinon indefiniment.
+        List<CamionMinerai> camionsLies = camionRepository.findByNoteFraisReglementId(note.getId());
+        if (!camionsLies.isEmpty()) {
+            camionsLies.forEach(c -> c.setNoteFraisReglement(null));
+            camionRepository.saveAll(camionsLies);
+        }
         // Pas d'auto-notification : si le createur annule lui-meme sa note,
         // il n'a pas besoin d'etre informe de sa propre action.
         boolean annuleeParAutrui = note.getCreateur() != null

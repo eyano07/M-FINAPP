@@ -230,6 +230,7 @@ async function enregistrerAchat() {
   }
 }
 
+
 const rules = {
   montant: [(v: any) => (v && v > 0) || 'Montant obligatoire et positif'],
   compte: [(v: any) => !!v || 'Compte obligatoire'],
@@ -620,6 +621,7 @@ const fmtTaux = computed(() =>
       </div>
     </v-card>
 
+
     <!-- ── Tableau des transactions ──────────────────────────────────── -->
     <v-card class="classroom-card mt-4">
       <v-card-title class="text-subtitle-1 font-weight-semibold pa-4 pb-2">
@@ -965,6 +967,7 @@ const fmtTaux = computed(() =>
         </v-card-actions>
       </v-card>
     </v-dialog>
+
   </div>
 
   <!-- ── Reçu de paiement (imprimable) ─────────────────────────────── -->

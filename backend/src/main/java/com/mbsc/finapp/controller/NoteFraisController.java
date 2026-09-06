@@ -2,6 +2,7 @@ package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.dto.notes.ActionWorkflowRequest;
+import com.mbsc.finapp.dto.notes.CreerNoteReglementCamionsRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisDetailResponse;
 import com.mbsc.finapp.dto.notes.NoteFraisRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisResponse;
@@ -51,6 +52,17 @@ public class NoteFraisController {
     public NoteFraisDetailResponse modifier(@PathVariable Long id,
                                             @Valid @RequestBody NoteFraisRequest req) {
         return service.modifier(id, req);
+    }
+
+    /**
+     * Cree et soumet directement au DFIN une note de reglement pour un ou
+     * plusieurs camions de minerais valides par la caisse (LOGISTIQUE).
+     */
+    @PostMapping("/reglement-camions-minerai")
+    @ResponseStatus(HttpStatus.CREATED)
+    public NoteFraisDetailResponse creerReglementCamionsMinerai(
+            @Valid @RequestBody CreerNoteReglementCamionsRequest req) {
+        return service.creerReglementCamionsMinerai(req);
     }
 
     /** Reaffectation des comptes d'imputation par le DFIN lors de la verification (note SOUMISE). */

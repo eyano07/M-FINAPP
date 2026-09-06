@@ -15,6 +15,8 @@ public record ChargeCamionResponse(
     BigDecimal montant,
     LocalDate dateCharge,
     boolean regle,
+    /** true tant que le camion est A_VALIDER : la charge est saisie mais pas encore incorporee au stock. */
+    boolean enAttente,
     String pieceReference,
     String transactionReglementReference
 ) {
@@ -29,6 +31,7 @@ public record ChargeCamionResponse(
             c.getMontant(),
             c.getDateCharge(),
             c.isRegle(),
+            c.getPiece() == null,
             c.getPiece() == null ? null : c.getPiece().getReference(),
             c.getTransactionReglement() == null ? null : c.getTransactionReglement().getReference()
         );

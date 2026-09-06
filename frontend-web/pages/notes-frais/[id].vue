@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Voir pages/notes-frais/index.vue : ni le DRH ni LOGISTIQUE n'ont acces a cet ecran.
-definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT'] })
+definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'LOGISTIQUE'] })
 
 interface Observation {
   auteurNom?: string
@@ -151,7 +151,7 @@ const peutValiderRejeter = computed(() => isDA.value && statut.value === 'VERIFI
 const peutPrioriser    = computed(() => isDA.value && ['VALIDEE_DA', 'TRANSMISE_CAISSE'].includes(statut.value || ''))
 const peutTransmettre  = computed(() => isDFIN.value && statut.value === 'VALIDEE_DA')
 const peutAnnuler      = computed(() =>
-  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','ADMIN']) &&
+  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','LOGISTIQUE','ADMIN']) &&
   ['BROUILLON','SOUMISE','VERIFIEE_DFIN','VALIDEE_DA','REJETEE_DA'].includes(statut.value || ''))
 
 /** Message contextuel quand aucune action n'est disponible. */

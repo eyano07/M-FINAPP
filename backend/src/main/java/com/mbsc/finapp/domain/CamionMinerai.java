@@ -11,7 +11,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 
 /**
- * Un chargement de minerais, identifie par sa plaque et son jour d'achat.
+ * Un chargement de minerais, identifie par sa plaque et son jour de reception.
  *
  * <p>Les marchandises ordinaires se suivent en quantite : dix sacs de ciment
  * sont interchangeables. Un minerais, non — chaque camion se revend a son
@@ -20,11 +20,16 @@ import java.time.LocalDate;
  * unitaire, qui ne remplace pas le stock mais s'y superpose : un camion vaut
  * une unite de l'article ({@code minerais = true}).</p>
  *
- * <p><b>Comptablement</b>, le camion suit deux cycles independants :</p>
+ * <p><b>Trois cycles independants :</b></p>
  * <ul>
- *   <li><b>Reception</b> (logistique) : D 601x Achats / C 4011 Fournisseurs,
- *       puis D 311x Stock / C 6031 Variation — la marchandise entre en stock
- *       et la dette fournisseur nait. Voir {@code MineraiService.receptionner}.</li>
+ *   <li><b>Reception</b> (logistique) : cree le camion {@link
+ *       com.mbsc.finapp.domain.enums.StatutCamionMinerai#A_VALIDER}, sans
+ *       aucune ecriture ni entree en stock. La logistique constate l'arrivee
+ *       physique, pas l'achat. Voir {@code MineraiService.receptionner}.</li>
+ *   <li><b>Validation de l'achat</b> (caisse) : D 601x Achats / C 4011
+ *       Fournisseurs puis D 311x Stock / C 6031 Variation — c'est cette
+ *       etape, et elle seule, qui fait naitre la dette fournisseur et entrer
+ *       la marchandise en stock. Voir {@code MineraiService.validerAchat}.</li>
  *   <li><b>Reglement</b> (caisse) : D 4011 Fournisseurs / C 571 Caisse, qui
  *       solde la dette. Independant de la vente : un camion peut etre vendu
  *       avant d'etre paye, ou l'inverse — d'ou {@link #regle} distinct de
@@ -56,11 +61,16 @@ public class CamionMinerai {
     @Column(nullable = false, length = 40)
     private String plaque;
 
-    /** Jour d'achat/reception du chargement. */
-    @Column(name = "date_achat", nullable = false)
-    private LocalDate dateAchat;
+    /**
+     * Jour de reception du chargement, constate par la logistique. C'est
+     * aussi cette date, et non celle de la validation par le caissier, qui
+     * datera l'ecriture d'achat une fois validee — meme convention que
+     * VenteService (date de la vente, pas de sa validation).
+     */
+    @Column(name = "date_reception", nullable = false)
+    private LocalDate dateReception;
 
-    /** Prix HORS TAXES du chargement entier, en devise de base. Entre en stock tel quel. */
+    /** Prix HORS TAXES propose par la logistique. Devient le prix d'achat effectif a la validation. */
     @Column(name = "prix_achat", nullable = false, precision = 15, scale = 2)
     private BigDecimal prixAchat;
 
@@ -91,7 +101,7 @@ public class CamionMinerai {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private StatutCamionMinerai statut = StatutCamionMinerai.EN_STOCK;
+    private StatutCamionMinerai statut = StatutCamionMinerai.A_VALIDER;
 
     /** true une fois la dette fournisseur soldee par la caisse. */
     @Column(nullable = false)
@@ -113,6 +123,20 @@ public class CamionMinerai {
     @JoinColumn(name = "transaction_reglement_id")
     private TransactionCaisse transactionReglement;
 
+    /**
+     * Note de frais en cours demandant le reglement de la dette de ce camion
+     * via le circuit DFIN/DA/Tresorerie — distinct du reglement direct en
+     * caisse ({@code CaisseService.reglerCamionsMinerai}). Nul tant
+     * qu'aucune note n'a ete creee, remis a nul si elle est annulee (voir
+     * {@code NoteFraisService.annuler}), et {@link #regle} passe a true
+     * quand elle est payee (voir {@code MineraiService
+     * .marquerRegleParNoteInterne}). Empeche qu'un meme camion soit inclus
+     * dans deux notes a la fois.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "note_frais_reglement_id")
+    private NoteFrais noteFraisReglement;
+
     @CreationTimestamp
     @Column(name = "date_creation", updatable = false)
     private Instant dateCreation;
@@ -123,6 +147,6 @@ public class CamionMinerai {
 
     /** "AB 1234 CD — 05/09/2026", pour les libelles d'ecriture et les listes. */
     public String designation() {
-        return plaque + " — " + dateAchat;
+        return plaque + " — " + dateReception;
     }
 }

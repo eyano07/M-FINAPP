@@ -4,6 +4,7 @@ import com.mbsc.finapp.dto.logistique.CamionMineraiRequest;
 import com.mbsc.finapp.dto.logistique.CamionMineraiResponse;
 import com.mbsc.finapp.dto.logistique.ChargeCamionRequest;
 import com.mbsc.finapp.dto.logistique.ChargeCamionResponse;
+import com.mbsc.finapp.dto.logistique.DupliquerCamionRequest;
 import com.mbsc.finapp.dto.logistique.ModeleChargeResponse;
 import com.mbsc.finapp.service.MineraiService;
 import jakarta.validation.Valid;
@@ -45,11 +46,28 @@ public class MineraiController {
         return service.listerARegler();
     }
 
+    /** Constate l'arrivee d'un chargement — pas encore un achat, voir CamionMinerai. */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public CamionMineraiResponse receptionner(@Valid @RequestBody CamionMineraiRequest req) {
         return service.receptionner(req);
     }
+
+    /**
+     * Duplique un camion (meme minerais, meme entrepot, meme prix, memes
+     * frais ad hoc) : seule la plaque change — raccourci pour un arrivage de
+     * plusieurs camions identiques.
+     */
+    @PostMapping("/{id}/dupliquer")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CamionMineraiResponse dupliquer(@PathVariable Long id, @Valid @RequestBody DupliquerCamionRequest req) {
+        return service.dupliquerDepuis(id, req);
+    }
+
+    // La validation de l'achat ne vit plus derriere une action directe :
+    // elle se fait desormais au paiement d'une note de reglement (voir
+    // NoteFraisService.creerReglementCamionsMinerai), qui rattache le
+    // camion puis, a son paiement, appelle MineraiService en interne.
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

@@ -11,17 +11,23 @@ import java.util.List;
 
 public interface CamionMineraiRepository extends JpaRepository<CamionMinerai, Long> {
 
-    List<CamionMinerai> findAllByOrderByDateAchatDescIdDesc();
+    List<CamionMinerai> findAllByOrderByDateReceptionDescIdDesc();
 
-    List<CamionMinerai> findByArticleIdOrderByDateAchatDescIdDesc(Long articleId);
+    List<CamionMinerai> findByArticleIdOrderByDateReceptionDescIdDesc(Long articleId);
 
-    /** Camions encore en stock, proposes a la vente. */
-    List<CamionMinerai> findByArticleIdAndStatutOrderByDateAchatAscIdAsc(Long articleId, StatutCamionMinerai statut);
+    /** Camions d'un statut donne (A_VALIDER, EN_STOCK...), les plus anciens d'abord. */
+    List<CamionMinerai> findByArticleIdAndStatutOrderByDateReceptionAscIdAsc(Long articleId, StatutCamionMinerai statut);
 
-    /** Camions dont la dette fournisseur reste a solder, proposes au reglement en caisse. */
-    List<CamionMinerai> findByRegleFalseOrderByDateAchatAscIdAsc();
+    /** Camions dont la dette fournisseur reste a solder (validee ou non), proposes au
+     * reglement en caisse ou a une nouvelle note de reglement — voir MineraiService.listerARegler.
+     * Un camion deja rattache a une note de reglement en cours est exclu : il ne doit pas
+     * pouvoir etre inclus deux fois (caisse directe et note, ou deux notes). */
+    List<CamionMinerai> findByRegleFalseAndNoteFraisReglementIsNullOrderByDateReceptionAscIdAsc();
 
-    boolean existsByArticleIdAndPlaqueIgnoreCaseAndDateAchat(Long articleId, String plaque, LocalDate dateAchat);
+    /** Camions rattaches a une note de reglement donnee — pour la solder ou liberer les camions si elle est annulee. */
+    List<CamionMinerai> findByNoteFraisReglementId(Long noteFraisId);
+
+    boolean existsByArticleIdAndPlaqueIgnoreCaseAndDateReception(Long articleId, String plaque, LocalDate dateReception);
 
     /**
      * true si une ligne de vente reference encore ce camion — y compris une

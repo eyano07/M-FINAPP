@@ -13,6 +13,7 @@ import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.JournalComptable;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
 import com.mbsc.finapp.domain.enums.SensTransaction;
+import com.mbsc.finapp.domain.enums.StatutCamionMinerai;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeCompte;
@@ -232,16 +233,18 @@ public class CaisseService {
     // ---------------------------------------------------------------------
 
     /**
-     * Solde en especes la dette fournisseur nee de la reception d'un ou
-     * plusieurs camions de minerais : <b>D 4011 Fournisseurs / C 571
-     * Caisse</b>.
+     * Solde en especes la dette fournisseur d'un ou plusieurs camions de
+     * minerais deja valides (achat constate) : <b>D 4011 Fournisseurs /
+     * C 571 Caisse</b>.
      *
-     * <p>Ni le stock ni le resultat ne bougent ici : la marchandise est deja
-     * entree (D 311x / C 6031) et l'achat deja constate (D 601x / C 4011) a la
-     * reception par la logistique — voir {@code MineraiService.receptionner}.
-     * Ce decaissement ne fait que solder la dette, ce qui explique qu'il soit
-     * independant de la vente : un camion peut etre paye avant ou apres avoir
-     * ete revendu.</p>
+     * <p>Reglement direct, hors circuit DFIN/DA — pour un camion encore
+     * A_VALIDER, c'est {@code NoteFraisService.creerReglementCamionsMinerai}
+     * qui constate l'achat en meme temps que le paiement, au bout de ce
+     * circuit. Ni le stock ni le resultat ne bougent ici : la marchandise
+     * est deja entree (D 311x / C 6031) et l'achat deja constate (D 601x /
+     * C 4011). Ce decaissement ne fait que solder la dette, ce qui explique
+     * qu'il soit independant de la vente : un camion peut etre paye avant ou
+     * apres avoir ete revendu.</p>
      */
     @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
     @Transactional
@@ -253,9 +256,20 @@ public class CaisseService {
         BigDecimal total = BigDecimal.ZERO;
         for (Long id : req.camionIds()) {
             CamionMinerai camion = mineraiService.charger(id);
+            if (camion.getStatut() == StatutCamionMinerai.A_VALIDER) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.designation() + " n'est pas encore valide : aucune dette a solder."
+                    + " Utilisez une note de reglement, qui validera l'achat a son paiement.");
+            }
             if (camion.isRegle()) {
                 throw new IllegalArgumentException(
                     "Le camion " + camion.designation() + " est deja regle.");
+            }
+            if (camion.getNoteFraisReglement() != null) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.designation() + " a une note de reglement en cours ("
+                    + camion.getNoteFraisReglement().getReference()
+                    + ") : le regler ici aussi paierait la dette deux fois.");
             }
             camions.add(camion);
             // La dette est le TTC (prix hors taxes + TVA recuperable) : c'est
@@ -428,6 +442,13 @@ public class CaisseService {
             .statutAuMoment(StatutNote.PAYEE)
             .commentaire("Paiement execute, recu " + saved.getNumeroRecu())
             .build());
+
+        // Note de reglement de camions minerais (circuit DFIN/DA/Tresorerie,
+        // voir NoteFraisService.creerReglementCamionsMinerai) : sans effet
+        // sur toute autre note, qui ne rattache jamais de camion. Un camion
+        // encore A_VALIDER voit son achat constate ici meme, avant d'etre
+        // solde — validation et paiement n'y font plus qu'un.
+        mineraiService.finaliserReglementNoteInterne(note.getId(), saved, caissier);
 
         log.info("Note {} payee par {} [recu={}]",
             note.getReference(), caissier.getEmail(), saved.getNumeroRecu());

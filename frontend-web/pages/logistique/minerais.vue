@@ -12,14 +12,17 @@ interface Camion {
   articleLibelle: string
   entrepotNom: string
   plaque: string
-  dateAchat: string
+  dateReception: string
   prixAchat: number
+  detteFournisseur: number
   coutAcquisition: number
-  statut: 'EN_STOCK' | 'VENDU'
+  totalFraisConnexes: number
+  statut: 'A_VALIDER' | 'EN_STOCK' | 'VENDU'
   regle: boolean
   mouvementReference?: string
   pieceReceptionReference?: string
   transactionReglementReference?: string
+  noteFraisReglementReference?: string
 }
 
 interface Charge {
@@ -32,6 +35,7 @@ interface Charge {
   montant: number
   dateCharge: string
   regle: boolean
+  enAttente: boolean
 }
 
 const api = useApi()
@@ -53,7 +57,7 @@ const form = reactive({
   articleId: null as number | null,
   entrepotId: null as number | null,
   plaque: '',
-  dateAchat: new Date().toISOString().slice(0, 10),
+  dateReception: new Date().toISOString().slice(0, 10),
   prixAchatUSD: null as number | null,
 })
 
@@ -84,7 +88,7 @@ function ouvrirReception() {
     articleId: minerais.value.length === 1 ? minerais.value[0].id : null,
     entrepotId: entrepots.value.length === 1 ? entrepots.value[0].id : null,
     plaque: '',
-    dateAchat: new Date().toISOString().slice(0, 10),
+    dateReception: new Date().toISOString().slice(0, 10),
     prixAchatUSD: null,
   })
   erreur.value = ''
@@ -105,17 +109,55 @@ async function receptionner() {
         articleId: form.articleId,
         entrepotId: form.entrepotId,
         plaque: form.plaque.trim(),
-        dateAchat: form.dateAchat,
+        dateReception: form.dateReception,
         prixAchat: form.prixAchatUSD,
       },
     })
     dialog.value = false
-    succes.value = `Camion ${form.plaque.trim().toUpperCase()} réceptionné et entré en stock.`
+    succes.value = `Camion ${form.plaque.trim().toUpperCase()} réceptionné, en attente de validation de l'achat par la caisse.`
     await charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Échec de la réception.')
   } finally {
     saving.value = false
+  }
+}
+
+// ── Duplication rapide d'un camion (même minerais, même prix, mêmes frais) ─
+const dialogDupliquer = ref(false)
+const camionSourceDupliquer = ref<Camion | null>(null)
+const plaqueDupliquee = ref('')
+const erreurDupliquer = ref('')
+const envoiDupliquer = ref(false)
+
+function ouvrirDupliquer(c: Camion) {
+  camionSourceDupliquer.value = c
+  plaqueDupliquee.value = ''
+  erreurDupliquer.value = ''
+  dialogDupliquer.value = true
+}
+
+async function dupliquerCamion() {
+  if (!camionSourceDupliquer.value) return
+  if (!plaqueDupliquee.value.trim()) {
+    erreurDupliquer.value = 'La plaque est obligatoire.'
+    return
+  }
+  envoiDupliquer.value = true
+  erreurDupliquer.value = ''
+  try {
+    const plaque = plaqueDupliquee.value.trim().toUpperCase()
+    await api(`/logistique/minerais/camions/${camionSourceDupliquer.value.id}/dupliquer`, {
+      method: 'POST',
+      body: { plaque },
+    })
+    dialogDupliquer.value = false
+    succes.value = `Camion ${plaque} ajouté à partir de ${camionSourceDupliquer.value.plaque}.`
+    await charger()
+  } catch (e: any) {
+    erreurDupliquer.value = messageErreurApi(e, 'Échec de la duplication.')
+  } finally {
+    envoiDupliquer.value = false
   }
 }
 
@@ -170,6 +212,8 @@ function onNatureChoisie(valeur: string | null) {
 }
 
 const totalCharges = computed(() => charges.value.reduce((s, c) => s + Number(c.montant), 0))
+const totalChargesEnAttente = computed(() =>
+  charges.value.filter(c => c.enAttente).reduce((s, c) => s + Number(c.montant), 0))
 
 async function ouvrirCharges(c: Camion) {
   camionCharges.value = c
@@ -246,12 +290,15 @@ async function ajouterCharge() {
       },
     })
     const nb = Array.isArray(creees) ? creees.length : 1
+    const enAttente = camionCharges.value.statut === 'A_VALIDER'
     Object.assign(formCharge, {
       libelle: '', compteChargeNumero: '', montantUSD: null, tousLesCamions: false,
     })
-    succes.value = nb > 1
-      ? `Frais incorporé au coût d'acquisition de ${nb} camions.`
-      : 'Frais incorporé au coût d\'acquisition du camion.'
+    succes.value = enAttente
+      ? "Frais enregistré, en attente de validation de l'achat par la caisse."
+      : nb > 1
+        ? `Frais incorporé au coût d'acquisition de ${nb} camions.`
+        : 'Frais incorporé au coût d\'acquisition du camion.'
     await Promise.all([chargerCharges(), charger()])
     camionCharges.value = camions.value.find(c => c.id === camionCharges.value?.id) || camionCharges.value
   } catch (e: any) {
@@ -266,7 +313,7 @@ async function supprimerCharge(ch: Charge) {
   erreur.value = ''
   try {
     await api(`/logistique/minerais/camions/charges/${ch.id}`, { method: 'DELETE' })
-    succes.value = 'Frais retiré, écritures extournées.'
+    succes.value = ch.enAttente ? 'Frais retiré.' : 'Frais retiré, écritures extournées.'
     await Promise.all([chargerCharges(), charger()])
     camionCharges.value = camions.value.find(c => c.id === camionCharges.value?.id) || camionCharges.value
   } catch (e: any) {
@@ -299,15 +346,77 @@ const resumeFiltres = computed(() => {
   if (filtreArticle.value !== 'TOUS') {
     parts.push(minerais.value.find(m => m.id === filtreArticle.value)?.libelle ?? '')
   }
-  if (filtreStatut.value !== 'TOUS') parts.push(filtreStatut.value === 'EN_STOCK' ? 'En stock' : 'Vendus')
+  if (filtreStatut.value !== 'TOUS') {
+    parts.push(filtreStatut.value === 'A_VALIDER' ? 'À valider' : filtreStatut.value === 'EN_STOCK' ? 'En stock' : 'Vendus')
+  }
   if (filtreReglement.value !== 'TOUS') parts.push(filtreReglement.value === 'REGLES' ? 'Réglés' : 'À régler')
   if (filtreRecherche.value.trim()) parts.push(`« ${filtreRecherche.value.trim()} »`)
   return parts.filter(Boolean).length ? parts.filter(Boolean).join(' · ') : 'Tous les camions'
 })
 
+const aValider = computed(() => camions.value.filter(c => c.statut === 'A_VALIDER').length)
 const enStock = computed(() => camions.value.filter(c => c.statut === 'EN_STOCK').length)
-const aRegler = computed(() => camions.value.filter(c => !c.regle))
+// Un camion A_VALIDER n'a encore aucune dette : l'achat n'est pas constate,
+// rien ne serait a regler dans les ecritures — memes exclusion que le
+// backend (findByRegleFalseAndStatutNotOrderByDateReceptionAscIdAsc).
+const aRegler = computed(() => camions.value.filter(c => !c.regle && c.statut !== 'A_VALIDER'))
 const detteFournisseur = computed(() => aRegler.value.reduce((s, c) => s + Number(c.prixAchat), 0))
+
+// ── Note de frais de règlement (circuit DFIN/DA/Trésorerie) ───────────────
+// N'importe quel camion non réglé et sans note déjà en cours peut être
+// sélectionné — y compris un camion encore À valider : c'est justement le
+// paiement de cette note, en bout de circuit, qui validera son achat (voir
+// NoteFraisService.creerReglementCamionsMinerai côté serveur, qui revalide
+// ces mêmes conditions à la création — source de vérité).
+function eligiblePourReglement(c: Camion) {
+  return !c.regle && !c.noteFraisReglementReference
+}
+const selectionnes = ref<number[]>([])
+const camionsSelectionnes = computed(() => camions.value.filter(c => selectionnes.value.includes(c.id)))
+const totalSelectionne = computed(() => camionsSelectionnes.value.reduce((s, c) => s + Number(c.detteFournisseur), 0))
+const selectionInclutAValider = computed(() => camionsSelectionnes.value.some(c => c.statut === 'A_VALIDER'))
+
+const dialogNote = ref(false)
+const beneficiaireNote = ref('')
+const descriptionNote = ref('')
+const erreurNote = ref('')
+const envoiNote = ref(false)
+
+function ouvrirNoteReglement() {
+  if (!selectionnes.value.length) return
+  beneficiaireNote.value = ''
+  descriptionNote.value = ''
+  erreurNote.value = ''
+  dialogNote.value = true
+}
+
+async function creerNoteReglement() {
+  if (!beneficiaireNote.value.trim()) {
+    erreurNote.value = 'Le bénéficiaire est obligatoire.'
+    return
+  }
+  envoiNote.value = true
+  erreurNote.value = ''
+  try {
+    const nb = selectionnes.value.length
+    await api('/notes-frais/reglement-camions-minerai', {
+      method: 'POST',
+      body: {
+        camionIds: selectionnes.value,
+        beneficiaire: beneficiaireNote.value.trim(),
+        description: descriptionNote.value.trim() || null,
+      },
+    })
+    dialogNote.value = false
+    succes.value = `Note de frais créée pour ${nb} camion${nb > 1 ? 's' : ''} et soumise au DFIN.`
+    selectionnes.value = []
+    await charger()
+  } catch (e: any) {
+    erreurNote.value = messageErreurApi(e, 'Échec de la création de la note.')
+  } finally {
+    envoiNote.value = false
+  }
+}
 
 const lignesParPage = ref(25)
 const dateImpression = ref('')
@@ -370,19 +479,25 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
     </v-alert>
 
     <v-row v-if="camions.length" class="mb-2 no-print">
-      <v-col cols="6" md="4">
+      <v-col cols="6" md="3">
+        <v-card class="classroom-card pa-4">
+          <div class="kpi-label">À valider</div>
+          <div class="kpi-value" :class="aValider ? 'text-warning' : ''">{{ aValider }}</div>
+        </v-card>
+      </v-col>
+      <v-col cols="6" md="3">
         <v-card class="classroom-card pa-4">
           <div class="kpi-label">Camions en stock</div>
           <div class="kpi-value">{{ enStock }}</div>
         </v-card>
       </v-col>
-      <v-col cols="6" md="4">
+      <v-col cols="6" md="3">
         <v-card class="classroom-card pa-4">
           <div class="kpi-label">À régler</div>
           <div class="kpi-value">{{ aRegler.length }}</div>
         </v-card>
       </v-col>
-      <v-col cols="12" md="4">
+      <v-col cols="6" md="3">
         <v-card class="classroom-card pa-4">
           <div class="kpi-label">Dette fournisseur (4011)</div>
           <div class="kpi-value" :class="detteFournisseur ? 'text-error' : 'text-success'">{{ fmt(detteFournisseur) }}</div>
@@ -404,6 +519,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         <v-col cols="6" md="2">
           <v-select v-model="filtreStatut" :items="[
             { title: 'Tous', value: 'TOUS' },
+            { title: 'À valider', value: 'A_VALIDER' },
             { title: 'En stock', value: 'EN_STOCK' },
             { title: 'Vendus', value: 'VENDU' },
           ]" label="Statut" variant="outlined" density="comfortable" hide-details />
@@ -418,14 +534,29 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       </v-row>
     </v-card>
 
+    <v-card v-if="selectionnes.length" class="classroom-card pa-4 mb-4 no-print" color="primary" variant="tonal">
+      <div class="d-flex align-center flex-wrap ga-3">
+        <div>
+          <strong>{{ selectionnes.length }}</strong> camion{{ selectionnes.length > 1 ? 's' : '' }} sélectionné{{ selectionnes.length > 1 ? 's' : '' }}
+          — dette totale <strong>{{ fmt(totalSelectionne) }}</strong>
+        </div>
+        <v-spacer />
+        <v-btn variant="text" @click="selectionnes = []">Désélectionner</v-btn>
+        <v-btn color="primary" variant="flat" prepend-icon="mdi-file-document-plus-outline" @click="ouvrirNoteReglement">
+          Créer une note de frais
+        </v-btn>
+      </div>
+    </v-card>
+
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
+          { title: 'Date de réception', key: 'dateReception' },
           { title: 'Plaque', key: 'plaque' },
           { title: 'Minerais', key: 'articleLibelle' },
           { title: 'Entrepôt', key: 'entrepotNom' },
-          { title: 'Date d\'achat', key: 'dateAchat' },
           { title: 'Prix d\'achat', key: 'prixAchat', align: 'end' },
+          { title: 'Frais connexes', key: 'totalFraisConnexes', align: 'end' },
           { title: 'Coût d\'acquisition', key: 'coutAcquisition', align: 'end' },
           { title: 'Statut', key: 'statut' },
           { title: 'Règlement', key: 'regle' },
@@ -434,32 +565,66 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         :items="camionsFiltres"
         :loading="loading"
         :items-per-page="lignesParPage"
+        show-select
+        v-model="selectionnes"
+        item-value="id"
+        :item-selectable="eligiblePourReglement"
       >
         <template #item.plaque="{ item }"><span class="font-weight-bold">{{ item.plaque }}</span></template>
-        <template #item.dateAchat="{ item }">{{ fmtDate(item.dateAchat) }}</template>
+        <template #item.articleLibelle="{ item }">
+          <div class="minerais-cell">
+            <span>{{ item.articleLibelle }}</span>
+            <v-btn
+              v-if="canWrite"
+              class="minerais-cell__dupliquer no-print"
+              size="x-small" variant="text" color="primary" icon="mdi-content-copy"
+              title="Ajouter un autre camion du même minerais (même prix, mêmes frais)"
+              @click="ouvrirDupliquer(item)" />
+          </div>
+        </template>
+        <template #item.dateReception="{ item }">{{ fmtDate(item.dateReception) }}</template>
         <template #item.prixAchat="{ item }">{{ fmt(item.prixAchat) }}</template>
+        <template #item.totalFraisConnexes="{ item }">
+          <span v-if="!item.totalFraisConnexes" class="text-medium-emphasis">—</span>
+          <span v-else>
+            {{ fmt(item.totalFraisConnexes) }}
+            <span v-if="item.statut === 'A_VALIDER'" class="text-caption text-warning d-block">en attente</span>
+          </span>
+        </template>
         <template #item.coutAcquisition="{ item }">
           <span :class="item.coutAcquisition > item.prixAchat ? 'font-weight-bold text-primary' : ''">
             {{ fmt(item.coutAcquisition) }}
           </span>
         </template>
         <template #item.statut="{ item }">
-          <v-chip :color="item.statut === 'EN_STOCK' ? 'success' : 'grey'" size="small" variant="tonal">
-            {{ item.statut === 'EN_STOCK' ? 'En stock' : 'Vendu' }}
+          <v-chip
+            :color="item.statut === 'A_VALIDER' ? 'warning' : item.statut === 'EN_STOCK' ? 'success' : 'grey'"
+            size="small" variant="tonal">
+            {{ item.statut === 'A_VALIDER' ? 'À valider' : item.statut === 'EN_STOCK' ? 'En stock' : 'Vendu' }}
           </v-chip>
         </template>
         <template #item.regle="{ item }">
-          <v-chip :color="item.regle ? 'success' : 'warning'" size="small" variant="tonal">
+          <!-- Une note en cours prime sur le statut A_VALIDER : c'est
+               justement son paiement qui validera l'achat. -->
+          <v-chip v-if="!item.regle && item.noteFraisReglementReference" color="info" size="small" variant="tonal"
+            :title="`Note ${item.noteFraisReglementReference} en cours de validation`">
+            Note en cours
+          </v-chip>
+          <!-- A_VALIDER sans note : aucune dette n'existe encore, l'achat
+               n'etant pas constate — different d'un "a regler" reel. -->
+          <span v-else-if="item.statut === 'A_VALIDER'" class="text-medium-emphasis text-caption">—</span>
+          <v-chip v-else :color="item.regle ? 'success' : 'warning'" size="small" variant="tonal">
             {{ item.regle ? 'Réglé' : 'À régler' }}
           </v-chip>
         </template>
         <template #item.actions="{ item }">
-          <v-btn v-if="canWrite && item.statut === 'EN_STOCK'" class="no-print"
+          <v-btn v-if="canWrite && item.statut !== 'VENDU'" class="no-print"
             size="small" variant="text" color="primary" icon="mdi-cash-plus"
             title="Frais accessoires (transport, pont bascule, péage...)" @click="ouvrirCharges(item)" />
-          <v-btn v-if="canWrite && item.statut === 'EN_STOCK' && !item.regle" class="no-print"
+          <v-btn v-if="canWrite && item.statut !== 'VENDU' && !item.regle && !item.noteFraisReglementReference" class="no-print"
             size="small" variant="text" color="error" icon="mdi-delete-outline"
-            title="Supprimer (extourne stock et écritures)" :disabled="saving" @click="supprimer(item)" />
+            :title="item.statut === 'A_VALIDER' ? 'Retirer (aucune écriture à extourner)' : 'Supprimer (extourne stock et écritures)'"
+            :disabled="saving" @click="supprimer(item)" />
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
@@ -474,8 +639,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       <v-card class="pa-6">
         <h2 class="text-h6 mb-1">Réceptionner un camion</h2>
         <p class="text-caption text-medium-emphasis mb-4">
-          Le chargement entre en stock (D 311 / C 6031) et la dette fournisseur est constatée
-          (D 601 / C 4011). Le règlement se fait ensuite depuis la caisse.
+          Ceci ne fait qu'enregistrer l'arrivée du camion — aucune écriture, aucun stock.
+          Sélectionnez-le ensuite pour créer une note de règlement : son achat (prix, TVA,
+          dette fournisseur D 601 / C 4011, entrée en stock D 311 / C 6031) sera constaté
+          automatiquement au paiement de cette note par la caisse.
         </p>
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
 
@@ -485,10 +652,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           label="Entrepôt *" variant="outlined" density="comfortable" class="mb-3" hide-details />
         <v-text-field v-model="form.plaque" label="Plaque du camion *" variant="outlined" density="comfortable"
           class="mb-3" hide-details placeholder="Ex: AB 1234 CD" />
-        <v-text-field v-model="form.dateAchat" type="date" label="Date d'achat *" variant="outlined"
+        <v-text-field v-model="form.dateReception" type="date" label="Date de réception *" variant="outlined"
           density="comfortable" class="mb-3" hide-details />
         <v-text-field v-model.number="form.prixAchatUSD" type="number" min="0" step="0.01"
-          label="Prix d'achat du chargement (USD) *" prepend-inner-icon="mdi-currency-usd"
+          label="Prix d'achat proposé (USD) *" prepend-inner-icon="mdi-currency-usd"
           variant="outlined" density="comfortable" hide-details
           :hint="form.prixAchatUSD && tauxChange > 0 ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round(form.prixAchatUSD * tauxChange))} FC` : ''"
           persistent-hint class="mb-2" />
@@ -499,6 +666,58 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         </div>
       </v-card>
     </v-dialog>
+
+    <!-- ── Duplication rapide d'un camion ──────────────────────────── -->
+    <v-dialog v-model="dialogDupliquer" max-width="420">
+      <v-card class="pa-6">
+        <h2 class="text-h6 mb-1">Ajouter un autre camion</h2>
+        <p class="text-caption text-medium-emphasis mb-4">
+          {{ camionSourceDupliquer?.articleLibelle }} · {{ camionSourceDupliquer?.entrepotNom }} ·
+          prix d'achat {{ fmt(camionSourceDupliquer?.prixAchat ?? 0) }}<template v-if="camionSourceDupliquer?.totalFraisConnexes"> ·
+          frais connexes {{ fmt(camionSourceDupliquer.totalFraisConnexes) }}</template> — repris à l'identique,
+          seule la plaque change.
+        </p>
+        <v-alert v-if="erreurDupliquer" type="error" variant="tonal" density="compact" class="mb-3">{{ erreurDupliquer }}</v-alert>
+
+        <v-text-field v-model="plaqueDupliquee" label="Plaque du camion *" variant="outlined" density="comfortable"
+          hide-details placeholder="Ex: AB 1234 CD" autofocus @keyup.enter="dupliquerCamion" />
+
+        <div class="d-flex justify-end ga-3 mt-4">
+          <v-btn variant="text" :disabled="envoiDupliquer" @click="dialogDupliquer = false">Annuler</v-btn>
+          <v-btn color="primary" variant="flat" :loading="envoiDupliquer" @click="dupliquerCamion">Ajouter</v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
+
+    <!-- ── Note de frais de règlement (circuit DFIN/DA/Trésorerie) ──── -->
+    <v-dialog v-model="dialogNote" max-width="480">
+      <v-card class="pa-6">
+        <h2 class="text-h6 mb-1">Créer une note de frais</h2>
+        <p class="text-caption text-medium-emphasis mb-4">
+          Règlement de <strong>{{ selectionnes.length }}</strong> camion{{ selectionnes.length > 1 ? 's' : '' }}
+          — {{ camionsSelectionnes.map(c => c.plaque).join(', ') }} —
+          pour un total de <strong>{{ fmt(totalSelectionne) }}</strong>. La note sera soumise
+          directement au DFIN, puis suivra le circuit DA / Trésorerie.
+          <template v-if="selectionInclutAValider">
+            Le paiement validera aussi l'achat des camions pas encore validés.
+          </template>
+        </p>
+        <v-alert v-if="erreurNote" type="error" variant="tonal" density="compact" class="mb-3">{{ erreurNote }}</v-alert>
+
+        <v-text-field v-model="beneficiaireNote" label="Bénéficiaire (fournisseur à payer) *" variant="outlined"
+          density="comfortable" class="mb-3" hide-details autofocus />
+        <v-textarea v-model="descriptionNote" label="Description (facultatif)" variant="outlined"
+          density="comfortable" rows="2" hide-details />
+
+        <div class="d-flex justify-end ga-3 mt-4">
+          <v-btn variant="text" :disabled="envoiNote" @click="dialogNote = false">Annuler</v-btn>
+          <v-btn color="primary" variant="flat" :loading="envoiNote" @click="creerNoteReglement">
+            Créer et soumettre
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
+
     <!-- ── Frais accessoires d'achat ─────────────────────────────── -->
     <v-dialog v-model="dialogCharges" max-width="760" scrollable>
       <v-card class="pa-6">
@@ -510,6 +729,11 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           nature (D 6x / C 4011) puis incorporé au stock (D 311 / C 6031) : il entre dans le coût
           d'acquisition du camion, et non dans les charges de la période.
         </p>
+        <v-alert v-if="camionCharges?.statut === 'A_VALIDER'" type="info" variant="tonal" density="compact" class="mb-4">
+          Ce camion n'est pas encore validé : les frais saisis ici restent
+          <strong>en attente</strong> et ne seront incorporés au stock qu'à la validation de l'achat,
+          au paiement de sa note de règlement.
+        </v-alert>
 
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
 
@@ -519,12 +743,18 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
             <div class="kpi-value">{{ fmt(camionCharges?.prixAchat ?? 0) }}</div>
           </v-col>
           <v-col cols="6" md="4">
-            <div class="kpi-label">Frais incorporés</div>
+            <div class="kpi-label">Frais saisis</div>
             <div class="kpi-value">{{ fmt(totalCharges) }}</div>
+            <div v-if="totalChargesEnAttente" class="text-caption text-warning">
+              dont {{ fmt(totalChargesEnAttente) }} en attente
+            </div>
           </v-col>
           <v-col cols="12" md="4">
             <div class="kpi-label">Coût d'acquisition</div>
             <div class="kpi-value text-primary">{{ fmt(camionCharges?.coutAcquisition ?? 0) }}</div>
+            <div v-if="totalChargesEnAttente" class="text-caption text-warning">
+              {{ fmt((camionCharges?.coutAcquisition ?? 0) + totalChargesEnAttente) }} après validation
+            </div>
           </v-col>
         </v-row>
 
@@ -603,7 +833,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
               <td><code class="text-caption">{{ ch.compteChargeNumero }}</code> — {{ ch.compteChargeLibelle }}</td>
               <td class="text-right">{{ fmt(ch.montant) }}</td>
               <td>
-                <v-chip :color="ch.regle ? 'success' : 'warning'" size="x-small" variant="tonal">
+                <v-chip v-if="ch.enAttente" color="info" size="x-small" variant="tonal">
+                  En attente
+                </v-chip>
+                <v-chip v-else :color="ch.regle ? 'success' : 'warning'" size="x-small" variant="tonal">
                   {{ ch.regle ? 'Réglé' : 'À régler' }}
                 </v-chip>
               </td>
@@ -633,6 +866,11 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
 .modeles-bloc { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; padding: 10px 12px; }
 .modeles-titre { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #0369a1; margin-bottom: 8px; }
 .modeles-liste { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Bouton "dupliquer" du camion : discret, révélé au survol de la cellule. */
+.minerais-cell { display: flex; align-items: center; gap: 2px; }
+.minerais-cell__dupliquer { opacity: 0; transition: opacity 0.15s; }
+.minerais-cell:hover .minerais-cell__dupliquer, .minerais-cell__dupliquer:focus-visible { opacity: 1; }
 
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
