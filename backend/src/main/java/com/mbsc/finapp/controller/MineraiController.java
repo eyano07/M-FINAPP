@@ -4,6 +4,7 @@ import com.mbsc.finapp.dto.logistique.CamionMineraiRequest;
 import com.mbsc.finapp.dto.logistique.CamionMineraiResponse;
 import com.mbsc.finapp.dto.logistique.ChargeCamionRequest;
 import com.mbsc.finapp.dto.logistique.ChargeCamionResponse;
+import com.mbsc.finapp.dto.logistique.ModeleChargeResponse;
 import com.mbsc.finapp.service.MineraiService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -80,6 +81,19 @@ public class MineraiController {
     public List<ChargeCamionResponse> ajouterCharge(@PathVariable Long id,
                                                     @Valid @RequestBody ChargeCamionRequest req) {
         return service.ajouterCharge(id, req);
+    }
+
+    /** Frais standards d'un minerais, rejoues a chaque reception. */
+    @GetMapping("/modeles")
+    public List<ModeleChargeResponse> modeles(@RequestParam Long articleId) {
+        return service.listerModeles(articleId);
+    }
+
+    /** Retire un frais des standards : les lignes deja creees sur les camions ne bougent pas. */
+    @DeleteMapping("/modeles/{modeleId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void supprimerModele(@PathVariable Long modeleId) {
+        service.supprimerModele(modeleId);
     }
 
     @DeleteMapping("/charges/{chargeId}")

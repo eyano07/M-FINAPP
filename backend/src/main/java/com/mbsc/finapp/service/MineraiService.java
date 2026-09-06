@@ -4,6 +4,7 @@ import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CamionMinerai;
 import com.mbsc.finapp.domain.ChargeCamionMinerai;
 import com.mbsc.finapp.domain.CompteOHADA;
+import com.mbsc.finapp.domain.ModeleChargeMinerai;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.MouvementStock;
@@ -15,8 +16,10 @@ import com.mbsc.finapp.dto.logistique.CamionMineraiRequest;
 import com.mbsc.finapp.dto.logistique.CamionMineraiResponse;
 import com.mbsc.finapp.dto.logistique.ChargeCamionRequest;
 import com.mbsc.finapp.dto.logistique.ChargeCamionResponse;
+import com.mbsc.finapp.dto.logistique.ModeleChargeResponse;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.repository.CamionMineraiRepository;
+import com.mbsc.finapp.repository.ModeleChargeMineraiRepository;
 import com.mbsc.finapp.repository.ChargeCamionMineraiRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
@@ -86,6 +89,8 @@ public class MineraiService {
     public static final String COMPTE_TVA_RECUPERABLE = "4452";
 
     private final CamionMineraiRepository camionRepository;
+    /** Frais standards d'un minerais, rejoues a chaque reception. */
+    private final ModeleChargeMineraiRepository modeleRepository;
     private final ChargeCamionMineraiRepository chargeRepository;
     private final StockService stockService;
     private final EcritureComptableService comptabilite;
@@ -199,8 +204,22 @@ public class MineraiService {
             .pieceReception(pieceAchat)
             .build());
 
-        log.info("Camion de minerais receptionne [plaque={}, article={}, ht={}, tva={}, par={}]",
-            plaque, article.getCode(), prixHt, tva, auteur.getEmail());
+        // 3. Frais standards du minerais : rejoues sur ce nouveau chargement.
+        //    Chacun cree sa propre ligne et ses propres ecritures, ensuite
+        //    modifiable ou supprimable sur ce seul camion — le modele ne fixe
+        //    qu'un montant de depart.
+        List<ModeleChargeMinerai> modeles = modeleRepository.findByArticleIdOrderByLibelleAsc(article.getId());
+        for (ModeleChargeMinerai modele : modeles) {
+            incorporerCharge(camion, new ChargeCamionRequest(
+                modele.getLibelle(),
+                modele.getCompteCharge().getNumero(),
+                modele.getMontant(),
+                req.dateAchat(),
+                false));
+        }
+
+        log.info("Camion de minerais receptionne [plaque={}, article={}, ht={}, tva={}, fraisStandards={}, par={}]",
+            plaque, article.getCode(), prixHt, tva, modeles.size(), auteur.getEmail());
         return CamionMineraiResponse.from(camion);
     }
 
@@ -246,6 +265,12 @@ public class MineraiService {
         if (!Boolean.TRUE.equals(req.appliquerATousLesCamions())) {
             return List.of(incorporerCharge(camion, req));
         }
+        // Le frais devient un standard du minerais : il sera rejoue a chaque
+        // reception suivante (voir receptionner). Sans cela, cocher la case
+        // n'aurait valu que pour les camions deja en stock a cet instant, et
+        // un chargement receptionne le lendemain repartait sans frais.
+        enregistrerModele(camion.getArticle(), req);
+
         // Saisie groupee : le meme frais sur chaque camion encore en stock du
         // minerais. Chacun recoit sa propre ligne et ses propres ecritures —
         // elles restent donc modifiables camion par camion ensuite.
@@ -263,6 +288,41 @@ public class MineraiService {
         log.info("Frais « {} » applique a {} camion(s) de {}",
             req.libelle(), creees.size(), camion.getArticle().getLibelle());
         return creees;
+    }
+
+    /** Cree ou met a jour le frais standard du minerais (une seule ligne par nature). */
+    private void enregistrerModele(Article article, ChargeCamionRequest req) {
+        String libelle = req.libelle().trim();
+        ModeleChargeMinerai modele = modeleRepository
+            .findByArticleIdAndLibelleIgnoreCase(article.getId(), libelle)
+            .orElseGet(() -> ModeleChargeMinerai.builder().article(article).libelle(libelle).build());
+        modele.setCompteCharge(comptabilite.compteParNumero(req.compteChargeNumero()));
+        modele.setMontant(req.montant().setScale(2, RoundingMode.HALF_UP));
+        modeleRepository.save(modele);
+    }
+
+    /** Frais standards d'un minerais, rejoues a chaque reception. */
+    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'DFIN', 'ADMIN')")
+    @Transactional(readOnly = true)
+    public List<ModeleChargeResponse> listerModeles(Long articleId) {
+        return modeleRepository.findByArticleIdOrderByLibelleAsc(articleId).stream()
+            .map(ModeleChargeResponse::from)
+            .toList();
+    }
+
+    /**
+     * Retire un frais des standards du minerais. Les lignes deja creees sur
+     * les camions ne bougent pas : seules les receptions futures cessent de
+     * le rejouer.
+     */
+    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'DFIN', 'ADMIN')")
+    @Transactional
+    public void supprimerModele(Long modeleId) {
+        ModeleChargeMinerai modele = modeleRepository.findById(modeleId)
+            .orElseThrow(() -> RessourceIntrouvableException.of("ModeleChargeMinerai", modeleId));
+        modeleRepository.delete(modele);
+        log.info("Frais standard retire [minerais={}, libelle={}]",
+            modele.getArticle().getLibelle(), modele.getLibelle());
     }
 
     /** Incorpore un frais accessoire au cout d'acquisition d'UN camion. */

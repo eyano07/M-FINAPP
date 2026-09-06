@@ -183,15 +183,46 @@ async function ouvrirCharges(c: Camion) {
   await chargerCharges()
 }
 
+// Frais standards du minerais : rejoues automatiquement a chaque reception.
+interface ModeleCharge {
+  id: number
+  libelle: string
+  compteChargeNumero: string
+  compteChargeLibelle: string
+  montant: number
+}
+const modeles = ref<ModeleCharge[]>([])
+
 async function chargerCharges() {
   if (!camionCharges.value) return
   chargesLoading.value = true
   try {
-    charges.value = await api<Charge[]>(`/logistique/minerais/camions/${camionCharges.value.id}/charges`)
+    const [lignes, std] = await Promise.all([
+      api<Charge[]>(`/logistique/minerais/camions/${camionCharges.value.id}/charges`),
+      api<ModeleCharge[]>(`/logistique/minerais/camions/modeles?articleId=${camionCharges.value.articleId}`)
+        .catch(() => [] as ModeleCharge[]),
+    ])
+    charges.value = lignes
+    modeles.value = std
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les frais.')
   } finally {
     chargesLoading.value = false
+  }
+}
+
+/** Retire un frais des standards : les lignes deja creees sur les camions restent. */
+async function retirerModele(m: ModeleCharge) {
+  saving.value = true
+  erreur.value = ''
+  try {
+    await api(`/logistique/minerais/camions/modeles/${m.id}`, { method: 'DELETE' })
+    succes.value = `« ${m.libelle} » ne sera plus appliqué automatiquement aux prochaines réceptions.`
+    await chargerCharges()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Échec du retrait.')
+  } finally {
+    saving.value = false
   }
 }
 
@@ -528,14 +559,33 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
               :disabled="camionCharges?.statut === 'VENDU'">
               <template #label>
                 <span class="text-body-2">
-                  Appliquer à <strong>tous les camions en stock</strong> de
-                  « {{ camionCharges?.articleLibelle }} »
+                  Frais standard de « {{ camionCharges?.articleLibelle }} » :
+                  l'appliquer à <strong>tous les camions en stock</strong>
+                  <strong>et à chaque future réception</strong>
                   <span class="text-medium-emphasis">
                     — une ligne par camion, modifiable individuellement ensuite
                   </span>
                 </span>
               </template>
             </v-checkbox>
+          </v-col>
+
+          <!-- Frais standards deja enregistres : visibles et retirables, sinon
+               ils s'appliqueraient indefiniment sans moyen de les arreter. -->
+          <v-col v-if="modeles.length" cols="12">
+            <div class="modeles-bloc">
+              <div class="modeles-titre">
+                <v-icon icon="mdi-autorenew" size="15" class="mr-1" />
+                Frais standards de « {{ camionCharges?.articleLibelle }} » —
+                réappliqués à chaque réception
+              </div>
+              <div class="modeles-liste">
+                <v-chip v-for="m in modeles" :key="m.id" size="small" variant="tonal" color="primary"
+                  closable :disabled="saving" @click:close="retirerModele(m)">
+                  {{ m.libelle }} · {{ fmt(m.montant) }}
+                </v-chip>
+              </div>
+            </div>
           </v-col>
         </v-row>
 
@@ -579,6 +629,11 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
 </template>
 
 <style scoped>
+/* Frais standards du minerais, rejoues a chaque reception. */
+.modeles-bloc { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; padding: 10px 12px; }
+.modeles-titre { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #0369a1; margin-bottom: 8px; }
+.modeles-liste { display: flex; flex-wrap: wrap; gap: 6px; }
+
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
 .page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
