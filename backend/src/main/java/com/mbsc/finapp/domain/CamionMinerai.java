@@ -60,9 +60,23 @@ public class CamionMinerai {
     @Column(name = "date_achat", nullable = false)
     private LocalDate dateAchat;
 
-    /** Prix paye au fournisseur pour le chargement entier, en devise de base. */
+    /** Prix HORS TAXES du chargement entier, en devise de base. Entre en stock tel quel. */
     @Column(name = "prix_achat", nullable = false, precision = 15, scale = 2)
     private BigDecimal prixAchat;
+
+    /**
+     * TVA recuperable (4452) sur ce chargement, nulle si le minerais n'y est
+     * pas soumis. Exclue du cout d'acquisition — c'est une creance sur l'Etat
+     * — mais incluse dans la dette fournisseur, que la caisse solde en TTC.
+     */
+    @Column(name = "montant_tva", nullable = false, precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal montantTva = BigDecimal.ZERO;
+
+    /** Dette envers le fournisseur : prix hors taxes plus TVA. */
+    public BigDecimal detteFournisseur() {
+        return prixAchat.add(montantTva == null ? BigDecimal.ZERO : montantTva);
+    }
 
     /**
      * Cout d'acquisition = {@link #prixAchat} + frais accessoires incorpores

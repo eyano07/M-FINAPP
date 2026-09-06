@@ -60,6 +60,9 @@ public class CaisseService {
 
     private static final Logger log = LoggerFactory.getLogger(CaisseService.class);
 
+    /** TVA recuperable sur achats — meme compte que la note de frais (NoteFraisService). */
+    private static final String COMPTE_TVA_RECUPERABLE = "4452";
+
     private final TransactionCaisseRepository transactionRepository;
     private final EcritureGrandLivreRepository ecritureRepository;
     private final NoteFraisRepository noteRepository;
@@ -84,6 +87,8 @@ public class CaisseService {
     private final RestaurantService restaurantService;
     /** Camions de minerais : reglement de la dette fournisseur nee a la reception. */
     private final MineraiService mineraiService;
+    /** Taux de TVA en vigueur a la date de l'achat. */
+    private final TauxTvaService tauxTvaService;
 
     // ---------------------------------------------------------------------
     // Saisie directe
@@ -123,13 +128,18 @@ public class CaisseService {
      * <p><b>Deux ecritures indissociables, conformes a l'inventaire permanent
      * du SYSCOHADA revise :</b></p>
      * <ol>
-     *   <li><b>D 601x Achats de marchandises / C 571 Caisse</b> — l'achat et
-     *       la sortie de tresorerie. C'est une transaction de caisse
-     *       ordinaire (journal CAISSE), qui apparait donc dans l'historique
-     *       des operations comme n'importe quel decaissement.</li>
+     *   <li><b>D 601x Achats hors taxes (+ D 4452 TVA recuperable si
+     *       l'article y est soumis) / C 571 Caisse toutes taxes comprises</b>
+     *       — l'achat et la sortie de tresorerie. C'est une transaction de
+     *       caisse ordinaire (journal CAISSE), qui apparait donc dans
+     *       l'historique des operations comme n'importe quel decaissement.
+     *       Le prix saisi est HORS TAXES, comme sur une note de frais.</li>
      *   <li><b>D 311x Marchandises / C 6031 Variations des stocks</b> —
-     *       l'entree en stock (journal STOCK), portee par
-     *       {@code StockService.enregistrerEntreeAchatInterne}.</li>
+     *       l'entree en stock (journal STOCK) pour le seul montant hors
+     *       taxes, portee par
+     *       {@code StockService.enregistrerEntreeAchatInterne}. La TVA
+     *       recuperable est une creance sur l'Etat, jamais un element du
+     *       cout d'acquisition.</li>
      * </ol>
      *
      * <p>Imputer directement le compte de stock au decaissement (D 311 /
@@ -165,21 +175,31 @@ public class CaisseService {
         // (601x). La regle partagee refuserait par exemple un compte de produit.
         regleTresorerie.validerSensContrepartie(SensTransaction.DECAISSEMENT, compteAchat);
 
-        BigDecimal montant = req.prixUnitaire()
+        // Le prix saisi est HORS TAXES, comme sur une note de frais : la TVA
+        // s'ajoute par-dessus (voir LigneNoteFrais.montantTtc). Le stock entre
+        // au HT — la TVA recuperable est une creance sur l'Etat, pas un
+        // element du cout d'acquisition.
+        BigDecimal montantHt = req.prixUnitaire()
             .multiply(req.quantite())
             .setScale(2, RoundingMode.HALF_UP);
-        if (montant.signum() <= 0) {
+        if (montantHt.signum() <= 0) {
             throw new IllegalArgumentException("Le montant de l'achat doit etre strictement positif.");
         }
+        BigDecimal tva = article.isSoumisTva()
+            ? montantHt.multiply(tauxTvaService.tauxALaDate(LocalDate.now()))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+            : BigDecimal.ZERO;
+        BigDecimal montantTtc = montantHt.add(tva);
+
         String libelle = StringUtils.hasText(req.libelle())
             ? req.libelle()
             : "Achat " + article.getLibelle() + " x" + req.quantite().stripTrailingZeros().toPlainString();
 
-        // 1. Achat au comptant : D 601x / C 571
+        // 1. Achat au comptant : D 601x HT + D 4452 TVA / C 571 TTC
         TransactionCaisse transaction = TransactionCaisse.builder()
             .uuid(UUID.randomUUID())
             .reference(referenceGenerator.pourTransaction())
-            .montant(montant)
+            .montant(montantTtc)
             .sens(SensTransaction.DECAISSEMENT)
             .libelle(libelle)
             .caissier(caissier)
@@ -187,17 +207,23 @@ public class CaisseService {
             .dateOperation(Instant.now())
             .tauxJournalier(conversionDevise.tauxCourant())
             .build();
-        TransactionCaisse saved = comptabilite.enregistrer(transaction, compteAchat, libelle);
+        List<EcritureComptableService.Ventilation> contreparties = new ArrayList<>();
+        contreparties.add(new EcritureComptableService.Ventilation(compteAchat, montantHt));
+        if (tva.signum() > 0) {
+            contreparties.add(new EcritureComptableService.Ventilation(
+                comptabilite.compteParNumero(COMPTE_TVA_RECUPERABLE), tva));
+        }
+        TransactionCaisse saved = comptabilite.enregistrerVentile(transaction, contreparties, libelle);
 
-        // 2. Entree en stock : D 311x / C 6031
+        // 2. Entree en stock au HT : D 311x / C 6031
         stockService.enregistrerEntreeAchatInterne(
             LocalDate.now(), libelle,
-            new StockService.AchatMarchandise(article, entrepot, req.quantite(), montant,
+            new StockService.AchatMarchandise(article, entrepot, req.quantite(), montantHt,
                 compteStock, compteVariation),
             caissier);
 
-        log.info("Achat de marchandise a la caisse [ref={}, article={}, montant={}, par={}]",
-            saved.getReference(), article.getCode(), montant, caissier.getEmail());
+        log.info("Achat de marchandise a la caisse [ref={}, article={}, ht={}, tva={}, par={}]",
+            saved.getReference(), article.getCode(), montantHt, tva, caissier.getEmail());
         return TransactionCaisseResponse.from(saved);
     }
 
@@ -232,9 +258,11 @@ public class CaisseService {
                     "Le camion " + camion.designation() + " est deja regle.");
             }
             camions.add(camion);
-            // Le prix d'achat seul : les frais accessoires portent leur propre
-            // dette, soldee via chargeIds — les additionner ici les paierait deux fois.
-            total = total.add(camion.getPrixAchat());
+            // La dette est le TTC (prix hors taxes + TVA recuperable) : c'est
+            // ce que le fournisseur reclame. Les frais accessoires portent leur
+            // propre dette, soldee via chargeIds — les additionner ici les
+            // paierait deux fois.
+            total = total.add(camion.detteFournisseur());
         }
         List<ChargeCamionMinerai> charges = new ArrayList<>();
         for (Long id : req.chargeIds()) {

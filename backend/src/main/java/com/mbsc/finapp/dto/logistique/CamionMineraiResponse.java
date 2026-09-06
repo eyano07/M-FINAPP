@@ -15,7 +15,12 @@ public record CamionMineraiResponse(
     String entrepotNom,
     String plaque,
     LocalDate dateAchat,
+    /** Prix hors taxes du chargement. */
     BigDecimal prixAchat,
+    /** TVA recuperable (4452), hors cout d'acquisition mais incluse dans la dette fournisseur. */
+    BigDecimal montantTva,
+    /** Dette envers le fournisseur : prix hors taxes + TVA. */
+    BigDecimal detteFournisseur,
     /** Prix d'achat + frais accessoires incorpores : ce qui sortira du stock a la vente. */
     BigDecimal coutAcquisition,
     StatutCamionMinerai statut,
@@ -35,6 +40,8 @@ public record CamionMineraiResponse(
             c.getPlaque(),
             c.getDateAchat(),
             c.getPrixAchat(),
+            c.getMontantTva(),
+            c.detteFournisseur(),
             c.getCoutAcquisition(),
             c.getStatut(),
             c.isRegle(),

@@ -54,9 +54,12 @@ import java.util.List;
  * <p><b>Trois cycles, conformes au SYSCOHADA revise :</b></p>
  * <ol>
  *   <li><b>Reception</b> (logistique) — la marchandise arrive avant d'etre
- *       payee : <b>D 601x Achats / C 4011 Fournisseurs</b> (journal ACHATS)
- *       fait naitre la dette, <b>D 311x Stock / C 6031 Variation</b> (journal
- *       STOCK) constate l'entree. Voir {@link #receptionner}.</li>
+ *       payee : <b>D 601x Achats hors taxes (+ D 4452 TVA recuperable si le
+ *       minerais y est soumis) / C 4011 Fournisseurs toutes taxes comprises</b>
+ *       (journal ACHATS) fait naitre la dette, <b>D 311x Stock / C 6031
+ *       Variation</b> (journal STOCK) constate l'entree pour le seul montant
+ *       hors taxes — la TVA recuperable est une creance sur l'Etat, jamais un
+ *       element du cout d'acquisition. Voir {@link #receptionner}.</li>
  *   <li><b>Frais accessoires</b> (logistique) — transport, pont bascule,
  *       peage, documents : <b>D 61x/62x / C 4011</b> puis <b>D 311x /
  *       C 6031</b>. Ils entrent dans le cout d'acquisition, pas dans les
@@ -79,12 +82,17 @@ public class MineraiService {
     /** Dette envers le fournisseur du minerais, nee a la reception et soldee par la caisse. */
     public static final String COMPTE_FOURNISSEURS = "4011";
 
+    /** TVA recuperable sur achats — meme compte que la note de frais et la caisse. */
+    public static final String COMPTE_TVA_RECUPERABLE = "4452";
+
     private final CamionMineraiRepository camionRepository;
     private final ChargeCamionMineraiRepository chargeRepository;
     private final StockService stockService;
     private final EcritureComptableService comptabilite;
     private final ComptabiliteService comptabiliteService;
     private final CurrentUserProvider currentUser;
+    /** Taux de TVA en vigueur a la date de reception. */
+    private final TauxTvaService tauxTvaService;
 
     // ---------------------------------------------------------------------
     // Consultation
@@ -150,35 +158,49 @@ public class MineraiService {
 
         String libelle = "Reception minerais " + article.getLibelle() + " - camion " + plaque;
 
-        // 1. Achat a credit : D 601x / C 4011 (la marchandise arrive, la dette nait).
-        List<EcritureGrandLivre> achat = List.of(
-            ecriture(article.getCompteAchat(), req.prixAchat(), BigDecimal.ZERO, libelle, req.dateAchat()),
-            ecriture(comptabilite.compteParNumero(COMPTE_FOURNISSEURS),
-                BigDecimal.ZERO, req.prixAchat(), libelle, req.dateAchat()));
+        // Le prix saisi est HORS TAXES : la TVA s'ajoute par-dessus et reste
+        // hors du cout d'acquisition (creance sur l'Etat), mais entre dans la
+        // dette fournisseur que la caisse soldera.
+        BigDecimal prixHt = req.prixAchat().setScale(2, RoundingMode.HALF_UP);
+        BigDecimal tva = article.isSoumisTva()
+            ? prixHt.multiply(tauxTvaService.tauxALaDate(req.dateAchat()))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+            : BigDecimal.ZERO;
+
+        // 1. Achat a credit : D 601x HT (+ D 4452 TVA) / C 4011 TTC.
+        List<EcritureGrandLivre> achat = new ArrayList<>();
+        achat.add(ecriture(article.getCompteAchat(), prixHt, BigDecimal.ZERO, libelle, req.dateAchat()));
+        if (tva.signum() > 0) {
+            achat.add(ecriture(comptabilite.compteParNumero(COMPTE_TVA_RECUPERABLE),
+                tva, BigDecimal.ZERO, libelle, req.dateAchat()));
+        }
+        achat.add(ecriture(comptabilite.compteParNumero(COMPTE_FOURNISSEURS),
+            BigDecimal.ZERO, prixHt.add(tva), libelle, req.dateAchat()));
         PieceComptable pieceAchat = comptabiliteService.creerPieceInterne(
             JournalComptable.ACHATS, libelle, req.dateAchat(), achat, auteur);
 
         // 2. Entree en stock : D 311x / C 6031.
         MouvementStock mouvement = stockService.enregistrerEntreeMineraiInterne(
-            req.dateAchat(), libelle, article, entrepot, req.prixAchat(), auteur);
+            req.dateAchat(), libelle, article, entrepot, prixHt, auteur);
 
         CamionMinerai camion = camionRepository.save(CamionMinerai.builder()
             .article(article)
             .entrepot(entrepot)
             .plaque(plaque)
             .dateAchat(req.dateAchat())
-            .prixAchat(req.prixAchat())
+            .prixAchat(prixHt)
+            .montantTva(tva)
             // Aucun frais accessoire encore engage : le cout d'acquisition part
-            // du seul prix fournisseur, puis grossit a chaque charge connexe.
-            .coutAcquisition(req.prixAchat())
+            // du seul prix hors taxes, puis grossit a chaque charge connexe.
+            .coutAcquisition(prixHt)
             .statut(StatutCamionMinerai.EN_STOCK)
             .regle(false)
             .mouvement(mouvement)
             .pieceReception(pieceAchat)
             .build());
 
-        log.info("Camion de minerais receptionne [plaque={}, article={}, prix={}, par={}]",
-            plaque, article.getCode(), req.prixAchat(), auteur.getEmail());
+        log.info("Camion de minerais receptionne [plaque={}, article={}, ht={}, tva={}, par={}]",
+            plaque, article.getCode(), prixHt, tva, auteur.getEmail());
         return CamionMineraiResponse.from(camion);
     }
 

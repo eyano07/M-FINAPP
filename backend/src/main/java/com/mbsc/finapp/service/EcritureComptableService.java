@@ -90,6 +90,79 @@ public class EcritureComptableService {
         return enregistrer(transaction, compteContrepartie, libelle, null);
     }
 
+    /** Une part de la contrepartie d'un mouvement de caisse — voir {@link #enregistrerVentile}. */
+    public record Ventilation(CompteOHADA compte, BigDecimal montant) {}
+
+    /**
+     * Comme {@link #enregistrer}, mais la contrepartie est ventilee sur
+     * plusieurs comptes au lieu d'un seul. La caisse porte le total, chaque
+     * part son propre compte.
+     *
+     * <p>Necessaire des qu'un mouvement de tresorerie n'a pas une contrepartie
+     * unique : un achat soumis a TVA se decompose en <b>D 601x hors taxes +
+     * D 4452 TVA recuperable / C 571 toutes taxes comprises</b>. La TVA doit
+     * rester sur son compte propre — c'est une creance sur l'Etat, pas une
+     * charge — sans quoi elle gonflerait le cout d'achat et le stock.</p>
+     *
+     * @param contreparties parts non nulles ; leur somme doit egaler le montant
+     *                      de la transaction, verifie ici plutot que laisse a
+     *                      l'appelant.
+     */
+    @Transactional
+    public TransactionCaisse enregistrerVentile(TransactionCaisse transaction,
+                                                List<Ventilation> contreparties,
+                                                String libelle) {
+        validerMontant(transaction.getMontant());
+        if (contreparties == null || contreparties.isEmpty()) {
+            throw new IllegalArgumentException("Aucune contrepartie fournie pour cette operation de caisse.");
+        }
+        BigDecimal somme = contreparties.stream()
+            .map(Ventilation::montant)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (somme.compareTo(transaction.getMontant()) != 0) {
+            throw new IllegalStateException(
+                "Ventilation incoherente : total des contreparties " + somme
+                + " pour un mouvement de " + transaction.getMontant() + ".");
+        }
+
+        CompteOHADA caisse = compteRepository.findByNumero(COMPTE_CAISSE)
+            .orElseThrow(() -> new IllegalStateException(
+                "Compte caisse " + COMPTE_CAISSE + " absent du plan comptable"));
+
+        LocalDate dateEcriture = (transaction.getDateOperation() == null
+            ? Instant.now() : transaction.getDateOperation())
+            .atZone(ZoneOffset.UTC).toLocalDate();
+        periodeService.verifierDateOuverte(dateEcriture);
+
+        BigDecimal total = transaction.getMontant();
+        String texte = StringUtils.hasText(libelle) ? libelle : transaction.getReference();
+        boolean decaissement = transaction.getSens() == SensTransaction.DECAISSEMENT;
+
+        List<EcritureGrandLivre> lignes = new ArrayList<>();
+        if (decaissement) {
+            for (Ventilation v : contreparties) {
+                lignes.add(ecriture(v.compte(), v.montant(), BigDecimal.ZERO, texte, dateEcriture, null));
+            }
+            lignes.add(ecriture(caisse, BigDecimal.ZERO, total, texte, dateEcriture, null));
+        } else {
+            lignes.add(ecriture(caisse, total, BigDecimal.ZERO, texte, dateEcriture, null));
+            for (Ventilation v : contreparties) {
+                lignes.add(ecriture(v.compte(), BigDecimal.ZERO, v.montant(), texte, dateEcriture, null));
+            }
+        }
+
+        for (EcritureGrandLivre l : lignes) {
+            transaction.addEcriture(l);
+        }
+
+        TransactionCaisse saved = transactionRepository.save(transaction);
+        comptabiliteService.creerPieceCaisse(
+            texte, dateEcriture, saved.getEcritures(), transaction.getCaissier());
+        log.info("Ecriture de caisse ventilee [ref={}, sens={}, montant={}, parts={}]",
+            saved.getReference(), saved.getSens(), total, contreparties.size());
+        return saved;
+    }
+
     /**
      * Variante avec information de conversion de devise : la devise d'origine,
      * le montant d'origine et le taux appliqué sont conservés sur chaque
