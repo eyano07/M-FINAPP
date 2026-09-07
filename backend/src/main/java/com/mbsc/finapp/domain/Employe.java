@@ -63,6 +63,9 @@ public class Employe {
     @Column(name = "date_embauche")
     private LocalDate dateEmbauche;
 
+    @Column(name = "date_naissance")
+    private LocalDate dateNaissance;
+
     @Column(name = "salaire_base_usd", nullable = false, precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal salaireBaseUsd = BigDecimal.ZERO;

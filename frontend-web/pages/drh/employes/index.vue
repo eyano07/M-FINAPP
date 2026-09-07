@@ -11,6 +11,7 @@ interface Employe {
   email: string | null
   telephone: string | null
   dateEmbauche: string | null
+  dateNaissance: string | null
   salaireBaseUsd: number
   situationFamiliale: string | null
   nombreEnfants: number
@@ -47,6 +48,7 @@ const editing = ref<Employe | null>(null)
 const formVide = () => ({
   nomComplet: '', categorie: '', poste: '', affectation: '', email: '', telephone: '',
   dateEmbauche: new Date().toISOString().slice(0, 10),
+  dateNaissance: '' as string | null,
   salaireBaseUsd: null as number | null,
   situationFamiliale: 'CELIBATAIRE',
   nombreEnfants: 0, diplome: '', ancienneteAnnees: 0, rendementPct: null as number | null,
@@ -84,6 +86,7 @@ function ouvrirEdition(e: Employe) {
   Object.assign(form, {
     nomComplet: e.nomComplet, categorie: e.categorie ?? '', poste: e.poste ?? '', affectation: e.affectation ?? '',
     email: e.email ?? '', telephone: e.telephone ?? '', dateEmbauche: e.dateEmbauche ?? '',
+    dateNaissance: e.dateNaissance ?? '',
     salaireBaseUsd: e.salaireBaseUsd, situationFamiliale: e.situationFamiliale ?? 'CELIBATAIRE',
     nombreEnfants: e.nombreEnfants, diplome: e.diplome ?? '', ancienneteAnnees: e.ancienneteAnnees,
     rendementPct: e.rendementPct, conforme: e.conforme, superviseur: e.superviseur, expatrie: e.expatrie,
@@ -220,7 +223,8 @@ const situationLabel = (v: string | null) => SITUATIONS.find(s => s.value === v)
             <v-col cols="12" md="3"><v-text-field v-model="form.poste" label="Poste" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="3"><v-text-field v-model="form.categorie" label="Catégorie (n° CNSS + lettre)" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="6"><v-text-field v-model="form.affectation" label="Affectation" variant="outlined" density="comfortable" /></v-col>
-            <v-col cols="12" md="6"><v-text-field v-model="form.dateEmbauche" type="date" label="Date d'embauche" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="3"><v-text-field v-model="form.dateEmbauche" type="date" label="Date d'embauche" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="3"><v-text-field v-model="form.dateNaissance" type="date" label="Date de naissance" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="6"><v-text-field v-model="form.email" type="email" label="Email" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="6"><v-text-field v-model="form.telephone" label="Téléphone" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.salaireBaseUsd" type="number" label="Salaire de base (USD) *" variant="outlined" density="comfortable" /></v-col>

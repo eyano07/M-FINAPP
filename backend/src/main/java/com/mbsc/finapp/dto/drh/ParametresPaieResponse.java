@@ -13,6 +13,7 @@ public record ParametresPaieResponse(
     BigDecimal tauxInpp,
     BigDecimal reductionIprParEnfant,
     Integer plafondEnfantsIpr,
+    boolean calculEnfantsActif,
     BigDecimal plancherIprFc,
     Integer joursOuvrablesStandard,
     boolean cnssDeductibleIpr,
@@ -33,7 +34,7 @@ public record ParametresPaieResponse(
         return new ParametresPaieResponse(
             p.getTauxLogement(), p.getTauxTransport(), p.getTauxCnssOuvriere(), p.getTauxCnssPatronale(),
             p.getTauxOnem(), p.getTauxInpp(), p.getReductionIprParEnfant(), p.getPlafondEnfantsIpr(),
-            p.getPlancherIprFc(), p.getJoursOuvrablesStandard(),
+            p.isCalculEnfantsActif(), p.getPlancherIprFc(), p.getJoursOuvrablesStandard(),
             p.isCnssDeductibleIpr(), p.isComptabiliserPaie(), p.getSmigJournalierFc(), p.getDiviseurAllocationFamiliale(),
             p.getPlafondRetenuePct(), p.getPlafondTransportExonereFcJour(), p.getHeuresLegalesHebdo(),
             p.getTauxMajorationHs1(), p.getTauxMajorationHs2(), p.getTauxMajorationHsFerie(),

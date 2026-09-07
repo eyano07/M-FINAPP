@@ -13,6 +13,7 @@ public record ParametresPaieRequest(
     @NotNull @DecimalMin("0") @DecimalMax("1") BigDecimal tauxInpp,
     @NotNull @DecimalMin("0") @DecimalMax("1") BigDecimal reductionIprParEnfant,
     @NotNull @Min(0) @Max(20) Integer plafondEnfantsIpr,
+    boolean calculEnfantsActif,
     @NotNull @DecimalMin("0") BigDecimal plancherIprFc,
     @NotNull @Min(1) @Max(31) Integer joursOuvrablesStandard,
     // Conformité RDC — voir V47__drh_conformite_rdc.sql

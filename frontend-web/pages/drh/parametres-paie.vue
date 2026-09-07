@@ -22,6 +22,7 @@ const form = reactive({
   tauxInppPct: 3,
   reductionIprParEnfantPct: 2,
   plafondEnfantsIpr: 9,
+  calculEnfantsActif: true,
   plancherIprFc: 2000,
   joursOuvrablesStandard: 26,
   // Comptabilisation optionnelle : desactivee, la cloture de periode
@@ -57,6 +58,7 @@ async function charger() {
       tauxInppPct: Number(p.tauxInpp) * 100,
       reductionIprParEnfantPct: Number(p.reductionIprParEnfant) * 100,
       plafondEnfantsIpr: p.plafondEnfantsIpr,
+      calculEnfantsActif: p.calculEnfantsActif !== false,
       plancherIprFc: Number(p.plancherIprFc),
       joursOuvrablesStandard: p.joursOuvrablesStandard,
       comptabiliserPaie: p.comptabiliserPaie !== false,
@@ -97,6 +99,7 @@ async function enregistrer() {
         tauxInpp: form.tauxInppPct / 100,
         reductionIprParEnfant: form.reductionIprParEnfantPct / 100,
         plafondEnfantsIpr: form.plafondEnfantsIpr,
+        calculEnfantsActif: form.calculEnfantsActif,
         plancherIprFc: form.plancherIprFc,
         joursOuvrablesStandard: form.joursOuvrablesStandard,
         comptabiliserPaie: form.comptabiliserPaie,
@@ -175,6 +178,19 @@ async function enregistrer() {
 
       <v-card class="classroom-card pa-5 mb-4">
         <div class="section-title">Barème IPR</div>
+        <v-switch
+          v-model="form.calculEnfantsActif"
+          color="primary"
+          :disabled="!canWrite"
+          hide-details
+          class="mb-2"
+          label="Appliquer la réduction IPR par enfant à charge"
+        />
+        <p class="text-caption text-medium-emphasis mb-4">
+          Désactivé : l'IPR de tous les bulletins est calculé comme si aucun employé n'avait d'enfant, quel que soit
+          le nombre d'enfants renseigné sur sa fiche. Le taux et le plafond ci-dessous restent enregistrés pour une
+          réactivation ultérieure.
+        </p>
         <v-row>
           <v-col cols="6" md="3"><v-text-field v-model.number="form.reductionIprParEnfantPct" type="number" suffix="%" label="Réduction par enfant" variant="outlined" density="comfortable" :disabled="!canWrite" /></v-col>
           <v-col cols="6" md="3"><v-text-field v-model.number="form.plafondEnfantsIpr" type="number" label="Enfants retenus (max)" variant="outlined" density="comfortable" :disabled="!canWrite" /></v-col>

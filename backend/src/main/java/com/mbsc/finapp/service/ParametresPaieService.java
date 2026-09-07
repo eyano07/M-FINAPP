@@ -52,6 +52,7 @@ public class ParametresPaieService {
         p.setTauxInpp(req.tauxInpp());
         p.setReductionIprParEnfant(req.reductionIprParEnfant());
         p.setPlafondEnfantsIpr(req.plafondEnfantsIpr());
+        p.setCalculEnfantsActif(req.calculEnfantsActif());
         p.setPlancherIprFc(req.plancherIprFc());
         p.setJoursOuvrablesStandard(req.joursOuvrablesStandard());
         p.setCnssDeductibleIpr(req.cnssDeductibleIpr());

@@ -61,6 +61,18 @@ public class ParametresPaie {
     @Column(name = "plafond_enfants_ipr", nullable = false)
     private Integer plafondEnfantsIpr;
 
+    /**
+     * Si vrai, le nombre d'enfants à charge réduit l'IPR (voir
+     * {@code PayrollCalculationService#calculerIpr}). Si faux, le DRH a
+     * désactivé cette réduction : l'IPR est calculé comme si aucun employé
+     * n'avait d'enfant, quels que soient {@link #reductionIprParEnfant} et
+     * {@link #plafondEnfantsIpr} ci-dessus, qui restent configurés en
+     * prévision d'une réactivation.
+     */
+    @Column(name = "calcul_enfants_actif", nullable = false)
+    @Builder.Default
+    private boolean calculEnfantsActif = true;
+
     /** Plancher IPR en francs congolais, appliqué après réduction familiale. */
     @Column(name = "plancher_ipr_fc", nullable = false, precision = 15, scale = 2)
     private BigDecimal plancherIprFc;

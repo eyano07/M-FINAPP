@@ -213,7 +213,9 @@ public class PayrollCalculationService {
      * (LF 2020), formule complète du classeur DEBOURS MBSC 2026 : plafond à
      * 30 % du revenu imposable, réduction 2 %/enfant (max configurable, 9 par
      * défaut) appliquée sur le montant plafonné, puis plancher appliqué
-     * <b>après</b> la réduction familiale.
+     * <b>après</b> la réduction familiale. Réduction entièrement désactivable
+     * par le DRH ({@link ParametresPaie#isCalculEnfantsActif}), auquel cas
+     * l'IPR est calculé comme pour un employé sans enfant.
      *
      * <p>Diverge délibérément de la version simplifiée qui tournait dans
      * l'ancien outil PayMBSC (bases cumulées 245 700/785 700, sans plafond ni
@@ -241,7 +243,7 @@ public class PayrollCalculationService {
         BigDecimal plafond = baseFc.multiply(PLAFOND_FRACTION_REVENU);
         BigDecimal plafonne = bracketRaw.min(plafond);
 
-        int enfantsRetenus = Math.min(nombreEnfants, params.getPlafondEnfantsIpr());
+        int enfantsRetenus = params.isCalculEnfantsActif() ? Math.min(nombreEnfants, params.getPlafondEnfantsIpr()) : 0;
         BigDecimal reduction = nz(params.getReductionIprParEnfant()).multiply(new BigDecimal(enfantsRetenus));
         BigDecimal reduit = plafonne.multiply(BigDecimal.ONE.subtract(reduction));
 

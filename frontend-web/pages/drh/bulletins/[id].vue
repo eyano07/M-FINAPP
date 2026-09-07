@@ -181,7 +181,6 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
           </div>
           <div>
             <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
-            <span class="etat-print-header__service">Direction des Ressources Humaines</span>
             <span class="etat-print-header__doc">{{ bulletin.employeConforme ? 'Bulletin de paie' : 'Reçu de paiement' }}</span>
           </div>
         </div>

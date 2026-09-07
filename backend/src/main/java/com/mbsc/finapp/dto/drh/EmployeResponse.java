@@ -16,6 +16,7 @@ public record EmployeResponse(
     String email,
     String telephone,
     LocalDate dateEmbauche,
+    LocalDate dateNaissance,
     BigDecimal salaireBaseUsd,
     SituationFamiliale situationFamiliale,
     Integer nombreEnfants,
@@ -30,7 +31,7 @@ public record EmployeResponse(
     public static EmployeResponse from(Employe e) {
         return new EmployeResponse(
             e.getId(), e.getMatricule(), e.getNomComplet(), e.getCategorie(), e.getPoste(), e.getAffectation(),
-            e.getEmail(), e.getTelephone(), e.getDateEmbauche(), e.getSalaireBaseUsd(),
+            e.getEmail(), e.getTelephone(), e.getDateEmbauche(), e.getDateNaissance(), e.getSalaireBaseUsd(),
             e.getSituationFamiliale(), e.getNombreEnfants(), e.getDiplome(), e.getAncienneteAnnees(),
             e.getRendementPct(), e.isConforme(), e.isSuperviseur(), e.isExpatrie(), e.isActif());
     }

@@ -106,6 +106,7 @@ public class EmployeService {
         e.setEmail(req.email());
         e.setTelephone(req.telephone());
         e.setDateEmbauche(req.dateEmbauche());
+        e.setDateNaissance(req.dateNaissance());
         e.setSalaireBaseUsd(req.salaireBaseUsd());
         e.setSituationFamiliale(req.situationFamiliale());
         e.setNombreEnfants(req.nombreEnfants() != null ? req.nombreEnfants() : 0);

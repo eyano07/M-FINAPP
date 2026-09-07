@@ -19,6 +19,7 @@ public record EmployeRequest(
     @Email @Size(max = 150) String email,
     @Size(max = 30) String telephone,
     LocalDate dateEmbauche,
+    @Past LocalDate dateNaissance,
     @NotNull @PositiveOrZero BigDecimal salaireBaseUsd,
     SituationFamiliale situationFamiliale,
     @PositiveOrZero Integer nombreEnfants,
