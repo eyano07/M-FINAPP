@@ -1,24 +1,28 @@
 package com.mbsc.finapp.dto.notes;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
 /**
  * Demande de reglement, via note de frais (circuit DFIN/DA/Tresorerie), de
- * la dette fournisseur d'un ou plusieurs camions de minerais deja valides
- * par la caisse. Une ligne est generee par camion, imputee au compte
- * Fournisseurs (4011) pour son montant TTC — voir {@code
- * NoteFraisService.creerReglementCamionsMinerai}.
+ * la dette fournisseur d'un ou plusieurs camions de minerais et/ou de leurs
+ * frais accessoires deja postes (transport, peage, pont bascule...). Une
+ * ligne est generee par camion et par frais, toutes imputees au compte
+ * Fournisseurs (4011) — voir {@code
+ * NoteFraisService.creerReglementCamionsMinerai}. Au moins l'une des deux
+ * listes doit etre non vide (verifie en service : la regle porte sur les
+ * deux ensemble, pas sur chacune separement).
  */
 public record CreerNoteReglementCamionsRequest(
 
-    @NotEmpty(message = "Selectionnez au moins un camion a regler")
     List<Long> camionIds,
 
-    /** Destinataire reel du paiement (le fournisseur du minerais). */
+    /** Frais accessoires deja postes (piece non nulle) a regler avec les camions ci-dessus. */
+    List<Long> chargeIds,
+
+    /** Destinataire reel du paiement (le fournisseur ou le prestataire). */
     @NotBlank
     @Size(max = 200)
     String beneficiaire,

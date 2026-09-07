@@ -2,6 +2,7 @@ package com.mbsc.finapp.service;
 
 import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CamionMinerai;
+import com.mbsc.finapp.domain.ChargeCamionMinerai;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.LigneNoteFrais;
@@ -30,6 +31,7 @@ import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.ArticleRepository;
 import com.mbsc.finapp.repository.CamionMineraiRepository;
+import com.mbsc.finapp.repository.ChargeCamionMineraiRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EmballageBoissonRepository;
 import com.mbsc.finapp.repository.EntrepotRepository;
@@ -102,8 +104,9 @@ public class NoteFraisService {
     private final ArticleRepository articleRepository;
     private final EntrepotRepository entrepotRepository;
     private final EmballageBoissonRepository emballageBoissonRepository;
-    /** Camions rattaches a une note de reglement de minerais — voir creerReglementCamionsMinerai. */
+    /** Camions et frais accessoires rattaches a une note de reglement de minerais — voir creerReglementCamionsMinerai. */
     private final CamionMineraiRepository camionRepository;
+    private final ChargeCamionMineraiRepository chargeRepository;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     private final StorageService storage;
@@ -284,34 +287,58 @@ public class NoteFraisService {
 
     /**
      * Cree, pour la logistique, une note de reglement de la dette
-     * fournisseur d'un ou plusieurs camions de minerais — une ligne par
-     * camion, imputee au compte Fournisseurs (4011) pour son montant TTC
-     * (prix hors taxes + TVA recuperable, reel si l'achat est deja valide,
-     * sinon estime au taux du jour de reception — voir {@link
-     * #detteEstimee}). Contrairement a {@link #creer}, la note est
-     * immediatement soumise au DFIN (BROUILLON -> SOUMISE en un seul geste,
-     * cote ecran) : la logistique ne compose pas une note comme un
-     * comptable, elle demande le paiement d'une dette, constatee ou non.
+     * fournisseur d'un ou plusieurs camions de minerais et/ou de leurs frais
+     * accessoires deja postes (transport, peage, pont bascule...) — une
+     * ligne par element, toutes imputees au compte Fournisseurs (4011).
+     * Contrairement a {@link #creer}, la note est immediatement soumise au
+     * DFIN (BROUILLON -> SOUMISE en un seul geste, cote ecran) : la
+     * logistique ne compose pas une note comme un comptable, elle demande le
+     * paiement d'une dette, constatee ou non.
      *
-     * <p>Un camion encore A_VALIDER peut etre selectionne : c'est precisement
-     * le paiement de cette note, en bout de circuit, qui constatera son
-     * achat — voir {@code MineraiService.finaliserReglementNoteInterne}. La
-     * validation et le reglement ne sont plus deux actions separees de la
-     * caisse : ils n'en font plus qu'une, au bout du circuit logistique ->
-     * DFIN -> DA -> DFIN -> tresorerie.</p>
+     * <p>Un camion encore A_VALIDER peut etre selectionne, pour le montant
+     * TTC estime au taux du jour de reception (voir {@link
+     * #detteEstimee}) : c'est precisement le paiement de cette note, en bout
+     * de circuit, qui constatera son achat — voir {@code MineraiService
+     * .finaliserReglementNoteInterne}. La validation et le reglement ne sont
+     * plus deux actions separees de la caisse : ils n'en font plus qu'une,
+     * au bout du circuit logistique -> DFIN -> DA -> DFIN -> tresorerie.</p>
      *
-     * <p>Chaque camion selectionne est rattache a la note ({@code
-     * CamionMinerai.noteFraisReglement}) pour empecher qu'il figure dans une
-     * seconde demande tant que celle-ci est en cours — voir {@link
-     * MineraiService#listerARegler}. Le lien est libere si la note est
-     * annulee ({@link #annuler}).</p>
+     * <p>Un frais accessoire, en revanche, n'est proposable que s'il est
+     * deja poste (piece non nulle, voir {@link
+     * MineraiService#listerChargesARegler}) : un frais encore en attente
+     * n'a pas de dette reelle a solder tant que son camion n'est pas valide
+     * — il rejoint la dette de son camion automatiquement des que celui-ci
+     * l'est (rejoue par {@code MineraiService#validerAchatInterne}), et
+     * pourra alors etre inclus dans une note ulterieure.</p>
+     *
+     * <p>Chaque camion et chaque frais selectionnes sont rattaches a la note
+     * ({@code CamionMinerai.noteFraisReglement}, {@code ChargeCamionMinerai
+     * .noteFraisReglement}) pour empecher de figurer dans une seconde
+     * demande tant que celle-ci est en cours — voir {@link
+     * MineraiService#listerARegler} et {@link
+     * MineraiService#listerChargesARegler}. Le lien est libere si la note
+     * est annulee ({@link #annuler}).</p>
+     *
+     * <p>Une seule note ici peut donc melanger camions et frais (le montant
+     * total, l'objet et les lignes s'y adaptent), mais l'ecran de saisie
+     * appelle cette methode deux fois — une avec seulement des camions, une
+     * avec seulement des frais — des que la selection contient les deux :
+     * le fournisseur du minerais et le prestataire des frais accessoires
+     * (transport, peage...) ne sont generalement pas la meme partie, chacun
+     * merite son propre beneficiaire et son propre circuit d'approbation.</p>
      */
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse creerReglementCamionsMinerai(CreerNoteReglementCamionsRequest req) {
         User auteur = currentUser.requireUser();
-        List<CamionMinerai> camions = camionRepository.findAllById(req.camionIds());
-        if (camions.size() != req.camionIds().size()) {
+        List<Long> camionIds = req.camionIds() == null ? List.of() : req.camionIds();
+        List<Long> chargeIds = req.chargeIds() == null ? List.of() : req.chargeIds();
+        if (camionIds.isEmpty() && chargeIds.isEmpty()) {
+            throw new IllegalArgumentException("Selectionnez au moins un camion ou un frais a regler.");
+        }
+
+        List<CamionMinerai> camions = camionRepository.findAllById(camionIds);
+        if (camions.size() != camionIds.size()) {
             throw new RessourceIntrouvableException("Un ou plusieurs camions selectionnes sont introuvables.");
         }
         for (CamionMinerai camion : camions) {
@@ -325,15 +352,53 @@ public class NoteFraisService {
             }
         }
 
-        List<LigneNoteFraisRequest> lignesReq = camions.stream()
-            .map(c -> new LigneNoteFraisRequest(
+        List<ChargeCamionMinerai> charges = chargeRepository.findAllById(chargeIds);
+        if (charges.size() != chargeIds.size()) {
+            throw new RessourceIntrouvableException("Un ou plusieurs frais selectionnes sont introuvables.");
+        }
+        for (ChargeCamionMinerai charge : charges) {
+            if (charge.isRegle()) {
+                throw new IllegalArgumentException("Le frais « " + charge.getLibelle() + " » est deja regle.");
+            }
+            if (charge.getPiece() == null) {
+                throw new IllegalArgumentException(
+                    "Le frais « " + charge.getLibelle() + " » du camion " + charge.getCamion().getPlaque()
+                    + " n'est pas encore poste : il rejoindra la dette de son camion des que celui-ci sera valide.");
+            }
+            if (charge.getNoteFraisReglement() != null) {
+                throw new IllegalArgumentException(
+                    "Le frais « " + charge.getLibelle() + " » a deja une note de reglement en cours ("
+                    + charge.getNoteFraisReglement().getReference() + ").");
+            }
+        }
+
+        List<LigneNoteFraisRequest> lignesReq = new ArrayList<>();
+        for (CamionMinerai c : camions) {
+            lignesReq.add(new LigneNoteFraisRequest(
                 detteEstimee(c), COMPTE_FOURNISSEURS,
                 "Camion " + c.getPlaque() + " - " + c.getArticle().getLibelle(),
-                false, null, null, null, null, false, null, null))
-            .toList();
-        String objet = camions.size() == 1
-            ? "Règlement fournisseur minerais - camion " + camions.get(0).getPlaque()
-            : "Règlement fournisseur minerais - " + camions.size() + " camions";
+                false, null, null, null, null, false, null, null));
+        }
+        for (ChargeCamionMinerai ch : charges) {
+            lignesReq.add(new LigneNoteFraisRequest(
+                ch.getMontant(), COMPTE_FOURNISSEURS,
+                ch.getLibelle() + " - camion " + ch.getCamion().getPlaque(),
+                false, null, null, null, null, false, null, null));
+        }
+
+        String objet;
+        if (charges.isEmpty()) {
+            objet = camions.size() == 1
+                ? "Règlement fournisseur minerais - camion " + camions.get(0).getPlaque()
+                : "Règlement fournisseur minerais - " + camions.size() + " camions";
+        } else if (camions.isEmpty()) {
+            objet = charges.size() == 1
+                ? "Règlement frais connexes minerais - " + charges.get(0).getLibelle()
+                    + " (camion " + charges.get(0).getCamion().getPlaque() + ")"
+                : "Règlement frais connexes minerais - " + charges.size() + " frais";
+        } else {
+            objet = "Règlement fournisseur minerais - " + (camions.size() + charges.size()) + " éléments";
+        }
 
         NoteFrais note = NoteFrais.builder()
             .reference(referenceGenerator.pourNoteFrais())
@@ -341,8 +406,9 @@ public class NoteFraisService {
             .beneficiaire(req.beneficiaire())
             .description(req.description())
             .montant(BigDecimal.ZERO)
-            // Les montants des camions (prix d'achat, dette fournisseur) sont
-            // deja en devise de base (USD) : aucune conversion a faire.
+            // Les montants des camions et des frais (prix d'achat, dette
+            // fournisseur) sont deja en devise de base (USD) : aucune
+            // conversion a faire.
             .devise(ConversionDeviseService.DEVISE_BASE)
             .statut(StatutNote.BROUILLON)
             .sens(SensTransaction.DECAISSEMENT)
@@ -357,14 +423,18 @@ public class NoteFraisService {
             camion.setNoteFraisReglement(note);
         }
         camionRepository.saveAll(camions);
+        for (ChargeCamionMinerai charge : charges) {
+            charge.setNoteFraisReglement(note);
+        }
+        chargeRepository.saveAll(charges);
 
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, null, "Soumission au DFIN");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
             "Note à vérifier", note.getReference() + " — " + note.getObjet(),
             "/notes-frais/" + note.getId(), note);
 
-        log.info("Note de reglement camions minerais creee et soumise [ref={}, montant={}, camions={}, par={}]",
-            note.getReference(), note.getMontant(), camions.size(), auteur.getEmail());
+        log.info("Note de reglement camions minerais creee et soumise [ref={}, montant={}, camions={}, frais={}, par={}]",
+            note.getReference(), note.getMontant(), camions.size(), charges.size(), auteur.getEmail());
         return reponse;
     }
 
@@ -820,13 +890,19 @@ public class NoteFraisService {
             exigerCreateur(note);
         }
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.ANNULEE, action, "Annulation de la note");
-        // Note de reglement de camions minerais : les camions rattaches
-        // redeviennent disponibles pour une nouvelle demande — voir
-        // MineraiService.listerARegler, qui les exclurait sinon indefiniment.
+        // Note de reglement de camions minerais : les camions et frais
+        // rattaches redeviennent disponibles pour une nouvelle demande —
+        // voir MineraiService.listerARegler/listerChargesARegler, qui les
+        // exclurait sinon indefiniment.
         List<CamionMinerai> camionsLies = camionRepository.findByNoteFraisReglementId(note.getId());
         if (!camionsLies.isEmpty()) {
             camionsLies.forEach(c -> c.setNoteFraisReglement(null));
             camionRepository.saveAll(camionsLies);
+        }
+        List<ChargeCamionMinerai> chargesLiees = chargeRepository.findByNoteFraisReglementId(note.getId());
+        if (!chargesLiees.isEmpty()) {
+            chargesLiees.forEach(c -> c.setNoteFraisReglement(null));
+            chargeRepository.saveAll(chargesLiees);
         }
         // Pas d'auto-notification : si le createur annule lui-meme sa note,
         // il n'a pas besoin d'etre informe de sa propre action.

@@ -79,6 +79,17 @@ public class ChargeCamionMinerai {
     @JoinColumn(name = "transaction_reglement_id")
     private TransactionCaisse transactionReglement;
 
+    /**
+     * Note de frais en cours demandant le reglement de ce frais via le
+     * circuit DFIN/DA/Tresorerie (meme mecanisme que {@code
+     * CamionMinerai.noteFraisReglement}) — empeche qu'un meme frais soit
+     * inclus dans deux notes a la fois. Nul tant qu'aucune note n'a ete
+     * creee, remis a nul si elle est annulee.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "note_frais_reglement_id")
+    private NoteFrais noteFraisReglement;
+
     @CreationTimestamp
     @Column(name = "date_creation", updatable = false)
     private Instant dateCreation;

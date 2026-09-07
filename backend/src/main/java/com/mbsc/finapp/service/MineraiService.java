@@ -398,11 +398,15 @@ public class MineraiService {
             .stream().map(ChargeCamionResponse::from).toList();
     }
 
-    /** Charges dont la dette prestataire reste a solder, proposees au reglement en caisse. */
+    /**
+     * Charges dont la dette prestataire reste a solder, proposables a une
+     * note de reglement — voir {@code NoteFraisService
+     * .creerReglementCamionsMinerai}.
+     */
     @PreAuthorize("hasAnyRole('CAISSIER', 'LOGISTIQUE', 'COMPTABLE', 'DFIN', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<ChargeCamionResponse> listerChargesARegler() {
-        return chargeRepository.findByRegleFalseOrderByDateChargeAscIdAsc()
+        return chargeRepository.findByRegleFalseAndPieceIsNotNullAndNoteFraisReglementIsNullOrderByDateChargeAscIdAsc()
             .stream().map(ChargeCamionResponse::from).toList();
     }
 
@@ -700,8 +704,11 @@ public class MineraiService {
      * #marquerReglesInterne}), pour le circuit DFIN/DA/Tresorerie. Un camion
      * encore A_VALIDER voit d'abord son achat constate ({@link
      * #validerAchatInterne}) — la validation et le paiement n'y font plus
-     * qu'un — puis, comme tout camion rattache, est marque regle. Appele par
-     * {@code CaisseService.payerNote}.
+     * qu'un — puis, comme tout camion rattache, est marque regle. Les frais
+     * accessoires rattaches (deja postes, voir {@code NoteFraisService
+     * .creerReglementCamionsMinerai}) sont simplement marques regles : la
+     * note vient de les solder, ils n'ont besoin d'aucune autre ecriture.
+     * Appele par {@code CaisseService.payerNote}.
      */
     @Transactional
     public void finaliserReglementNoteInterne(Long noteFraisId, TransactionCaisse transaction, User auteur) {
@@ -714,6 +721,13 @@ public class MineraiService {
             camion.setTransactionReglement(transaction);
         }
         camionRepository.saveAll(camions);
+
+        List<ChargeCamionMinerai> charges = chargeRepository.findByNoteFraisReglementId(noteFraisId);
+        for (ChargeCamionMinerai charge : charges) {
+            charge.setRegle(true);
+            charge.setTransactionReglement(transaction);
+        }
+        chargeRepository.saveAll(charges);
     }
 
     /** Marque le camion vendu : appele par VenteService a la validation de la vente. */

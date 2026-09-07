@@ -18,7 +18,9 @@ public record ChargeCamionResponse(
     /** true tant que le camion est A_VALIDER : la charge est saisie mais pas encore incorporee au stock. */
     boolean enAttente,
     String pieceReference,
-    String transactionReglementReference
+    String transactionReglementReference,
+    /** Reference de la note de reglement en cours (circuit DFIN/DA/Tresorerie), nulle si aucune. */
+    String noteFraisReglementReference
 ) {
     public static ChargeCamionResponse from(ChargeCamionMinerai c) {
         return new ChargeCamionResponse(
@@ -33,7 +35,8 @@ public record ChargeCamionResponse(
             c.isRegle(),
             c.getPiece() == null,
             c.getPiece() == null ? null : c.getPiece().getReference(),
-            c.getTransactionReglement() == null ? null : c.getTransactionReglement().getReference()
+            c.getTransactionReglement() == null ? null : c.getTransactionReglement().getReference(),
+            c.getNoteFraisReglement() == null ? null : c.getNoteFraisReglement().getReference()
         );
     }
 }

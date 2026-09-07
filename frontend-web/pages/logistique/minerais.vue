@@ -36,6 +36,7 @@ interface Charge {
   dateCharge: string
   regle: boolean
   enAttente: boolean
+  noteFraisReglementReference?: string
 }
 
 const api = useApi()
@@ -65,16 +66,21 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [cs, arts, ents, taux] = await Promise.all([
+    const [cs, arts, ents, taux, chr] = await Promise.all([
       api<Camion[]>('/logistique/minerais/camions'),
       api<Article[]>('/logistique/articles'),
       api<Entrepot[]>('/logistique/entrepots'),
       api<{ taux: number }>('/admin/taux-change').catch(() => ({ taux: 0 })),
+      api<Charge[]>('/logistique/minerais/camions/charges/a-regler').catch(() => [] as Charge[]),
     ])
     camions.value = cs
     minerais.value = arts.filter(a => a.minerais && a.actif)
     entrepots.value = ents.filter(e => e.actif)
     tauxChange.value = taux.taux || 0
+    chargesARegler.value = chr
+    // Une charge deja selectionnee peut avoir ete reglee ou rattachee
+    // entre-temps par quelqu'un d'autre : ne garder que celles encore proposables.
+    chargesSelectionnees.value = chargesSelectionnees.value.filter(id => chr.some(c => c.id === id))
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les camions.')
   } finally {
@@ -376,40 +382,81 @@ const camionsSelectionnes = computed(() => camions.value.filter(c => selectionne
 const totalSelectionne = computed(() => camionsSelectionnes.value.reduce((s, c) => s + Number(c.detteFournisseur), 0))
 const selectionInclutAValider = computed(() => camionsSelectionnes.value.some(c => c.statut === 'A_VALIDER'))
 
+// Frais accessoires déjà postés (le camion est passé en stock) et non
+// réglés : contrairement à un camion, un frais encore en attente n'a pas de
+// dette réelle — il rejoint celle de son camion dès la validation de
+// celui-ci, voir NoteFraisService.creerReglementCamionsMinerai.
+const chargesARegler = ref<Charge[]>([])
+const chargesSelectionnees = ref<number[]>([])
+const chargesSelectionneesDetail = computed(() => chargesARegler.value.filter(c => chargesSelectionnees.value.includes(c.id)))
+const totalChargesSelectionnees = computed(() => chargesSelectionneesDetail.value.reduce((s, c) => s + Number(c.montant), 0))
+
+const nbSelectionne = computed(() => selectionnes.value.length + chargesSelectionnees.value.length)
+const totalGeneralSelectionne = computed(() => totalSelectionne.value + totalChargesSelectionnees.value)
+
 const dialogNote = ref(false)
-const beneficiaireNote = ref('')
+// Le fournisseur du minerais et le prestataire des frais accessoires
+// (transport, péage...) sont rarement la même partie : quand la sélection
+// mélange les deux, deux notes indépendantes sont créées, chacune avec son
+// propre bénéficiaire — voir NoteFraisService.creerReglementCamionsMinerai.
+const beneficiaireCamions = ref('')
+const beneficiaireFrais = ref('')
 const descriptionNote = ref('')
 const erreurNote = ref('')
 const envoiNote = ref(false)
 
 function ouvrirNoteReglement() {
-  if (!selectionnes.value.length) return
-  beneficiaireNote.value = ''
+  if (!nbSelectionne.value) return
+  beneficiaireCamions.value = ''
+  beneficiaireFrais.value = ''
   descriptionNote.value = ''
   erreurNote.value = ''
   dialogNote.value = true
 }
 
+async function creerNoteDeReglement(camionIds: number[], chargeIds: number[], beneficiaire: string) {
+  await api('/notes-frais/reglement-camions-minerai', {
+    method: 'POST',
+    body: {
+      camionIds,
+      chargeIds,
+      beneficiaire: beneficiaire.trim(),
+      description: descriptionNote.value.trim() || null,
+    },
+  })
+}
+
 async function creerNoteReglement() {
-  if (!beneficiaireNote.value.trim()) {
-    erreurNote.value = 'Le bénéficiaire est obligatoire.'
+  const hasCamions = selectionnes.value.length > 0
+  const hasCharges = chargesSelectionnees.value.length > 0
+  if (hasCamions && !beneficiaireCamions.value.trim()) {
+    erreurNote.value = 'Le bénéficiaire des camions est obligatoire.'
+    return
+  }
+  if (hasCharges && !beneficiaireFrais.value.trim()) {
+    erreurNote.value = 'Le bénéficiaire des frais connexes est obligatoire.'
     return
   }
   envoiNote.value = true
   erreurNote.value = ''
   try {
-    const nb = selectionnes.value.length
-    await api('/notes-frais/reglement-camions-minerai', {
-      method: 'POST',
-      body: {
-        camionIds: selectionnes.value,
-        beneficiaire: beneficiaireNote.value.trim(),
-        description: descriptionNote.value.trim() || null,
-      },
-    })
+    const messages: string[] = []
+    if (hasCamions) {
+      const nb = selectionnes.value.length
+      await creerNoteDeReglement(selectionnes.value, [], beneficiaireCamions.value)
+      messages.push(`${nb} camion${nb > 1 ? 's' : ''}`)
+      selectionnes.value = []
+    }
+    if (hasCharges) {
+      const nb = chargesSelectionnees.value.length
+      await creerNoteDeReglement([], chargesSelectionnees.value, beneficiaireFrais.value)
+      messages.push(`${nb} frais connexe${nb > 1 ? 's' : ''}`)
+      chargesSelectionnees.value = []
+    }
     dialogNote.value = false
-    succes.value = `Note de frais créée pour ${nb} camion${nb > 1 ? 's' : ''} et soumise au DFIN.`
-    selectionnes.value = []
+    succes.value = hasCamions && hasCharges
+      ? `2 notes de frais créées et soumises au DFIN — ${messages.join(', ')}.`
+      : `Note de frais créée pour ${messages[0]} et soumise au DFIN.`
     await charger()
   } catch (e: any) {
     erreurNote.value = messageErreurApi(e, 'Échec de la création de la note.')
@@ -534,14 +581,17 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       </v-row>
     </v-card>
 
-    <v-card v-if="selectionnes.length" class="classroom-card pa-4 mb-4 no-print" color="primary" variant="tonal">
+    <v-card v-if="nbSelectionne" class="classroom-card pa-4 mb-4 no-print" color="primary" variant="tonal">
       <div class="d-flex align-center flex-wrap ga-3">
         <div>
-          <strong>{{ selectionnes.length }}</strong> camion{{ selectionnes.length > 1 ? 's' : '' }} sélectionné{{ selectionnes.length > 1 ? 's' : '' }}
-          — dette totale <strong>{{ fmt(totalSelectionne) }}</strong>
+          <strong>{{ nbSelectionne }}</strong> élément{{ nbSelectionne > 1 ? 's' : '' }} sélectionné{{ nbSelectionne > 1 ? 's' : '' }}
+          <span class="text-caption text-medium-emphasis">
+            ({{ selectionnes.length }} camion{{ selectionnes.length > 1 ? 's' : '' }}, {{ chargesSelectionnees.length }} frais)
+          </span>
+          — dette totale <strong>{{ fmt(totalGeneralSelectionne) }}</strong>
         </div>
         <v-spacer />
-        <v-btn variant="text" @click="selectionnes = []">Désélectionner</v-btn>
+        <v-btn variant="text" @click="selectionnes = []; chargesSelectionnees = []">Désélectionner</v-btn>
         <v-btn color="primary" variant="flat" prepend-icon="mdi-file-document-plus-outline" @click="ouvrirNoteReglement">
           Créer une note de frais
         </v-btn>
@@ -634,6 +684,37 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       </v-data-table>
     </v-card>
 
+    <!-- ── Frais connexes à régler ──────────────────────────────────── -->
+    <v-card v-if="chargesARegler.length" class="classroom-card mt-4 no-print">
+      <v-card-title class="text-subtitle-1 font-weight-semibold pa-4 pb-2 d-flex align-center">
+        Frais connexes à régler
+        <v-chip size="small" color="warning" variant="tonal" class="ml-2">{{ chargesARegler.length }}</v-chip>
+        <span class="text-caption text-medium-emphasis ml-2">
+          transport, péage, pont bascule… déjà incorporés au stock, dette encore due au prestataire
+        </span>
+      </v-card-title>
+      <v-data-table
+        :items="chargesARegler"
+        v-model="chargesSelectionnees"
+        item-value="id"
+        show-select
+        density="comfortable"
+        :headers="[
+          { title: 'Date', key: 'dateCharge' },
+          { title: 'Camion', key: 'camionPlaque' },
+          { title: 'Nature', key: 'libelle' },
+          { title: 'Compte', key: 'compteChargeNumero' },
+          { title: 'Montant', key: 'montant', align: 'end' },
+        ]"
+      >
+        <template #item.dateCharge="{ item }">{{ fmtDate(item.dateCharge) }}</template>
+        <template #item.compteChargeNumero="{ item }">
+          <code class="text-caption">{{ item.compteChargeNumero }}</code> — {{ item.compteChargeLibelle }}
+        </template>
+        <template #item.montant="{ item }">{{ fmt(item.montant) }}</template>
+      </v-data-table>
+    </v-card>
+
     <!-- ── Réception ────────────────────────────────────────────── -->
     <v-dialog v-model="dialog" max-width="520">
       <v-card class="pa-6">
@@ -692,27 +773,50 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
     <!-- ── Note de frais de règlement (circuit DFIN/DA/Trésorerie) ──── -->
     <v-dialog v-model="dialogNote" max-width="480">
       <v-card class="pa-6">
-        <h2 class="text-h6 mb-1">Créer une note de frais</h2>
+        <h2 class="text-h6 mb-1">
+          {{ selectionnes.length && chargesSelectionnees.length ? 'Créer deux notes de frais' : 'Créer une note de frais' }}
+        </h2>
         <p class="text-caption text-medium-emphasis mb-4">
-          Règlement de <strong>{{ selectionnes.length }}</strong> camion{{ selectionnes.length > 1 ? 's' : '' }}
-          — {{ camionsSelectionnes.map(c => c.plaque).join(', ') }} —
-          pour un total de <strong>{{ fmt(totalSelectionne) }}</strong>. La note sera soumise
-          directement au DFIN, puis suivra le circuit DA / Trésorerie.
+          <template v-if="selectionnes.length && chargesSelectionnees.length">
+            Le fournisseur du minerais et le prestataire des frais accessoires n'étant généralement pas
+            la même partie, deux notes indépendantes seront créées : une de
+            <strong>{{ fmt(totalSelectionne) }}</strong> pour {{ selectionnes.length }} camion{{ selectionnes.length > 1 ? 's' : '' }}
+            ({{ camionsSelectionnes.map(c => c.plaque).join(', ') }}), une de
+            <strong>{{ fmt(totalChargesSelectionnees) }}</strong> pour {{ chargesSelectionnees.length }} frais connexe{{ chargesSelectionnees.length > 1 ? 's' : '' }}
+            ({{ chargesSelectionneesDetail.map(c => c.libelle + ' (' + c.camionPlaque + ')').join(', ') }}).
+            Les deux suivront le circuit DFIN puis DA / Trésorerie.
+          </template>
+          <template v-else-if="selectionnes.length">
+            Règlement de <strong>{{ selectionnes.length }}</strong> camion{{ selectionnes.length > 1 ? 's' : '' }}
+            — {{ camionsSelectionnes.map(c => c.plaque).join(', ') }} — pour un total de
+            <strong>{{ fmt(totalSelectionne) }}</strong>. La note sera soumise directement au DFIN,
+            puis suivra le circuit DA / Trésorerie.
+          </template>
+          <template v-else>
+            Règlement de <strong>{{ chargesSelectionnees.length }}</strong> frais connexe{{ chargesSelectionnees.length > 1 ? 's' : '' }}
+            — {{ chargesSelectionneesDetail.map(c => c.libelle + ' (' + c.camionPlaque + ')').join(', ') }} — pour un total de
+            <strong>{{ fmt(totalChargesSelectionnees) }}</strong>. La note sera soumise directement au DFIN,
+            puis suivra le circuit DA / Trésorerie.
+          </template>
           <template v-if="selectionInclutAValider">
             Le paiement validera aussi l'achat des camions pas encore validés.
           </template>
         </p>
         <v-alert v-if="erreurNote" type="error" variant="tonal" density="compact" class="mb-3">{{ erreurNote }}</v-alert>
 
-        <v-text-field v-model="beneficiaireNote" label="Bénéficiaire (fournisseur à payer) *" variant="outlined"
+        <v-text-field v-if="selectionnes.length" v-model="beneficiaireCamions"
+          label="Bénéficiaire des camions (fournisseur) *" variant="outlined"
           density="comfortable" class="mb-3" hide-details autofocus />
+        <v-text-field v-if="chargesSelectionnees.length" v-model="beneficiaireFrais"
+          label="Bénéficiaire des frais connexes (prestataire) *" variant="outlined"
+          density="comfortable" class="mb-3" hide-details :autofocus="!selectionnes.length" />
         <v-textarea v-model="descriptionNote" label="Description (facultatif)" variant="outlined"
           density="comfortable" rows="2" hide-details />
 
         <div class="d-flex justify-end ga-3 mt-4">
           <v-btn variant="text" :disabled="envoiNote" @click="dialogNote = false">Annuler</v-btn>
           <v-btn color="primary" variant="flat" :loading="envoiNote" @click="creerNoteReglement">
-            Créer et soumettre
+            {{ selectionnes.length && chargesSelectionnees.length ? 'Créer et soumettre les 2 notes' : 'Créer et soumettre' }}
           </v-btn>
         </div>
       </v-card>
