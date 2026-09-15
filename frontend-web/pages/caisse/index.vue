@@ -825,7 +825,7 @@ const fmtTaux = computed(() =>
             <!-- Compte contrepartie (uniquement pour encaissement) -->
             <template v-if="form.sens === 'ENCAISSEMENT'">
               <v-autocomplete
-                :model-value="form.compteContrepartie"
+                v-model="form.compteContrepartie"
                 :items="comptesOptions"
                 label="Compte contrepartie"
                 prepend-inner-icon="mdi-format-list-numbered"
@@ -834,8 +834,8 @@ const fmtTaux = computed(() =>
                 rounded="lg"
                 :rules="rules.compte"
                 class="mb-1"
-                readonly
-                hint="Déterminé automatiquement par l'IA à partir du libellé"
+                clearable
+                hint="Suggéré automatiquement par l'IA à partir du libellé — modifiable"
                 persistent-hint
               />
               <div v-if="chargementSuggestion" class="ia-suggestion ia-suggestion--loading mb-3">
