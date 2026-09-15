@@ -54,9 +54,12 @@ interface NoteDetail {
   observations: Observation[]
 }
 
+import { useDisplay } from 'vuetify'
+
 const route = useRoute()
 const api = useApi()
 const auth = useAuthStore()
+const { mobile } = useDisplay()
 const id = computed(() => route.params.id as string)
 const parametresStore = useParametresStore()
 onMounted(() => { parametresStore.charger() })
@@ -352,6 +355,57 @@ async function telechargerPiece(piece: PieceJointe) {
   }
 }
 
+// ── Aperçu (au lieu de forcer le téléchargement pour voir le contenu) ──
+const apercuOuvert = ref(false)
+const apercuPieceActuelle = ref<PieceJointe | null>(null)
+const apercuUrl = ref<string | null>(null)
+const apercuLoading = ref(false)
+const apercuErreur = ref('')
+
+const apercuEstImage = computed(() => !!apercuPieceActuelle.value?.typeMime?.startsWith('image/'))
+const apercuEstPdf = computed(() => apercuPieceActuelle.value?.typeMime === 'application/pdf')
+// #view=FitH : demande au lecteur PDF intégré du navigateur d'ajuster la
+// page à la largeur du cadre — sans ça, le zoom par défaut ("Automatique")
+// centre une page plus étroite que l'iframe, avec de grandes bandes vides.
+const apercuPdfUrl = computed(() => apercuUrl.value ? `${apercuUrl.value}#view=FitH` : null)
+
+function revoquerApercu() {
+  if (apercuUrl.value) {
+    URL.revokeObjectURL(apercuUrl.value)
+    apercuUrl.value = null
+  }
+}
+
+async function ouvrirApercu(piece: PieceJointe) {
+  apercuPieceActuelle.value = piece
+  apercuOuvert.value = true
+  apercuErreur.value = ''
+  revoquerApercu()
+
+  const previsualisable = piece.typeMime?.startsWith('image/') || piece.typeMime === 'application/pdf'
+  if (!previsualisable) return
+
+  apercuLoading.value = true
+  try {
+    const blob = await api<Blob>(`/notes-frais/${id.value}/pieces-jointes/${piece.id}`, {
+      responseType: 'blob',
+    })
+    apercuUrl.value = URL.createObjectURL(blob as Blob)
+  } catch (e: any) {
+    apercuErreur.value = e?.data?.message || "Impossible de charger l'aperçu."
+  } finally {
+    apercuLoading.value = false
+  }
+}
+
+function fermerApercu() {
+  apercuOuvert.value = false
+  revoquerApercu()
+  apercuPieceActuelle.value = null
+}
+
+onBeforeUnmount(() => revoquerApercu())
+
 async function supprimerPiece(piece: PieceJointe) {
   deletingPieceId.value = piece.id
   erreur.value = ''
@@ -587,6 +641,7 @@ const peutGererPieces = computed(() =>
                   {{ fmtTaille(pj.taille) }}<template v-if="pj.ajoutePar"> · {{ pj.ajoutePar }}</template>
                 </span>
               </div>
+              <v-btn class="nd-noprint" icon="mdi-eye-outline" variant="text" size="small" @click="ouvrirApercu(pj)" />
               <v-btn class="nd-noprint" icon="mdi-download" variant="text" size="small" @click="telechargerPiece(pj)" />
               <v-btn
                 v-if="peutGererPieces"
@@ -753,6 +808,42 @@ const peutGererPieces = computed(() =>
         </div>
       </div>
     </div>
+
+    <!-- Aperçu d'une pièce jointe : plein écran sur mobile (bouton "X" pour
+         quitter), fenêtre centrée sur desktop — évite d'avoir à télécharger
+         le fichier juste pour voir son contenu. -->
+    <v-dialog
+      v-model="apercuOuvert"
+      :fullscreen="mobile"
+      :width="mobile ? undefined : '90vw'"
+      :height="mobile ? undefined : '92vh'"
+      :max-width="mobile ? undefined : 1400"
+      scrollable
+      @update:model-value="(v) => { if (!v) fermerApercu() }"
+    >
+      <v-card class="nd-apercu-card">
+        <div class="nd-apercu-head">
+          <span class="nd-apercu-head__nom">{{ apercuPieceActuelle?.nomFichier }}</span>
+          <div class="nd-apercu-head__actions">
+            <v-btn icon="mdi-download" variant="text" size="small" @click="telechargerPiece(apercuPieceActuelle!)" />
+            <v-btn icon="mdi-close" variant="text" size="small" @click="fermerApercu" />
+          </div>
+        </div>
+        <div class="nd-apercu-body">
+          <v-progress-circular v-if="apercuLoading" indeterminate color="primary" />
+          <v-alert v-else-if="apercuErreur" type="error" variant="tonal">{{ apercuErreur }}</v-alert>
+          <img v-else-if="apercuEstImage && apercuUrl" :src="apercuUrl" class="nd-apercu-img" alt="Aperçu">
+          <iframe v-else-if="apercuEstPdf && apercuPdfUrl" :src="apercuPdfUrl" class="nd-apercu-pdf" title="Aperçu du document" />
+          <div v-else class="nd-apercu-non-supporte">
+            <v-icon icon="mdi-file-question-outline" size="48" color="#d1d5db" />
+            <p>Aperçu non disponible pour ce type de fichier.</p>
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-download" @click="telechargerPiece(apercuPieceActuelle!)">
+              Télécharger
+            </v-btn>
+          </div>
+        </div>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -788,6 +879,12 @@ const peutGererPieces = computed(() =>
   gap: 20px;
   align-items: start;
 }
+/* min-width:0 : un enfant de grille est par défaut min-width:auto, donc ne
+   rétrécit jamais sous la largeur intrinsèque de son contenu (ex. le bouton
+   "Joindre un fichier"). Sans ça, un seul élément trop large pousse toute la
+   colonne — puis la page entière — au-delà du viewport mobile, provoquant un
+   défilement horizontal global. */
+.nd-left, .nd-right { min-width: 0; }
 @media (max-width: 900px) {
   .nd-layout { grid-template-columns: 1fr; }
 }
@@ -876,6 +973,7 @@ const peutGererPieces = computed(() =>
 .nd-card__section-title--row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10px;
   border-bottom: none;
@@ -954,6 +1052,48 @@ const peutGererPieces = computed(() =>
   white-space: nowrap;
 }
 .nd-piece__meta { font-size: 0.72rem; color: #9ca3af; }
+
+/* ── Aperçu pièce jointe ─────────────────────────────────── */
+.nd-apercu-card { display: flex; flex-direction: column; height: 100%; }
+.nd-apercu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 8px 10px 18px;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+}
+.nd-apercu-head__nom {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nd-apercu-head__actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.nd-apercu-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: #f3f4f6;
+  padding: 16px;
+}
+.nd-apercu-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+.nd-apercu-pdf { width: 100%; height: 100%; border: none; background: #fff; }
+.nd-apercu-non-supporte {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+.nd-apercu-non-supporte p { margin: 0; }
 
 .nd-info-grid { padding: 8px 0; }
 .nd-info-row {
