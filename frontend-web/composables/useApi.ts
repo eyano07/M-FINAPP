@@ -50,9 +50,17 @@ export function useApi() {
 
 /** Message d'erreur lisible pour l'utilisateur à partir d'une erreur API. */
 export function messageErreurApi(e: unknown, fallback = 'Une erreur est survenue'): string {
-  const err = e as { response?: { status?: number }, data?: { message?: string } }
+  const err = e as { response?: { status?: number }, data?: { message?: string, fieldErrors?: Record<string, string> } }
   if (err?.response?.status === 403) {
     return "Accès refusé : vous n'avez pas les droits nécessaires pour cette action."
+  }
+  // Erreur de validation Bean Validation (@Valid) : le message générique
+  // "Validation echouee" ne dit rien d'exploitable, le détail utile est dans
+  // fieldErrors (voir GlobalExceptionHandler.handleValidation) — sans ça,
+  // l'utilisateur voit une erreur sans savoir quel champ corriger.
+  const champs = err?.data?.fieldErrors
+  if (champs && Object.keys(champs).length > 0) {
+    return Object.values(champs).join(' · ')
   }
   return err?.data?.message ?? fallback
 }

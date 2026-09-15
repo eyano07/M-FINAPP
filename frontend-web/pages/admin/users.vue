@@ -82,7 +82,7 @@ async function charger() {
     const data = await api<UserRow[]>('/admin/users')
     users.value = data.map((u) => ({ ...u, nomComplet: `${u.prenom ?? ''} ${u.nom ?? ''}`.trim() }))
   } catch (e: any) {
-    erreur.value = e?.data?.message || 'Impossible de charger les utilisateurs.'
+    erreur.value = messageErreurApi(e, 'Impossible de charger les utilisateurs.')
   } finally {
     loading.value = false
   }
@@ -129,7 +129,7 @@ async function enregistrer() {
     dialog.value = false
     await charger()
   } catch (e: any) {
-    erreur.value = e?.data?.message || "Échec de l'enregistrement."
+    erreur.value = messageErreurApi(e, "Échec de l'enregistrement.")
   } finally {
     saving.value = false
   }
@@ -145,7 +145,7 @@ async function toggleActif(u: UserRow) {
     if (idx !== -1) users.value[idx].actif = updated.actif
     succes.value = updated.actif ? `${u.nomComplet} activé.` : `${u.nomComplet} désactivé.`
   } catch (e: any) {
-    erreur.value = e?.data?.message || 'Échec du changement de statut.'
+    erreur.value = messageErreurApi(e, 'Échec du changement de statut.')
   } finally {
     togglingId.value = null
   }
@@ -589,6 +589,13 @@ const roleColor: Record<string, string> = {
 .usr-dialog__body {
   padding: 22px; display: flex; flex-direction: column; gap: 14px;
   max-height: 65vh; overflow-y: auto;
+}
+/* Sans ça, la v-alert (grid en interne) voit sa hauteur ecrasee a quelques
+   pixels par l'algorithme de retrecissement flex du parent — le message
+   d'erreur devient invisible (boite coloree vide) sans qu'aucune ligne ne
+   soit en cause dans son propre contenu. */
+.usr-dialog__body .v-alert {
+  flex-shrink: 0;
 }
 .usr-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .usr-field { display: flex; flex-direction: column; gap: 6px; }
