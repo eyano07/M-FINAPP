@@ -212,8 +212,8 @@ const fmtDuree = (m: number | null) => (m === null || m === undefined ? '—' : 
           <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
           <v-row>
             <v-col cols="12">
-              <v-select v-model="form.employeId" :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
-                label="Employé *" variant="outlined" density="comfortable" />
+              <v-autocomplete v-model="form.employeId" :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
+                label="Employé *" variant="outlined" density="comfortable" clearable />
             </v-col>
             <v-col cols="12" md="4"><v-text-field v-model="form.dateSortie" type="date" label="Date *" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model="form.heureSortie" type="time" label="Heure de sortie *" variant="outlined" density="comfortable" /></v-col>

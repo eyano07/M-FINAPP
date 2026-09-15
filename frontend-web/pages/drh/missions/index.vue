@@ -278,9 +278,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
             </div>
             <v-row dense>
               <v-col cols="12" md="5">
-                <v-select v-if="!a.externe" v-model="a.employeId"
+                <v-autocomplete v-if="!a.externe" v-model="a.employeId"
                   :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
-                  label="Employé" variant="outlined" density="compact" />
+                  label="Employé" variant="outlined" density="compact" clearable />
                 <v-text-field v-else v-model="a.nomLibre" label="Nom complet *" variant="outlined" density="compact" />
               </v-col>
               <v-col cols="6" md="3"><v-text-field v-model="a.nationalite" label="Nationalité" variant="outlined" density="compact" /></v-col>

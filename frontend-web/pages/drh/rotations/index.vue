@@ -240,8 +240,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
           <v-row>
             <v-col cols="12" md="6">
-              <v-select v-model="form.employeId" :items="superviseurs.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
-                label="Superviseur *" variant="outlined" density="comfortable" />
+              <v-autocomplete v-model="form.employeId" :items="superviseurs.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
+                label="Superviseur *" variant="outlined" density="comfortable" clearable />
             </v-col>
             <v-col cols="12" md="6">
               <v-select v-model="form.siteId" :items="sites.map(s => ({ title: s.nom, value: s.id }))"
