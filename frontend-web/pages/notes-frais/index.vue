@@ -413,26 +413,28 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
       <v-icon icon="mdi-filter-outline" size="18" color="#9ca3af" />
       <div class="nf-filter__chips">
         <button
-          class="nf-filter__chip"
+          class="nf-filter__chip nf-filter__chip--tous"
           :class="{ 'nf-filter__chip--active': filterStatut === null }"
           :style="filterStatut === null ? { background: '#16a34a', borderColor: '#16a34a', color: '#fff' } : {}"
           @click="filterStatut = null"
         >
           Tous
         </button>
-        <button
-          v-for="s in statuts"
-          :key="s"
-          class="nf-filter__chip"
-          :class="{ 'nf-filter__chip--active': filterStatut === s }"
-          :style="filterStatut === s
-            ? { background: statutNoteMeta(s, activeSens).color, borderColor: statutNoteMeta(s, activeSens).color, color: '#fff' }
-            : { background: statutNoteMeta(s, activeSens).bg, color: statutNoteMeta(s, activeSens).text, borderColor: statutNoteMeta(s, activeSens).bg }"
-          @click="filterStatut = s"
-        >
-          <span class="nf-filter__dot" :style="{ background: filterStatut === s ? '#fff' : statutNoteMeta(s, activeSens).color }" />
-          {{ statutNoteMeta(s, activeSens).label }}
-        </button>
+        <div class="nf-filter__grid">
+          <button
+            v-for="s in statuts"
+            :key="s"
+            class="nf-filter__chip"
+            :class="{ 'nf-filter__chip--active': filterStatut === s }"
+            :style="filterStatut === s
+              ? { background: statutNoteMeta(s, activeSens).color, borderColor: statutNoteMeta(s, activeSens).color, color: '#fff' }
+              : { background: statutNoteMeta(s, activeSens).bg, color: statutNoteMeta(s, activeSens).text, borderColor: statutNoteMeta(s, activeSens).bg }"
+            @click="filterStatut = s"
+          >
+            <span class="nf-filter__dot" :style="{ background: filterStatut === s ? '#fff' : statutNoteMeta(s, activeSens).color }" />
+            {{ statutNoteMeta(s, activeSens).label }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -440,11 +442,17 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
     <div class="nf-filter nf-filter--periode">
       <v-icon icon="mdi-calendar-range-outline" size="18" color="#9ca3af" />
       <span class="nf-periode__label">Période</span>
-      <input v-model="dateDu" type="date" class="nf-periode__input" aria-label="Du">
-      <span class="nf-periode__sep">→</span>
-      <input v-model="dateAu" type="date" class="nf-periode__input" aria-label="Au">
-      <button class="nf-filter__chip" @click="reinitialiserPeriode">Aujourd'hui</button>
-      <button v-if="dateDu || dateAu" class="nf-filter__chip" @click="effacerPeriode">Toute période</button>
+      <div class="nf-periode__body">
+        <div class="nf-periode__range">
+          <input v-model="dateDu" type="date" class="nf-periode__input" aria-label="Du">
+          <span class="nf-periode__sep">→</span>
+          <input v-model="dateAu" type="date" class="nf-periode__input" aria-label="Au">
+        </div>
+        <div class="nf-periode__actions">
+          <button class="nf-filter__chip" @click="reinitialiserPeriode">Aujourd'hui</button>
+          <button v-if="dateDu || dateAu" class="nf-filter__chip" @click="effacerPeriode">Toute période</button>
+        </div>
+      </div>
     </div>
 
     <!-- ── Error ───────────────────────────────────────────── -->
@@ -759,6 +767,57 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   font-family: inherit;
 }
 .nf-periode__sep { color: #9ca3af; font-size: 0.8rem; }
+.nf-periode__range { display: flex; align-items: center; gap: 10px; }
+/* display:contents par defaut : ces wrappers structurent la grille mobile
+   (voir media query ci-dessous) sans rien changer au flex-wrap:nowrap +
+   overflow-x:auto existant sur desktop. */
+.nf-filter__grid { display: contents; }
+.nf-periode__body { display: contents; }
+.nf-periode__actions { display: contents; }
+
+/* Sur mobile, un scroll horizontal cache (juste un mince filet gris) n'est
+   pas assez visible pour qu'on comprenne qu'il faut glisser. On bascule sur
+   une grille reguliere plutot qu'un simple flex-wrap : un flex-wrap laisse
+   les puces s'aligner a gauche selon leur largeur de texte (effet "escalier"
+   desordonne) alors qu'une grille a colonnes egales donne des rangees
+   symetriques, plus lisibles sur un petit ecran. "Tous" reste a part, en
+   pleine largeur, car c'est un reset plutot qu'un statut parmi d'autres. */
+@media (max-width: 640px) {
+  .nf-filter { flex-wrap: wrap; overflow-x: visible; }
+  .nf-filter__chips { flex-wrap: wrap; width: 100%; gap: 8px; }
+  .nf-filter__chip--tous { width: 100%; text-align: center; }
+  .nf-filter__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
+  .nf-filter__grid .nf-filter__chip {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  /* Grille 2x2 stricte : chaque date au-dessus du bouton de meme colonne.
+     .nf-periode__range et .nf-periode__actions repassent en display:contents
+     pour que leurs enfants (dates, boutons) deviennent eux-memes les 4
+     cellules de la grille du parent — le separateur "→" sort du flux
+     (redondant une fois les deux dates alignees verticalement avec leur
+     bouton respectif). */
+  .nf-periode__body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+  .nf-periode__range { display: contents; }
+  .nf-periode__sep { display: none; }
+  .nf-periode__input { width: 100%; }
+  .nf-periode__actions { display: contents; }
+  .nf-periode__actions .nf-filter__chip { width: 100%; text-align: center; justify-content: center; }
+}
 
 /* ── Grid ────────────────────────────────────────────────── */
 .nf-grid {
