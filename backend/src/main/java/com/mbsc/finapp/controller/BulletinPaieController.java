@@ -78,6 +78,12 @@ public class BulletinPaieController {
         return service.annuler(id);
     }
 
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void supprimer(@PathVariable Long id) {
+        service.supprimer(id);
+    }
+
     @PostMapping("/cloturer")
     public List<BulletinPaieResponse> cloturerPeriode(@RequestParam Integer mois, @RequestParam Integer annee) {
         return service.cloturerPeriode(mois, annee);

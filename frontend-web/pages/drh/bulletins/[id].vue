@@ -40,6 +40,8 @@ interface Bulletin {
   tauxChangeApplique: number
   netFc: number
   datePaiement: string
+  /** Antidate la mention "Imprimé le" ; null = date réelle du clic sur Imprimer. */
+  dateImpression: string | null
   statut: string
   pieceReference: string | null
   pieceStatut: string | null
@@ -137,9 +139,13 @@ async function charger() {
 }
 onMounted(() => { charger(); parametresStore.charger() })
 
-const dateImpression = ref('')
+const dateImpressionAffichee = ref('')
 function imprimer() {
-  dateImpression.value = new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
+  // Un dateImpression antidaté (bulletin reconstitué a posteriori) prime sur
+  // l'horodatage réel du clic — voir Bulletin.dateImpression.
+  dateImpressionAffichee.value = bulletin.value?.dateImpression
+    ? new Date(bulletin.value.dateImpression).toLocaleDateString('fr-FR', { dateStyle: 'medium' })
+    : new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
   nextTick(() => window.print())
 }
 

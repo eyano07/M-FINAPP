@@ -48,6 +48,8 @@ public record BulletinPaieResponse(
     BigDecimal tauxChangeApplique,
     BigDecimal netFc,
     LocalDate datePaiement,
+    /** Antidate la mention "Imprimé le" du document ; null = date réelle d'impression au clic. */
+    LocalDate dateImpression,
     StatutBulletin statut,
     /** Référence de la pièce comptable posée à la clôture, ou null si non clôturé. */
     String pieceReference,
@@ -71,7 +73,7 @@ public record BulletinPaieResponse(
             b.getSalaireBrut(), b.getIndemniteLogement(), b.getIndemniteTransport(), b.getBaseImposableInpp(),
             b.getBaseImposableInss(), b.getBaseImposableIpr(), b.getCnssOuvriere(), b.getCnssPatronale(),
             b.getOnem(), b.getTotalInss(), b.getInpp(), b.getIpr(), b.getSalaireNet(), b.getTauxChangeApplique(),
-            b.getNetFc(), b.getDatePaiement(), b.getStatut(),
+            b.getNetFc(), b.getDatePaiement(), b.getDateImpression(), b.getStatut(),
             b.getPieceComptable() != null ? b.getPieceComptable().getReference() : null,
             b.getPieceComptable() != null ? b.getPieceComptable().getStatut() : null,
             b.getDateCloture() != null,

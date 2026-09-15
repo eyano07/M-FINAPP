@@ -20,6 +20,7 @@ interface Bulletin {
   annee: number
   salaireNet: number
   netFc: number
+  dateImpression: string | null
   statut: 'BROUILLON' | 'VALIDE' | 'ANNULE'
   pieceReference: string | null
   pieceStatut: string | null
@@ -94,6 +95,7 @@ const formVide = () => ({
   primeDiplome: 0, primeAnciennete: 0, primeRendement: 0,
   avanceSalaire: 0, pret: 0,
   datePaiement: new Date().toISOString().slice(0, 10),
+  dateImpression: '' as string,
 })
 const form = reactive(formVide())
 // Poste/affectation viennent du dossier employe : simple rappel a la
@@ -152,6 +154,7 @@ function corpsRequete() {
     primeAnciennete: form.primeAnciennete, primeRendement: form.primeRendement,
     avanceSalaire: form.avanceSalaire, pret: form.pret,
     datePaiement: form.datePaiement,
+    dateImpression: form.dateImpression || null,
   }
 }
 
@@ -203,6 +206,21 @@ async function action(b: Bulletin, verbe: 'valider' | 'devalider' | 'annuler') {
     await charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, "Échec de l'opération.")
+  } finally {
+    saving.value = false
+  }
+}
+
+async function supprimer(b: Bulletin) {
+  if (!confirm(`Supprimer définitivement le bulletin de ${b.employeNomComplet} (${MOIS[b.mois - 1]} ${b.annee}) ? Cette action est irréversible.`)) return
+  saving.value = true
+  erreur.value = ''
+  try {
+    await api(`/drh/bulletins/${b.id}`, { method: 'DELETE' })
+    succes.value = 'Bulletin supprimé définitivement.'
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Échec de la suppression.')
   } finally {
     saving.value = false
   }
@@ -322,6 +340,8 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
             <v-btn v-if="item.statut !== 'ANNULE'" size="small" variant="text" color="error"
               icon="mdi-close-circle-outline" title="Annuler" @click="action(item, 'annuler')" />
           </template>
+          <v-btn v-if="canWrite && item.statut === 'ANNULE'" size="small" variant="text" color="error"
+            icon="mdi-delete-forever-outline" title="Supprimer définitivement" @click="supprimer(item)" />
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">Aucun bulletin pour cette période.</div>
@@ -337,16 +357,20 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
           <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
           <v-row>
             <v-col cols="12" md="6">
-              <v-select v-model="form.employeId" :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
-                label="Employé *" variant="outlined" density="comfortable" @update:model-value="onEmployeChange" />
+              <v-autocomplete v-model="form.employeId" :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
+                label="Employé *" variant="outlined" density="comfortable" clearable @update:model-value="onEmployeChange" />
               <p v-if="employeSelectionne && (employeSelectionne.poste || employeSelectionne.affectation)" class="text-caption text-medium-emphasis mt-1 mb-0">
                 <template v-if="employeSelectionne.poste">{{ employeSelectionne.poste }}</template>
                 <template v-if="employeSelectionne.poste && employeSelectionne.affectation"> · </template>
                 <template v-if="employeSelectionne.affectation">{{ employeSelectionne.affectation }}</template>
               </p>
             </v-col>
-            <v-col cols="12" md="3"><v-text-field v-model="form.datePaiement" type="date" label="Date de paiement" variant="outlined" density="comfortable" /></v-col>
-            <v-col cols="12" md="3"><v-text-field v-model.number="form.presencePct" type="number" suffix="%" label="Présence *" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="4"><v-text-field v-model="form.datePaiement" type="date" label="Date de paiement" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="4">
+              <v-text-field v-model="form.dateImpression" type="date" label="Date d'impression" variant="outlined" density="comfortable"
+                hint="Laisser vide = date réelle du jour d'impression. À renseigner pour un bulletin reconstitué a posteriori." persistent-hint />
+            </v-col>
+            <v-col cols="12" md="4"><v-text-field v-model.number="form.presencePct" type="number" suffix="%" label="Présence *" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.salaireBaseUsd" type="number" label="Salaire de base (USD) *" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.conge" type="number" label="Congé" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.heuresSupplementaires" type="number" label="Heures supplémentaires" variant="outlined" density="comfortable" /></v-col>

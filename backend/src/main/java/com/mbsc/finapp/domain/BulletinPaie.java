@@ -150,6 +150,15 @@ public class BulletinPaie {
     @Column(name = "date_paiement", nullable = false)
     private LocalDate datePaiement;
 
+    /**
+     * Antidate la mention "Imprimé le" du document (voir la page d'impression
+     * du bulletin) : sans elle, ce serait toujours la date réelle du clic sur
+     * "Imprimer", ce qui trahit une saisie tardive pour un bulletin reconstitué
+     * a posteriori. Nulle = comportement historique (date réelle d'impression).
+     */
+    @Column(name = "date_impression")
+    private LocalDate dateImpression;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default

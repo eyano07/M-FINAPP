@@ -95,6 +95,7 @@ public class BulletinPaieService {
             .annee(req.annee())
             .nombreEnfants(employe.getNombreEnfants() != null ? employe.getNombreEnfants() : 0)
             .datePaiement(req.datePaiement() != null ? req.datePaiement() : LocalDate.of(req.annee(), req.mois(), 28))
+            .dateImpression(req.dateImpression())
             .createdBy(currentUser.requireUser())
             .build();
         appliquerSaisies(b, req);
@@ -112,6 +113,7 @@ public class BulletinPaieService {
         ResultatCalculPaie resultat = calculer(req, b.getEmploye());
         appliquerSaisies(b, req);
         b.setDatePaiement(req.datePaiement() != null ? req.datePaiement() : b.getDatePaiement());
+        b.setDateImpression(req.dateImpression());
         appliquerResultat(b, resultat);
         log.info("Bulletin de paie modifié [id={}]", id);
         return BulletinPaieResponse.from(b, nomDrh());
@@ -152,6 +154,30 @@ public class BulletinPaieService {
         b.setStatut(StatutBulletin.ANNULE);
         log.info("Bulletin de paie annulé [id={}]", id);
         return BulletinPaieResponse.from(b, nomDrh());
+    }
+
+    /**
+     * Supprime définitivement un bulletin annulé. Réservé à l'état ANNULE
+     * (jamais clôturé, voir {@link #annuler}, donc jamais de pièce comptable
+     * liée) : un bulletin clôturé/comptabilisé n'est jamais détruit, seule sa
+     * pièce peut être extournée depuis Pièces comptables.
+     */
+    @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
+    @Transactional
+    public void supprimer(Long id) {
+        BulletinPaie b = charger(id);
+        if (b.getStatut() != StatutBulletin.ANNULE) {
+            throw new TransitionInvalideException(
+                "Seul un bulletin annulé peut être supprimé définitivement (état actuel : " + b.getStatut() + ").");
+        }
+        if (b.getPieceComptable() != null) {
+            throw new TransitionInvalideException(
+                "Ce bulletin est lié à la pièce comptable " + b.getPieceComptable().getReference()
+                + " : suppression impossible.");
+        }
+        log.info("Bulletin de paie supprimé définitivement [id={}, employe={}, periode={}/{}]",
+            id, b.getEmploye().getMatricule(), b.getMois(), b.getAnnee());
+        repository.delete(b);
     }
 
     /**
