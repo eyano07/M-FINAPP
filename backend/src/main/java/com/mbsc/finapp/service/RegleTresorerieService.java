@@ -41,6 +41,8 @@ public class RegleTresorerieService {
     private final EcritureGrandLivreRepository ecritureRepository;
     private final ConversionDeviseService conversionDevise;
     private final EcritureComptableService comptable;
+    /** Reserve de tresorerie minimale par priorite, definie par le DA. */
+    private final ParametresPrioriteNoteService parametresPriorite;
 
     private static final BigDecimal CENT = BigDecimal.valueOf(100);
 
@@ -125,8 +127,30 @@ public class RegleTresorerieService {
                 + " Solde disponible : " + soldeDisponible.toPlainString() + " FC.");
         }
 
-        log.debug("Regle priorite OK pour note {} (canal={}, priorite={}, montantCDF={}, soldeDispo={})",
-            note.getReference(), libelleCanal, priorite, montant, soldeDisponible);
+        // ── 3. Reserve de tresorerie minimale par priorite (fixee par le DA) ─
+        // Le solde qui RESTE apres ce paiement doit couvrir le seuil de la
+        // priorite : c'est le seul controle qui protege reellement la reserve
+        // (verifier le solde AVANT paiement laisserait une note vider le
+        // compte juste en dessous du seuil). Seuil a 0 = controle desactive.
+        BigDecimal seuil = parametresPriorite.get().seuilPour(priorite);
+        if (seuil.signum() > 0) {
+            BigDecimal soldeApresPaiement = soldeCompte.subtract(montant);
+            if (soldeApresPaiement.compareTo(seuil) < 0) {
+                throw new ReglePrioriteException(
+                    "Impossible de payer la note \"" + note.getReference() + "\" (priorité "
+                    + priorite + ") par " + libelleCanal + " : le solde tomberait à "
+                    + soldeApresPaiement.setScale(2, RoundingMode.HALF_UP).toPlainString() + " "
+                    + ConversionDeviseService.DEVISE_BASE
+                    + ", en dessous de la réserve de " + seuil.setScale(2, RoundingMode.HALF_UP).toPlainString()
+                    + " " + ConversionDeviseService.DEVISE_BASE
+                    + " exigée par le DA pour cette priorité. "
+                    + "Attendez un réapprovisionnement, utilisez un autre canal, "
+                    + "ou demandez au DA de relever la priorité de cette note.");
+            }
+        }
+
+        log.debug("Regle priorite OK pour note {} (canal={}, priorite={}, montant={}, soldeDispo={}, seuil={})",
+            note.getReference(), libelleCanal, priorite, montant, soldeDisponible, seuil);
     }
 
     /**

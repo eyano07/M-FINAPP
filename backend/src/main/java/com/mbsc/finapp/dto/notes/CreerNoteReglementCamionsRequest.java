@@ -1,31 +1,41 @@
 package com.mbsc.finapp.dto.notes;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
 /**
- * Demande de reglement, via note de frais (circuit DFIN/DA/Tresorerie), de
+ * Demande de reglement, via note(s) de frais (circuit DFIN/DA/Tresorerie), de
  * la dette fournisseur d'un ou plusieurs camions de minerais et/ou de leurs
- * frais accessoires deja postes (transport, peage, pont bascule...). Une
- * ligne est generee par camion et par frais, toutes imputees au compte
- * Fournisseurs (4011) — voir {@code
- * NoteFraisService.creerReglementCamionsMinerai}. Au moins l'une des deux
- * listes doit etre non vide (verifie en service : la regle porte sur les
- * deux ensemble, pas sur chacune separement).
+ * frais accessoires (transport, peage, pont bascule...).
+ *
+ * <p>Le fournisseur du minerais et le prestataire des frais accessoires
+ * n'etant generalement pas la meme partie, le service cree jusqu'a deux
+ * notes independantes — voir {@code NoteFraisService
+ * .creerReglementCamionsMinerai} : une pour {@code camionIds}
+ * (beneficiaire = {@link #beneficiaireCamions}), une pour l'ensemble des
+ * frais a regler (beneficiaire = {@link #beneficiaireFrais}) — cet ensemble
+ * regroupe {@code chargeIds} (selection explicite, ecran "Frais connexes a
+ * regler") ET tout frais non solde rattache aux camions de {@code
+ * camionIds}, poste ou encore en attente. Un des deux beneficiaires peut
+ * rester vide si la liste correspondante (camions, ou frais au sens large
+ * ci-dessus) se revele vide une fois resolue cote service — d'ou l'absence
+ * de {@code @NotBlank} ici, la regle etant contextuelle.</p>
  */
 public record CreerNoteReglementCamionsRequest(
 
     List<Long> camionIds,
 
-    /** Frais accessoires deja postes (piece non nulle) a regler avec les camions ci-dessus. */
+    /** Frais accessoires a regler en plus de ceux rattaches automatiquement aux camions ci-dessus. */
     List<Long> chargeIds,
 
-    /** Destinataire reel du paiement (le fournisseur ou le prestataire). */
-    @NotBlank
+    /** Destinataire du paiement des camions (le fournisseur de minerais). */
     @Size(max = 200)
-    String beneficiaire,
+    String beneficiaireCamions,
+
+    /** Destinataire du paiement des frais accessoires (le prestataire — transport, peage...). */
+    @Size(max = 200)
+    String beneficiaireFrais,
 
     @Size(max = 2000)
     String description

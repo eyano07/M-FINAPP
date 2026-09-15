@@ -29,6 +29,19 @@ public interface ChargeCamionMineraiRepository extends JpaRepository<ChargeCamio
     /** Charges rattachees a une note de reglement donnee — pour les solder ou liberer si elle est annulee. */
     List<ChargeCamionMinerai> findByNoteFraisReglementId(Long noteFraisId);
 
+    /**
+     * Charges non soldees et non deja rattachees, quel que soit leur etat
+     * poste/en attente, pour les camions donnes — rattachees automatiquement
+     * a la note de reglement de ces camions, voir {@code
+     * NoteFraisService.creerReglementCamionsMinerai}. Contrairement a {@link
+     * #findByRegleFalseAndPieceIsNotNullAndNoteFraisReglementIsNullOrderByDateChargeAscIdAsc},
+     * inclut les charges encore en attente : poster une charge deja reglee
+     * (rejouee par {@code MineraiService.validerAchatInterne} des que le
+     * camion est valide) ou regler une charge encore en attente sont deux
+     * operations independantes, sans risque d'incoherence.
+     */
+    List<ChargeCamionMinerai> findByCamionIdInAndRegleFalseAndNoteFraisReglementIsNull(List<Long> camionIds);
+
     boolean existsByCamionId(Long camionId);
 
     /** Total des frais connexes (postes ou en attente) par camion, pour les listes de camions. */

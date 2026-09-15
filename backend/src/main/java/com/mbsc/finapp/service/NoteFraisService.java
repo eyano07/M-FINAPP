@@ -49,9 +49,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -121,19 +125,39 @@ public class NoteFraisService {
     // ---------------------------------------------------------------------
 
     @Transactional(readOnly = true)
-    public List<NoteFraisResponse> lister() {
+    public List<NoteFraisResponse> lister(LocalDate du, LocalDate au) {
         return noteRepository.findAllByOrderByDateCreationDesc().stream()
             .filter(this::estVisiblePourUtilisateur)
+            .filter(n -> dansPeriode(n, du, au))
             .map(NoteFraisResponse::from)
             .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<NoteFraisResponse> listerParStatut(StatutNote statut) {
+    public List<NoteFraisResponse> listerParStatut(StatutNote statut, LocalDate du, LocalDate au) {
         return noteRepository.findByStatut(statut).stream()
             .filter(this::estVisiblePourUtilisateur)
+            .filter(n -> dansPeriode(n, du, au))
             .map(NoteFraisResponse::from)
             .toList();
+    }
+
+    /**
+     * Filtre optionnel par date de création (bornes incluses, l'une ou
+     * l'autre — voire les deux — pouvant être omise). Comparée en date
+     * locale du serveur : {@code dateCreation} est un {@code Instant}, la
+     * borne saisie par l'écran un {@code LocalDate} ("aujourd'hui" par
+     * défaut, voir le filtre de /notes-frais).
+     */
+    private boolean dansPeriode(NoteFrais n, LocalDate du, LocalDate au) {
+        if (du == null && au == null) {
+            return true;
+        }
+        LocalDate date = n.getDateCreation().atZone(ZoneId.systemDefault()).toLocalDate();
+        if (du != null && date.isBefore(du)) {
+            return false;
+        }
+        return au == null || !date.isAfter(au);
     }
 
     /** Statuts visibles par un caissier "pur" : uniquement les notes deja validees par le DA. */
@@ -319,21 +343,40 @@ public class NoteFraisService {
      * MineraiService#listerChargesARegler}. Le lien est libere si la note
      * est annulee ({@link #annuler}).</p>
      *
-     * <p>Une seule note ici peut donc melanger camions et frais (le montant
-     * total, l'objet et les lignes s'y adaptent), mais l'ecran de saisie
-     * appelle cette methode deux fois — une avec seulement des camions, une
-     * avec seulement des frais — des que la selection contient les deux :
-     * le fournisseur du minerais et le prestataire des frais accessoires
-     * (transport, peage...) ne sont generalement pas la meme partie, chacun
-     * merite son propre beneficiaire et son propre circuit d'approbation.</p>
+     * <p>Le fournisseur du minerais et le prestataire des frais accessoires
+     * (transport, peage...) n'etant generalement pas la meme partie, cette
+     * methode cree <b>jusqu'a deux notes independantes</b>, chacune avec son
+     * propre beneficiaire et son propre circuit d'approbation : une pour
+     * {@code camionIds}, une pour l'ensemble des frais a regler. Cet
+     * ensemble regroupe {@code chargeIds} (selection explicite, ecran "Frais
+     * connexes a regler", pour des charges sur des camions deja regles) ET
+     * <b>automatiquement</b> tout frais non solde et non deja rattache
+     * portant sur un camion de {@code camionIds} — poste ou encore en
+     * attente. Inutile pour la logistique d'aller chercher ces derniers dans
+     * un second ecran : poster une charge deja reglee (rejoue par {@code
+     * MineraiService#validerAchatInterne} des que le camion est valide) ou
+     * regler une charge encore en attente sont deux operations
+     * independantes, sans risque d'incoherence comptable.</p>
+     *
+     * <p>Chaque camion et chaque frais retenus sont rattaches a leur note
+     * ({@code CamionMinerai.noteFraisReglement}, {@code ChargeCamionMinerai
+     * .noteFraisReglement}) pour empecher de figurer dans une seconde
+     * demande tant que celle-ci est en cours — voir {@link
+     * MineraiService#listerARegler} et {@link
+     * MineraiService#listerChargesARegler}. Le lien est libere si la note
+     * est annulee ({@link #annuler}).</p>
+     *
+     * @return une note (camions seuls, ou frais seuls) ou deux (les deux
+     *         ensembles sont non vides) — jamais une liste vide, l'absence
+     *         totale de selection est refusee plus haut.
      */
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'ADMIN')")
     @Transactional
-    public NoteFraisDetailResponse creerReglementCamionsMinerai(CreerNoteReglementCamionsRequest req) {
+    public List<NoteFraisDetailResponse> creerReglementCamionsMinerai(CreerNoteReglementCamionsRequest req) {
         User auteur = currentUser.requireUser();
         List<Long> camionIds = req.camionIds() == null ? List.of() : req.camionIds();
-        List<Long> chargeIds = req.chargeIds() == null ? List.of() : req.chargeIds();
-        if (camionIds.isEmpty() && chargeIds.isEmpty()) {
+        List<Long> chargeIdsExplicites = req.chargeIds() == null ? List.of() : req.chargeIds();
+        if (camionIds.isEmpty() && chargeIdsExplicites.isEmpty()) {
             throw new IllegalArgumentException("Selectionnez au moins un camion ou un frais a regler.");
         }
 
@@ -352,18 +395,13 @@ public class NoteFraisService {
             }
         }
 
-        List<ChargeCamionMinerai> charges = chargeRepository.findAllById(chargeIds);
-        if (charges.size() != chargeIds.size()) {
+        List<ChargeCamionMinerai> chargesExplicites = chargeRepository.findAllById(chargeIdsExplicites);
+        if (chargesExplicites.size() != chargeIdsExplicites.size()) {
             throw new RessourceIntrouvableException("Un ou plusieurs frais selectionnes sont introuvables.");
         }
-        for (ChargeCamionMinerai charge : charges) {
+        for (ChargeCamionMinerai charge : chargesExplicites) {
             if (charge.isRegle()) {
                 throw new IllegalArgumentException("Le frais « " + charge.getLibelle() + " » est deja regle.");
-            }
-            if (charge.getPiece() == null) {
-                throw new IllegalArgumentException(
-                    "Le frais « " + charge.getLibelle() + " » du camion " + charge.getCamion().getPlaque()
-                    + " n'est pas encore poste : il rejoindra la dette de son camion des que celui-ci sera valide.");
             }
             if (charge.getNoteFraisReglement() != null) {
                 throw new IllegalArgumentException(
@@ -372,39 +410,83 @@ public class NoteFraisService {
             }
         }
 
-        List<LigneNoteFraisRequest> lignesReq = new ArrayList<>();
-        for (CamionMinerai c : camions) {
-            lignesReq.add(new LigneNoteFraisRequest(
+        // Frais rattaches automatiquement aux camions selectionnes (postes ou
+        // encore en attente) — fusionnes sans doublon avec la selection
+        // explicite ci-dessus.
+        Map<Long, ChargeCamionMinerai> chargesParId = new LinkedHashMap<>();
+        chargesExplicites.forEach(c -> chargesParId.put(c.getId(), c));
+        if (!camionIds.isEmpty()) {
+            chargeRepository.findByCamionIdInAndRegleFalseAndNoteFraisReglementIsNull(camionIds)
+                .forEach(c -> chargesParId.putIfAbsent(c.getId(), c));
+        }
+        List<ChargeCamionMinerai> charges = new ArrayList<>(chargesParId.values());
+
+        List<NoteFraisDetailResponse> resultats = new ArrayList<>();
+        if (!camions.isEmpty()) {
+            if (!StringUtils.hasText(req.beneficiaireCamions())) {
+                throw new IllegalArgumentException("Le bénéficiaire des camions est obligatoire.");
+            }
+            resultats.add(creerNoteCamions(camions, req.beneficiaireCamions(), req.description(), auteur));
+        }
+        if (!charges.isEmpty()) {
+            if (!StringUtils.hasText(req.beneficiaireFrais())) {
+                throw new IllegalArgumentException("Le bénéficiaire des frais connexes est obligatoire.");
+            }
+            resultats.add(creerNoteFrais(charges, req.beneficiaireFrais(), req.description(), auteur));
+        }
+        return resultats;
+    }
+
+    private NoteFraisDetailResponse creerNoteCamions(
+            List<CamionMinerai> camions, String beneficiaire, String description, User auteur) {
+        List<LigneNoteFraisRequest> lignesReq = camions.stream()
+            .map(c -> new LigneNoteFraisRequest(
                 detteEstimee(c), COMPTE_FOURNISSEURS,
                 "Camion " + c.getPlaque() + " - " + c.getArticle().getLibelle(),
-                false, null, null, null, null, false, null, null));
-        }
-        for (ChargeCamionMinerai ch : charges) {
-            lignesReq.add(new LigneNoteFraisRequest(
+                false, null, null, null, null, false, null, null))
+            .toList();
+        String objet = camions.size() == 1
+            ? "Règlement fournisseur minerais - camion " + camions.get(0).getPlaque()
+            : "Règlement fournisseur minerais - " + camions.size() + " camions";
+
+        NoteFrais note = creerEtSoumettreNoteReglement(objet, beneficiaire, description, lignesReq, auteur);
+        camions.forEach(c -> c.setNoteFraisReglement(note));
+        camionRepository.saveAll(camions);
+
+        log.info("Note de reglement camions minerais creee et soumise [ref={}, montant={}, camions={}, par={}]",
+            note.getReference(), note.getMontant(), camions.size(), auteur.getEmail());
+        return notifierEtRepondre(note);
+    }
+
+    private NoteFraisDetailResponse creerNoteFrais(
+            List<ChargeCamionMinerai> charges, String beneficiaire, String description, User auteur) {
+        List<LigneNoteFraisRequest> lignesReq = charges.stream()
+            .map(ch -> new LigneNoteFraisRequest(
                 ch.getMontant(), COMPTE_FOURNISSEURS,
                 ch.getLibelle() + " - camion " + ch.getCamion().getPlaque(),
-                false, null, null, null, null, false, null, null));
-        }
+                false, null, null, null, null, false, null, null))
+            .toList();
+        String objet = charges.size() == 1
+            ? "Règlement frais connexes minerais - " + charges.get(0).getLibelle()
+                + " (camion " + charges.get(0).getCamion().getPlaque() + ")"
+            : "Règlement frais connexes minerais - " + charges.size() + " frais";
 
-        String objet;
-        if (charges.isEmpty()) {
-            objet = camions.size() == 1
-                ? "Règlement fournisseur minerais - camion " + camions.get(0).getPlaque()
-                : "Règlement fournisseur minerais - " + camions.size() + " camions";
-        } else if (camions.isEmpty()) {
-            objet = charges.size() == 1
-                ? "Règlement frais connexes minerais - " + charges.get(0).getLibelle()
-                    + " (camion " + charges.get(0).getCamion().getPlaque() + ")"
-                : "Règlement frais connexes minerais - " + charges.size() + " frais";
-        } else {
-            objet = "Règlement fournisseur minerais - " + (camions.size() + charges.size()) + " éléments";
-        }
+        NoteFrais note = creerEtSoumettreNoteReglement(objet, beneficiaire, description, lignesReq, auteur);
+        charges.forEach(c -> c.setNoteFraisReglement(note));
+        chargeRepository.saveAll(charges);
 
+        log.info("Note de reglement frais connexes minerais creee et soumise [ref={}, montant={}, frais={}, par={}]",
+            note.getReference(), note.getMontant(), charges.size(), auteur.getEmail());
+        return notifierEtRepondre(note);
+    }
+
+    private NoteFrais creerEtSoumettreNoteReglement(String objet, String beneficiaire, String description,
+            List<LigneNoteFraisRequest> lignesReq, User auteur) {
         NoteFrais note = NoteFrais.builder()
             .reference(referenceGenerator.pourNoteFrais())
             .objet(objet)
-            .beneficiaire(req.beneficiaire())
-            .description(req.description())
+            .beneficiaire(beneficiaire)
+            .description(description)
             .montant(BigDecimal.ZERO)
             // Les montants des camions et des frais (prix d'achat, dette
             // fournisseur) sont deja en devise de base (USD) : aucune
@@ -417,24 +499,14 @@ public class NoteFraisService {
         construireLignes(note, lignesReq);
         note.recalculerMontant();
         note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Creation de la note"));
-        note = noteRepository.save(note);
+        return noteRepository.save(note);
+    }
 
-        for (CamionMinerai camion : camions) {
-            camion.setNoteFraisReglement(note);
-        }
-        camionRepository.saveAll(camions);
-        for (ChargeCamionMinerai charge : charges) {
-            charge.setNoteFraisReglement(note);
-        }
-        chargeRepository.saveAll(charges);
-
+    private NoteFraisDetailResponse notifierEtRepondre(NoteFrais note) {
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, null, "Soumission au DFIN");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
             "Note à vérifier", note.getReference() + " — " + note.getObjet(),
             "/notes-frais/" + note.getId(), note);
-
-        log.info("Note de reglement camions minerais creee et soumise [ref={}, montant={}, camions={}, frais={}, par={}]",
-            note.getReference(), note.getMontant(), camions.size(), charges.size(), auteur.getEmail());
         return reponse;
     }
 

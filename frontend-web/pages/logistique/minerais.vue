@@ -414,49 +414,41 @@ function ouvrirNoteReglement() {
   dialogNote.value = true
 }
 
-async function creerNoteDeReglement(camionIds: number[], chargeIds: number[], beneficiaire: string) {
-  await api('/notes-frais/reglement-camions-minerai', {
-    method: 'POST',
-    body: {
-      camionIds,
-      chargeIds,
-      beneficiaire: beneficiaire.trim(),
-      description: descriptionNote.value.trim() || null,
-    },
-  })
-}
-
+// Le backend rattache aussi automatiquement, a la note de frais, tout frais
+// non solde des camions selectionnes (poste ou encore en attente) — inutile
+// de les avoir coches dans le tableau "Frais connexes à régler" pour que la
+// seconde note se cree. On ne peut donc jamais savoir a l'avance si une
+// deuxieme note en resultera : les deux beneficiaires restent affiches
+// ensemble des qu'un camion est selectionne.
 async function creerNoteReglement() {
   const hasCamions = selectionnes.value.length > 0
-  const hasCharges = chargesSelectionnees.value.length > 0
   if (hasCamions && !beneficiaireCamions.value.trim()) {
     erreurNote.value = 'Le bénéficiaire des camions est obligatoire.'
     return
   }
-  if (hasCharges && !beneficiaireFrais.value.trim()) {
-    erreurNote.value = 'Le bénéficiaire des frais connexes est obligatoire.'
-    return
-  }
+  // Le bénéficiaire des frais peut rester vide si aucun frais — explicite ou
+  // automatiquement rattaché aux camions — ne se retrouve finalement dans la
+  // demande : c'est alors le backend qui ne créera tout simplement pas de
+  // seconde note, sans réclamer ce champ.
   envoiNote.value = true
   erreurNote.value = ''
   try {
-    const messages: string[] = []
-    if (hasCamions) {
-      const nb = selectionnes.value.length
-      await creerNoteDeReglement(selectionnes.value, [], beneficiaireCamions.value)
-      messages.push(`${nb} camion${nb > 1 ? 's' : ''}`)
-      selectionnes.value = []
-    }
-    if (hasCharges) {
-      const nb = chargesSelectionnees.value.length
-      await creerNoteDeReglement([], chargesSelectionnees.value, beneficiaireFrais.value)
-      messages.push(`${nb} frais connexe${nb > 1 ? 's' : ''}`)
-      chargesSelectionnees.value = []
-    }
+    const notes = await api<{ reference: string }[]>('/notes-frais/reglement-camions-minerai', {
+      method: 'POST',
+      body: {
+        camionIds: selectionnes.value,
+        chargeIds: chargesSelectionnees.value,
+        beneficiaireCamions: beneficiaireCamions.value.trim() || null,
+        beneficiaireFrais: beneficiaireFrais.value.trim() || null,
+        description: descriptionNote.value.trim() || null,
+      },
+    })
+    selectionnes.value = []
+    chargesSelectionnees.value = []
     dialogNote.value = false
-    succes.value = hasCamions && hasCharges
-      ? `2 notes de frais créées et soumises au DFIN — ${messages.join(', ')}.`
-      : `Note de frais créée pour ${messages[0]} et soumise au DFIN.`
+    succes.value = notes.length > 1
+      ? `2 notes de frais créées et soumises au DFIN (${notes.map(n => n.reference).join(', ')}).`
+      : `Note de frais ${notes[0]?.reference ?? ''} créée et soumise au DFIN.`
     await charger()
   } catch (e: any) {
     erreurNote.value = messageErreurApi(e, 'Échec de la création de la note.')
@@ -773,31 +765,28 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
     <!-- ── Note de frais de règlement (circuit DFIN/DA/Trésorerie) ──── -->
     <v-dialog v-model="dialogNote" max-width="480">
       <v-card class="pa-6">
-        <h2 class="text-h6 mb-1">
-          {{ selectionnes.length && chargesSelectionnees.length ? 'Créer deux notes de frais' : 'Créer une note de frais' }}
-        </h2>
+        <h2 class="text-h6 mb-1">Créer une note de frais</h2>
         <p class="text-caption text-medium-emphasis mb-4">
-          <template v-if="selectionnes.length && chargesSelectionnees.length">
-            Le fournisseur du minerais et le prestataire des frais accessoires n'étant généralement pas
-            la même partie, deux notes indépendantes seront créées : une de
-            <strong>{{ fmt(totalSelectionne) }}</strong> pour {{ selectionnes.length }} camion{{ selectionnes.length > 1 ? 's' : '' }}
-            ({{ camionsSelectionnes.map(c => c.plaque).join(', ') }}), une de
-            <strong>{{ fmt(totalChargesSelectionnees) }}</strong> pour {{ chargesSelectionnees.length }} frais connexe{{ chargesSelectionnees.length > 1 ? 's' : '' }}
-            ({{ chargesSelectionneesDetail.map(c => c.libelle + ' (' + c.camionPlaque + ')').join(', ') }}).
-            Les deux suivront le circuit DFIN puis DA / Trésorerie.
-          </template>
-          <template v-else-if="selectionnes.length">
+          <template v-if="selectionnes.length">
             Règlement de <strong>{{ selectionnes.length }}</strong> camion{{ selectionnes.length > 1 ? 's' : '' }}
             — {{ camionsSelectionnes.map(c => c.plaque).join(', ') }} — pour un total de
-            <strong>{{ fmt(totalSelectionne) }}</strong>. La note sera soumise directement au DFIN,
-            puis suivra le circuit DA / Trésorerie.
+            <strong>{{ fmt(totalSelectionne) }}</strong>.
+            <template v-if="chargesSelectionnees.length">
+              Les <strong>{{ chargesSelectionnees.length }}</strong> frais connexe{{ chargesSelectionnees.length > 1 ? 's' : '' }}
+              coché{{ chargesSelectionnees.length > 1 ? 's' : '' }} ci-dessous ({{ fmt(totalChargesSelectionnees) }})
+              seront réglés à part.
+            </template>
+            Le fournisseur du minerais n'étant généralement pas le même que le(s) prestataire(s) des frais
+            accessoires (transport, péage...), <strong>tout frais connexe non soldé de ces camions — coché ou
+            non, déjà posté ou encore en attente — sera automatiquement réglé dans une note séparée</strong>,
+            avec son propre bénéficiaire. Une seconde note n'est donc créée que si de tels frais existent.
           </template>
           <template v-else>
             Règlement de <strong>{{ chargesSelectionnees.length }}</strong> frais connexe{{ chargesSelectionnees.length > 1 ? 's' : '' }}
             — {{ chargesSelectionneesDetail.map(c => c.libelle + ' (' + c.camionPlaque + ')').join(', ') }} — pour un total de
-            <strong>{{ fmt(totalChargesSelectionnees) }}</strong>. La note sera soumise directement au DFIN,
-            puis suivra le circuit DA / Trésorerie.
+            <strong>{{ fmt(totalChargesSelectionnees) }}</strong>.
           </template>
+          Les notes suivront le circuit DFIN puis DA / Trésorerie.
           <template v-if="selectionInclutAValider">
             Le paiement validera aussi l'achat des camions pas encore validés.
           </template>
@@ -807,16 +796,16 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         <v-text-field v-if="selectionnes.length" v-model="beneficiaireCamions"
           label="Bénéficiaire des camions (fournisseur) *" variant="outlined"
           density="comfortable" class="mb-3" hide-details autofocus />
-        <v-text-field v-if="chargesSelectionnees.length" v-model="beneficiaireFrais"
-          label="Bénéficiaire des frais connexes (prestataire) *" variant="outlined"
-          density="comfortable" class="mb-3" hide-details :autofocus="!selectionnes.length" />
+        <v-text-field v-if="selectionnes.length || chargesSelectionnees.length" v-model="beneficiaireFrais"
+          :label="selectionnes.length ? 'Bénéficiaire des frais connexes (prestataire, si applicable)' : 'Bénéficiaire des frais connexes (prestataire) *'"
+          variant="outlined" density="comfortable" class="mb-3" hide-details :autofocus="!selectionnes.length" />
         <v-textarea v-model="descriptionNote" label="Description (facultatif)" variant="outlined"
           density="comfortable" rows="2" hide-details />
 
         <div class="d-flex justify-end ga-3 mt-4">
           <v-btn variant="text" :disabled="envoiNote" @click="dialogNote = false">Annuler</v-btn>
           <v-btn color="primary" variant="flat" :loading="envoiNote" @click="creerNoteReglement">
-            {{ selectionnes.length && chargesSelectionnees.length ? 'Créer et soumettre les 2 notes' : 'Créer et soumettre' }}
+            Créer et soumettre
           </v-btn>
         </div>
       </v-card>

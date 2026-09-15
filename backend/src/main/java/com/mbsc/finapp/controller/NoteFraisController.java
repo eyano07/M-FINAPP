@@ -7,18 +7,23 @@ import com.mbsc.finapp.dto.notes.NoteFraisDetailResponse;
 import com.mbsc.finapp.dto.notes.NoteFraisRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisResponse;
 import com.mbsc.finapp.dto.notes.ModifierComptesRequest;
+import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteRequest;
+import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteResponse;
 import com.mbsc.finapp.dto.notes.PrioriteRequest;
 import com.mbsc.finapp.service.NoteFraisService;
+import com.mbsc.finapp.service.ParametresPrioriteNoteService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -31,10 +36,31 @@ import java.util.List;
 public class NoteFraisController {
 
     private final NoteFraisService service;
+    private final ParametresPrioriteNoteService parametresPriorite;
+
+    /**
+     * Seuils de reserve de tresorerie par priorite (definis par le DA).
+     * Places sous /notes-frais volontairement : ce prefixe echappe au
+     * ModuleAccessFilter, ces seuils devant rester accessibles au DA quels
+     * que soient les modules de tresorerie actives.
+     */
+    @GetMapping("/parametres-priorite")
+    public ParametresPrioriteNoteResponse consulterParametresPriorite() {
+        return parametresPriorite.consulter();
+    }
+
+    @PutMapping("/parametres-priorite")
+    public ParametresPrioriteNoteResponse enregistrerParametresPriorite(
+            @Valid @RequestBody ParametresPrioriteNoteRequest req) {
+        return parametresPriorite.enregistrer(req);
+    }
 
     @GetMapping
-    public List<NoteFraisResponse> lister(@RequestParam(required = false) StatutNote statut) {
-        return statut == null ? service.lister() : service.listerParStatut(statut);
+    public List<NoteFraisResponse> lister(
+            @RequestParam(required = false) StatutNote statut,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au) {
+        return statut == null ? service.lister(du, au) : service.listerParStatut(statut, du, au);
     }
 
     @GetMapping("/{id}")
@@ -55,12 +81,14 @@ public class NoteFraisController {
     }
 
     /**
-     * Cree et soumet directement au DFIN une note de reglement pour un ou
-     * plusieurs camions de minerais valides par la caisse (LOGISTIQUE).
+     * Cree et soumet directement au DFIN une ou deux notes de reglement
+     * (camions, frais connexes — voir {@code NoteFraisService
+     * .creerReglementCamionsMinerai}) pour des camions de minerais et/ou
+     * leurs frais accessoires (LOGISTIQUE).
      */
     @PostMapping("/reglement-camions-minerai")
     @ResponseStatus(HttpStatus.CREATED)
-    public NoteFraisDetailResponse creerReglementCamionsMinerai(
+    public List<NoteFraisDetailResponse> creerReglementCamionsMinerai(
             @Valid @RequestBody CreerNoteReglementCamionsRequest req) {
         return service.creerReglementCamionsMinerai(req);
     }
