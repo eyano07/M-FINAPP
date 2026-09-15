@@ -38,6 +38,7 @@ const tresorerie = ref(0)
 const tresorerieBanque = ref(0)
 const tresorerieMobileMoney = ref(0)
 const resultatNet = ref(0)
+const resultatNetEvolution = ref<{ mois: string; valeur: number }[]>([])
 const budgetTaux = ref(0)
 const tauxChange = ref(1) // taux FC→USD (1 USD = X FC)
 
@@ -91,7 +92,42 @@ async function charger() {
   } catch { /* role sans acces aux budgets */ }
 }
 
-onMounted(charger)
+const NOMS_MOIS = ['Janv.','Févr.','Mars','Avr.','Mai','Juin','Juil.','Août','Sept.','Oct.','Nov.','Déc.']
+const dateISO = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+
+/**
+ * Résultat net cumulé (Bilan) à la fin de chaque mois depuis janvier jusqu'à
+ * aujourd'hui — /comptabilite/bilan n'est pas ouvert au CAISSIER pur (voir
+ * estCaissier), contrairement à /caisse/balance utilisé pour la carte
+ * "Résultat net" ci-dessus ; le graphique est donc masqué pour ce rôle
+ * plutôt que de tenter un appel voué à un 403.
+ */
+async function chargerEvolutionResultatNet() {
+  if (estCaissier.value) return
+  try {
+    const maintenant = new Date()
+    const annee = maintenant.getFullYear()
+    const moisCourant = maintenant.getMonth()
+
+    const points = Array.from({ length: moisCourant + 1 }, (_, m) => ({
+      mois: NOMS_MOIS[m],
+      au: m === moisCourant ? dateISO(maintenant) : dateISO(new Date(annee, m + 1, 0)),
+    }))
+
+    const bilans = await Promise.all(
+      points.map(p => api<{ resultatNet: number }>(`/comptabilite/bilan?au=${p.au}`))
+    )
+    resultatNetEvolution.value = points.map((p, i) => ({ mois: p.mois, valeur: bilans[i].resultatNet || 0 }))
+  } catch {
+    resultatNetEvolution.value = []
+  }
+}
+
+onMounted(() => {
+  charger()
+  chargerEvolutionResultatNet()
+})
 
 const fmtMontant = (v: number) =>
   fmtUSD(v)
@@ -220,6 +256,28 @@ const lineData = computed(() => {
 })
 const lineOpts: any = { ...cb, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
 
+// 9. Résultat net — seule courbe de ce tableau de bord basée sur de vraies
+// données historiques (bilan mensuel réel), les autres étant des tendances
+// simulées à partir de la valeur actuelle.
+const resultatNetLineData = computed(() => ({
+  labels: resultatNetEvolution.value.map(p => p.mois),
+  datasets: [{
+    label: 'Résultat net (USD)',
+    data: resultatNetEvolution.value.map(p => Math.round(p.valeur * 100) / 100),
+    borderColor: '#7c3aed',
+    backgroundColor: 'rgba(124,58,237,0.08)',
+    tension: 0.35,
+    fill: true,
+    pointBackgroundColor: resultatNetEvolution.value.map(p => p.valeur >= 0 ? '#16a34a' : '#dc2626'),
+    pointRadius: 5,
+  }],
+}))
+const resultatNetLineOpts: any = {
+  ...cb,
+  scales: { y: { beginAtZero: false, ticks: { callback: (v: any) => fmtUSD(Number(v)) } } },
+  plugins: { ...cb.plugins, tooltip: { ...cb.plugins.tooltip, callbacks: { label: (ctx: any) => fmtUSD(ctx.parsed.y) } } },
+}
+
 // 2. Barres
 const barData = computed(() => ({
   labels: ST_ALL,
@@ -337,11 +395,19 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
     <div class="dash__section-header" style="margin-bottom:20px">
       <div>
         <h2 class="dash__section-title">Analyses graphiques</h2>
-        <p class="dash__section-sub">{{ estCaissier ? '2 types de graphiques' : '8 types de graphiques' }} · données en temps réel</p>
+        <p class="dash__section-sub">{{ estCaissier ? '2 types de graphiques' : '9 types de graphiques' }} · données en temps réel</p>
       </div>
     </div>
 
     <ClientOnly>
+      <!-- 9. Résultat net (en tête : indicateur financier le plus important) -->
+      <div v-if="!estCaissier" class="cg-full">
+        <div class="cg-card">
+          <p class="cg-title"><v-icon icon="mdi-chart-timeline-variant" size="15" class="mr-1" />Courbe — Évolution du résultat net</p>
+          <p class="cg-sub">Résultat net cumulé (Balance) de janvier à aujourd'hui</p>
+          <div class="cg-canvas"><Line :data="resultatNetLineData" :options="resultatNetLineOpts" /></div>
+        </div>
+      </div>
       <!-- 1. Courbe -->
       <div class="cg-full">
         <div class="cg-card">
