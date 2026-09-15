@@ -1,15 +1,27 @@
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   label: string
   value: string | number
   icon: string
   color?: string
   trend?: string
+  to?: string
 }>()
+
+function onClick() {
+  if (props.to) navigateTo(props.to)
+}
 </script>
 
 <template>
-  <div class="stat-card" :class="`stat-card--${color ?? 'primary'}`">
+  <div
+    class="stat-card"
+    :class="[`stat-card--${color ?? 'primary'}`, { 'stat-card--clickable': to }]"
+    :role="to ? 'link' : undefined"
+    :tabindex="to ? 0 : undefined"
+    @click="onClick"
+    @keydown.enter="onClick"
+  >
     <div class="stat-card__top">
       <div class="stat-card__icon-wrap">
         <v-icon :icon="icon" size="20" />
@@ -45,6 +57,13 @@ defineProps<{
 .stat-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 16px 40px -8px var(--stat-shadow);
+}
+.stat-card--clickable {
+  cursor: pointer;
+}
+.stat-card--clickable:focus-visible {
+  outline: 2px solid rgba(255,255,255,0.85);
+  outline-offset: 2px;
 }
 
 .stat-card--green {

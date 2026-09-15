@@ -37,6 +37,7 @@ const notes = ref<Note[]>([])
 const tresorerie = ref(0)
 const tresorerieBanque = ref(0)
 const tresorerieMobileMoney = ref(0)
+const resultatNet = ref(0)
 const budgetTaux = ref(0)
 const tauxChange = ref(1) // taux FC→USD (1 USD = X FC)
 
@@ -75,6 +76,12 @@ async function charger() {
     tresorerieMobileMoney.value = balance
       .filter((l) => l.compteNumero?.startsWith('552'))
       .reduce((s, l) => s + (l.solde || 0), 0)
+    // Résultat net = Produits (classe 7) − Charges (classe 6), même formule
+    // que ComptabiliteService/ClotureAnnuelleService côté serveur — mais
+    // calculée ici depuis la balance déjà chargée, sans appel supplémentaire.
+    const produits = balance.filter((l) => l.type === 'PRODUIT').reduce((s, l) => s + (l.solde || 0), 0)
+    const charges = balance.filter((l) => l.type === 'CHARGE').reduce((s, l) => s + (l.solde || 0), 0)
+    resultatNet.value = produits - charges
   } catch { /* role sans acces a la balance */ }
   try {
     const budgets = await api<any[]>('/budgets')
@@ -93,25 +100,61 @@ const enAttente = computed(() =>
   notes.value.filter((n) => !['PAYEE', 'ANNULEE'].includes(n.statut)).length)
 const payees = computed(() => notes.value.filter((n) => n.statut === 'PAYEE').length)
 
+// Compteur (non tronqué) des notes qui attendent l'action du rôle courant —
+// même base que `aValider` plus bas, sans le slice(0,6) qui limite
+// l'affichage de la section "Notes à traiter" (voir statutsActionnables).
+const notesActionnablesCount = computed(() =>
+  notes.value.filter((n) => statutsActionnables.value.includes(n.statut)).length)
+
+// Carte "Notes en attente" du tableau de bord : DFIN/DA/CAISSIER n'y voient
+// que ce qui les concerne personnellement (leur propre étape du circuit) —
+// tout autre rôle (COMPTABLE, DG, ADMIN...) voit le total de ce qui reste
+// dans le circuit, aucune étape ne lui étant assignée en propre.
+const notesEnAttenteCard = computed(() =>
+  auth.hasAnyRole(['DFIN', 'DA', 'CAISSIER']) ? notesActionnablesCount.value : enAttente.value)
+
+// Statut à préremplir dans le filtre de /notes-frais quand on clique la
+// carte "Notes en attente" — le point de passage principal du rôle (le DFIN
+// en a deux dans statutsActionnables : on retient SOUMISE, le plus courant).
+const statutFiltreNotesEnAttente = computed<string | null>(() => {
+  if (auth.hasRole('DFIN')) return 'SOUMISE'
+  if (auth.hasRole('DA')) return 'VERIFIEE_DFIN'
+  if (auth.hasRole('CAISSIER')) return 'TRANSMISE_CAISSE'
+  return null
+})
+const versNotesEnAttente = computed(() =>
+  statutFiltreNotesEnAttente.value ? `/notes-frais?statut=${statutFiltreNotesEnAttente.value}` : '/notes-frais')
+
+// Cartes trésorerie : le caissier opère directement la caisse/banque/mobile
+// money, tout autre rôle (DFIN, DA, DG, ADMIN, COMPTABLE) consulte plutôt le
+// grand livre du compte concerné — il ne saisit pas d'opération lui-même.
+const versCaisseOuGrandLivre = computed(() => (auth.hasRole('CAISSIER') ? '/caisse' : '/grand-livre'))
+const versBanqueOuGrandLivre = computed(() => (auth.hasRole('CAISSIER') ? '/banque' : '/grand-livre'))
+const versMobileMoneyOuGrandLivre = computed(() => (auth.hasRole('CAISSIER') ? '/mobile-money' : '/grand-livre'))
+
 const stats = computed(() => {
   const base = [
-    { label: 'Trésorerie (caisse)', value: fmtUSD(tresorerie.value), icon: 'mdi-cash-multiple', color: 'green' },
+    { label: 'Trésorerie (caisse)', value: fmtUSD(tresorerie.value), icon: 'mdi-cash-multiple', color: 'green', to: versCaisseOuGrandLivre.value },
     // Une carte de trésorerie pour un module désactivé (ou hors droits du
     // rôle) n'a pas de sens à afficher : le module lui-même est retiré du
     // menu, la carte doit suivre la même règle.
     ...(permissions.peutVoir('BANQUE')
-      ? [{ label: 'Trésorerie (banques)', value: fmtUSD(tresorerieBanque.value), icon: 'mdi-bank', color: 'teal' }]
+      ? [{ label: 'Trésorerie (banques)', value: fmtUSD(tresorerieBanque.value), icon: 'mdi-bank', color: 'teal', to: versBanqueOuGrandLivre.value }]
       : []),
     ...(permissions.peutVoir('MOBILE_MONEY')
-      ? [{ label: 'Trésorerie (mobile money)', value: fmtUSD(tresorerieMobileMoney.value), icon: 'mdi-cellphone', color: 'indigo' }]
+      ? [{ label: 'Trésorerie (mobile money)', value: fmtUSD(tresorerieMobileMoney.value), icon: 'mdi-cellphone', color: 'indigo', to: versMobileMoneyOuGrandLivre.value }]
       : []),
-    { label: 'Notes en attente', value: enAttente.value, icon: 'mdi-clock-outline', color: 'orange' },
-    { label: 'Notes payees', value: payees.value, icon: 'mdi-check-decagram-outline', color: 'blue' },
+    { label: 'Notes en attente', value: notesEnAttenteCard.value, icon: 'mdi-clock-outline', color: 'orange', to: versNotesEnAttente.value },
+    { label: 'Notes payees', value: payees.value, icon: 'mdi-check-decagram-outline', color: 'blue', to: '/notes-frais?statut=PAYEE' },
   ]
   if (estCaissier.value) return base
   return [
     ...base,
-    { label: 'Budget execute', value: `${budgetTaux.value}%`, icon: 'mdi-chart-arc', color: 'purple', trend: `Exercice ${new Date().getFullYear()}` },
+    // Résultat net (Produits classe 7 − Charges classe 6, voir charger())
+    // relève du pilotage financier comme le taux d'exécution budgétaire
+    // ci-dessous : masqué au caissier pur pour la même raison que lui.
+    { label: 'Résultat net', value: fmtUSD(resultatNet.value), icon: resultatNet.value >= 0 ? 'mdi-trending-up' : 'mdi-trending-down', color: resultatNet.value >= 0 ? 'green' : 'orange', to: '/balance' },
+    { label: 'Budget execute', value: `${budgetTaux.value}%`, icon: 'mdi-chart-arc', color: 'purple', trend: `Exercice ${new Date().getFullYear()}`, to: '/budgets' },
   ]
 })
 
@@ -287,6 +330,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
         :icon="s.icon"
         :color="s.color"
         :trend="s.trend"
+        :to="s.to"
       />
     </div>
     <!-- ── Analyses graphiques ────────────────────────────────── -->

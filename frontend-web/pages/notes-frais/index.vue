@@ -19,8 +19,19 @@ interface NoteFrais {
 
 const api = useApi()
 const auth = useAuthStore()
+const route = useRoute()
 const dialog = ref(false)
-const filterStatut = ref<string | null>(null)
+// Préfiltré si on arrive depuis une carte du tableau de bord (ex.
+// /notes-frais?statut=SOUMISE) — sinon aucun filtre, comportement historique.
+const filterStatut = ref<string | null>(
+  typeof route.query.statut === 'string' ? route.query.statut : null)
+
+// Période (date de création) : aujourd'hui par défaut des deux côtés — pas
+// un historique complet par défaut, qui ralentirait l'écran sans raison sur
+// une entreprise déjà active depuis longtemps. Vidée = borne ouverte.
+const aujourdhui = () => new Date().toISOString().slice(0, 10)
+const dateDu = ref(aujourdhui())
+const dateAu = ref(aujourdhui())
 const loading = ref(false)
 const saving = ref(false)
 const erreur = ref('')
@@ -57,8 +68,11 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const query = filterStatut.value ? { statut: filterStatut.value } : undefined
-    notes.value = await api<NoteFrais[]>('/notes-frais', { query })
+    const query: Record<string, string> = {}
+    if (filterStatut.value) query.statut = filterStatut.value
+    if (dateDu.value) query.du = dateDu.value
+    if (dateAu.value) query.au = dateAu.value
+    notes.value = await api<NoteFrais[]>('/notes-frais', { query: Object.keys(query).length ? query : undefined })
   } catch (e: any) {
     erreur.value = e?.data?.message || 'Impossible de charger les notes de frais.'
   } finally {
@@ -66,8 +80,18 @@ async function charger() {
   }
 }
 
+function reinitialiserPeriode() {
+  dateDu.value = aujourdhui()
+  dateAu.value = aujourdhui()
+}
+function effacerPeriode() {
+  dateDu.value = ''
+  dateAu.value = ''
+}
+
 onMounted(charger)
 watch(filterStatut, charger)
+watch([dateDu, dateAu], charger)
 // Changer d'onglet réinitialise le filtre statut : la liste de statuts
 // proposée change (l'encaissement n'a pas de circuit DFIN/DA), un filtre
 // devenu invalide laisserait sinon une grille vide sans chip actif visible.
@@ -412,6 +436,17 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
       </div>
     </div>
 
+    <!-- ── Période (date de création) ──────────────────────── -->
+    <div class="nf-filter nf-filter--periode">
+      <v-icon icon="mdi-calendar-range-outline" size="18" color="#9ca3af" />
+      <span class="nf-periode__label">Période</span>
+      <input v-model="dateDu" type="date" class="nf-periode__input" aria-label="Du">
+      <span class="nf-periode__sep">→</span>
+      <input v-model="dateAu" type="date" class="nf-periode__input" aria-label="Au">
+      <button class="nf-filter__chip" @click="reinitialiserPeriode">Aujourd'hui</button>
+      <button v-if="dateDu || dateAu" class="nf-filter__chip" @click="effacerPeriode">Toute période</button>
+    </div>
+
     <!-- ── Error ───────────────────────────────────────────── -->
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
@@ -712,6 +747,18 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   border-radius: 50%;
   margin-right: 5px;
 }
+.nf-filter--periode { margin-top: -12px; }
+.nf-periode__label { font-size: 0.78rem; font-weight: 600; color: #6b7280; white-space: nowrap; }
+.nf-periode__input {
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  border-radius: 10px;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  font-family: inherit;
+}
+.nf-periode__sep { color: #9ca3af; font-size: 0.8rem; }
 
 /* ── Grid ────────────────────────────────────────────────── */
 .nf-grid {
