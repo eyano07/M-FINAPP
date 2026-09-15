@@ -12,11 +12,13 @@ import com.mbsc.finapp.domain.TransactionCaisse;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.JournalComptable;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
+import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.domain.enums.SensTransaction;
 import com.mbsc.finapp.domain.enums.StatutCamionMinerai;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeCompte;
+import com.mbsc.finapp.domain.enums.TypeNotification;
 import com.mbsc.finapp.dto.caisse.AchatMarchandiseRequest;
 import com.mbsc.finapp.dto.caisse.ReglementCamionsRequest;
 import com.mbsc.finapp.dto.caisse.EcritureResponse;
@@ -116,6 +118,9 @@ public class CaisseService {
 
         TransactionCaisse saved = comptabilite.enregistrer(transaction, contrepartie, req.libelle());
         log.info("Operation de caisse saisie [ref={}, par={}]", saved.getReference(), caissier.getEmail());
+        if (saved.getSens() == SensTransaction.ENCAISSEMENT) {
+            notifierEncaissement(saved);
+        }
         return TransactionCaisseResponse.from(saved);
     }
 
@@ -532,7 +537,27 @@ public class CaisseService {
 
         log.info("Note d'encaissement {} executee par {} [recu={}]",
             note.getReference(), caissier.getEmail(), saved.getNumeroRecu());
+        notifierEncaissement(saved);
         return TransactionCaisseResponse.from(saved);
+    }
+
+    /**
+     * Alerte DA, DFIN et COMPTABLE a chaque encaissement en caisse — saisie
+     * libre ({@link #enregistrer}) ou encaissement direct d'une note ({@link
+     * #encaisserNote}) — pour un suivi de tresorerie en temps reel sans
+     * attendre la consultation manuelle du journal de caisse.
+     */
+    private static final RoleType[] ROLES_A_ALERTER_ENCAISSEMENT = {RoleType.DA, RoleType.DFIN, RoleType.COMPTABLE};
+
+    private void notifierEncaissement(TransactionCaisse transaction) {
+        String titre = "Encaissement en caisse";
+        String message = transaction.getReference() + " — "
+            + transaction.getMontant().setScale(2, RoundingMode.HALF_UP) + " " + ConversionDeviseService.DEVISE_BASE
+            + " — " + transaction.getLibelle();
+        for (RoleType role : ROLES_A_ALERTER_ENCAISSEMENT) {
+            notificationService.notifierRole(role, TypeNotification.ENCAISSEMENT_CAISSE,
+                titre, message, "/caisse/journal", null);
+        }
     }
 
     /**

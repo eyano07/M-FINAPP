@@ -28,6 +28,7 @@ const TYPE_META: Record<string, { icon: string; color: string }> = {
   NOTE_TRANSMISE: { icon: 'mdi-cash-fast',             color: '#16a34a' },
   NOTE_PAYEE:     { icon: 'mdi-cash-check',            color: '#047857' },
   NOTE_ANNULEE:   { icon: 'mdi-cancel',                color: '#6b7280' },
+  ENCAISSEMENT_CAISSE: { icon: 'mdi-cash-plus',        color: '#16a34a' },
 }
 const typeMeta = (type: string) => TYPE_META[type] ?? { icon: 'mdi-bell-outline', color: '#6b7280' }
 

@@ -11,5 +11,6 @@ public enum TypeNotification {
     NOTE_REJETEE,
     NOTE_TRANSMISE,
     NOTE_PAYEE,
-    NOTE_ANNULEE
+    NOTE_ANNULEE,
+    ENCAISSEMENT_CAISSE
 }
