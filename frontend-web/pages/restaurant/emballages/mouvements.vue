@@ -63,8 +63,16 @@ const META_MVT: Record<string, { label: string; couleur: string; auto?: boolean;
   AJUSTEMENT_PLUS: { label: 'Ajustement +', couleur: 'primary', sens: 1 },
   AJUSTEMENT_MOINS: { label: 'Ajustement −', couleur: 'deep-orange', sens: -1 },
 }
-/** Seuls les mouvements non automatiques sont saisissables. */
-const TYPES_SAISISSABLES = ['CASSE', 'CASSE_PLEINE', 'PERIME', 'CADEAU', 'AJUSTEMENT_PLUS', 'AJUSTEMENT_MOINS']
+/**
+ * Seuls les mouvements non automatiques sont saisissables. Les ajustements
+ * corrigent arbitrairement le compteur de vides (contrairement à une casse ou
+ * une péremption, qui documentent un événement réel) : réservés à l'admin,
+ * comme côté serveur (voir RestaurantService.enregistrerMouvement).
+ */
+const TYPES_SAISISSABLES_BASE = ['CASSE', 'CASSE_PLEINE', 'PERIME', 'CADEAU']
+const TYPES_AJUSTEMENT = ['AJUSTEMENT_PLUS', 'AJUSTEMENT_MOINS']
+const typesSaisissables = computed(() =>
+  auth.hasRole('ADMIN') ? [...TYPES_SAISISSABLES_BASE, ...TYPES_AJUSTEMENT] : TYPES_SAISISSABLES_BASE)
 
 const form = reactive({
   emballageId: null as number | null,
@@ -264,7 +272,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         />
         <v-select
           v-model="form.type"
-          :items="TYPES_SAISISSABLES.map(t => ({ title: META_MVT[t].label, value: t }))"
+          :items="typesSaisissables.map(t => ({ title: META_MVT[t].label, value: t }))"
           label="Type *"
           variant="outlined"
           density="comfortable"

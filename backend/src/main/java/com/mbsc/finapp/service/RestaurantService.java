@@ -11,6 +11,7 @@ import com.mbsc.finapp.domain.MouvementStock;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.Vente;
 import com.mbsc.finapp.domain.enums.Devise;
+import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeMouvementEmballage;
 import com.mbsc.finapp.dto.logistique.ArticleRequest;
@@ -43,6 +44,7 @@ import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -103,6 +105,13 @@ public class RestaurantService {
     private static final String LECTURE =
         "hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN')";
     private static final String ECRITURE = "hasAnyRole('RESP_RESTAURANT', 'ADMIN')";
+    /**
+     * Creation et modification des plats/boissons de la carte (prix de vente,
+     * imputation comptable) : reservees a l'administrateur — le responsable
+     * restaurant garde la main sur les ventes, receptions, casse et pertes du
+     * quotidien, mais pas sur la definition de ce qui compose la carte.
+     */
+    private static final String ECRITURE_CARTE = "hasRole('ADMIN')";
 
     // ---------------------------------------------------------------------
     // Carte : plats et boissons
@@ -117,7 +126,7 @@ public class RestaurantService {
             .toList();
     }
 
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CARTE)
     @Transactional
     public ArticleResponse creerArticleCarte(ArticleRequest req) {
         exigerTypeCarte(req.type());
@@ -126,7 +135,7 @@ public class RestaurantService {
         return cree;
     }
 
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CARTE)
     @Transactional
     public ArticleResponse modifierArticleCarte(Long id, ArticleRequest req) {
         exigerTypeCarte(req.type());
@@ -473,6 +482,17 @@ public class RestaurantService {
         if (req.type() == TypeMouvementEmballage.VENTE || req.type() == TypeMouvementEmballage.RETOUR_VENTE) {
             throw new IllegalArgumentException(
                 "Les mouvements de vente sont générés automatiquement à la validation d'une vente");
+        }
+        // Un ajustement corrige arbitrairement le compteur de vides (contrairement
+        // a une casse ou une peremption, qui documentent un evenement reel) :
+        // reserve a l'administrateur pour eviter qu'un ecart soit maquille en
+        // ajustement plutot que reellement explique.
+        if (req.type() == TypeMouvementEmballage.AJUSTEMENT_PLUS || req.type() == TypeMouvementEmballage.AJUSTEMENT_MOINS) {
+            boolean estAdmin = currentUser.requireUser().getRoles().stream()
+                .anyMatch(r -> r.getNom() == RoleType.ADMIN);
+            if (!estAdmin) {
+                throw new AccessDeniedException("Seul un administrateur peut saisir un ajustement d'inventaire");
+            }
         }
         EmballageBoisson e = chargerEmballage(req.emballageId());
         User auteur = currentUser.requireUser();

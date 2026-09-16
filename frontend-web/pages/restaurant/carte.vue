@@ -18,6 +18,7 @@ interface ArticleCarte {
   compteStockNumero?: string
   compteChargeNumero?: string
   compteProduitNumero?: string
+  compteAchatNumero?: string
   prixVente?: number
   soumisTva: boolean
   stockMin: number
@@ -36,7 +37,10 @@ const dialog = ref(false)
 const editId = ref<number | null>(null)
 const filtreType = ref<'TOUS' | 'PLAT' | 'BOISSON'>('TOUS')
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
+// Creer/modifier un plat ou une boisson (prix, imputation comptable) est
+// reserve a l'administrateur (voir RestaurantService.ECRITURE_CARTE) : le
+// responsable restaurant reste en lecture seule sur la definition de la carte.
+const canWrite = computed(() => auth.hasRole('ADMIN'))
 
 /**
  * Comptes d'imputation par défaut, vérifiés actifs et imputables au plan
@@ -45,8 +49,8 @@ const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
  * (matières premières) a été désactivé, d'où 361 pour les plats.
  */
 const COMPTES_DEFAUT = {
-  PLAT: { stock: '361', charge: '736', produit: '7021' },
-  BOISSON: { stock: '3111', charge: '6031', produit: '7011' },
+  PLAT: { stock: '361', charge: '736', produit: '7021', achat: '6011' },
+  BOISSON: { stock: '3111', charge: '6031', produit: '7011', achat: '6011' },
 }
 
 const META_TYPE: Record<string, { label: string; couleur: string; icone: string }> = {
@@ -62,6 +66,7 @@ const form = reactive({
   compteStockNumero: '' as string | null,
   compteChargeNumero: '' as string | null,
   compteProduitNumero: '' as string | null,
+  compteAchatNumero: '' as string | null,
   prixVenteUSD: null as number | null,
   soumisTva: true,
   stockMin: 0,
@@ -104,6 +109,7 @@ function appliquerComptesDefaut() {
   if (!form.compteStockNumero) form.compteStockNumero = d.stock
   if (!form.compteChargeNumero) form.compteChargeNumero = d.charge
   if (!form.compteProduitNumero) form.compteProduitNumero = d.produit
+  if (!form.compteAchatNumero) form.compteAchatNumero = d.achat
 }
 
 function ouvrirCreation(type: 'PLAT' | 'BOISSON') {
@@ -113,6 +119,7 @@ function ouvrirCreation(type: 'PLAT' | 'BOISSON') {
     code: '', libelle: '', uniteMesure: type === 'PLAT' ? 'portion' : 'bouteille',
     type,
     compteStockNumero: d.stock, compteChargeNumero: d.charge, compteProduitNumero: d.produit,
+    compteAchatNumero: d.achat,
     prixVenteUSD: null, soumisTva: true, stockMin: 0, actif: true,
   })
   erreur.value = ''
@@ -129,6 +136,7 @@ function ouvrirEdition(a: ArticleCarte) {
     compteStockNumero: a.compteStockNumero || '',
     compteChargeNumero: a.compteChargeNumero || '',
     compteProduitNumero: a.compteProduitNumero || '',
+    compteAchatNumero: a.compteAchatNumero || '',
     prixVenteUSD: a.prixVente != null && tauxChange.value > 0 ? a.prixVente / tauxChange.value : null,
     soumisTva: a.soumisTva,
     stockMin: a.stockMin,
@@ -155,6 +163,7 @@ async function enregistrer() {
       compteStockNumero: form.compteStockNumero,
       compteChargeNumero: form.compteChargeNumero,
       compteProduitNumero: form.compteProduitNumero,
+      compteAchatNumero: form.compteAchatNumero,
       prixVente: form.prixVenteUSD != null ? form.prixVenteUSD * tauxChange.value : null,
       soumisTva: form.soumisTva,
       stockMin: form.stockMin,
@@ -305,6 +314,7 @@ async function enregistrer() {
         />
         <v-text-field v-model.number="form.stockMin" type="number" label="Seuil de réapprovisionnement" variant="outlined" density="comfortable" class="mb-3" />
 
+        <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (601x)" class="mb-3" />
         <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock" class="mb-3" />
         <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de charge (déstockage)" class="mb-3" />
         <ComptabiliteSelecteurCompte v-model="form.compteProduitNumero" label="Compte de produit (vente)" class="mb-3" />
