@@ -54,6 +54,13 @@ const entrepots = ref<Entrepot[]>([])
 const historique = ref<NoteFrais[]>([])
 const tauxChange = ref(0)
 
+// /notes-frais retourne TOUTES les notes de l'utilisateur (le responsable
+// restaurant peut aussi en soumettre d'autres, hors de cet écran) : on ne
+// garde que celles issues de cette page, reconnaissables à l'objet genere
+// automatiquement par envoyerDemande() ci-dessous, jamais saisi librement.
+const historiqueBoissons = computed(() =>
+  historique.value.filter(n => n.objet?.startsWith('Achat de boissons')))
+
 const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
 
 const form = reactive({
@@ -341,7 +348,7 @@ function fmtDate(iso: string) {
           { title: 'Statut', key: 'statut' },
           { title: 'Date', key: 'dateCreation' },
         ]"
-        :items="historique"
+        :items="historiqueBoissons"
         :loading="loadingHistorique"
         items-per-page="10"
         @click:row="(_e: Event, row: any) => navigateTo(`/notes-frais/${row.item.id}`)"
