@@ -54,6 +54,14 @@ const boissonsDisponibles = computed(() => {
   return boissons.value.filter(b => !prises.has(b.id))
 })
 
+// Le code du conditionnement n'a pas besoin d'exister indépendamment de la
+// boisson : une boisson n'ayant qu'un seul conditionnement (contrainte
+// d'unicité en base), reprendre tel quel le code de l'article la
+// garantit unique sans demander de saisie ni risquer de doublon.
+const codeGenere = computed(() =>
+  boissons.value.find(b => b.id === form.articleBoissonId)?.code || '')
+watch(() => form.articleBoissonId, () => { form.code = codeGenere.value })
+
 const totalVides = computed(() => emballages.value.reduce((s, e) => s + (e.bouteillesVides || 0), 0))
 const totalCasiers = computed(() => emballages.value.reduce((s, e) => s + (e.casiers || 0), 0))
 
@@ -100,8 +108,8 @@ function ouvrirEdition(e: Emballage) {
 }
 
 async function enregistrer() {
-  if (!form.code.trim() || !form.libelle.trim() || !form.articleBoissonId) {
-    erreur.value = 'Code, libellé et boisson sont obligatoires.'
+  if (!form.libelle.trim() || !form.articleBoissonId) {
+    erreur.value = 'Libellé et boisson sont obligatoires.'
     return
   }
   if (!form.contenanceCasier || form.contenanceCasier <= 0) {
@@ -236,7 +244,16 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
           density="comfortable"
           class="mb-3"
         />
-        <v-text-field v-model="form.code" label="Code *" variant="outlined" density="comfortable" class="mb-3" />
+        <v-text-field
+          :model-value="form.code"
+          label="Code"
+          hint="Généré automatiquement à partir du code de la boisson"
+          persistent-hint
+          variant="outlined"
+          density="comfortable"
+          readonly
+          class="mb-3"
+        />
         <v-text-field v-model="form.libelle" label="Libellé *" variant="outlined" density="comfortable" class="mb-3" />
         <v-combobox v-model="form.format" :items="FORMATS" label="Format (33CL, 65CL...)" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field
