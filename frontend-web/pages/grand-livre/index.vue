@@ -1,5 +1,14 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
+
 definePageMeta({ module: 'CAISSE' })
+
+// Le mode "carte" natif de v-data-table sous mobile-breakpoint casse le
+// rendu ici (la largeur fixe de la colonne N° se propage aux autres lignes,
+// le libelle du compte s'affiche alors une lettre par ligne) : on bascule
+// nous-memes vers des cartes custom sur mobile plutot que de compter sur ce
+// comportement automatique.
+const { mobile } = useDisplay()
 
 interface Ecriture {
   id: number
@@ -175,7 +184,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
       {{ erreur }}
     </v-alert>
 
-    <v-card class="classroom-card">
+    <v-card v-if="!mobile" class="classroom-card">
       <v-data-table
         :headers="headers"
         :items="ecritures"
@@ -206,6 +215,52 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
         </template>
       </v-data-table>
     </v-card>
+
+    <!-- ── Version mobile : cartes empilées (le mode carte natif de
+         v-data-table casse le rendu avec des colonnes de largeur fixe) ── -->
+    <template v-else>
+      <v-skeleton-loader v-if="loading" type="card, card, card" />
+      <v-alert v-else-if="!ecritures.length" type="info" variant="tonal" rounded="lg">
+        Aucune écriture pour l'instant.
+      </v-alert>
+      <div v-else class="gl-cards">
+        <v-card v-for="(e, i) in ecritures" :key="e.id" class="classroom-card gl-card">
+          <div class="gl-card__head">
+            <span class="gl-card__numero">#{{ i + 1 }}</span>
+            <span class="gl-card__date">{{ fmtDate(e.dateEcriture) }}</span>
+          </div>
+          <div class="gl-card__compte">
+            <span class="font-weight-medium">{{ e.compteNumero }}</span>
+            <span class="text-medium-emphasis"> — {{ e.compteLibelle }}</span>
+          </div>
+          <p class="gl-card__libelle">{{ e.libelle }}</p>
+          <div v-if="e.tauxApplique" class="gl-card__taux">Taux appliqué : {{ fmtTaux(e.tauxApplique) }}</div>
+          <div class="gl-card__montants">
+            <div class="gl-card__montant">
+              <span class="gl-card__montant-label">Débit</span>
+              <strong>{{ fmtUSD(e.debit) }}</strong>
+            </div>
+            <div class="gl-card__montant">
+              <span class="gl-card__montant-label">Crédit</span>
+              <strong>{{ fmtUSD(e.credit) }}</strong>
+            </div>
+          </div>
+        </v-card>
+
+        <v-card class="classroom-card gl-card gl-card--totaux">
+          <div class="gl-card__montants">
+            <div class="gl-card__montant">
+              <span class="gl-card__montant-label">Total débit</span>
+              <strong>{{ fmtUSD(totalDebit) }}</strong>
+            </div>
+            <div class="gl-card__montant">
+              <span class="gl-card__montant-label">Total crédit</span>
+              <strong>{{ fmtUSD(totalCredit) }}</strong>
+            </div>
+          </div>
+        </v-card>
+      </div>
+    </template>
 
     <!-- ── Dialog saisie directe ─────────────────────────────────── -->
     <v-dialog v-model="dialogOuvert" max-width="500" persistent>
@@ -340,4 +395,30 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
   text-align: center;
   background: linear-gradient(140deg, #818cf8 0%, #4f46e5 50%, #1e1b4b 100%);
 }
+
+/* ── Cartes mobile (Grand Livre) ─────────────────────────────── */
+.gl-cards { display: flex; flex-direction: column; gap: 12px; }
+.gl-card { padding: 14px 16px; }
+.gl-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-bottom: 6px;
+}
+.gl-card__numero { font-weight: 700; }
+.gl-card__compte { font-size: 0.9rem; margin-bottom: 4px; }
+.gl-card__libelle { font-size: 0.85rem; color: #374151; margin: 0 0 6px; }
+.gl-card__taux { font-size: 0.75rem; color: #9ca3af; margin-bottom: 8px; }
+.gl-card__montants {
+  display: flex;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f3f4f6;
+}
+.gl-card__montant { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.gl-card__montant-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.4px; color: #9ca3af; }
+.gl-card--totaux { background: #f9fafb; }
+.gl-card--totaux .gl-card__montants { border-top: none; padding-top: 0; }
 </style>
