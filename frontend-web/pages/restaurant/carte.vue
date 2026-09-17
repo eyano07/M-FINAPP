@@ -67,10 +67,19 @@ const form = reactive({
   compteChargeNumero: '' as string | null,
   compteProduitNumero: '' as string | null,
   compteAchatNumero: '' as string | null,
-  prixVenteUSD: null as number | null,
+  devisePrixVente: 'USD' as 'USD' | 'CDF',
+  prixVenteSaisi: null as number | null,
   soumisTva: true,
   stockMin: 0,
   actif: true,
+})
+
+/** Équivalent indicatif dans l'autre devise, au taux du jour — n'influence ni la saisie ni l'enregistrement. */
+const prixVenteEquivalent = computed(() => {
+  if (!form.prixVenteSaisi || tauxChange.value <= 0) return null
+  return form.devisePrixVente === 'USD'
+    ? `≈ ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(form.prixVenteSaisi * tauxChange.value)} FC`
+    : `≈ ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD' }).format(form.prixVenteSaisi / tauxChange.value)}`
 })
 
 const articlesFiltres = computed(() =>
@@ -120,7 +129,7 @@ function ouvrirCreation(type: 'PLAT' | 'BOISSON') {
     type,
     compteStockNumero: d.stock, compteChargeNumero: d.charge, compteProduitNumero: d.produit,
     compteAchatNumero: d.achat,
-    prixVenteUSD: null, soumisTva: true, stockMin: 0, actif: true,
+    devisePrixVente: 'USD', prixVenteSaisi: null, soumisTva: true, stockMin: 0, actif: true,
   })
   erreur.value = ''
   dialog.value = true
@@ -137,7 +146,8 @@ function ouvrirEdition(a: ArticleCarte) {
     compteChargeNumero: a.compteChargeNumero || '',
     compteProduitNumero: a.compteProduitNumero || '',
     compteAchatNumero: a.compteAchatNumero || '',
-    prixVenteUSD: a.prixVente != null && tauxChange.value > 0 ? a.prixVente / tauxChange.value : null,
+    devisePrixVente: 'USD',
+    prixVenteSaisi: a.prixVente != null && tauxChange.value > 0 ? a.prixVente / tauxChange.value : null,
     soumisTva: a.soumisTva,
     stockMin: a.stockMin,
     actif: a.actif,
@@ -154,7 +164,7 @@ async function enregistrer() {
   saving.value = true
   erreur.value = ''
   try {
-    // Prix saisis en USD, stockes en FC : convention de toute l'application.
+    // Prix saisi dans la devise choisie (USD ou FC), toujours stocke en FC.
     const body = {
       code: form.code,
       libelle: form.libelle,
@@ -164,7 +174,9 @@ async function enregistrer() {
       compteChargeNumero: form.compteChargeNumero,
       compteProduitNumero: form.compteProduitNumero,
       compteAchatNumero: form.compteAchatNumero,
-      prixVente: form.prixVenteUSD != null ? form.prixVenteUSD * tauxChange.value : null,
+      prixVente: form.prixVenteSaisi != null
+        ? (form.devisePrixVente === 'USD' ? form.prixVenteSaisi * tauxChange.value : form.prixVenteSaisi)
+        : null,
       soumisTva: form.soumisTva,
       stockMin: form.stockMin,
       actif: form.actif,
@@ -303,15 +315,22 @@ async function enregistrer() {
         <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model="form.uniteMesure" label="Unité (portion, bouteille...)" variant="outlined" density="comfortable" class="mb-3" />
-        <v-text-field
-          v-model.number="form.prixVenteUSD"
-          type="number"
-          label="Prix de vente HT (USD)"
-          variant="outlined"
-          density="comfortable"
-          class="mb-3"
-          :disabled="tauxChange <= 0"
-        />
+        <div class="d-flex ga-2 mb-1 align-start">
+          <v-text-field
+            v-model.number="form.prixVenteSaisi"
+            type="number"
+            :label="`Prix de vente HT (${form.devisePrixVente === 'USD' ? 'USD' : 'FC'})`"
+            variant="outlined"
+            density="comfortable"
+            class="flex-grow-1"
+            :disabled="tauxChange <= 0"
+          />
+          <v-btn-toggle v-model="form.devisePrixVente" mandatory density="comfortable" variant="outlined" rounded="lg" style="margin-top: 4px">
+            <v-btn value="USD" size="small">$US</v-btn>
+            <v-btn value="CDF" size="small">FC</v-btn>
+          </v-btn-toggle>
+        </div>
+        <p class="text-caption text-medium-emphasis mb-3" style="min-height: 1.2em">{{ prixVenteEquivalent }}</p>
         <v-text-field v-model.number="form.stockMin" type="number" label="Seuil de réapprovisionnement" variant="outlined" density="comfortable" class="mb-3" />
 
         <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (601x)" class="mb-3" />

@@ -66,6 +66,7 @@ const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
 const form = reactive({
   articleBoissonId: null as number | null,
   nbCasiers: null as number | null,
+  nbBouteillesSupp: null as number | null,
   devisePrix: 'USD' as 'USD' | 'CDF',
   prixUnitaire: null as number | null,
   entrepotId: null as number | null,
@@ -87,7 +88,8 @@ const emballageChoisi = computed(() =>
 
 const nbBouteilles = computed(() => {
   const e = emballageChoisi.value
-  return e && form.nbCasiers ? e.contenanceCasier * form.nbCasiers : 0
+  if (!e) return 0
+  return e.contenanceCasier * (form.nbCasiers || 0) + (form.nbBouteillesSupp || 0)
 })
 
 /** Aperçu informatif : l'échange ne sera réellement appliqué qu'au paiement par la caisse. */
@@ -128,9 +130,17 @@ async function charger() {
 }
 onMounted(charger)
 
+/** "3 casier(s) + 9 bouteille(s)" ou juste l'un des deux si l'autre est nul. */
+const detailQuantite = computed(() => {
+  const parts: string[] = []
+  if (form.nbCasiers) parts.push(`${form.nbCasiers} casier(s)`)
+  if (form.nbBouteillesSupp) parts.push(`${form.nbBouteillesSupp} bouteille(s)`)
+  return parts.join(' + ')
+})
+
 async function envoyerDemande() {
-  if (!form.articleBoissonId || !form.nbCasiers || form.nbCasiers <= 0) {
-    erreur.value = 'Choisissez une boisson et un nombre de casiers.'
+  if (!form.articleBoissonId || nbBouteilles.value <= 0) {
+    erreur.value = 'Choisissez une boisson et une quantité (casiers et/ou bouteilles) positive.'
     return
   }
   if (!form.entrepotId) {
@@ -154,7 +164,7 @@ async function envoyerDemande() {
       method: 'POST',
       body: {
         objet: `Achat de boissons — ${emb.articleBoissonLibelle} `
-          + `(${form.nbCasiers} casier(s), ${nbBouteilles.value} bouteilles)`,
+          + `(${detailQuantite.value}, soit ${nbBouteilles.value} bouteilles)`,
         beneficiaire: form.beneficiaire,
         description: form.description || null,
         devise: form.devisePrix,
@@ -174,8 +184,9 @@ async function envoyerDemande() {
     await api(`/notes-frais/${note.id}/soumettre`, { method: 'POST', body: {} })
 
     succes.value = `Demande ${note.reference} envoyée au DFIN pour validation `
-      + `(${form.nbCasiers} casier(s), soit ${nbBouteilles.value} bouteilles).`
+      + `(${detailQuantite.value}, soit ${nbBouteilles.value} bouteilles).`
     form.nbCasiers = null
+    form.nbBouteillesSupp = null
     form.prixUnitaire = null
     form.beneficiaire = ''
     form.description = ''
@@ -227,26 +238,46 @@ function fmtDate(iso: string) {
         après validation DFIN puis DA.
       </p>
 
-      <v-select
+      <v-autocomplete
         v-model="form.articleBoissonId"
         :items="emballages.map(e => ({ title: e.articleBoissonLibelle, value: e.articleBoissonId }))"
         label="Boisson *"
         variant="outlined"
         density="comfortable"
+        clearable
         class="mb-3"
       />
 
-      <v-text-field
-        v-model.number="form.nbCasiers"
-        type="number"
-        label="Nombre de casiers *"
-        variant="outlined"
-        density="comfortable"
-        class="mb-1"
-      />
+      <div class="d-flex ga-2 mb-1">
+        <v-text-field
+          v-model.number="form.nbCasiers"
+          type="number"
+          label="Nombre de casiers"
+          hint="Casiers complets"
+          persistent-hint
+          variant="outlined"
+          density="comfortable"
+          class="flex-grow-1"
+        />
+        <v-text-field
+          v-model.number="form.nbBouteillesSupp"
+          type="number"
+          label="Bouteilles en plus"
+          hint="En plus des casiers complets"
+          persistent-hint
+          variant="outlined"
+          density="comfortable"
+          class="flex-grow-1"
+        />
+      </div>
       <p v-if="emballageChoisi && nbBouteilles" class="text-body-2 text-medium-emphasis mb-3">
-        Soit <strong>{{ nbBouteilles }}</strong> bouteilles
-        ({{ form.nbCasiers }} × {{ emballageChoisi.contenanceCasier }}).
+        Soit <strong>{{ nbBouteilles }}</strong> bouteilles au total
+        <template v-if="form.nbCasiers && form.nbBouteillesSupp">
+          ({{ form.nbCasiers }} × {{ emballageChoisi.contenanceCasier }} + {{ form.nbBouteillesSupp }})
+        </template>
+        <template v-else-if="form.nbCasiers">
+          ({{ form.nbCasiers }} × {{ emballageChoisi.contenanceCasier }})
+        </template>.
       </p>
 
       <div class="d-flex ga-2 mb-1 align-start">
