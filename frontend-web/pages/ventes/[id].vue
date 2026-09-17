@@ -51,6 +51,7 @@ const erreur = ref('')
 const vente = ref<Vente | null>(null)
 const tauxChange = ref(1)
 const dateImpression = ref('')
+const modeImpression = ref<'FACTURE' | 'TICKET'>('FACTURE')
 
 const canWrite = computed(() => auth.hasAnyRole(['CAISSIER']))
 const peutValider = computed(() => canWrite.value && vente.value?.statut === 'BROUILLON')
@@ -161,8 +162,33 @@ async function action(chemin: string) {
 }
 
 function imprimer() {
+  modeImpression.value = 'FACTURE'
   dateImpression.value = new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
-  window.print()
+  nextTick(() => window.print())
+}
+
+/**
+ * Ticket format imprimante thermique (58/80mm) : mise en page verticale a
+ * une colonne, sans tableau ni carte. La largeur physique du papier est
+ * imposee par le pilote de l'imprimante thermique choisie dans la boite de
+ * dialogue d'impression — @page ne fait qu'aider les navigateurs qui la
+ * respectent, ce n'est jamais garanti partout. La regle est injectee puis
+ * retiree autour de l'impression pour ne jamais affecter le format Facture.
+ */
+function imprimerTicket() {
+  modeImpression.value = 'TICKET'
+  dateImpression.value = new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
+  nextTick(() => {
+    const style = document.createElement('style')
+    style.id = 'vd-ticket-page-style'
+    style.textContent = '@page { size: 80mm auto; margin: 3mm; }'
+    document.head.appendChild(style)
+    window.print()
+    window.addEventListener('afterprint', () => {
+      document.getElementById('vd-ticket-page-style')?.remove()
+      modeImpression.value = 'FACTURE'
+    }, { once: true })
+  })
 }
 
 const statutMeta: Record<string, { label: string; color: string }> = {
@@ -228,6 +254,9 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
             <v-btn variant="outlined" color="primary" prepend-icon="mdi-printer-outline" rounded="lg" @click="imprimer">
               Imprimer
             </v-btn>
+            <v-btn variant="outlined" color="primary" prepend-icon="mdi-receipt-outline" rounded="lg" @click="imprimerTicket">
+              Ticket
+            </v-btn>
             <v-btn
               v-if="peutValider"
               color="primary"
@@ -284,12 +313,19 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
         </v-alert>
       </div>
 
+      <template v-if="modeImpression === 'FACTURE'">
       <!-- ── En-tête de facture (impression uniquement) ──────── -->
       <div class="vd-print-header">
         <div class="vd-print-header__top">
-          <div>
-            <p class="vd-print-header__marque">{{ parametresStore.parametres.nom }}</p>
-            <p class="vd-print-header__doc">Facture de vente</p>
+          <div class="vd-print-header__brand">
+            <div class="vd-print-header__logo" :class="{ 'vd-print-header__logo--image': parametresStore.parametres.logoUrl }">
+              <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
+              <v-icon v-else icon="mdi-finance" size="16" color="white" />
+            </div>
+            <div>
+              <p class="vd-print-header__marque">{{ parametresStore.parametres.nom }}</p>
+              <p class="vd-print-header__doc">Facture de vente</p>
+            </div>
           </div>
           <div class="vd-print-header__meta">
             <p><strong>{{ vente.reference }}</strong></p>
@@ -410,6 +446,42 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
         <div class="vd-signature__bloc">
           <span>Le client</span>
         </div>
+      </div>
+      </template>
+
+      <!-- ── Ticket imprimante thermique (impression uniquement) ─── -->
+      <div v-else class="vd-ticket">
+        <div class="vd-ticket__marque">
+          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo" class="vd-ticket__logo">
+          <p class="vd-ticket__nom">{{ parametresStore.parametres.nom }}</p>
+        </div>
+        <div class="vd-ticket__sep" />
+        <p class="vd-ticket__ref">{{ vente.reference }}</p>
+        <p>{{ fmtDate(vente.dateVente) }}</p>
+        <p v-if="vente.clientNom">Client : {{ vente.clientNom }}</p>
+        <p v-if="vente.createdByNom">Vendeur : {{ vente.createdByNom }}</p>
+        <div class="vd-ticket__sep" />
+        <div v-for="l in vente.lignes" :key="l.id" class="vd-ticket__ligne">
+          <div>{{ l.designation }}</div>
+          <div class="vd-ticket__ligne-detail">
+            <span>{{ fmtQte(l.quantite) }} × {{ fmtUSD(l.prixUnitaire) }}</span>
+            <span>{{ fmtUSD(l.montantTtc) }}</span>
+          </div>
+        </div>
+        <div class="vd-ticket__sep" />
+        <div class="vd-ticket__total-row"><span>Total HT</span><span>{{ fmtUSD(vente.totalHt) }}</span></div>
+        <div class="vd-ticket__total-row">
+          <span>TVA<template v-if="vente.tauxTvaApplique != null"> ({{ vente.tauxTvaApplique }} %)</template></span>
+          <span>{{ fmtUSD(vente.totalTva) }}</span>
+        </div>
+        <div class="vd-ticket__total-row vd-ticket__total-row--net"><span>NET À PAYER</span><span>{{ fmtUSD(vente.totalTtc) }}</span></div>
+        <p v-if="contreValeur" class="vd-ticket__contre">{{ contreValeur }}</p>
+        <div class="vd-ticket__sep" />
+        <p>Règlement : {{ reglementLabel[vente.modeReglement] }}</p>
+        <p v-if="vente.entrepotNom">Entrepôt : {{ vente.entrepotNom }}</p>
+        <div class="vd-ticket__sep" />
+        <p class="vd-ticket__merci">Merci de votre achat !</p>
+        <p v-if="dateImpression" class="vd-ticket__horodatage">{{ dateImpression }}</p>
       </div>
     </template>
 
@@ -532,8 +604,8 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 .vd-lien { font-size: 0.82rem; color: #374151; display: flex; align-items: center; }
 .vd-lien code { margin-left: 4px; }
 
-/* En-tête de facture et signatures : impression uniquement */
-.vd-print-header, .vd-signature { display: none; }
+/* En-tête de facture, signatures et ticket : impression uniquement */
+.vd-print-header, .vd-signature, .vd-ticket { display: none; }
 
 @media print {
   .vd-noprint { display: none !important; }
@@ -547,6 +619,20 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
     padding-bottom: 12px;
     border-bottom: 3px solid #16a34a;
   }
+  .vd-print-header__brand { display: flex; align-items: center; gap: 11px; }
+  .vd-print-header__logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: #16a34a;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .vd-print-header__logo--image { background: #fff; border: 1px solid #e5e7eb; }
+  .vd-print-header__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
   .vd-print-header__marque { font-size: 1.2rem; color: #111827; margin: 0; }
   .vd-print-header__doc { font-size: 0.85rem; color: #6b7280; margin: 2px 0 0; text-transform: uppercase; letter-spacing: 1px; }
   .vd-print-header__meta { text-align: right; font-size: 0.8rem; color: #374151; }
@@ -570,5 +656,33 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
     color: #6b7280;
     text-align: center;
   }
+
+  /* ── Ticket imprimante thermique ──────────────────────────── */
+  .vd-ticket {
+    display: block;
+    width: 100%;
+    max-width: 74mm;
+    margin: 0 auto;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #000;
+  }
+  .vd-ticket p { margin: 0; }
+  .vd-ticket__marque { text-align: center; margin-bottom: 4px; }
+  .vd-ticket__logo { max-width: 40mm; max-height: 18mm; object-fit: contain; margin-bottom: 4px; }
+  .vd-ticket__nom { font-size: 13px; font-weight: 700; text-transform: uppercase; }
+  .vd-ticket__ref { font-weight: 700; }
+  .vd-ticket__sep {
+    border-top: 1px dashed #000;
+    margin: 6px 0;
+  }
+  .vd-ticket__ligne { margin-bottom: 3px; }
+  .vd-ticket__ligne-detail { display: flex; justify-content: space-between; padding-left: 8px; }
+  .vd-ticket__total-row { display: flex; justify-content: space-between; }
+  .vd-ticket__total-row--net { font-weight: 700; font-size: 13px; margin-top: 2px; }
+  .vd-ticket__contre { text-align: right; font-size: 10px; }
+  .vd-ticket__merci { text-align: center; font-weight: 700; margin-top: 4px; }
+  .vd-ticket__horodatage { text-align: center; font-size: 9px; color: #444; margin-top: 6px; }
 }
 </style>

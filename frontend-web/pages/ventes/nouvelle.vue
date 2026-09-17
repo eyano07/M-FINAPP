@@ -5,7 +5,10 @@ interface Article {
   id: number
   code: string
   libelle: string
-  type: 'MARCHANDISE' | 'SERVICE'
+  // Tout sauf SERVICE est stocke (voir TypeArticle.estStocke cote serveur) :
+  // PLAT/BOISSON (module Restaurant) et CONSOMMABLE/PROVISION sont aussi
+  // concernes, pas seulement MARCHANDISE au sens strict.
+  type: 'MARCHANDISE' | 'SERVICE' | 'PLAT' | 'BOISSON' | 'CONSOMMABLE' | 'PROVISION'
   minerais?: boolean
   prixVente?: number
   soumisTva: boolean
@@ -28,6 +31,14 @@ interface LigneForm {
 }
 
 interface CamionDispo { id: number; plaque: string; dateAchat: string; prixAchat: number }
+
+/** Une ligne de billets identiques remis par le client (ex. 2 × 20$). */
+interface BilletRecu { devise: 'CDF' | 'USD'; coupure: number | null; quantite: number | null }
+/** Coupures reellement en circulation en RDC — pas une saisie totalement libre, pour eviter les fautes de frappe (ex. 5000 au lieu de 500). */
+const COUPURES: Record<'CDF' | 'USD', number[]> = {
+  USD: [1, 2, 5, 10, 20, 50, 100],
+  CDF: [50, 100, 200, 500, 1000, 5000, 10000, 20000],
+}
 
 const api = useApi()
 const router = useRouter()
@@ -58,6 +69,10 @@ const form = reactive({
   etablissementId: null as number | null,
   entrepotId: null as number | null,
   lignes: [{ articleId: null, quantite: 1, prixUnitaire: null, camionId: null }] as LigneForm[],
+  // Rendu de monnaie (paiement Caisse uniquement) : le client peut payer avec
+  // plusieurs billets, dans une devise differente de celle de la vente
+  // (courant en RDC, ex. 2 billets de 20$ + 1 billet de 5000 FC).
+  billetsRecus: [] as BilletRecu[],
 })
 
 async function charger() {
@@ -84,6 +99,9 @@ async function charger() {
     banques.value = bqs.filter((b) => b.actif)
     operateurs.value = ops.filter((o) => o.actif)
     entrepots.value = ents.filter((e) => e.actif)
+    // Pre-selection quand un seul entrepot existe : evite une saisie
+    // obligatoire pour un choix qui n'en est pas un (voir receptions.vue).
+    if (entrepots.value.length === 1) form.entrepotId = entrepots.value[0].id
     stock.value = stk
     tauxChange.value = taux.taux || 0
     tauxTva.value = tva.taux || 0
@@ -112,7 +130,10 @@ const besoinEtablissement = computed(() =>
   form.modeReglement === 'BANQUE' || form.modeReglement === 'MOBILE_MONEY')
 const articleDe = (id: number | null) => articles.value.find((a) => a.id === id) || null
 const contientMarchandise = computed(() =>
-  form.lignes.some((l) => articleDe(l.articleId)?.type === 'MARCHANDISE'))
+  form.lignes.some((l) => {
+    const t = articleDe(l.articleId)?.type
+    return !!t && t !== 'SERVICE'
+  }))
 
 function ajouterLigne() {
   form.lignes.push({ articleId: null, quantite: 1, prixUnitaire: null, camionId: null })
@@ -204,13 +225,54 @@ const totaux = computed(() => {
 
 const arrondi = (v: number) => Math.round(v * 100) / 100
 
+// ── Rendu de monnaie (paiement Caisse) ──────────────────────────────────
+// Somme de tous les billets remis, chacun ramené dans la devise de la vente —
+// le client peut mélanger les devises (ex. 2 billets de 20$ + 1 de 5000 FC).
+function ajouterBillet() {
+  form.billetsRecus.push({ devise: form.devise, coupure: null, quantite: 1 })
+}
+function supprimerBillet(i: number) {
+  form.billetsRecus.splice(i, 1)
+}
+const montantRecuTotal = computed(() => {
+  let total = 0
+  let saisi = false
+  for (const b of form.billetsRecus) {
+    if (!b.coupure || !b.quantite || b.quantite <= 0) continue
+    saisi = true
+    const montantLigne = b.coupure * b.quantite
+    if (b.devise === form.devise) {
+      total += montantLigne
+    } else if (tauxChange.value > 0) {
+      total += b.devise === 'USD' ? montantLigne * tauxChange.value : montantLigne / tauxChange.value
+    }
+  }
+  return saisi ? arrondi(total) : null
+})
+const monnaieARendre = computed(() => {
+  if (montantRecuTotal.value == null) return null
+  return arrondi(montantRecuTotal.value - totaux.value.ttc)
+})
+const fmtBillet = (montant: number, devise: 'CDF' | 'USD') =>
+  devise === 'USD'
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(montant || 0)
+    : `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(montant || 0)} FC`
+// Équivalent indicatif de la monnaie à rendre dans l'autre devise — utile
+// pour rendre en espèces dans la devise que le caissier a sous la main.
+const monnaieARendreEquivalent = computed(() => {
+  if (monnaieARendre.value == null || monnaieARendre.value < 0 || tauxChange.value <= 0) return ''
+  return form.devise === 'USD'
+    ? `≈ ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(monnaieARendre.value * tauxChange.value)} FC`
+    : `≈ ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(monnaieARendre.value / tauxChange.value)}`
+})
+
 // Cumule les quantités par article (une même marchandise peut apparaître
 // sur plusieurs lignes) pour comparer au stock réellement disponible.
 const quantiteDemandeeParArticle = computed(() => {
   const totaux = new Map<number, number>()
   for (const l of form.lignes) {
     if (!l.articleId || !l.quantite || l.quantite <= 0) continue
-    if (articleDe(l.articleId)?.type !== 'MARCHANDISE') continue
+    if (articleDe(l.articleId)?.type === 'SERVICE') continue
     totaux.set(l.articleId, (totaux.get(l.articleId) || 0) + l.quantite)
   }
   return totaux
@@ -247,6 +309,10 @@ const raisonsBlocage = computed(() => {
   if (form.devise === 'USD' && tauxChange.value <= 0) {
     raisons.push("Aucun taux de change n'est défini : une vente en USD ne peut pas être convertie. "
       + 'Vendez en FC ou demandez à un administrateur le taux du jour.')
+  }
+
+  if (form.modeReglement === 'CAISSE' && montantRecuTotal.value != null && monnaieARendre.value != null && monnaieARendre.value < 0) {
+    raisons.push(`Montant reçu insuffisant : il manque ${fmtMontant(-monnaieARendre.value)}.`)
   }
 
   if (besoinEtablissement.value && !form.etablissementId) {
@@ -580,6 +646,68 @@ const contreValeur = computed(() => {
         </div>
         <div v-if="contreValeur && totaux.ttc" class="vn-contre-valeur">{{ contreValeur }}</div>
       </div>
+
+      <!-- ── Rendu de monnaie (paiement au comptant en caisse) ────── -->
+      <div v-if="form.modeReglement === 'CAISSE' && totaux.ttc > 0" class="vn-rendu-monnaie">
+        <div class="vn-rendu-monnaie__head">
+          <span class="vn-section" style="margin: 0">Billets reçus du client</span>
+          <v-btn size="small" variant="text" color="primary" prepend-icon="mdi-plus" @click="ajouterBillet">
+            Ajouter un billet
+          </v-btn>
+        </div>
+        <p v-if="!form.billetsRecus.length" class="text-caption text-medium-emphasis mb-2">
+          Optionnel — précisez les billets remis pour calculer automatiquement la monnaie à rendre
+          (ex. 2 billets de 20$ + 1 billet de 5000 FC).
+        </p>
+
+        <div v-for="(b, i) in form.billetsRecus" :key="i" class="vn-billet-ligne">
+          <v-btn-toggle
+            v-model="b.devise"
+            mandatory
+            density="comfortable"
+            variant="outlined"
+            rounded="lg"
+            @update:model-value="b.coupure = null"
+          >
+            <v-btn value="CDF" size="small">FC</v-btn>
+            <v-btn value="USD" size="small">$US</v-btn>
+          </v-btn-toggle>
+          <v-select
+            v-model.number="b.coupure"
+            :items="COUPURES[b.devise]"
+            label="Coupure"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            class="vn-billet-coupure"
+          />
+          <span class="vn-billet-x">×</span>
+          <v-text-field
+            v-model.number="b.quantite"
+            type="number"
+            min="1"
+            label="Qté"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            class="vn-billet-qte"
+          />
+          <span class="vn-billet-total">{{ fmtBillet((b.coupure || 0) * (b.quantite || 0), b.devise) }}</span>
+          <v-btn icon="mdi-close" size="x-small" variant="text" color="grey" @click="supprimerBillet(i)" />
+        </div>
+
+        <template v-if="montantRecuTotal != null">
+          <div class="vn-total-row" style="margin-top: 8px">
+            <span>Total reçu</span>
+            <strong>{{ fmtMontant(montantRecuTotal) }}</strong>
+          </div>
+          <div class="vn-total-row vn-total-row--ttc" :class="{ 'vn-rendu-monnaie--negatif': monnaieARendre < 0 }">
+            <span>{{ monnaieARendre >= 0 ? 'Monnaie à rendre' : 'Montant manquant' }}</span>
+            <strong>{{ fmtMontant(Math.abs(monnaieARendre)) }}</strong>
+          </div>
+          <div v-if="monnaieARendreEquivalent" class="vn-contre-valeur">{{ monnaieARendreEquivalent }}</div>
+        </template>
+      </div>
     </v-card>
 
     <v-alert
@@ -711,6 +839,34 @@ const contreValeur = computed(() => {
 }
 .vn-total-row--ttc strong { font-size: 1.15rem; color: #16a34a; }
 .vn-contre-valeur { text-align: right; font-size: 0.75rem; color: #9ca3af; padding-top: 4px; }
+
+.vn-rendu-monnaie {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed #e5e7eb;
+}
+.vn-rendu-monnaie__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.vn-rendu-monnaie--negatif strong { color: #dc2626 !important; }
+.vn-rendu-monnaie .vn-total-row, .vn-rendu-monnaie .vn-contre-valeur { max-width: 380px; margin-left: auto; }
+
+.vn-billet-ligne {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.vn-billet-coupure { max-width: 110px; }
+.vn-billet-qte { max-width: 72px; }
+.vn-billet-x { color: #9ca3af; font-size: 0.85rem; }
+.vn-billet-total {
+  flex: 1;
+  text-align: right;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+}
 .vn-hint { font-size: 0.75rem; color: #6b7280; margin: 4px 0 0 16px; }
 
 .vn-blocage-titre { font-weight: 700; margin-bottom: 4px; }
