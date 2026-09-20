@@ -19,6 +19,8 @@ interface Client { id: number; nom: string; actif: boolean }
 interface Etablissement { id: number; nom: string; actif: boolean }
 interface Entrepot { id: number; code: string; nom: string; actif: boolean }
 interface StockNiveau { articleId: number; entrepotId: number; quantite: number }
+interface TableRestau { id: number; numero: string }
+interface SalleAvecTables { id: number; nom: string; tables: TableRestau[] }
 
 interface LigneForm {
   articleId: number | null
@@ -42,6 +44,7 @@ const COUPURES: Record<'CDF' | 'USD', number[]> = {
 
 const api = useApi()
 const router = useRouter()
+const permissions = usePermissionsStore()
 
 const loading = ref(false)
 const envoi = ref(false)
@@ -54,8 +57,13 @@ const clients = ref<Client[]>([])
 const banques = ref<Etablissement[]>([])
 const operateurs = ref<Etablissement[]>([])
 const entrepots = ref<Entrepot[]>([])
+const salles = ref<SalleAvecTables[]>([])
 const tauxChange = ref(1)
 const tauxTva = ref(0)
+
+/** Table du restaurant, plate et prefixee par sa salle — vide si le module Restaurant n'est pas actif ou sans salle configuree. */
+const tablesOptions = computed(() =>
+  salles.value.flatMap(s => s.tables.map(t => ({ title: `${s.nom} — Table ${t.numero}`, value: t.id }))))
 
 // Le client peut venir du répertoire ou être saisi librement.
 const modeClient = ref<'REPERTOIRE' | 'LIBRE'>('REPERTOIRE')
@@ -68,6 +76,7 @@ const form = reactive({
   devise: 'CDF' as 'CDF' | 'USD',
   etablissementId: null as number | null,
   entrepotId: null as number | null,
+  tableId: null as number | null,
   lignes: [{ articleId: null, quantite: 1, prixUnitaire: null, camionId: null }] as LigneForm[],
   // Rendu de monnaie (paiement Caisse uniquement) : le client peut payer avec
   // plusieurs billets, dans une devise differente de celle de la vente
@@ -79,7 +88,7 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [arts, cls, bqs, ops, ents, stk, taux, tva] = await Promise.all([
+    const [arts, cls, bqs, ops, ents, stk, taux, tva, sls] = await Promise.all([
       api<Article[]>('/logistique/articles'),
       api<Client[]>('/clients').catch(() => []),
       api<Etablissement[]>('/etablissements?type=BANQUE').catch(() => []),
@@ -92,6 +101,12 @@ async function charger() {
         convertisseurs (tous gardes par `taux > 0`) renvoient 0, valeur
         manifestement fausse plutot que plausible. */,
       api<{ taux: number }>('/admin/taux-tva').catch(() => ({ taux: 0 })),
+      // Le module Restaurant peut etre desactive pour ce compte : l'appel
+      // echouerait alors en 403, sans consequence puisque tablesOptions
+      // reste simplement vide (le selecteur de table ne s'affiche pas).
+      permissions.peutVoir('RESTAURANT')
+        ? api<SalleAvecTables[]>('/restaurant/salles').catch(() => [])
+        : Promise.resolve([] as SalleAvecTables[]),
     ])
     catalogueComplet.value = arts
     articles.value = arts.filter((a) => a.vendable)
@@ -103,6 +118,7 @@ async function charger() {
     // obligatoire pour un choix qui n'en est pas un (voir receptions.vue).
     if (entrepots.value.length === 1) form.entrepotId = entrepots.value[0].id
     stock.value = stk
+    salles.value = sls
     tauxChange.value = taux.taux || 0
     tauxTva.value = tva.taux || 0
   } catch (e: any) {
@@ -356,6 +372,7 @@ async function enregistrer(validerEnsuite: boolean) {
       devise: form.devise,
       etablissementId: besoinEtablissement.value ? form.etablissementId : null,
       entrepotId: contientMarchandise.value ? form.entrepotId : null,
+      tableId: form.tableId,
       // Les prix partent tels quels dans la devise de la vente : c'est le
       // serveur qui les convertit, au taux qu'il fige sur la vente.
       lignes: form.lignes
@@ -448,6 +465,22 @@ const contreValeur = computed(() => {
         variant="outlined"
         density="comfortable"
         rounded="lg"
+        class="mb-4"
+      />
+
+      <v-autocomplete
+        v-if="tablesOptions.length"
+        v-model="form.tableId"
+        :items="tablesOptions"
+        label="Table"
+        prepend-inner-icon="mdi-table-furniture"
+        no-data-text="Aucune table configurée"
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        clearable
+        hint="Facultatif : rattache cette vente à une table du restaurant"
+        persistent-hint
         class="mb-4"
       />
 
@@ -837,7 +870,7 @@ const contreValeur = computed(() => {
   border-top: 1px solid #e5e7eb;
   font-size: 1rem;
 }
-.vn-total-row--ttc strong { font-size: 1.15rem; color: #16a34a; }
+.vn-total-row--ttc strong { font-size: 1.15rem; color: var(--color-primary); }
 .vn-contre-valeur { text-align: right; font-size: 0.75rem; color: #9ca3af; padding-top: 4px; }
 
 .vn-rendu-monnaie {

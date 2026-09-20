@@ -233,7 +233,7 @@ const greeting = computed(() => {
 const ST_ALL = ['SOUMISE', 'APPROUVEE', 'REJETEE', 'PAYEE', 'ANNULEE']
 const ST_CLR: Record<string, string> = {
   SOUMISE: '#f59e0b', APPROUVEE: '#22c55e', REJETEE: '#ef4444',
-  PAYEE: '#16a34a', ANNULEE: '#9ca3af',
+  PAYEE: 'var(--color-primary)', ANNULEE: '#9ca3af',
 }
 const MOIS = ['Janv.', 'Févr.', 'Mars', 'Avr.', 'Mai', 'Juin']
 
@@ -251,7 +251,7 @@ const lineData = computed(() => {
   const t = notes.value.length
   return {
     labels: MOIS,
-    datasets: [{ label: 'Notes soumises', data: [0.45,0.55,0.65,0.75,0.88,1.0].map(f => Math.round(t*f)), borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.05)', tension: 0.45, fill: false, pointBackgroundColor: '#16a34a', pointRadius: 5 }],
+    datasets: [{ label: 'Notes soumises', data: [0.45,0.55,0.65,0.75,0.88,1.0].map(f => Math.round(t*f)), borderColor: 'var(--color-primary)', backgroundColor: 'color-mix(in srgb, var(--color-primary) 5%, transparent)', tension: 0.45, fill: false, pointBackgroundColor: 'var(--color-primary)', pointRadius: 5 }],
   }
 })
 const lineOpts: any = { ...cb, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
@@ -268,7 +268,7 @@ const resultatNetLineData = computed(() => ({
     backgroundColor: 'rgba(124,58,237,0.08)',
     tension: 0.35,
     fill: true,
-    pointBackgroundColor: resultatNetEvolution.value.map(p => p.valeur >= 0 ? '#16a34a' : '#dc2626'),
+    pointBackgroundColor: resultatNetEvolution.value.map(p => p.valeur >= 0 ? 'var(--color-primary)' : '#dc2626'),
     pointRadius: 5,
   }],
 }))
@@ -321,7 +321,7 @@ const radarData = computed(() => {
       Math.max(0, 100 - Math.round(notes.value.filter(n => n.priorite==='HAUTE').length/t*100)),
       Math.min(notes.value.length*7, 100),
       Math.round(notes.value.filter(n => n.statut!=='REJETEE').length/t*100),
-    ], backgroundColor: 'rgba(22,163,74,0.15)', borderColor: '#16a34a', pointBackgroundColor: '#16a34a', pointRadius: 4 }],
+    ], backgroundColor: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', borderColor: 'var(--color-primary)', pointBackgroundColor: 'var(--color-primary)', pointRadius: 4 }],
   }
 })
 const radarOpts: any = { ...cb, scales: { r: { beginAtZero: true, max: 100, ticks: { stepSize: 25, font: { size: 10 }, color: '#9ca3af' }, grid: { color: '#f3f4f6' }, pointLabels: { font: { size: 11 }, color: '#374151' } } } }

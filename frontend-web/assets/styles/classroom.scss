@@ -7,6 +7,18 @@
   --mbsc-border: #f0f0f0;
   --mbsc-text-secondary: #6b7280;
   --mbsc-appbar-h: 60px;
+  /* Couleur de marque personnalisable (admin > paramètres) — valeur de
+     repli pour le tout premier rendu (SSR/avant hydratation), avant que
+     stores/parametres.ts n'applique la couleur réellement configurée.
+     Les teintes derivees se recalculent automatiquement via color-mix() a
+     chaque changement de --color-primary : aucune ne se redefinit en JS. */
+  --color-primary: #16a34a;
+  --color-primary-dark: color-mix(in srgb, var(--color-primary) 85%, black);
+  --color-primary-darker: color-mix(in srgb, var(--color-primary) 65%, black);
+  --color-primary-darkest: color-mix(in srgb, var(--color-primary) 45%, black);
+  --color-primary-light: color-mix(in srgb, var(--color-primary) 12%, white);
+  --color-primary-lighter: color-mix(in srgb, var(--color-primary) 6%, white);
+  --color-primary-mid: color-mix(in srgb, var(--color-primary) 45%, white);
 }
 
 html,
@@ -77,7 +89,7 @@ body {
     display: block;
     background: #fff;
     border: 1px solid #eef0f2;
-    border-left: 3px solid #16a34a;
+    border-left: 3px solid var(--color-primary);
     border-radius: 16px;
     margin: 0 0 14px;
     padding: 0;
@@ -105,7 +117,7 @@ body {
     border-bottom: 1px solid #eef2f0;
   }
   .v-data-table__tr--mobile > .v-data-table__td:first-child .v-data-table__td-title {
-    color: #16a34a;
+    color: var(--color-primary);
   }
   .v-data-table__tr--mobile > .v-data-table__td:first-child .v-data-table__td-value {
     font-size: 1rem;
@@ -278,7 +290,7 @@ body {
     gap: 16px;
     padding-bottom: 12px;
     margin-bottom: 16px;
-    border-bottom: 3px solid #16a34a;
+    border-bottom: 3px solid var(--color-primary);
   }
   .etat-print-header__brand { display: flex; align-items: center; gap: 10px; }
   .etat-print-header__logo {
@@ -288,7 +300,7 @@ body {
     width: 34px;
     height: 34px;
     border-radius: 9px;
-    background: #16a34a;
+    background: var(--color-primary);
     flex-shrink: 0;
     overflow: hidden;
   }
@@ -301,7 +313,7 @@ body {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: #16a34a;
+    color: var(--color-primary);
     margin-top: 1px;
   }
   .etat-print-header__service {

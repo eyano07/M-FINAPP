@@ -240,7 +240,7 @@ async function changerMotDePasse() {
 .profil-hero { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .profil-hero__photo {
   width: 76px; height: 76px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
-  background: linear-gradient(135deg, #16a34a, #15803d);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
   display: flex; align-items: center; justify-content: center;
 }
 .profil-hero__photo img { width: 100%; height: 100%; object-fit: cover; }
@@ -249,7 +249,7 @@ async function changerMotDePasse() {
 .profil-hero__name { font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0 0 2px; }
 .profil-hero__email { font-size: 0.82rem; color: #9ca3af; margin: 0 0 8px; }
 .profil-hero__roles { display: flex; flex-wrap: wrap; gap: 4px; }
-.profil-hero__role { font-size: 0.66rem; font-weight: 600; padding: 2px 8px; border-radius: 100px; background: #dcfce7; color: #16a34a; }
+.profil-hero__role { font-size: 0.66rem; font-weight: 600; padding: 2px 8px; border-radius: 100px; background: var(--color-primary-light); color: var(--color-primary); }
 .profil-hero__action { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .profil-hero__hint { font-size: 0.7rem; color: #9ca3af; margin: 0; }
 

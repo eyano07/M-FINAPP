@@ -224,7 +224,7 @@ const montantFmt = computed(() =>
 .nfc__open {
   font-size: 0.78rem;
   font-weight: 700;
-  color: #16a34a;
+  color: var(--color-primary);
   display: flex;
   align-items: center;
 }

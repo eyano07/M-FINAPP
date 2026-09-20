@@ -94,7 +94,7 @@ async function enregistrer() {
       >
         <template #item.localisation="{ item }">{{ item.localisation ?? '—' }}</template>
         <template #item.actif="{ item }">
-          <span class="chip-soft" :style="item.actif ? { background: '#dcfce7', color: '#15803d' } : { background: '#f3f4f6', color: '#6b7280' }">
+          <span class="chip-soft" :style="item.actif ? { background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)' } : { background: '#f3f4f6', color: '#6b7280' }">
             {{ item.actif ? 'Actif' : 'Inactif' }}
           </span>
         </template>

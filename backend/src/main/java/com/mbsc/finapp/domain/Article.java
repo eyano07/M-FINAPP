@@ -28,6 +28,10 @@ public class Article {
     @Column(name = "unite_mesure", length = 20)
     private String uniteMesure;
 
+    /** Sous-classification libre (ex. Alcool, Vin, Whisky pour une BOISSON) ; sans effet en dehors de la carte du restaurant. */
+    @Column(length = 40)
+    private String categorie;
+
     /** MARCHANDISE (stockee) ou SERVICE (prestation, sans stock). */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

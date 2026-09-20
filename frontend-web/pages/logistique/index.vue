@@ -99,7 +99,7 @@ const cb: any = {
     tooltip: { backgroundColor: '#1f2937', padding: 10, cornerRadius: 8, titleFont: { size: 12 }, bodyFont: { size: 11 } },
   },
 }
-const COULEURS = ['#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const COULEURS = ['var(--color-primary)', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
 
 /** Valeur du stock regroupee par entrepot. */
 const valeurParEntrepot = computed(() => {
@@ -134,13 +134,13 @@ const topArticlesOpts: any = { ...cb, indexAxis: 'y' as const, scales: { x: { be
 const TYPES = ['ENTREE', 'SORTIE', 'TRANSFERT']
 const typeChartData = computed(() => ({
   labels: TYPES,
-  datasets: [{ label: 'Mouvements', data: TYPES.map(t => mouvements.value.filter(m => m.type === t).length), backgroundColor: ['#16a34acc', '#dc2626cc', '#2563ebcc'], borderColor: ['#16a34a', '#dc2626', '#2563eb'], borderRadius: 6 }],
+  datasets: [{ label: 'Mouvements', data: TYPES.map(t => mouvements.value.filter(m => m.type === t).length), backgroundColor: ['var(--color-primary)cc', '#dc2626cc', '#2563ebcc'], borderColor: ['var(--color-primary)', '#dc2626', '#2563eb'], borderRadius: 6 }],
 }))
 const typeChartOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
 
 /** Mouvements par statut. */
 const STATUTS = ['BROUILLON', 'VALIDE', 'ANNULE']
-const STATUT_CLR: Record<string, string> = { BROUILLON: '#f59e0b', VALIDE: '#16a34a', ANNULE: '#9ca3af' }
+const STATUT_CLR: Record<string, string> = { BROUILLON: '#f59e0b', VALIDE: 'var(--color-primary)', ANNULE: '#9ca3af' }
 const statutChartData = computed(() => ({
   labels: STATUTS,
   datasets: [{ data: STATUTS.map(s => mouvements.value.filter(m => m.statut === s).length), backgroundColor: STATUTS.map(s => STATUT_CLR[s] + 'cc'), borderColor: STATUTS.map(s => STATUT_CLR[s]), borderWidth: 2, hoverOffset: 8 }],

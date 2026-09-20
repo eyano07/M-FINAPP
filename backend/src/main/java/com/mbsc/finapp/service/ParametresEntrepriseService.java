@@ -63,6 +63,7 @@ public class ParametresEntrepriseService {
         p.setRccm(req.rccm());
         p.setIdNat(req.idNat());
         p.setNif(req.nif());
+        p.setCouleurPrimaire(req.couleurPrimaire());
         p = repository.save(p);
         return ParametresEntrepriseResponse.from(p);
     }

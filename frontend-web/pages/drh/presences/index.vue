@@ -5,7 +5,7 @@ interface Employe { id: number; matricule: string; nomComplet: string }
 interface Presence { id: number; employeId: number; date: string; statut: string; motif: string | null }
 
 const STATUTS: { value: string; code: string; label: string; bg: string; color: string; motif: boolean }[] = [
-  { value: 'PRESENT', code: 'P', label: 'Présent', bg: '#dcfce7', color: '#15803d', motif: false },
+  { value: 'PRESENT', code: 'P', label: 'Présent', bg: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', motif: false },
   { value: 'ABSENT', code: 'A', label: 'Absent', bg: '#fee2e2', color: '#b91c1c', motif: true },
   { value: 'CONGE', code: 'C', label: 'Congé', bg: '#dbeafe', color: '#1d4ed8', motif: true },
   { value: 'MALADIE', code: 'M', label: 'Maladie', bg: '#fef3c7', color: '#b45309', motif: true },

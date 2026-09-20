@@ -160,8 +160,8 @@ function fmt(v: number) {
   gap: 20px;
   padding: 14px 16px;
   border-radius: 12px;
-  background: #f0fdf4;
-  border: 1px solid #dcfce7;
+  background: var(--color-primary-lighter);
+  border: 1px solid var(--color-primary-light);
 }
 .lignes-ecriture__totaux .label {
   display: block;
@@ -170,7 +170,7 @@ function fmt(v: number) {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.lignes-ecriture__totaux strong.ok { color: #16a34a; }
+.lignes-ecriture__totaux strong.ok { color: var(--color-primary); }
 .lignes-ecriture__totaux strong.ko { color: #dc2626; }
 
 @media (max-width: 960px) {

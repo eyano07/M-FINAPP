@@ -62,10 +62,10 @@ const valeurTotale = computed(() => lignes.value.reduce((s, l) => s + (l.valeurT
 const nbSousSeuil = computed(() => lignes.value.filter(l => l.sousSeuil).length)
 
 /**
- * Plats en stock dont le coût moyen est nul : leur entrée de production a été
- * saisie sans coût, donc la vente ne constatera aucun coût des ventes et la
- * marge affichée sera de 100 %. L'alerte reste visible en permanence, car
- * l'entrée peut aussi avoir été passée depuis le module Logistique.
+ * Plats en stock dont le coût moyen est nul : leur entrée en stock a été passée
+ * sans coût (module Logistique), donc la vente ne constatera aucun coût des
+ * ventes et la marge affichée sera de 100 %. Produire le plat depuis l'écran
+ * Production lui donne au contraire le coût réel de ses ingrédients.
  */
 const platsSansCout = computed(() =>
   lignes.value.filter(l =>
@@ -96,6 +96,11 @@ const fmtQte = (q: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDi
       {{ platsSansCout.map(p => p.articleCode).join(', ') }}.
       Leur entrée en stock a été saisie sans coût de production — à la vente, aucun coût ne sera constaté
       et la marge affichée sera de 100 %.
+      <template #append>
+        <v-btn size="small" variant="tonal" color="warning" rounded="lg" to="/restaurant/production">
+          Produire
+        </v-btn>
+      </template>
     </v-alert>
 
     <div class="rst-stats mb-4">
@@ -170,9 +175,9 @@ const fmtQte = (q: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDi
   font-size: 0.875rem;
 }
 .rst-stat--valeur { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
-.rst-stat--lignes { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rst-stat--lignes { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rst-stat--alerte { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
-.rst-stat--ok     { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rst-stat--ok     { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
 </style>

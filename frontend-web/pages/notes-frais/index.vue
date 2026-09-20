@@ -415,7 +415,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
         <button
           class="nf-filter__chip nf-filter__chip--tous"
           :class="{ 'nf-filter__chip--active': filterStatut === null }"
-          :style="filterStatut === null ? { background: '#16a34a', borderColor: '#16a34a', color: '#fff' } : {}"
+          :style="filterStatut === null ? { background: 'var(--color-primary)', borderColor: 'var(--color-primary)', color: '#fff' } : {}"
           @click="filterStatut = null"
         >
           Tous
@@ -718,7 +718,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   border-radius: 12px;
   font-size: 0.875rem;
 }
-.nf-stat--total   { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.nf-stat--total   { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .nf-stat--pending { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
 .nf-stat--paid    { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
 .nf-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
@@ -858,7 +858,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   align-items: center;
   gap: 14px;
   padding: 24px 24px 22px;
-  background: linear-gradient(140deg, #22c55e 0%, #16a34a 50%, #14532d 100%);
+  background: linear-gradient(140deg, var(--color-primary-mid) 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%);
   flex-shrink: 0;
 }
 .nf-dialog__head--encaissement {

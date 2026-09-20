@@ -1,0 +1,3 @@
+ALTER TABLE tables_restaurant
+    ADD COLUMN nb_chaises INT NOT NULL DEFAULT 4,
+    ADD COLUMN occupee BOOLEAN NOT NULL DEFAULT FALSE;

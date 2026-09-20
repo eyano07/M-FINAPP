@@ -514,7 +514,7 @@ const fmtUSD = (fc?: number) =>
 
 .type-switch__btn--active {
   background: #fff;
-  color: #16a34a;
+  color: var(--color-primary);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }
 </style>

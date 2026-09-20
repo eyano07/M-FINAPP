@@ -60,6 +60,11 @@ public class ParametresEntreprise {
     @Column(name = "logo_type_mime", length = 100)
     private String logoTypeMime;
 
+    /** Couleur de marque (hex, ex. "#16A34A") appliquee au theme Vuetify et aux accents du frontend. */
+    @Column(name = "couleur_primaire", nullable = false, length = 7)
+    @Builder.Default
+    private String couleurPrimaire = "#16A34A";
+
     @UpdateTimestamp
     @Column(name = "date_maj")
     private Instant dateMaj;

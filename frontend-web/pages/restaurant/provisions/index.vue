@@ -14,6 +14,7 @@ interface Provision {
   uniteMesure?: string
   compteStockNumero?: string
   compteChargeNumero?: string
+  compteAchatNumero?: string
   stockMin: number
   actif: boolean
 }
@@ -43,9 +44,15 @@ const editId = ref<number | null>(null)
 
 const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
 
-/** 331 Matières consommables / 6033 Variations des stocks d'autres approvisionnements — vérifiés actifs et imputables. */
+/**
+ * 331 Matières consommables / 6033 Variations des stocks d'autres
+ * approvisionnements / 6011 Achats de marchandises dans la Région (même
+ * défaut que la carte pour un achat de marchandise) — vérifiés actifs et
+ * imputables.
+ */
 const COMPTE_STOCK_DEFAUT = '331'
 const COMPTE_CHARGE_DEFAUT = '6033'
+const COMPTE_ACHAT_DEFAUT = '6011'
 
 const form = reactive({
   code: '',
@@ -53,6 +60,7 @@ const form = reactive({
   uniteMesure: '',
   compteStockNumero: COMPTE_STOCK_DEFAUT as string | null,
   compteChargeNumero: COMPTE_CHARGE_DEFAUT as string | null,
+  compteAchatNumero: COMPTE_ACHAT_DEFAUT as string | null,
   stockMin: 0,
   actif: true,
 })
@@ -92,6 +100,7 @@ function ouvrirCreation() {
   Object.assign(form, {
     code: '', libelle: '', uniteMesure: '',
     compteStockNumero: COMPTE_STOCK_DEFAUT, compteChargeNumero: COMPTE_CHARGE_DEFAUT,
+    compteAchatNumero: COMPTE_ACHAT_DEFAUT,
     stockMin: 0, actif: true,
   })
   erreur.value = ''
@@ -106,6 +115,7 @@ function ouvrirEdition(p: Provision) {
     uniteMesure: p.uniteMesure || '',
     compteStockNumero: p.compteStockNumero || COMPTE_STOCK_DEFAUT,
     compteChargeNumero: p.compteChargeNumero || COMPTE_CHARGE_DEFAUT,
+    compteAchatNumero: p.compteAchatNumero || COMPTE_ACHAT_DEFAUT,
     stockMin: p.stockMin,
     actif: p.actif,
   })
@@ -128,6 +138,7 @@ async function enregistrer() {
       type: 'PROVISION',
       compteStockNumero: form.compteStockNumero,
       compteChargeNumero: form.compteChargeNumero,
+      compteAchatNumero: form.compteAchatNumero,
       compteProduitNumero: null,
       prixVente: null,
       soumisTva: false,
@@ -237,8 +248,15 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
         <v-text-field v-model="form.uniteMesure" label="Unité (kg, sac, litre...)" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model.number="form.stockMin" type="number" label="Seuil de réapprovisionnement" variant="outlined" density="comfortable" class="mb-3" />
 
-        <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock" class="mb-3" />
-        <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de charge (sortie)" class="mb-3" />
+        <v-alert v-if="!editId" type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
+          <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
+          Un compte d'achat, de stock et de charge dédié à cette provision sera créé automatiquement.
+        </v-alert>
+        <template v-else>
+          <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (601x)" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de charge (sortie)" class="mb-3" />
+        </template>
 
         <v-switch v-model="form.actif" label="Actif" color="success" density="compact" hide-details class="mb-4" />
 
@@ -264,7 +282,7 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
 .rst-stat--valeur { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
 .rst-stat--lignes { background: linear-gradient(135deg,#fdf4ff,#f3e8ff); color: #7e22ce; }
 .rst-stat--alerte { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
-.rst-stat--ok     { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rst-stat--ok     { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
 </style>

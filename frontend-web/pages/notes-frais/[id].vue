@@ -124,6 +124,11 @@ onMounted(async () => {
     imprimer()
   }
 })
+// La navigation vers "la note suivante" (voir allerNoteSuivante) reste sur
+// cette meme route dynamique : Vue Router reutilise l'instance du composant
+// au lieu de la remonter, donc sans ce watcher la page garderait affichee
+// l'ancienne note malgre l'URL a jour.
+watch(id, charger)
 
 const montantFmt = computed(() =>
   note.value
@@ -173,7 +178,27 @@ const messageAucuneAction = computed(() => {
   return 'Aucune action disponible pour votre rôle à ce stade.'
 })
 
-async function action(chemin: string, requiertCommentaire = false) {
+/**
+ * Après une action de vérification/validation/transmission, enchaîne
+ * directement sur la prochaine note en attente au même stade (même statut
+ * que celui qui rendait le bouton visible) pour éviter les allers-retours
+ * par la liste : le DA ou le DFIN traite sa file sans quitter l'écran de
+ * validation. Reste sur la note qui vient d'être traitée s'il n'y en a pas
+ * d'autre, ou si la liste des suivantes est indisponible.
+ */
+async function allerNoteSuivante(statutFile: string, noteActuelleId: string) {
+  try {
+    const suivantes = await api<{ id: number }[]>('/notes-frais', { query: { statut: statutFile } })
+    const prochaine = suivantes.find(n => String(n.id) !== noteActuelleId)
+    if (prochaine) {
+      await navigateTo(`/notes-frais/${prochaine.id}`)
+    }
+  } catch {
+    // Liste indisponible : on reste simplement sur la note traitee.
+  }
+}
+
+async function action(chemin: string, requiertCommentaire = false, statutFileSuivante?: string) {
   if (requiertCommentaire && !observation.value.trim()) {
     erreur.value = 'Un motif est obligatoire pour cette action.'
     return
@@ -181,12 +206,16 @@ async function action(chemin: string, requiertCommentaire = false) {
   busy.value = true
   erreur.value = ''
   try {
-    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/${chemin}`, {
+    const noteActuelleId = id.value
+    note.value = await api<NoteDetail>(`/notes-frais/${noteActuelleId}/${chemin}`, {
       method: 'POST',
       body: { commentaire: observation.value || null },
     })
     observation.value = ''
     prioriteChoisie.value = note.value?.priorite ?? null
+    if (statutFileSuivante) {
+      await allerNoteSuivante(statutFileSuivante, noteActuelleId)
+    }
   } catch (e: any) {
     erreur.value = e?.data?.message || "Echec de l'action."
   } finally { busy.value = false }
@@ -757,17 +786,17 @@ const peutGererPieces = computed(() =>
               </v-btn>
 
               <v-btn v-if="peutVerifier" color="indigo" block rounded="lg" elevation="0"
-                prepend-icon="mdi-check-circle" :loading="busy" @click="action('verifier')">
+                prepend-icon="mdi-check-circle" :loading="busy" @click="action('verifier', false, 'SOUMISE')">
                 Vérifier (DFIN)
               </v-btn>
 
               <template v-if="peutValiderRejeter">
                 <v-btn color="success" block rounded="lg" elevation="0"
-                  prepend-icon="mdi-check" :loading="busy" @click="action('valider')">
+                  prepend-icon="mdi-check" :loading="busy" @click="action('valider', false, 'VERIFIEE_DFIN')">
                   Valider (DA)
                 </v-btn>
                 <v-btn color="error" block rounded="lg" variant="tonal"
-                  prepend-icon="mdi-close" :loading="busy" @click="action('rejeter', true)">
+                  prepend-icon="mdi-close" :loading="busy" @click="action('rejeter', true, 'VERIFIEE_DFIN')">
                   Rejeter (DA)
                 </v-btn>
               </template>
@@ -789,7 +818,7 @@ const peutGererPieces = computed(() =>
               </template>
 
               <v-btn v-if="peutTransmettre" color="teal" block rounded="lg" elevation="0"
-                prepend-icon="mdi-send" :loading="busy" @click="action('transmettre')">
+                prepend-icon="mdi-send" :loading="busy" @click="action('transmettre', false, 'VALIDEE_DA')">
                 Transmettre à la trésorerie
               </v-btn>
 
@@ -1028,7 +1057,7 @@ const peutGererPieces = computed(() =>
   padding: 12px 20px 16px;
   font-size: 0.85rem;
   font-weight: 700;
-  color: #16a34a;
+  color: var(--color-primary);
 }
 
 /* ── Pièces jointes ──────────────────────────────────────── */
@@ -1161,8 +1190,8 @@ const peutGererPieces = computed(() =>
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #16a34a;
-  border: 3px solid #dcfce7;
+  background: var(--color-primary);
+  border: 3px solid var(--color-primary-light);
   flex-shrink: 0;
   margin-top: 4px;
 }
@@ -1180,8 +1209,8 @@ const peutGererPieces = computed(() =>
   display: inline-block;
   font-size: 0.68rem;
   font-weight: 700;
-  color: #16a34a;
-  background: #dcfce7;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
   padding: 2px 8px;
   border-radius: 100px;
   margin-bottom: 4px;
@@ -1259,7 +1288,7 @@ const peutGererPieces = computed(() =>
     gap: 16px;
     padding-bottom: 8px;
     margin-bottom: 10px;
-    border-bottom: 3px solid #16a34a;
+    border-bottom: 3px solid var(--color-primary);
   }
   .nd-print-header__brand { display: flex; align-items: center; gap: 11px; }
   .nd-print-header__logo {
@@ -1269,7 +1298,7 @@ const peutGererPieces = computed(() =>
     width: 36px;
     height: 36px;
     border-radius: 10px;
-    background: #16a34a;
+    background: var(--color-primary);
     flex-shrink: 0;
     overflow: hidden;
   }
@@ -1282,7 +1311,7 @@ const peutGererPieces = computed(() =>
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.2px;
-    color: #16a34a;
+    color: var(--color-primary);
     margin-top: 1px;
   }
   .nd-print-header__meta {
@@ -1375,7 +1404,7 @@ const peutGererPieces = computed(() =>
     width: 6px;
     height: 6px;
     border-radius: 2px;
-    background: #16a34a;
+    background: var(--color-primary);
   }
   .nd-card__section-title--row { padding-bottom: 6px; }
 
@@ -1404,10 +1433,10 @@ const peutGererPieces = computed(() =>
   .nd-lignes-total {
     margin: 2px 14px 6px;
     padding: 5px 12px;
-    background: #f0fdf4;
+    background: var(--color-primary-lighter);
     border-radius: 7px;
     font-size: 0.78rem;
-    color: #15803d;
+    color: var(--color-primary-dark);
   }
 
   .nd-pieces { padding: 0 14px 5px; gap: 0; }

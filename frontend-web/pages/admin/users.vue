@@ -153,7 +153,7 @@ async function toggleActif(u: UserRow) {
 
 const roleColor: Record<string, string> = {
   ADMIN: '#7c3aed', DG: '#0ea5e9', DA: '#f59e0b',
-  DFIN: '#16a34a', DIRECTEUR: '#2563eb', CAISSIER: '#ea580c', COMPTABLE: '#be185d', LOGISTIQUE: '#0d9488',
+  DFIN: 'var(--color-primary)', DIRECTEUR: '#2563eb', CAISSIER: '#ea580c', COMPTABLE: '#be185d', LOGISTIQUE: '#0d9488',
   GEST_PATRIMOINE: '#9333ea', RESP_DRH: '#c026d3', RESP_RESTAURANT: '#e11d48',
 }
 </script>
@@ -210,7 +210,7 @@ const roleColor: Record<string, string> = {
           <tr v-for="u in users" :key="u.id" :class="{ 'usr-row--inactive': !u.actif }">
             <td>
               <div class="usr-name-cell">
-                <div class="usr-avatar" :style="{ background: u.actif ? '#dcfce7' : '#f3f4f6', color: u.actif ? '#16a34a' : '#9ca3af' }">
+                <div class="usr-avatar" :style="{ background: u.actif ? 'var(--color-primary-light)' : '#f3f4f6', color: u.actif ? 'var(--color-primary)' : '#9ca3af' }">
                   {{ (u.prenom?.[0] ?? '') + (u.nom?.[0] ?? '') }}
                 </div>
                 <span>{{ u.nomComplet }}</span>
@@ -256,7 +256,7 @@ const roleColor: Record<string, string> = {
       <div v-else class="usr-cards">
         <div v-for="u in users" :key="u.id" class="usr-card-item" :class="{ 'usr-card-item--inactive': !u.actif }">
           <div class="usr-card-item__top">
-            <div class="usr-avatar" :style="{ background: u.actif ? '#dcfce7' : '#f3f4f6', color: u.actif ? '#16a34a' : '#9ca3af' }">
+            <div class="usr-avatar" :style="{ background: u.actif ? 'var(--color-primary-light)' : '#f3f4f6', color: u.actif ? 'var(--color-primary)' : '#9ca3af' }">
               {{ (u.prenom?.[0] ?? '') + (u.nom?.[0] ?? '') }}
             </div>
             <div class="usr-card-item__id">
@@ -423,12 +423,12 @@ const roleColor: Record<string, string> = {
 .usr-new-btn {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 0 20px; height: 40px; border-radius: 11px;
-  background: #16a34a; color: #fff; font-size: 0.875rem; font-weight: 600;
+  background: var(--color-primary); color: #fff; font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer;
   transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.25);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
-.usr-new-btn:hover { background: #15803d; }
+.usr-new-btn:hover { background: var(--color-primary-dark); }
 
 /* ── Table card ──────────────────────────────────────────────────────────── */
 .usr-card {
@@ -489,8 +489,8 @@ const roleColor: Record<string, string> = {
 .usr-status-dot {
   width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
 }
-.usr-status-chip--on  { background: #dcfce7; color: #16a34a; }
-.usr-status-chip--on  .usr-status-dot  { background: #16a34a; }
+.usr-status-chip--on  { background: var(--color-primary-light); color: var(--color-primary); }
+.usr-status-chip--on  .usr-status-dot  { background: var(--color-primary); }
 .usr-status-chip--off { background: #f3f4f6; color: #9ca3af; }
 .usr-status-chip--off .usr-status-dot { background: #9ca3af; }
 
@@ -505,15 +505,15 @@ const roleColor: Record<string, string> = {
 .usr-action-btn--edit:hover  { background: #dbeafe; }
 .usr-action-btn--deact { background: #fff7ed; color: #ea580c; border-color: #fed7aa; }
 .usr-action-btn--deact:hover { background: #ffedd5; }
-.usr-action-btn--act   { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; }
-.usr-action-btn--act:hover   { background: #dcfce7; }
+.usr-action-btn--act   { background: var(--color-primary-lighter); color: var(--color-primary); border-color: var(--color-primary-mid); }
+.usr-action-btn--act:hover   { background: var(--color-primary-light); }
 .usr-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Cartes (mobile) ─────────────────────────────────────────────────────── */
 .usr-cards { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
 
 .usr-card-item {
-  background: #fff; border: 1px solid #eef0f2; border-left: 3px solid #16a34a; border-radius: 16px;
+  background: #fff; border: 1px solid #eef0f2; border-left: 3px solid var(--color-primary); border-radius: 16px;
   padding: 14px 16px; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: box-shadow 0.15s;
 }
@@ -549,8 +549,8 @@ const roleColor: Record<string, string> = {
 .usr-card-item__btn--edit:active  { background: #dbeafe; }
 .usr-card-item__btn--deact { background: #fff7ed; color: #ea580c; border-color: #fed7aa; }
 .usr-card-item__btn--deact:active { background: #ffedd5; }
-.usr-card-item__btn--act   { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; }
-.usr-card-item__btn--act:active   { background: #dcfce7; }
+.usr-card-item__btn--act   { background: var(--color-primary-lighter); color: var(--color-primary); border-color: var(--color-primary-mid); }
+.usr-card-item__btn--act:active   { background: var(--color-primary-light); }
 .usr-card-item__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Dialog ──────────────────────────────────────────────────────────────── */

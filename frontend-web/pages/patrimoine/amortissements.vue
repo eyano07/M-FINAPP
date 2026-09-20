@@ -172,7 +172,7 @@ const restant = computed(() => plan.value.filter(l => !l.comptabilise).length)
         <template #item.valeurNette="{ item }">{{ fmt(item.valeurNette) }}</template>
         <template #item.comptabilise="{ item }">
           <span class="chip-soft" :style="item.comptabilise
-            ? { background: '#dcfce7', color: '#15803d' } : { background: '#f3f4f6', color: '#6b7280' }">
+            ? { background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)' } : { background: '#f3f4f6', color: '#6b7280' }">
             {{ item.comptabilise ? 'Comptabilisée' : 'À venir' }}
           </span>
         </template>

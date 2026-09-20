@@ -67,7 +67,7 @@ function onClick() {
 }
 
 .stat-card--green {
-  background: linear-gradient(140deg, #22c55e 0%, #16a34a 45%, #14532d 100%);
+  background: linear-gradient(140deg, var(--color-primary-mid) 0%, var(--color-primary) 45%, var(--color-primary-darker) 100%);
   --stat-icon-bg: rgba(255,255,255,0.18);
   --stat-label-color: rgba(255,255,255,0.72);
   --stat-value-color: #ffffff;
@@ -133,7 +133,7 @@ function onClick() {
   --stat-shadow: rgba(79,70,229,0.50);
 }
 .stat-card--primary {
-  background: linear-gradient(140deg, #22c55e 0%, #16a34a 45%, #14532d 100%);
+  background: linear-gradient(140deg, var(--color-primary-mid) 0%, var(--color-primary) 45%, var(--color-primary-darker) 100%);
   --stat-icon-bg: rgba(255,255,255,0.18);
   --stat-label-color: rgba(255,255,255,0.72);
   --stat-value-color: #ffffff;

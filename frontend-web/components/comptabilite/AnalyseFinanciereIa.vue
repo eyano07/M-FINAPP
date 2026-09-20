@@ -123,7 +123,7 @@ async function genererAnalyse() {
   font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
   margin: 0 0 8px;
 }
-.analyse-ia__col-title--forts { color: #16a34a; }
+.analyse-ia__col-title--forts { color: var(--color-primary); }
 .analyse-ia__col-title--attention { color: #d97706; }
 .analyse-ia__col-title--reco { color: #7c3aed; }
 .analyse-ia__col ul,

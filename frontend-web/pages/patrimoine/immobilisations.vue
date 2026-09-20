@@ -32,7 +32,7 @@ const CATEGORIES = [
 ]
 
 const statutMeta: Record<string, { label: string; bg: string; color: string }> = {
-  EN_SERVICE: { label: 'En service', bg: '#dcfce7', color: '#15803d' },
+  EN_SERVICE: { label: 'En service', bg: 'var(--color-primary-light)', color: 'var(--color-primary-dark)' },
   CEDE: { label: 'Cédé', bg: '#dbeafe', color: '#1d4ed8' },
   REBUT: { label: 'Rebut', bg: '#f3f4f6', color: '#6b7280' },
 }

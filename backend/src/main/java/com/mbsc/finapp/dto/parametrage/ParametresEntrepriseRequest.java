@@ -1,6 +1,7 @@
 package com.mbsc.finapp.dto.parametrage;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record ParametresEntrepriseRequest(
@@ -13,5 +14,7 @@ public record ParametresEntrepriseRequest(
     @Size(max = 255) String email,
     @Size(max = 80) String rccm,
     @Size(max = 80) String idNat,
-    @Size(max = 40) String nif
+    @Size(max = 40) String nif,
+    @NotBlank @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "La couleur doit etre un code hexadecimal (ex. #16A34A)")
+    String couleurPrimaire
 ) {}

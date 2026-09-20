@@ -54,10 +54,10 @@ const PALETTE: Record<string, StatutNoteMeta> = {
   },
   TRANSMISE_CAISSE: {
     label: 'À payer',
-    color: '#16a34a',
-    bg: '#dcfce7',
-    text: '#15803d',
-    gradient: 'linear-gradient(140deg, #4ade80 0%, #16a34a 50%, #14532d 100%)',
+    color: 'var(--color-primary)',
+    bg: 'var(--color-primary-light)',
+    text: 'var(--color-primary-dark)',
+    gradient: 'linear-gradient(140deg, var(--color-primary-mid) 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%)',
   },
   PAYEE: {
     label: 'Payée',

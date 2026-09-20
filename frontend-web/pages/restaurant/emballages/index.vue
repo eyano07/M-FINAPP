@@ -234,7 +234,7 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
 
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-4">{{ erreur }}</v-alert>
 
-        <v-select
+        <v-autocomplete
           v-model="form.articleBoissonId"
           :items="boissonsDisponibles.map(b => ({ title: `${b.code} — ${b.libelle}`, value: b.id }))"
           label="Boisson *"
@@ -288,7 +288,7 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
   font-size: 0.875rem;
 }
 .rst-stat--vides   { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
-.rst-stat--casiers { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rst-stat--casiers { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
 .rst-casiers { white-space: nowrap; }

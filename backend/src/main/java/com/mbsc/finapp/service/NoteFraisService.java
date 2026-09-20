@@ -78,12 +78,13 @@ import java.util.Set;
  *
  * <p><b>Cas particulier RESP_RESTAURANT.</b> Le responsable restaurant ne
  * crée jamais de note de frais libre : il ne peut soumettre qu'une note
- * "spéciale" d'achat de boissons (une seule ligne, achat de marchandise,
- * article de type BOISSON), qui suit ensuite exactement le même circuit que
- * toute autre note de décaissement. Cela impose tout achat de boissons dans
- * le circuit d'approbation DFIN/DA et son règlement par la caisse — voir
+ * "spéciale" d'achat de boissons ou de provisions (une seule ligne, achat de
+ * marchandise, article de type BOISSON ou PROVISION), qui suit ensuite
+ * exactement le même circuit que toute autre note de décaissement. Cela
+ * impose tout achat de boissons ou de provisions dans le circuit
+ * d'approbation DFIN/DA et son règlement par la caisse — voir
  * {@link #validerNoteRespRestaurant} et {@code CaisseService.payerNote}
- * (échange de consigne appliqué au paiement).</p>
+ * (échange de consigne appliqué au paiement, boissons uniquement).</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -535,12 +536,12 @@ public class NoteFraisService {
     }
 
     /**
-     * Le responsable restaurant ne cree jamais de note de frais libre : sa
-     * seule note "speciale" possible est un achat de boissons — une ligne
-     * unique, achat de marchandise, article BOISSON, en decaissement. Toute
-     * autre forme (plusieurs lignes, depense libre, article d'un autre type)
-     * est refusee, sans quoi le role deviendrait une porte d'entree generale
-     * vers les notes de frais.
+     * Le responsable restaurant ne cree jamais de note de frais libre : ses
+     * seules notes "speciales" possibles sont un achat de boissons ou de
+     * provisions — une ligne unique, achat de marchandise, article BOISSON ou
+     * PROVISION, en decaissement. Toute autre forme (plusieurs lignes, depense
+     * libre, article d'un autre type) est refusee, sans quoi le role
+     * deviendrait une porte d'entree generale vers les notes de frais.
      */
     private void validerNoteRespRestaurant(NoteFrais note) {
         if (!estRespRestaurantSeul()) {
@@ -548,20 +549,23 @@ public class NoteFraisService {
         }
         if (note.getSens() != SensTransaction.DECAISSEMENT) {
             throw new IllegalArgumentException(
-                "Le responsable restaurant ne peut créer qu'une note d'achat de boissons (décaissement)");
+                "Le responsable restaurant ne peut créer qu'une note d'achat de boissons ou de provisions (décaissement)");
         }
         if (note.getLignes().size() != 1) {
             throw new IllegalArgumentException(
-                "Une note d'achat de boissons ne comporte qu'une seule ligne");
+                "Une note d'achat de boissons ou de provisions ne comporte qu'une seule ligne");
         }
         LigneNoteFrais ligne = note.getLignes().get(0);
-        if (!ligne.isAchatMarchandise() || ligne.getArticle() == null
-            || ligne.getArticle().getType() != TypeArticle.BOISSON) {
+        TypeArticle type = ligne.getArticle() == null ? null : ligne.getArticle().getType();
+        if (!ligne.isAchatMarchandise() || (type != TypeArticle.BOISSON && type != TypeArticle.PROVISION)) {
             throw new IllegalArgumentException(
-                "Le responsable restaurant ne peut créer qu'une note d'achat de boissons "
-                    + "(achat de marchandise, article de type BOISSON)");
+                "Le responsable restaurant ne peut créer qu'une note d'achat de boissons ou de provisions "
+                    + "(achat de marchandise, article de type BOISSON ou PROVISION)");
         }
-        if (ligne.isEchangeConsigne()
+        // L'echange de consigne n'a de sens que pour une boisson consignee :
+        // une provision n'a jamais de conditionnement, la verification serait
+        // un faux refus sans rapport avec sa propre nature.
+        if (type == TypeArticle.BOISSON && ligne.isEchangeConsigne()
             && !emballageBoissonRepository.existsByArticleBoissonId(ligne.getArticle().getId())) {
             throw new IllegalArgumentException(
                 "La boisson \"" + ligne.getArticle().getLibelle() + "\" n'a pas de conditionnement défini : "

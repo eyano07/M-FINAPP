@@ -661,7 +661,7 @@ const fmtTaux = computed(() =>
   border-radius: 12px;
   flex-shrink: 0;
 }
-.caisse-stat--enc .caisse-stat__icon { background: #dcfce7; color: #16a34a; }
+.caisse-stat--enc .caisse-stat__icon { background: var(--color-primary-light); color: var(--color-primary); }
 .caisse-stat--dec .caisse-stat__icon { background: #fee2e2; color: #dc2626; }
 .caisse-stat--pos .caisse-stat__icon { background: #dbeafe; color: #2563eb; }
 .caisse-stat--neg .caisse-stat__icon { background: #fef3c7; color: #d97706; }

@@ -21,12 +21,16 @@ import java.math.BigDecimal;
  *                          chargement a son propre prix de vente) ; reserve aux
  *                          marchandises stockees.
  * @param soumisTva         false pour un article exonere de TVA.
+ * @param categorie         sous-classification libre (ex. Alcool, Vin, Whisky) ;
+ *                          pertinente uniquement pour une BOISSON de la carte du
+ *                          restaurant, ignoree pour tout autre type.
  */
 public record ArticleRequest(
     @NotBlank String code,
     @NotBlank String libelle,
     String uniteMesure,
     TypeArticle type,
+    String categorie,
     Long entrepotId,
     String compteStockNumero,
     String compteChargeNumero,

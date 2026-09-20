@@ -206,5 +206,5 @@ async function modifier(role: string, module: string, niveau: string) {
 }
 .perm-select--aucun { color: #9ca3af; border-color: #f0f0f0; }
 .perm-select--lecture { color: #0891b2; border-color: #cffafe; background: #ecfeff; }
-.perm-select--ecriture { color: #16a34a; border-color: #dcfce7; background: #f0fdf4; }
+.perm-select--ecriture { color: var(--color-primary); border-color: var(--color-primary-light); background: var(--color-primary-lighter); }
 </style>

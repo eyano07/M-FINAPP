@@ -174,9 +174,9 @@ async function generer() {
   color: #6b7280; cursor: pointer; text-align: left; transition: all 0.15s;
 }
 .pe-choice:hover { border-color: #d1d5db; background: #f9fafb; }
-.pe-choice--on { border-color: #16a34a; background: #f0fdf4; color: #16a34a; }
+.pe-choice--on { border-color: var(--color-primary); background: var(--color-primary-lighter); color: var(--color-primary); }
 .pe-choice__title { font-size: 0.9rem; font-weight: 700; color: #111827; }
-.pe-choice--on .pe-choice__title { color: #15803d; }
+.pe-choice--on .pe-choice__title { color: var(--color-primary-dark); }
 .pe-choice__desc { font-size: 0.74rem; font-weight: 500; color: #9ca3af; }
 
 .pe-choice--row { flex-direction: row; align-items: center; gap: 10px; }

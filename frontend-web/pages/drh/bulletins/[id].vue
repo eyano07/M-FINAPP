@@ -320,7 +320,7 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
 .calc-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
 
 .etat-bloc { margin-bottom: 20px; }
-.etat-titre { font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid #16a34a; }
+.etat-titre { font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary); }
 .bp-titre-note { font-size: 0.72rem; font-weight: 500; color: #9ca3af; text-transform: none; letter-spacing: 0; }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .etat-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }

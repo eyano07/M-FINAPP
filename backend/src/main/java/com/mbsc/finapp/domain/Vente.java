@@ -88,6 +88,18 @@ public class Vente {
     @ToString.Exclude
     private Entrepot entrepot;
 
+    /**
+     * Table du restaurant a laquelle cette vente est rattachee, ou null pour
+     * toute vente hors restaurant (la grande majorite). Plusieurs ventes non
+     * reglees peuvent coexister sur une meme table — chacune se regle
+     * individuellement via le circuit de creance habituel (voir
+     * VenteService.reglerCreance) ; il n'existe pas de "paiement groupe".
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "table_id")
+    @ToString.Exclude
+    private TableRestaurant table;
+
     @Column(name = "total_ht", nullable = false, precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal totalHt = BigDecimal.ZERO;

@@ -127,8 +127,8 @@ const ventesJourData = computed(() => ({
       type: 'bar' as const,
       label: 'Bouteilles vendues',
       data: (tb.value?.ventesParJour || []).map(v => v.quantite),
-      backgroundColor: 'rgba(22,163,74,0.65)',
-      borderColor: '#16a34a',
+      backgroundColor: 'color-mix(in srgb, var(--color-primary) 65%, transparent)',
+      borderColor: 'var(--color-primary)',
       borderRadius: 6,
       yAxisID: 'y',
     },
@@ -154,7 +154,7 @@ const ventesJourOpts: any = {
   },
 }
 
-const COULEURS = ['#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const COULEURS = ['var(--color-primary)', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
 
 /** Répartition du chiffre d'affaires entre les boissons vendues. */
 const repartitionVentesData = computed(() => {
@@ -403,13 +403,13 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
   background: #f9fafb;
 }
 .rdb-kpi--ca      { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
-.rdb-kpi--profit  { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rdb-kpi--profit  { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rdb-kpi--perte   { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
 .rdb-kpi--pertes  { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
 .rdb-kpi--stock   { background: linear-gradient(135deg,#faf5ff,#f3e8ff); color: #7e22ce; }
 .rdb-kpi--vides   { background: linear-gradient(135deg,#ecfeff,#cffafe); color: #0e7490; }
 .rdb-kpi--alerte  { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
-.rdb-kpi--ok      { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rdb-kpi--ok      { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rdb-kpi__val { display: block; font-size: 1.05rem; font-weight: 800; letter-spacing: -0.4px; }
 .rdb-kpi__lbl { display: block; font-size: 0.72rem; font-weight: 500; opacity: 0.8; }
 
@@ -455,7 +455,7 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
 .rdb-ia__synthese { font-size: 0.875rem; color: #374151; line-height: 1.6; margin: 0 0 18px; }
 .rdb-ia__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
 .rdb-ia__col-title { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 8px; }
-.rdb-ia__col-title--forts { color: #16a34a; }
+.rdb-ia__col-title--forts { color: var(--color-primary); }
 .rdb-ia__col-title--attention { color: #d97706; }
 .rdb-ia__col-title--reco { color: #7c3aed; }
 .rdb-ia__col ul, .rdb-ia__reco ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }

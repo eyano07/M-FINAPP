@@ -322,8 +322,31 @@ function fermerRecu() {
   recuData.value = null
 }
 
+const modeImpressionRecu = ref<'NORMAL' | 'TICKET'>('NORMAL')
+
 function imprimerRecu() {
+  modeImpressionRecu.value = 'NORMAL'
   nextTick(() => window.print())
+}
+
+/**
+ * Ticket format imprimante thermique (80mm), meme mecanique que le ticket de
+ * vente (voir ventes/[id].vue imprimerTicket) : mise en page verticale a une
+ * colonne le temps de l'impression, puis retour au reçu normal.
+ */
+function imprimerRecuThermique() {
+  modeImpressionRecu.value = 'TICKET'
+  nextTick(() => {
+    const style = document.createElement('style')
+    style.id = 'recu-ticket-page-style'
+    style.textContent = '@page { size: 80mm auto; margin: 3mm; }'
+    document.head.appendChild(style)
+    window.print()
+    window.addEventListener('afterprint', () => {
+      document.getElementById('recu-ticket-page-style')?.remove()
+      modeImpressionRecu.value = 'NORMAL'
+    }, { once: true })
+  })
 }
 
 /** Réimpression depuis l'historique : va rechercher le bénéficiaire (créateur de la note) au besoin. */
@@ -996,7 +1019,7 @@ const fmtTaux = computed(() =>
         </button>
       </div>
 
-      <div class="recu-card__doc">
+      <div v-if="modeImpressionRecu === 'NORMAL'" class="recu-card__doc">
         <div class="recu-doc__brand">
           <div class="recu-doc__logo" :class="{ 'recu-doc__logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
@@ -1060,9 +1083,36 @@ const fmtTaux = computed(() =>
         <p class="recu-doc__footer">Édité le {{ dateEditionRecu }}</p>
       </div>
 
+      <!-- ── Ticket imprimante thermique (impression uniquement) ─────── -->
+      <div v-else class="recu-ticket">
+        <div class="recu-ticket__marque">
+          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo" class="recu-ticket__logo">
+          <p class="recu-ticket__nom">{{ parametresStore.parametres.nom }}</p>
+          <p>{{ recuData!.sens === 'ENCAISSEMENT' ? "Reçu d'encaissement" : 'Reçu de décaissement' }}</p>
+        </div>
+        <div class="recu-ticket__sep" />
+        <p class="recu-ticket__ref">N° {{ recuData!.numeroRecu || '—' }}</p>
+        <p>{{ fmtDate(recuData!.dateOperation) }} à {{ fmtHeure(recuData!.dateOperation) }}</p>
+        <p>Référence : {{ recuData!.reference }}</p>
+        <p v-if="recuData!.noteFraisReference">Note de frais : {{ recuData!.noteFraisReference }}</p>
+        <p v-if="recuData!.beneficiaire">{{ recuData!.sens === 'ENCAISSEMENT' ? 'Payeur' : 'Bénéficiaire' }} : {{ recuData!.beneficiaire }}</p>
+        <p>Motif : {{ recuData!.objet || '—' }}</p>
+        <p>Caissier : {{ recuData!.caissierNom || '—' }}</p>
+        <div class="recu-ticket__sep" />
+        <div class="recu-ticket__total-row">
+          <span>MONTANT {{ recuData!.sens === 'ENCAISSEMENT' ? 'ENCAISSÉ' : 'PAYÉ' }}</span>
+          <span>{{ new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(recuData!.montant) }} USD</span>
+        </div>
+        <div class="recu-ticket__sep" />
+        <p class="recu-ticket__horodatage">Édité le {{ dateEditionRecu }}</p>
+      </div>
+
       <div class="recu-card__actions no-print">
         <v-btn variant="tonal" rounded="lg" @click="fermerRecu">Fermer</v-btn>
         <v-spacer />
+        <v-btn color="primary" variant="outlined" rounded="lg" prepend-icon="mdi-receipt-outline" @click="imprimerRecuThermique">
+          Ticket
+        </v-btn>
         <v-btn color="primary" variant="flat" rounded="lg" prepend-icon="mdi-printer-outline" @click="imprimerRecu">
           Imprimer
         </v-btn>
@@ -1095,9 +1145,9 @@ const fmtTaux = computed(() =>
 .page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .taux-badge {
   font-size: 0.78rem;
-  background: #f0fdf4;
-  color: #16a34a;
-  border: 1px solid #bbf7d0;
+  background: var(--color-primary-lighter);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary-mid);
   border-radius: 6px;
   padding: 1px 7px;
   font-weight: 600;
@@ -1127,7 +1177,7 @@ const fmtTaux = computed(() =>
   border-radius: 12px;
   flex-shrink: 0;
 }
-.caisse-stat--enc .caisse-stat__icon { background: #dcfce7; color: #16a34a; }
+.caisse-stat--enc .caisse-stat__icon { background: var(--color-primary-light); color: var(--color-primary); }
 .caisse-stat--dec .caisse-stat__icon { background: #fee2e2; color: #dc2626; }
 .caisse-stat--pos .caisse-stat__icon { background: #dbeafe; color: #2563eb; }
 .caisse-stat--neg .caisse-stat__icon { background: #fef3c7; color: #d97706; }
@@ -1160,8 +1210,8 @@ const fmtTaux = computed(() =>
 .caisse-note__ref {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #16a34a;
-  background: #f0fdf4;
+  color: var(--color-primary);
+  background: var(--color-primary-lighter);
   padding: 2px 7px;
   border-radius: 6px;
 }
@@ -1185,7 +1235,7 @@ const fmtTaux = computed(() =>
 .dialog-card { overflow: hidden; }
 .dialog-header { padding: 28px 28px 20px; text-align: center; }
 .dialog-header--caisse {
-  background: linear-gradient(140deg, #34d399 0%, #16a34a 50%, #14532d 100%);
+  background: linear-gradient(140deg, #34d399 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%);
 }
 
 /* ── Suggestion IA du compte ─────────────────────────────────────── */
@@ -1270,7 +1320,7 @@ const fmtTaux = computed(() =>
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: #16a34a;
+  background: var(--color-primary);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -1282,7 +1332,7 @@ const fmtTaux = computed(() =>
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #16a34a;
+  color: var(--color-primary);
   margin-top: 1px;
 }
 .recu-doc__numero {
@@ -1290,8 +1340,8 @@ const fmtTaux = computed(() =>
   font-size: 0.95rem;
   font-weight: 700;
   color: #111827;
-  background: #f0fdf4;
-  border: 1px dashed #bbf7d0;
+  background: var(--color-primary-lighter);
+  border: 1px dashed var(--color-primary-mid);
   border-radius: 10px;
   padding: 8px;
   margin-bottom: 18px;
@@ -1313,12 +1363,12 @@ const fmtTaux = computed(() =>
   gap: 12px;
   padding: 14px 16px;
   border-radius: 12px;
-  background: #f0fdf4;
-  border: 1px solid #dcfce7;
+  background: var(--color-primary-lighter);
+  border: 1px solid var(--color-primary-light);
   margin-bottom: 22px;
 }
-.recu-doc__montant span { font-size: 0.78rem; font-weight: 600; color: #166534; text-transform: uppercase; letter-spacing: 0.4px; }
-.recu-doc__montant strong { font-size: 1.15rem; color: #15803d; }
+.recu-doc__montant span { font-size: 0.78rem; font-weight: 600; color: var(--color-primary-darkest); text-transform: uppercase; letter-spacing: 0.4px; }
+.recu-doc__montant strong { font-size: 1.15rem; color: var(--color-primary-dark); }
 .recu-doc__signatures { display: flex; gap: 24px; margin-bottom: 16px; }
 /* Colonne en flex, ligne poussee en bas (margin-top:auto) : avec ou sans nom
    pre-rempli, la ligne de signature reste alignee entre Beneficiaire et
@@ -1336,6 +1386,9 @@ const fmtTaux = computed(() =>
   gap: 10px;
   padding: 14px 20px 20px;
 }
+
+/* Ticket thermique : uniquement a l'impression (voir @media print plus bas). */
+.recu-ticket { display: none; }
 </style>
 
 <style>
@@ -1359,5 +1412,25 @@ const fmtTaux = computed(() =>
     border-radius: 0;
     box-shadow: none;
   }
+
+  /* ── Ticket imprimante thermique (80mm) ──────────────────── */
+  .recu-ticket {
+    display: block;
+    width: 100%;
+    max-width: 74mm;
+    margin: 0 auto;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #000;
+  }
+  .recu-ticket p { margin: 0; }
+  .recu-ticket__marque { text-align: center; margin-bottom: 4px; }
+  .recu-ticket__logo { max-width: 40mm; max-height: 18mm; object-fit: contain; margin-bottom: 4px; }
+  .recu-ticket__nom { font-size: 13px; font-weight: 700; text-transform: uppercase; }
+  .recu-ticket__ref { font-weight: 700; }
+  .recu-ticket__sep { border-top: 1px dashed #000; margin: 6px 0; }
+  .recu-ticket__total-row { display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; }
+  .recu-ticket__horodatage { text-align: center; font-size: 9px; color: #444; margin-top: 6px; }
 }
 </style>

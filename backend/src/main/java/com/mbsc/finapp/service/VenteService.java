@@ -2,6 +2,8 @@ package com.mbsc.finapp.service;
 
 import com.mbsc.finapp.domain.*;
 import com.mbsc.finapp.domain.enums.*;
+import com.mbsc.finapp.dto.vente.AdditionReglementResponse;
+import com.mbsc.finapp.dto.vente.AjouterLigneVenteRequest;
 import com.mbsc.finapp.dto.vente.LigneVenteRequest;
 import com.mbsc.finapp.dto.vente.VenteRequest;
 import com.mbsc.finapp.dto.vente.VenteResponse;
@@ -12,6 +14,7 @@ import com.mbsc.finapp.repository.ArticleRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EcritureGrandLivreRepository;
 import com.mbsc.finapp.repository.EntrepotRepository;
+import com.mbsc.finapp.repository.TableRestaurantRepository;
 import com.mbsc.finapp.repository.VenteRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
@@ -65,6 +68,7 @@ public class VenteService {
     private final VenteRepository venteRepository;
     private final ArticleRepository articleRepository;
     private final EntrepotRepository entrepotRepository;
+    private final TableRestaurantRepository tableRestaurantRepository;
     private final CompteOHADARepository compteRepository;
     private final ComptabiliteService comptabilite;
     private final StockService stockService;
@@ -133,56 +137,17 @@ public class VenteService {
             .modeReglement(req.modeReglement())
             .devise(devise)
             .tauxJournalier(tauxDuJour)
+            .table(req.tableId() == null ? null : tableRestaurantRepository.findById(req.tableId())
+                .orElseThrow(() -> RessourceIntrouvableException.of("Table", req.tableId())))
             .createdBy(auteur)
             .build();
 
         boolean contientMarchandise = false;
         int ordre = 1;
         for (LigneVenteRequest l : req.lignes()) {
-            Article article = articleRepository.findById(l.articleId())
-                .orElseThrow(() -> RessourceIntrouvableException.of("Article", l.articleId()));
-            exigerVendable(article);
-
-            BigDecimal prix = l.prixUnitaire();
-            contientMarchandise |= article.getType().estStocke();
-
-            // Minerais : la ligne cede UN camion identifie, a son propre prix.
-            // Le camion vaut une unite de l'article, d'ou la quantite forcee a
-            // 1 : accepter une quantite libre ferait sortir du stock plus (ou
-            // moins) que le chargement reellement cede.
-            CamionMinerai camion = null;
-            String designation = article.getLibelle();
-            BigDecimal quantite = l.quantite();
-            if (article.isMinerais()) {
-                if (l.camionId() == null) {
-                    throw new IllegalArgumentException(
-                        "\"" + article.getLibelle() + "\" est un minerais : precisez le camion vendu.");
-                }
-                camion = mineraiService.charger(l.camionId());
-                if (!camion.getArticle().getId().equals(article.getId())) {
-                    throw new IllegalArgumentException(
-                        "Le camion " + camion.getPlaque() + " ne porte pas \"" + article.getLibelle() + "\".");
-                }
-                if (camion.getStatut() != StatutCamionMinerai.EN_STOCK) {
-                    throw new IllegalArgumentException(
-                        "Le camion " + camion.designation() + " n'est plus en stock.");
-                }
-                designation = article.getLibelle() + " - camion " + camion.getPlaque();
-                quantite = BigDecimal.ONE;
-            } else if (l.camionId() != null) {
-                throw new IllegalArgumentException(
-                    "\"" + article.getLibelle() + "\" n'est pas un minerais : aucun camion ne peut lui etre rattache.");
-            }
-
-            vente.addLigne(LigneVente.builder()
-                .article(article)
-                .camion(camion)
-                .designation(designation)
-                .quantite(quantite)
-                .prixUnitaire(prix.setScale(2, RoundingMode.HALF_UP))
-                .soumisTva(article.isSoumisTva())
-                .ordre(ordre++)
-                .build());
+            LigneVente ligne = construireLigne(l.articleId(), l.quantite(), l.prixUnitaire(), l.camionId(), ordre++);
+            contientMarchandise |= ligne.getArticle().getType().estStocke();
+            vente.addLigne(ligne);
         }
 
         // Contreparties : trésorerie pour un comptant, entrepôt pour une marchandise.
@@ -211,6 +176,41 @@ public class VenteService {
         log.info("Vente creee [ref={}, client={}, lignes={}]",
             saved.getReference(), saved.designationClient(), saved.getLignes().size());
         return VenteResponse.from(saved);
+    }
+
+    /**
+     * Ajoute une ligne a une vente encore BROUILLON — un client attable qui
+     * commande une boisson de plus avant l'addition, typiquement. Refuse
+     * au-dela du brouillon : une vente VALIDEE a deja genere sa sortie de
+     * stock et son ecriture, la completer silencieusement les fausserait.
+     */
+    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @Transactional
+    public VenteResponse ajouterLigne(Long id, AjouterLigneVenteRequest req) {
+        Vente vente = charger(id);
+        if (vente.getStatut() != StatutVente.BROUILLON) {
+            throw new TransitionInvalideException(
+                "Seule une vente BROUILLON peut recevoir une nouvelle ligne (etat actuel : " + vente.getStatut() + ")");
+        }
+        LigneVente ligne = construireLigne(
+            req.articleId(), req.quantite(), req.prixUnitaire(), req.camionId(), vente.getLignes().size() + 1);
+        vente.addLigne(ligne);
+
+        // La vente d'origine peut n'avoir porte que des services et n'avoir
+        // donc jamais precise d'entrepot : si la ligne ajoutee sort du stock,
+        // il faut alors le demander, comme a la creation (voir plus haut).
+        if (ligne.getArticle().getType().estStocke() && vente.getEntrepot() == null) {
+            if (req.entrepotId() == null) {
+                throw new IllegalArgumentException(
+                    "Une vente de marchandises exige de preciser l'entrepot de sortie.");
+            }
+            vente.setEntrepot(entrepotRepository.findById(req.entrepotId())
+                .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId())));
+        }
+
+        calculerTotaux(vente, tauxTvaService.tauxALaDate(vente.getDateVente()));
+        log.info("Ligne ajoutee [vente={}, article={}]", vente.getReference(), req.articleId());
+        return VenteResponse.from(vente);
     }
 
     // ---------------------------------------------------------------------
@@ -300,7 +300,10 @@ public class VenteService {
         return VenteResponse.from(vente);
     }
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    // Annuler defait une vente deja comptabilisee (ecriture extournee, stock
+    // repris) : reserve a l'administrateur, contrairement a sa creation ou
+    // sa validation qui restent du quotidien du caissier.
+    @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public VenteResponse annuler(Long id) {
         Vente vente = charger(id);
@@ -347,7 +350,40 @@ public class VenteService {
     @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
     @Transactional
     public VenteResponse reglerCreance(Long id, ReglerCreanceRequest req) {
-        Vente vente = charger(id);
+        return appliquerReglementCreance(charger(id), req).vente();
+    }
+
+    /**
+     * Regle en une fois toutes les creances CREDIT encore ouvertes d'une
+     * table — "l'addition" : un seul mode de paiement/etablissement/date
+     * pour tout, mais chaque vente garde sa propre piece de reglement (meme
+     * traçabilite comptable qu'un reglement individuel, juste declenchee en
+     * une seule interaction cote caisse).
+     */
+    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @Transactional
+    public AdditionReglementResponse reglerAdditionTable(Long tableId, ReglerCreanceRequest req) {
+        List<Vente> creances = venteRepository.findActivesByTableIdIn(List.of(tableId)).stream()
+            .filter(v -> v.getStatut() == StatutVente.VALIDEE
+                && v.getModeReglement() == ModeReglement.CREDIT
+                && v.getPieceReglement() == null)
+            .toList();
+        if (creances.isEmpty()) {
+            throw new IllegalStateException("Aucune commande a regler pour cette table.");
+        }
+        List<VenteResponse> ventesReglees = new ArrayList<>();
+        BigDecimal totalEncaisse = BigDecimal.ZERO;
+        for (Vente v : creances) {
+            ResultatReglement r = appliquerReglementCreance(v, req);
+            ventesReglees.add(r.vente());
+            totalEncaisse = totalEncaisse.add(r.montantEncaisseDeviseBase());
+        }
+        return new AdditionReglementResponse(ventesReglees, totalEncaisse, ConversionDeviseService.DEVISE_BASE);
+    }
+
+    private record ResultatReglement(VenteResponse vente, BigDecimal montantEncaisseDeviseBase) {}
+
+    private ResultatReglement appliquerReglementCreance(Vente vente, ReglerCreanceRequest req) {
         if (vente.getStatut() != StatutVente.VALIDEE) {
             throw new TransitionInvalideException(
                 "Seule une vente VALIDEE peut etre reglee (etat actuel : " + vente.getStatut() + ")");
@@ -432,7 +468,7 @@ public class VenteService {
         vente.setEcartLatentCumule(BigDecimal.ZERO);
         log.info("Creance reglee [vente={}, encaisse={} {}, piece={}]",
             vente.getReference(), montantEncaisse, ConversionDeviseService.DEVISE_BASE, piece.getReference());
-        return VenteResponse.from(vente);
+        return new ResultatReglement(VenteResponse.from(vente), montantEncaisse);
     }
 
     private EcritureGrandLivre ligneReglement(CompteOHADA compte, BigDecimal debit, BigDecimal credit,
@@ -589,6 +625,55 @@ public class VenteService {
     private Vente charger(Long id) {
         return venteRepository.findWithLignesById(id)
             .orElseThrow(() -> RessourceIntrouvableException.of("Vente", id));
+    }
+
+    /**
+     * Construit une ligne de vente a partir des champs bruts d'une requete
+     * (partages par {@link LigneVenteRequest} et {@link AjouterLigneVenteRequest}) :
+     * verifie l'article, et pour un minerais force la quantite a 1 et
+     * l'associe au camion cede (voir MineraiService — chaque chargement se
+     * vend entier, a son propre prix, jamais par quantite libre).
+     */
+    private LigneVente construireLigne(
+        Long articleId, BigDecimal quantiteReq, BigDecimal prixUnitaireReq, Long camionId, int ordre
+    ) {
+        Article article = articleRepository.findById(articleId)
+            .orElseThrow(() -> RessourceIntrouvableException.of("Article", articleId));
+        exigerVendable(article);
+
+        CamionMinerai camion = null;
+        String designation = article.getLibelle();
+        BigDecimal quantite = quantiteReq;
+        if (article.isMinerais()) {
+            if (camionId == null) {
+                throw new IllegalArgumentException(
+                    "\"" + article.getLibelle() + "\" est un minerais : precisez le camion vendu.");
+            }
+            camion = mineraiService.charger(camionId);
+            if (!camion.getArticle().getId().equals(article.getId())) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.getPlaque() + " ne porte pas \"" + article.getLibelle() + "\".");
+            }
+            if (camion.getStatut() != StatutCamionMinerai.EN_STOCK) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.designation() + " n'est plus en stock.");
+            }
+            designation = article.getLibelle() + " - camion " + camion.getPlaque();
+            quantite = BigDecimal.ONE;
+        } else if (camionId != null) {
+            throw new IllegalArgumentException(
+                "\"" + article.getLibelle() + "\" n'est pas un minerais : aucun camion ne peut lui etre rattache.");
+        }
+
+        return LigneVente.builder()
+            .article(article)
+            .camion(camion)
+            .designation(designation)
+            .quantite(quantite)
+            .prixUnitaire(prixUnitaireReq.setScale(2, RoundingMode.HALF_UP))
+            .soumisTva(article.isSoumisTva())
+            .ordre(ordre)
+            .build();
     }
 
     private CompteOHADA compteParNumero(String numero) {

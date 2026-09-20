@@ -45,7 +45,7 @@ const entrepots = ref<Entrepot[]>([])
 const mouvements = ref<Mouvement[]>([])
 const dialog = ref(false)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
 
 const filtreEmballage = ref<number | null>(null)
 const du = ref('')
@@ -199,7 +199,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
     </v-alert>
 
     <div class="d-flex ga-3 mb-4 flex-wrap">
-      <v-select
+      <v-autocomplete
         v-model="filtreEmballage"
         :items="emballages.map(e => ({ title: e.articleBoissonLibelle, value: e.id }))"
         label="Boisson"
@@ -262,7 +262,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           Les mouvements de vente sont générés automatiquement à la validation d'une vente : ils ne se saisissent pas ici.
         </v-alert>
 
-        <v-select
+        <v-autocomplete
           v-model="form.emballageId"
           :items="emballages.map(e => ({ title: e.articleBoissonLibelle, value: e.id }))"
           label="Boisson *"

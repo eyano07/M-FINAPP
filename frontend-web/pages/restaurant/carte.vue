@@ -15,6 +15,7 @@ interface ArticleCarte {
   libelle: string
   uniteMesure?: string
   type: 'PLAT' | 'BOISSON'
+  categorie?: string | null
   compteStockNumero?: string
   compteChargeNumero?: string
   compteProduitNumero?: string
@@ -36,6 +37,12 @@ const tauxChange = ref(0)
 const dialog = ref(false)
 const editId = ref<number | null>(null)
 const filtreType = ref<'TOUS' | 'PLAT' | 'BOISSON'>('TOUS')
+const filtreCategorie = ref<string | null>(null)
+
+/** Suggestions de depart pour la categorie d'une boisson ; le champ reste en saisie libre. */
+const CATEGORIES_BOISSON_SUGGEREES = [
+  'Bière', 'Vin', 'Champagne', 'Whisky', 'Vodka', 'Alcool', 'Jus', 'Soda', 'Eau',
+]
 
 // Creer/modifier un plat ou une boisson (prix, imputation comptable) est
 // reserve a l'administrateur (voir RestaurantService.ECRITURE_CARTE) : le
@@ -63,6 +70,7 @@ const form = reactive({
   libelle: '',
   uniteMesure: '',
   type: 'PLAT' as 'PLAT' | 'BOISSON',
+  categorie: null as string | null,
   compteStockNumero: '' as string | null,
   compteChargeNumero: '' as string | null,
   compteProduitNumero: '' as string | null,
@@ -82,14 +90,28 @@ const prixVenteEquivalent = computed(() => {
     : `≈ ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD' }).format(form.prixVenteSaisi / tauxChange.value)}`
 })
 
-const articlesFiltres = computed(() =>
-  filtreType.value === 'TOUS'
+const articlesFiltres = computed(() => {
+  const parType = filtreType.value === 'TOUS'
     ? articles.value
     : articles.value.filter(a => a.type === filtreType.value)
-)
+  return filtreType.value === 'BOISSON' && filtreCategorie.value
+    ? parType.filter(a => a.categorie === filtreCategorie.value)
+    : parType
+})
 
 const nbPlats = computed(() => articles.value.filter(a => a.type === 'PLAT').length)
 const nbBoissons = computed(() => articles.value.filter(a => a.type === 'BOISSON').length)
+
+/** Categories reellement utilisees par les boissons de la carte, pour le filtre. */
+const categoriesUtilisees = computed(() => {
+  const set = new Set(
+    articles.value.filter(a => a.type === 'BOISSON' && a.categorie).map(a => a.categorie as string))
+  return Array.from(set).sort((a, b) => a.localeCompare(b))
+})
+
+// Changer d'onglet type invalide le filtre categorie (propre aux boissons) :
+// sinon il resterait actif, invisible, sur "Plats"/"Tous".
+watch(filtreType, () => { filtreCategorie.value = null })
 
 async function charger() {
   loading.value = true
@@ -126,7 +148,7 @@ function ouvrirCreation(type: 'PLAT' | 'BOISSON') {
   const d = COMPTES_DEFAUT[type]
   Object.assign(form, {
     code: '', libelle: '', uniteMesure: type === 'PLAT' ? 'portion' : 'bouteille',
-    type,
+    type, categorie: null,
     compteStockNumero: d.stock, compteChargeNumero: d.charge, compteProduitNumero: d.produit,
     compteAchatNumero: d.achat,
     devisePrixVente: 'USD', prixVenteSaisi: null, soumisTva: true, stockMin: 0, actif: true,
@@ -142,6 +164,7 @@ function ouvrirEdition(a: ArticleCarte) {
     libelle: a.libelle,
     uniteMesure: a.uniteMesure || '',
     type: a.type,
+    categorie: a.categorie || null,
     compteStockNumero: a.compteStockNumero || '',
     compteChargeNumero: a.compteChargeNumero || '',
     compteProduitNumero: a.compteProduitNumero || '',
@@ -170,6 +193,7 @@ async function enregistrer() {
       libelle: form.libelle,
       uniteMesure: form.uniteMesure,
       type: form.type,
+      categorie: form.type === 'BOISSON' ? (form.categorie || null) : null,
       compteStockNumero: form.compteStockNumero,
       compteChargeNumero: form.compteChargeNumero,
       compteProduitNumero: form.compteProduitNumero,
@@ -241,12 +265,34 @@ async function enregistrer() {
       <v-btn value="BOISSON">Boissons</v-btn>
     </v-btn-toggle>
 
+    <div v-if="filtreType === 'BOISSON' && categoriesUtilisees.length" class="d-flex flex-wrap ga-2 mb-4">
+      <v-chip
+        :variant="!filtreCategorie ? 'flat' : 'outlined'"
+        :color="!filtreCategorie ? 'indigo' : undefined"
+        size="small"
+        @click="filtreCategorie = null"
+      >
+        Toutes
+      </v-chip>
+      <v-chip
+        v-for="c in categoriesUtilisees"
+        :key="c"
+        :variant="filtreCategorie === c ? 'flat' : 'outlined'"
+        :color="filtreCategorie === c ? 'indigo' : undefined"
+        size="small"
+        @click="filtreCategorie = c"
+      >
+        {{ c }}
+      </v-chip>
+    </div>
+
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
           { title: 'Code', key: 'code' },
           { title: 'Libellé', key: 'libelle' },
           { title: 'Type', key: 'type' },
+          { title: 'Catégorie', key: 'categorie' },
           { title: 'Unité', key: 'uniteMesure' },
           { title: 'Prix de vente', key: 'prixVente', align: 'end' },
           { title: 'Seuil', key: 'stockMin', align: 'end' },
@@ -263,6 +309,10 @@ async function enregistrer() {
             {{ META_TYPE[item.type]?.label }}
           </v-chip>
         </template>
+        <template #item.categorie="{ item }">
+          <v-chip v-if="item.categorie" color="indigo" variant="tonal" size="small">{{ item.categorie }}</v-chip>
+          <span v-else class="text-medium-emphasis">—</span>
+        </template>
         <template #item.uniteMesure="{ item }">{{ item.uniteMesure || '—' }}</template>
         <template #item.prixVente="{ item }">{{ parametres.fmtMontantDepuisFC(item.prixVente) }}</template>
         <template #item.actif="{ item }">
@@ -271,6 +321,11 @@ async function enregistrer() {
           </v-chip>
         </template>
         <template #item.actions="{ item }">
+          <v-btn
+            v-if="item.type === 'PLAT'"
+            size="small" variant="text" icon="mdi-clipboard-text-outline"
+            title="Fiche technique" to="/restaurant/recettes"
+          />
           <v-btn v-if="canWrite" size="small" variant="text" icon="mdi-pencil-outline" title="Modifier" @click="ouvrirEdition(item)" />
         </template>
         <template #no-data>
@@ -291,7 +346,8 @@ async function enregistrer() {
 
         <v-alert v-if="form.type === 'PLAT'" type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
           Un plat est suivi en stock : la production du jour l'y fait entrer, la vente l'en sort au coût moyen.
-          Si l'entrée de production est saisie sans coût, le coût de revient reste nul et la marge affichée sera de 100 %.
+          Définissez sa fiche technique puis passez par l'écran Production : le coût de revient sera calculé
+          depuis les provisions réellement consommées.
         </v-alert>
 
         <v-btn-toggle
@@ -315,6 +371,18 @@ async function enregistrer() {
         <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model="form.uniteMesure" label="Unité (portion, bouteille...)" variant="outlined" density="comfortable" class="mb-3" />
+        <v-combobox
+          v-if="form.type === 'BOISSON'"
+          v-model="form.categorie"
+          :items="CATEGORIES_BOISSON_SUGGEREES"
+          label="Catégorie (Alcool, Vin, Whisky...)"
+          hint="Choisissez une catégorie existante ou saisissez-en une nouvelle"
+          persistent-hint
+          clearable
+          variant="outlined"
+          density="comfortable"
+          class="mb-3"
+        />
         <div class="d-flex ga-2 mb-1 align-start">
           <v-text-field
             v-model.number="form.prixVenteSaisi"
@@ -333,10 +401,16 @@ async function enregistrer() {
         <p class="text-caption text-medium-emphasis mb-3" style="min-height: 1.2em">{{ prixVenteEquivalent }}</p>
         <v-text-field v-model.number="form.stockMin" type="number" label="Seuil de réapprovisionnement" variant="outlined" density="comfortable" class="mb-3" />
 
-        <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (601x)" class="mb-3" />
-        <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock" class="mb-3" />
-        <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de charge (déstockage)" class="mb-3" />
-        <ComptabiliteSelecteurCompte v-model="form.compteProduitNumero" label="Compte de produit (vente)" class="mb-3" />
+        <v-alert v-if="!editId" type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
+          <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
+          Un compte d'achat, de stock, de charge et de vente dédié à cet article sera créé automatiquement.
+        </v-alert>
+        <template v-else>
+          <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (601x)" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de charge (déstockage)" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteProduitNumero" label="Compte de produit (vente)" class="mb-3" />
+        </template>
 
         <v-switch v-model="form.soumisTva" label="Soumis à la TVA" color="primary" density="compact" hide-details class="mb-2" />
         <v-switch v-model="form.actif" label="Actif" color="success" density="compact" hide-details class="mb-4" />

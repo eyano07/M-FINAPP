@@ -1,6 +1,8 @@
 <script setup lang="ts">
 definePageMeta({ module: 'VENTES' })
 
+import QRCode from 'qrcode'
+
 interface LigneVente {
   id: number
   articleCode?: string
@@ -34,10 +36,13 @@ interface Vente {
   createdByNom?: string
   reglee?: boolean
   dateReglement?: string | null
+  entrepotId?: number | null
   lignes: LigneVente[]
 }
 
 interface Etablissement { id: number; nom: string }
+interface ArticleOption { id: number; libelle: string; vendable: boolean; prixVente?: number }
+interface EntrepotOption { id: number; code: string; nom: string }
 
 const api = useApi()
 const auth = useAuthStore()
@@ -53,9 +58,23 @@ const tauxChange = ref(1)
 const dateImpression = ref('')
 const modeImpression = ref<'FACTURE' | 'TICKET'>('FACTURE')
 
+// QR du numero de reference, genere cote client uniquement (evite tout
+// rendu cote serveur d'une image encodee en base64 sur chaque chargement de
+// la page — seul le ticket imprime en a besoin).
+const qrDataUrl = ref('')
+watch(() => vente.value?.reference, async (reference) => {
+  if (!reference) { qrDataUrl.value = ''; return }
+  try {
+    qrDataUrl.value = await QRCode.toDataURL(reference, { margin: 1, width: 160 })
+  } catch {
+    qrDataUrl.value = ''
+  }
+}, { immediate: true })
+
 const canWrite = computed(() => auth.hasAnyRole(['CAISSIER']))
 const peutValider = computed(() => canWrite.value && vente.value?.statut === 'BROUILLON')
-const peutAnnuler = computed(() => canWrite.value && vente.value?.statut === 'VALIDEE')
+// Annuler defait une vente deja comptabilisee : reserve a l'administrateur.
+const peutAnnuler = computed(() => auth.hasRole('ADMIN') && vente.value?.statut === 'VALIDEE')
 // Une créance ne se règle que sur une vente à crédit validée et non encore soldée.
 const peutRegler = computed(() =>
   canWrite.value
@@ -76,6 +95,72 @@ const besoinEtablissement = computed(() =>
 const etablissementsOptions = computed(() =>
   (formReglement.modeReglement === 'BANQUE' ? banques.value : operateurs.value)
     .map((e) => ({ title: e.nom, value: e.id })))
+
+// ── Ajout d'une ligne (vente encore BROUILLON) ────────────────────────────
+const articlesDisponibles = ref<ArticleOption[]>([])
+const entrepotsDisponibles = ref<EntrepotOption[]>([])
+const nouvelleLigne = reactive({
+  articleId: null as number | null,
+  quantite: 1 as number | null,
+  prixUnitaire: null as number | null,
+  entrepotId: null as number | null,
+})
+const ajoutLigneBusy = ref(false)
+const erreurLigne = ref('')
+
+// Le prix catalogue de l'article est tenu en FC (voir ventes/nouvelle.vue
+// prixCatalogue) : reconverti dans la devise de la vente au taux du jour
+// avant de pre-remplir le prix unitaire — jamais recopie tel quel si la
+// vente est en USD.
+const arrondi = (v: number) => Math.round(v * 100) / 100
+watch(() => nouvelleLigne.articleId, (articleId) => {
+  const article = articlesDisponibles.value.find((a) => a.id === articleId)
+  if (!article || article.prixVente == null) return
+  nouvelleLigne.prixUnitaire = vente.value?.devise === 'USD'
+    ? (tauxChange.value > 0 ? arrondi(article.prixVente / tauxChange.value) : null)
+    : article.prixVente
+})
+
+async function chargerArticlesPourAjout() {
+  if (articlesDisponibles.value.length || entrepotsDisponibles.value.length) return
+  const [arts, ents] = await Promise.all([
+    api<ArticleOption[]>('/logistique/articles').catch(() => []),
+    api<EntrepotOption[]>('/logistique/entrepots').catch(() => []),
+  ])
+  articlesDisponibles.value = arts.filter((a) => a.vendable)
+  entrepotsDisponibles.value = ents
+}
+
+async function ajouterLigne() {
+  if (!nouvelleLigne.articleId || !nouvelleLigne.quantite || nouvelleLigne.quantite <= 0) {
+    erreurLigne.value = 'Choisissez un article et une quantité strictement positive.'
+    return
+  }
+  if (nouvelleLigne.prixUnitaire == null || nouvelleLigne.prixUnitaire < 0) {
+    erreurLigne.value = 'Le prix unitaire est obligatoire.'
+    return
+  }
+  ajoutLigneBusy.value = true
+  erreurLigne.value = ''
+  try {
+    vente.value = await api<Vente>(`/ventes/${route.params.id}/lignes`, {
+      method: 'POST',
+      body: {
+        articleId: nouvelleLigne.articleId,
+        quantite: nouvelleLigne.quantite,
+        prixUnitaire: nouvelleLigne.prixUnitaire,
+        entrepotId: nouvelleLigne.entrepotId,
+      },
+    })
+    nouvelleLigne.articleId = null
+    nouvelleLigne.quantite = 1
+    nouvelleLigne.prixUnitaire = null
+  } catch (e: any) {
+    erreurLigne.value = messageErreurApi(e, "Échec de l'ajout de la ligne.")
+  } finally {
+    ajoutLigneBusy.value = false
+  }
+}
 
 async function ouvrirReglement() {
   formReglement.etablissementId = null
@@ -145,6 +230,9 @@ onMounted(async () => {
   if (vente.value && route.query.print === '1') {
     await nextTick()
     imprimer()
+  }
+  if (peutValider.value) {
+    await chargerArticlesPourAjout()
   }
 })
 
@@ -405,6 +493,60 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
         </v-table>
       </v-card>
 
+      <!-- ── Ajout d'une ligne (vente encore brouillon) ────────── -->
+      <v-card v-if="peutValider" class="classroom-card mb-4 pa-4 vd-noprint">
+        <p class="text-caption text-medium-emphasis mb-3">
+          <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
+          Vente en brouillon : ajoutez une ligne si le client commande autre chose avant l'addition.
+        </p>
+        <v-alert v-if="erreurLigne" type="error" variant="tonal" density="compact" rounded="lg" class="mb-3">
+          {{ erreurLigne }}
+        </v-alert>
+        <div class="d-flex ga-2 flex-wrap align-start">
+          <v-autocomplete
+            v-model="nouvelleLigne.articleId"
+            :items="articlesDisponibles.map(a => ({ title: a.libelle, value: a.id }))"
+            label="Article"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            class="flex-grow-1"
+            style="min-width: 220px"
+          />
+          <v-text-field
+            v-model.number="nouvelleLigne.quantite"
+            type="number"
+            label="Qté"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            style="max-width: 100px"
+          />
+          <v-text-field
+            v-model.number="nouvelleLigne.prixUnitaire"
+            type="number"
+            label="P.U. HT"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            style="max-width: 140px"
+          />
+          <v-select
+            v-if="!vente.entrepotId"
+            v-model="nouvelleLigne.entrepotId"
+            :items="entrepotsDisponibles.map(e => ({ title: `${e.code} — ${e.nom}`, value: e.id }))"
+            label="Entrepôt"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            style="min-width: 180px"
+          />
+          <v-btn color="primary" variant="flat" rounded="lg" prepend-icon="mdi-plus" :loading="ajoutLigneBusy" @click="ajouterLigne">
+            Ajouter
+          </v-btn>
+        </div>
+      </v-card>
+
       <!-- ── Totaux ──────────────────────────────────────────── -->
       <div class="vd-totaux">
         <div class="vd-total-row">
@@ -480,6 +622,9 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
         <p>Règlement : {{ reglementLabel[vente.modeReglement] }}</p>
         <p v-if="vente.entrepotNom">Entrepôt : {{ vente.entrepotNom }}</p>
         <div class="vd-ticket__sep" />
+        <div v-if="qrDataUrl" class="vd-ticket__qr">
+          <img :src="qrDataUrl" alt="QR" class="vd-ticket__qr-img">
+        </div>
         <p class="vd-ticket__merci">Merci de votre achat !</p>
         <p v-if="dateImpression" class="vd-ticket__horodatage">{{ dateImpression }}</p>
       </div>
@@ -598,7 +743,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
   border-top: 1px solid #e5e7eb;
   font-size: 1rem;
 }
-.vd-total-row--ttc strong { font-size: 1.15rem; color: #16a34a; }
+.vd-total-row--ttc strong { font-size: 1.15rem; color: var(--color-primary); }
 .vd-contre-valeur { text-align: right; font-size: 0.75rem; color: #9ca3af; padding-top: 4px; }
 
 .vd-lien { font-size: 0.82rem; color: #374151; display: flex; align-items: center; }
@@ -617,7 +762,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
     justify-content: space-between;
     gap: 24px;
     padding-bottom: 12px;
-    border-bottom: 3px solid #16a34a;
+    border-bottom: 3px solid var(--color-primary);
   }
   .vd-print-header__brand { display: flex; align-items: center; gap: 11px; }
   .vd-print-header__logo {
@@ -627,7 +772,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
     width: 36px;
     height: 36px;
     border-radius: 10px;
-    background: #16a34a;
+    background: var(--color-primary);
     flex-shrink: 0;
     overflow: hidden;
   }
@@ -677,6 +822,8 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
     border-top: 1px dashed #000;
     margin: 6px 0;
   }
+  .vd-ticket__qr { text-align: center; margin: 4px 0; }
+  .vd-ticket__qr-img { width: 28mm; height: 28mm; }
   .vd-ticket__ligne { margin-bottom: 3px; }
   .vd-ticket__ligne-detail { display: flex; justify-content: space-between; padding-left: 8px; }
   .vd-ticket__total-row { display: flex; justify-content: space-between; }

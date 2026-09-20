@@ -253,7 +253,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 .etat-bloc { margin-bottom: 28px; }
 .etat-titre {
   font-size: 1.05rem; font-weight: 700; color: #111827;
-  margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid #16a34a;
+  margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary);
 }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .etat-table th {

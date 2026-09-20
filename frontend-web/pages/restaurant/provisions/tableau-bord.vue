@@ -116,13 +116,13 @@ const fmtDateCourte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { d
 const mouvementsJourData = computed(() => ({
   labels: (tb.value?.mouvementsParJour || []).map(m => fmtDateCourte(m.date)),
   datasets: [
-    { label: 'Entrées (achats)', data: (tb.value?.mouvementsParJour || []).map(m => m.quantiteEntree), backgroundColor: 'rgba(22,163,74,0.7)', borderColor: '#16a34a', borderRadius: 6 },
+    { label: 'Entrées (achats)', data: (tb.value?.mouvementsParJour || []).map(m => m.quantiteEntree), backgroundColor: 'color-mix(in srgb, var(--color-primary) 70%, transparent)', borderColor: 'var(--color-primary)', borderRadius: 6 },
     { label: 'Sorties (consommation)', data: (tb.value?.mouvementsParJour || []).map(m => m.quantiteSortie), backgroundColor: 'rgba(220,38,38,0.7)', borderColor: '#dc2626', borderRadius: 6 },
   ],
 }))
 const mouvementsJourOpts: any = { ...cb, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
 
-const COULEURS = ['#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const COULEURS = ['var(--color-primary)', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
 
 /** Répartition de la consommation entre provisions. */
 const repartitionConsoData = computed(() => {
@@ -318,11 +318,11 @@ const stockOpts: any = { ...cb, indexAxis: 'y' as const, scales: { x: { beginAtZ
 .rdb-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .rdb-kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: #f9fafb; }
 .rdb-kpi--stock  { background: linear-gradient(135deg,#faf5ff,#f3e8ff); color: #7e22ce; }
-.rdb-kpi--achats { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rdb-kpi--achats { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rdb-kpi--conso  { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
 .rdb-kpi--nb     { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
 .rdb-kpi--alerte { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
-.rdb-kpi--ok     { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rdb-kpi--ok     { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rdb-kpi__val { display: block; font-size: 1.05rem; font-weight: 800; letter-spacing: -0.4px; }
 .rdb-kpi__lbl { display: block; font-size: 0.72rem; font-weight: 500; opacity: 0.8; }
 
@@ -349,7 +349,7 @@ const stockOpts: any = { ...cb, indexAxis: 'y' as const, scales: { x: { beginAtZ
 .rdb-ia__synthese { font-size: 0.875rem; color: #374151; line-height: 1.6; margin: 0 0 18px; }
 .rdb-ia__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
 .rdb-ia__col-title { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 8px; }
-.rdb-ia__col-title--forts { color: #16a34a; }
+.rdb-ia__col-title--forts { color: var(--color-primary); }
 .rdb-ia__col-title--attention { color: #d97706; }
 .rdb-ia__col-title--reco { color: #7c3aed; }
 .rdb-ia__col ul, .rdb-ia__reco ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }

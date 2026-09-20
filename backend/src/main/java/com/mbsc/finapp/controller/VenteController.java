@@ -1,5 +1,6 @@
 package com.mbsc.finapp.controller;
 
+import com.mbsc.finapp.dto.vente.AjouterLigneVenteRequest;
 import com.mbsc.finapp.dto.vente.ReglerCreanceRequest;
 import com.mbsc.finapp.dto.vente.VenteRequest;
 import com.mbsc.finapp.dto.vente.VenteResponse;
@@ -36,6 +37,11 @@ public class VenteController {
     @ResponseStatus(HttpStatus.CREATED)
     public VenteResponse creer(@Valid @RequestBody VenteRequest req) {
         return service.creer(req);
+    }
+
+    @PostMapping("/{id}/lignes")
+    public VenteResponse ajouterLigne(@PathVariable Long id, @Valid @RequestBody AjouterLigneVenteRequest req) {
+        return service.ajouterLigne(id, req);
     }
 
     @PostMapping("/{id}/valider")

@@ -134,10 +134,14 @@ const transportItems: NavItem[] = [
 const restaurantItems: NavItem[] = [
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/restaurant', module: 'RESTAURANT' },
   { title: 'Carte', icon: 'mdi-silverware-fork-knife', to: '/restaurant/carte', module: 'RESTAURANT' },
+  { title: 'Fiches techniques', icon: 'mdi-clipboard-text-outline', to: '/restaurant/recettes', module: 'RESTAURANT' },
+  { title: 'Production', icon: 'mdi-chef-hat', to: '/restaurant/production', module: 'RESTAURANT', niveau: 'ECRITURE' },
+  { title: 'Salles et tables', icon: 'mdi-floor-plan', to: '/restaurant/salles', module: 'RESTAURANT' },
   { title: 'Stock cuisine & bar', icon: 'mdi-clipboard-list-outline', to: '/restaurant/stock', module: 'RESTAURANT' },
   { title: 'Provisions', icon: 'mdi-sack', to: '/restaurant/provisions', module: 'RESTAURANT' },
   { title: 'Tableau de bord Provisions', icon: 'mdi-chart-box-outline', to: '/restaurant/provisions/tableau-bord', module: 'RESTAURANT' },
-  { title: 'Réceptions', icon: 'mdi-truck-delivery-outline', to: '/restaurant/receptions', module: 'RESTAURANT', niveau: 'ECRITURE' },
+  { title: 'Achat de provisions', icon: 'mdi-truck-delivery-outline', to: '/restaurant/provisions/receptions', module: 'RESTAURANT', niveau: 'ECRITURE' },
+  { title: 'Réceptions', icon: 'mdi-bottle-wine-outline', to: '/restaurant/receptions', module: 'RESTAURANT', niveau: 'ECRITURE' },
   { title: 'Bouteilles vides', icon: 'mdi-bottle-wine-outline', to: '/restaurant/emballages', module: 'RESTAURANT' },
   { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/restaurant/emballages/mouvements', module: 'RESTAURANT' },
   { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/restaurant/parametres', module: 'RESTAURANT' },
@@ -317,7 +321,7 @@ watch(() => route.path, (chemin) => {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: #16a34a;
+  background: var(--color-primary);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -405,12 +409,12 @@ watch(() => route.path, (chemin) => {
   color: #111827;
 }
 .modern-drawer__item--active {
-  background: #dcfce7 !important;
-  color: #16a34a !important;
+  background: var(--color-primary-light) !important;
+  color: var(--color-primary) !important;
   font-weight: 600;
 }
 .modern-drawer__item--active .modern-drawer__item-icon {
-  color: #16a34a;
+  color: var(--color-primary);
 }
 
 /* États financiers de premier reflexe (Bilan, Balance...) : reperables d'un
@@ -432,12 +436,12 @@ watch(() => route.path, (chemin) => {
   background: #fde68a;
 }
 .modern-drawer__item--active.modern-drawer__item--essentiel {
-  background: #dcfce7 !important;
-  color: #16a34a !important;
+  background: var(--color-primary-light) !important;
+  color: var(--color-primary) !important;
 }
 .modern-drawer__item--active.modern-drawer__item--essentiel .modern-drawer__item-icon {
   background: transparent;
-  color: #16a34a;
+  color: var(--color-primary);
 }
 
 .modern-drawer__item-icon {
@@ -451,7 +455,7 @@ watch(() => route.path, (chemin) => {
   transition: background 0.15s;
 }
 .modern-drawer__item:hover .modern-drawer__item-icon {
-  background: #f0fdf4;
+  background: var(--color-primary-lighter);
 }
 
 .modern-drawer__item-label {

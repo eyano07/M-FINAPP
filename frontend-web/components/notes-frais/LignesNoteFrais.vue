@@ -34,7 +34,12 @@ const api = useApi()
 // L'entrepôt et le compte de TVA récupérable ne sont plus choisis par
 // l'utilisateur : l'entrepôt actif et le compte 4452 sont retenus
 // automatiquement côté serveur (voir NoteFraisService.creerLignes).
-interface ArticleOption { id: number; code: string; libelle: string; type: 'MARCHANDISE' | 'SERVICE' }
+interface ArticleOption {
+  id: number
+  code: string
+  libelle: string
+  type: 'MARCHANDISE' | 'SERVICE' | 'CONSOMMABLE' | 'PLAT' | 'BOISSON' | 'PROVISION'
+}
 const articlesDispo = ref<ArticleOption[]>([])
 const chargementRef = ref(false)
 let refsChargees = false
@@ -44,7 +49,12 @@ async function chargerReferentielStock() {
   chargementRef.value = true
   try {
     const arts = await api<ArticleOption[]>('/logistique/articles')
-    articlesDispo.value = arts.filter(a => a.type === 'MARCHANDISE')
+    // Tout article stocke peut faire l'objet d'un achat de marchandise — pas
+    // seulement MARCHANDISE au sens strict : une boisson ou une provision du
+    // module Restaurant, par exemple, sont ici au meme titre (voir
+    // TypeArticle.estStocke cote serveur, dont ce filtre est le pendant
+    // client). Seul SERVICE n'a jamais de stock a alimenter.
+    articlesDispo.value = arts.filter(a => a.type !== 'SERVICE')
     refsChargees = true
   } catch {
     // L'utilisateur reste bloqué sur le toggle si le référentiel est indisponible ;
@@ -431,9 +441,9 @@ function fmt(v: number) {
 }
 .lignes-note__tva-apercu {
   font-size: 0.78rem;
-  color: #166534;
-  background: #f0fdf4;
-  border: 1px dashed #bbf7d0;
+  color: var(--color-primary-darkest);
+  background: var(--color-primary-lighter);
+  border: 1px dashed var(--color-primary-mid);
   border-radius: 8px;
   padding: 6px 10px;
   flex: 1 1 260px;
@@ -468,19 +478,19 @@ function fmt(v: number) {
   gap: 12px;
   padding: 12px 16px;
   border-radius: 12px;
-  background: #f0fdf4;
-  border: 1px solid #dcfce7;
+  background: var(--color-primary-lighter);
+  border: 1px solid var(--color-primary-light);
 }
 .lignes-note__total .label {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #166534;
+  color: var(--color-primary-darkest);
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
 .lignes-note__total strong {
   font-size: 1.05rem;
-  color: #15803d;
+  color: var(--color-primary-dark);
 }
 
 @media (max-width: 720px) {

@@ -255,6 +255,6 @@ async function enregistrer() {
 .dialog-header {
   padding: 26px 26px 20px;
   text-align: center;
-  background: linear-gradient(140deg, #34d399 0%, #16a34a 50%, #14532d 100%);
+  background: linear-gradient(140deg, #34d399 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%);
 }
 </style>

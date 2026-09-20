@@ -114,6 +114,12 @@ public class ReferenceGenerator {
         return format("PROV", "seq_provision");
     }
 
+    /** Reference d'une production de plats : PRD-AAAA-NNNNNN. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public String pourProduction() {
+        return format("PRD", "seq_production");
+    }
+
     private String format(String prefixe, String sequence) {
         Number valeur = (Number) em
             .createNativeQuery("SELECT nextval('" + sequence + "')")

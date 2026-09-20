@@ -25,10 +25,10 @@ const TYPE_META: Record<string, { icon: string; color: string }> = {
   NOTE_VERIFIEE:  { icon: 'mdi-check-circle-outline',  color: '#f97316' },
   NOTE_VALIDEE:   { icon: 'mdi-check-decagram-outline', color: '#0891b2' },
   NOTE_REJETEE:   { icon: 'mdi-close-circle-outline',  color: '#dc2626' },
-  NOTE_TRANSMISE: { icon: 'mdi-cash-fast',             color: '#16a34a' },
+  NOTE_TRANSMISE: { icon: 'mdi-cash-fast',             color: 'var(--color-primary)' },
   NOTE_PAYEE:     { icon: 'mdi-cash-check',            color: '#047857' },
   NOTE_ANNULEE:   { icon: 'mdi-cancel',                color: '#6b7280' },
-  ENCAISSEMENT_CAISSE: { icon: 'mdi-cash-plus',        color: '#16a34a' },
+  ENCAISSEMENT_CAISSE: { icon: 'mdi-cash-plus',        color: 'var(--color-primary)' },
 }
 const typeMeta = (type: string) => TYPE_META[type] ?? { icon: 'mdi-bell-outline', color: '#6b7280' }
 
@@ -194,7 +194,7 @@ async function ouvrirNotification(n: NotificationItem) {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: #16a34a;
+  background: var(--color-primary);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -223,7 +223,7 @@ async function ouvrirNotification(n: NotificationItem) {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #16a34a, #15803d);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
   color: #fff;
   font-size: 0.75rem;
   font-weight: 700;
@@ -260,7 +260,7 @@ async function ouvrirNotification(n: NotificationItem) {
 .notif-panel__mark-all {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #16a34a;
+  color: var(--color-primary);
   background: none;
   border: none;
   cursor: pointer;
@@ -298,8 +298,8 @@ async function ouvrirNotification(n: NotificationItem) {
   transition: background 0.15s;
 }
 .notif-item:hover { background: #f9fafb; }
-.notif-item--non-lue { background: #f0fdf4; }
-.notif-item--non-lue:hover { background: #dcfce7; }
+.notif-item--non-lue { background: var(--color-primary-lighter); }
+.notif-item--non-lue:hover { background: var(--color-primary-light); }
 
 .notif-item__icon {
   display: inline-flex;
@@ -341,7 +341,7 @@ async function ouvrirNotification(n: NotificationItem) {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #16a34a;
+  background: var(--color-primary);
   flex-shrink: 0;
   margin-top: 6px;
 }
@@ -367,7 +367,7 @@ async function ouvrirNotification(n: NotificationItem) {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #16a34a, #15803d);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
   color: #fff;
   font-size: 0.875rem;
   font-weight: 700;
@@ -402,8 +402,8 @@ async function ouvrirNotification(n: NotificationItem) {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 100px;
-  background: #dcfce7;
-  color: #16a34a;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
 }
 
 .user-menu__divider {
@@ -430,8 +430,8 @@ async function ouvrirNotification(n: NotificationItem) {
   transition: background 0.15s, color 0.15s;
 }
 .user-menu__profile-link:hover {
-  background: #f0fdf4;
-  color: #16a34a;
+  background: var(--color-primary-lighter);
+  color: var(--color-primary);
 }
 .user-menu__logout:hover {
   background: #fef2f2;

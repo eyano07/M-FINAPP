@@ -12,7 +12,8 @@ public record ParametresEntrepriseResponse(
     String rccm,
     String idNat,
     String nif,
-    String logoUrl
+    String logoUrl,
+    String couleurPrimaire
 ) {
     public static ParametresEntrepriseResponse from(ParametresEntreprise p) {
         // Parametre de cache-busting (?v=...) : sans lui, le navigateur
@@ -23,6 +24,6 @@ public record ParametresEntrepriseResponse(
             : null;
         return new ParametresEntrepriseResponse(
             p.getNom(), p.getNomComplet(), p.getSlogan(), p.getAdresse(), p.getTelephone(),
-            p.getEmail(), p.getRccm(), p.getIdNat(), p.getNif(), logoUrl);
+            p.getEmail(), p.getRccm(), p.getIdNat(), p.getNif(), logoUrl, p.getCouleurPrimaire());
     }
 }

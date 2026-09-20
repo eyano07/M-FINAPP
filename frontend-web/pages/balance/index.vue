@@ -249,7 +249,7 @@ function toggleDevise() {
   min-width: 88px;
   transition: border-color 0.2s;
 }
-.bal-devise-toggle:hover { border-color: #16a34a; }
+.bal-devise-toggle:hover { border-color: var(--color-primary); }
 .bal-devise-toggle__pill {
   position: absolute;
   top: 3px; left: 3px;
@@ -305,7 +305,7 @@ function toggleDevise() {
   flex-shrink: 0;
 }
 .bal-card__icon--charge  { background: #fee2e2; color: #dc2626; }
-.bal-card__icon--produit { background: #dcfce7; color: #16a34a; }
+.bal-card__icon--produit { background: var(--color-primary-light); color: var(--color-primary); }
 
 .bal-card__title {
   font-size: 0.95rem;
@@ -326,7 +326,7 @@ function toggleDevise() {
   font-variant-numeric: tabular-nums;
 }
 .bal-card__total--charge  { color: #dc2626; }
-.bal-card__total--produit { color: #16a34a; }
+.bal-card__total--produit { color: var(--color-primary); }
 .bal-card__sym { font-size: 0.78rem; font-weight: 600; margin-left: 2px; }
 
 /* ── Table ───────────────────────────────────────────────── */
@@ -392,7 +392,7 @@ function toggleDevise() {
   font-variant-numeric: tabular-nums;
 }
 .bal-table__amount--charge  { color: #dc2626; }
-.bal-table__amount--produit { color: #16a34a; }
+.bal-table__amount--produit { color: var(--color-primary); }
 
 .bal-table__footer {
   display: flex;
@@ -406,7 +406,7 @@ function toggleDevise() {
 .bal-table__footer-label { color: #374151; }
 .bal-table__footer-val { font-variant-numeric: tabular-nums; }
 .bal-table__footer--charge  .bal-table__footer-val { color: #dc2626; }
-.bal-table__footer--produit .bal-table__footer-val { color: #16a34a; }
+.bal-table__footer--produit .bal-table__footer-val { color: var(--color-primary); }
 
 /* ── Résultat net ────────────────────────────────────────── */
 .bal-result {
@@ -420,7 +420,7 @@ function toggleDevise() {
   border-radius: 20px;
   flex-wrap: wrap;
 }
-.bal-result--pos { background: linear-gradient(135deg, #16a34a 0%, #15803d 50%, #14532d 100%); }
+.bal-result--pos { background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 50%, var(--color-primary-darker) 100%); }
 .bal-result--neg { background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #7f1d1d 100%); }
 
 .bal-result__blob {

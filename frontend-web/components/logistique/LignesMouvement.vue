@@ -127,8 +127,8 @@ function fmt(v: number) {
   gap: 16px;
   padding: 14px 16px;
   border-radius: 12px;
-  background: #f0fdf4;
-  border: 1px solid #dcfce7;
+  background: var(--color-primary-lighter);
+  border: 1px solid var(--color-primary-light);
 }
 .lignes-mvt__total .label {
   font-size: 0.72rem;

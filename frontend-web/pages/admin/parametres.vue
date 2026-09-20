@@ -21,6 +21,7 @@ const form = reactive({
   rccm: '',
   idNat: '',
   nif: '',
+  couleurPrimaire: '#16A34A',
 })
 
 async function charger() {
@@ -37,6 +38,7 @@ async function charger() {
     form.rccm = parametresStore.parametres.rccm || ''
     form.idNat = parametresStore.parametres.idNat || ''
     form.nif = parametresStore.parametres.nif || ''
+    form.couleurPrimaire = parametresStore.parametres.couleurPrimaire || '#16A34A'
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les paramètres.')
   } finally {
@@ -50,6 +52,10 @@ async function enregistrer() {
     erreur.value = 'Le nom de la société est obligatoire.'
     return
   }
+  if (!estHexValide(form.couleurPrimaire)) {
+    erreur.value = 'La couleur doit être un code hexadécimal valide (ex. #16A34A).'
+    return
+  }
   saving.value = true
   erreur.value = ''
   succes.value = ''
@@ -60,6 +66,7 @@ async function enregistrer() {
         nom: form.nom, nomComplet: form.nomComplet || null, slogan: form.slogan || null,
         adresse: form.adresse || null, telephone: form.telephone || null,
         email: form.email || null, rccm: form.rccm || null, idNat: form.idNat || null, nif: form.nif || null,
+        couleurPrimaire: form.couleurPrimaire,
       },
     })
     await parametresStore.charger()
@@ -70,6 +77,33 @@ async function enregistrer() {
     saving.value = false
   }
 }
+
+// ── Couleur de marque ──────────────────────────────────────────────────
+// Palette de depart proposee en raccourci ; l'utilisateur reste libre de
+// saisir n'importe quel hex via le champ texte ou le selecteur natif.
+const COULEURS_PREDEFINIES = [
+  '#16A34A', '#2563EB', '#4F46E5', '#7C3AED', '#DB2777',
+  '#DC2626', '#EA580C', '#D97706', '#0891B2', '#0D9488',
+]
+
+function estHexValide(c: string) {
+  return /^#[0-9A-Fa-f]{6}$/.test(c)
+}
+
+// Apercu en direct pendant la saisie (theme Vuetify + variable CSS), avant
+// tout enregistrement — un hex incomplet en cours de frappe est simplement
+// ignore plutot que d'appliquer une couleur invalide.
+watch(() => form.couleurPrimaire, (c) => {
+  if (estHexValide(c)) parametresStore.previsualiserCouleur(c)
+})
+
+// Si l'utilisateur quitte la page sans enregistrer, l'apercu ne doit pas
+// rester applique ailleurs dans l'appli : on restaure la couleur reellement
+// enregistree (no-op si l'enregistrement a reussi, puisque le store porte
+// alors deja la meme valeur).
+onBeforeUnmount(() => {
+  parametresStore.previsualiserCouleur(parametresStore.parametres.couleurPrimaire || '#16A34A')
+})
 
 // ── Logo ────────────────────────────────────────────────────────────────
 const TYPES_AUTORISES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml']
@@ -262,6 +296,43 @@ async function onLogoChoisi(e: Event) {
         >
         <p class="param-logo-hint">Formats acceptés : JPEG, PNG, WEBP, SVG (5 Mo max).</p>
       </div>
+
+      <!-- ── Couleur de marque ─────────────────────────────────── -->
+      <div class="param-card">
+        <p class="param-card__title">
+          <v-icon icon="mdi-palette-outline" size="16" class="mr-2" />
+          Couleur de l'interface
+        </p>
+
+        <div class="param-color-row">
+          <label class="param-color-swatch" :style="{ background: estHexValide(form.couleurPrimaire) ? form.couleurPrimaire : '#e5e7eb' }">
+            <input v-model="form.couleurPrimaire" type="color" class="param-color-native">
+          </label>
+          <v-text-field
+            v-model="form.couleurPrimaire"
+            placeholder="#16A34A"
+            hide-details="auto"
+            maxlength="7"
+          />
+        </div>
+
+        <div class="param-color-presets">
+          <button
+            v-for="c in COULEURS_PREDEFINIES"
+            :key="c"
+            type="button"
+            class="param-color-preset"
+            :class="{ 'is-active': form.couleurPrimaire.toLowerCase() === c.toLowerCase() }"
+            :style="{ background: c }"
+            :title="c"
+            @click="form.couleurPrimaire = c"
+          />
+        </div>
+
+        <p class="param-logo-hint">
+          S'applique aux boutons, liens et accents dans toute l'application.
+        </p>
+      </div>
     </div>
 
     <v-btn
@@ -292,7 +363,7 @@ async function onLogoChoisi(e: Event) {
   align-items: center;
   gap: 18px;
   padding: 24px 28px;
-  background: linear-gradient(140deg, #16a34a 0%, #15803d 50%, #14532d 100%);
+  background: linear-gradient(140deg, var(--color-primary) 0%, var(--color-primary-dark) 50%, var(--color-primary-darker) 100%);
   border-radius: 20px;
   margin-bottom: 24px;
 }
@@ -355,4 +426,37 @@ async function onLogoChoisi(e: Event) {
 .param-hidden-input { display: none; }
 .param-logo-hint { font-size: 0.75rem; color: #9ca3af; margin: 10px 0 0; text-align: center; }
 .param-registre-hint { font-size: 0.75rem; color: #9ca3af; margin: 14px 0 0; }
+
+/* ── Couleur de marque ───────────────────────────────────── */
+.param-color-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.param-color-swatch {
+  position: relative;
+  width: 44px; height: 44px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  border: 1.5px solid #e5e7eb;
+  overflow: hidden;
+  cursor: pointer;
+}
+.param-color-native {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.param-color-presets { display: flex; flex-wrap: wrap; gap: 10px; }
+.param-color-preset {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  outline: 1.5px solid #e5e7eb;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.12s ease, outline-color 0.12s ease;
+}
+.param-color-preset:hover { transform: scale(1.12); }
+.param-color-preset.is-active { outline: 2px solid #111827; outline-offset: 1px; }
 </style>

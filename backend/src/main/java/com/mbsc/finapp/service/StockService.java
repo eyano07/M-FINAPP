@@ -87,6 +87,11 @@ public class StockService {
         article.setLibelle(req.libelle());
         article.setUniteMesure(req.uniteMesure());
         article.setType(type);
+        // Pertinente uniquement pour une boisson (carte du restaurant) : neutralisee
+        // pour tout autre type, plutot que de laisser trainer une valeur qui n'aurait
+        // plus de sens si l'article change de type.
+        boolean categorieApplicable = type == TypeArticle.BOISSON && StringUtils.hasText(req.categorie());
+        article.setCategorie(categorieApplicable ? req.categorie().trim() : null);
         article.setPrixVente(req.prixVente());
         article.setPrixAchat(req.prixAchat());
         article.setSoumisTva(req.soumisTva() == null || req.soumisTva());

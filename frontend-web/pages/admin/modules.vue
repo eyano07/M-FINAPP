@@ -14,7 +14,7 @@ const toggling = ref<string | null>(null)
 const modules = ref<ModuleConfig[]>([])
 
 const META: Record<string, { label: string; description: string; icon: string; color: string }> = {
-  CAISSE: { label: 'Caisse', description: 'Opérations de caisse, paiement des notes de frais, journal, grand livre et balance.', icon: 'mdi-cash-register', color: '#16a34a' },
+  CAISSE: { label: 'Caisse', description: 'Opérations de caisse, paiement des notes de frais, journal, grand livre et balance.', icon: 'mdi-cash-register', color: 'var(--color-primary)' },
   BANQUE: { label: 'Banque', description: 'Opérations bancaires et journal de banque.', icon: 'mdi-bank', color: '#2563eb' },
   MOBILE_MONEY: { label: 'Mobile Money', description: 'Opérations mobile money et journal associé.', icon: 'mdi-cellphone', color: '#7c3aed' },
   COMPTABILITE: { label: 'Comptabilité', description: 'Pièces comptables, grand livre par compte, bilan, compte de résultat, budgets, clôture.', icon: 'mdi-calculator-variant-outline', color: '#0891b2' },
@@ -184,6 +184,6 @@ async function basculer(m: ModuleConfig) {
   flex-shrink: 0;
   white-space: nowrap;
 }
-.mod-row__statut--on { background: #dcfce7; color: #16a34a; }
+.mod-row__statut--on { background: var(--color-primary-light); color: var(--color-primary); }
 .mod-row__statut--off { background: #f3f4f6; color: #9ca3af; }
 </style>

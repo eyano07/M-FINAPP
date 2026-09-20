@@ -67,13 +67,19 @@ const form = reactive({
   articleBoissonId: null as number | null,
   nbCasiers: null as number | null,
   nbBouteillesSupp: null as number | null,
-  devisePrix: 'USD' as 'USD' | 'CDF',
+  devisePrix: 'CDF' as 'USD' | 'CDF',
   prixUnitaire: null as number | null,
   entrepotId: null as number | null,
   beneficiaire: '',
   description: '',
   echangeConsigne: true,
 })
+
+/** Facture proforma ou justificatif fournisseur, joint à la note dès sa création. */
+const fichierJoint = ref<File | null>(null)
+function onFichierJoint(f: File | File[] | null) {
+  fichierJoint.value = Array.isArray(f) ? (f[0] ?? null) : f
+}
 
 /** Équivalent indicatif dans l'autre devise, au taux du jour — n'influence ni la saisie ni l'enregistrement. */
 const prixEquivalent = computed(() => {
@@ -181,6 +187,11 @@ async function envoyerDemande() {
         }],
       },
     })
+    if (fichierJoint.value) {
+      const formData = new FormData()
+      formData.append('fichier', fichierJoint.value)
+      await api(`/notes-frais/${note.id}/pieces-jointes`, { method: 'POST', body: formData })
+    }
     await api(`/notes-frais/${note.id}/soumettre`, { method: 'POST', body: {} })
 
     succes.value = `Demande ${note.reference} envoyée au DFIN pour validation `
@@ -190,6 +201,7 @@ async function envoyerDemande() {
     form.prixUnitaire = null
     form.beneficiaire = ''
     form.description = ''
+    fichierJoint.value = null
     await charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, "Échec de l'envoi de la demande d'achat.")
@@ -322,6 +334,18 @@ function fmtDate(iso: string) {
         variant="outlined"
         density="comfortable"
         class="mb-3"
+      />
+
+      <v-file-input
+        label="Facture proforma ou justificatif (facultatif)"
+        accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+        variant="outlined"
+        density="comfortable"
+        prepend-icon=""
+        prepend-inner-icon="mdi-paperclip"
+        show-size
+        class="mb-3"
+        @update:model-value="onFichierJoint"
       />
 
       <v-switch

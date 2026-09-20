@@ -474,7 +474,7 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
 .sugg-item:last-of-type { border-bottom: none; }
 .sugg-item__ligne { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sugg-avant { font-family: monospace; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 1px 8px; border-radius: 6px; }
-.sugg-apres { font-family: monospace; font-weight: 700; color: #15803d; background: #dcfce7; padding: 1px 8px; border-radius: 6px; }
+.sugg-apres { font-family: monospace; font-weight: 700; color: var(--color-primary-dark); background: var(--color-primary-light); padding: 1px 8px; border-radius: 6px; }
 .sugg-libelle { font-size: 0.8rem; color: #6b7280; }
 .sugg-badge { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px; color: #7c3aed; background: #ede9fe; padding: 2px 7px; border-radius: 100px; }
 .sugg-raison { font-size: 0.78rem; color: #6b7280; margin: 4px 0 0; }

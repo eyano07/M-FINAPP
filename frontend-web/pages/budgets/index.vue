@@ -258,17 +258,17 @@ const taux = (b: Budget) => (b.totalPrevu ? Math.round((b.totalRealise / b.total
   padding: 0 20px;
   height: 42px;
   border-radius: 12px;
-  background: #16a34a;
+  background: var(--color-primary);
   color: #fff;
   font-size: 0.875rem;
   font-weight: 600;
   border: none;
   cursor: pointer;
   transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.25);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
   flex-shrink: 0;
 }
-.bud-new-btn:hover { background: #15803d; box-shadow: 0 4px 14px rgba(22,163,74,0.35); }
+.bud-new-btn:hover { background: var(--color-primary-dark); box-shadow: 0 4px 14px color-mix(in srgb, var(--color-primary) 35%, transparent); }
 
 /* ── Dialog wrapper ──────────────────────────────────────── */
 .bud-dialog {
@@ -285,7 +285,7 @@ const taux = (b: Budget) => (b.totalPrevu ? Math.round((b.totalRealise / b.total
   align-items: center;
   gap: 14px;
   padding: 22px 22px 22px 22px;
-  background: linear-gradient(140deg, #22c55e 0%, #16a34a 50%, #14532d 100%);
+  background: linear-gradient(140deg, var(--color-primary-mid) 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%);
 }
 .bud-dialog__head-blob {
   position: absolute;
@@ -388,7 +388,7 @@ const taux = (b: Budget) => (b.totalPrevu ? Math.round((b.totalRealise / b.total
   align-items: center;
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #16a34a;
+  color: var(--color-primary);
   background: none;
   border: none;
   cursor: pointer;
@@ -427,15 +427,15 @@ const taux = (b: Budget) => (b.totalPrevu ? Math.round((b.totalRealise / b.total
   padding: 0 22px;
   height: 40px;
   border-radius: 10px;
-  background: #16a34a;
+  background: var(--color-primary);
   color: #fff;
   font-size: 0.875rem;
   font-weight: 600;
   border: none;
   cursor: pointer;
   transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.25);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
-.bud-submit-btn:hover:not(:disabled) { background: #15803d; }
+.bud-submit-btn:hover:not(:disabled) { background: var(--color-primary-dark); }
 .bud-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>

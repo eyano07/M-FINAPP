@@ -82,7 +82,7 @@ const RUBRIQUES = [
   { cle: 'commentaires', titre: 'Commentaires', icone: 'mdi-comment-quote-outline', couleur: '#7c3aed' },
   { cle: 'fonctionnement', titre: 'Fonctionnement', icone: 'mdi-swap-horizontal', couleur: '#0369a1' },
   { cle: 'exclusions', titre: 'Exclusions', icone: 'mdi-cancel', couleur: '#b91c1c' },
-  { cle: 'controle', titre: 'Éléments de contrôle', icone: 'mdi-check-decagram-outline', couleur: '#15803d' },
+  { cle: 'controle', titre: 'Éléments de contrôle', icone: 'mdi-check-decagram-outline', couleur: 'var(--color-primary-dark)' },
 ] as const
 
 const ficheRubriques = computed(() =>
@@ -253,7 +253,7 @@ const typeColor: Record<string, { bg: string; color: string }> = {
   ACTIF:   { bg: '#dbeafe', color: '#1d4ed8' },
   PASSIF:  { bg: '#fed7aa', color: '#c2410c' },
   CHARGE:  { bg: '#fee2e2', color: '#dc2626' },
-  PRODUIT: { bg: '#dcfce7', color: '#16a34a' },
+  PRODUIT: { bg: 'var(--color-primary-light)', color: 'var(--color-primary)' },
 }
 const classeLabel = (n: number) => CLASSES.find((c) => c.num === n)?.label ?? ''
 const fmtNumero = (n: string) => {
@@ -713,12 +713,12 @@ const parentOptions = computed(() =>
 .pc-new-btn {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 0 20px; height: 40px; border-radius: 11px;
-  background: #16a34a; color: #fff; font-size: 0.875rem; font-weight: 600;
+  background: var(--color-primary); color: #fff; font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer;
   transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.25);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
-.pc-new-btn:hover { background: #15803d; }
+.pc-new-btn:hover { background: var(--color-primary-dark); }
 
 /* ── Filtres ─────────────────────────────────────────────────────────────── */
 .pc-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; align-items: flex-start; }
@@ -737,7 +737,7 @@ const parentOptions = computed(() =>
   cursor: pointer; transition: all 0.15s;
 }
 .pc-chip:hover { border-color: #d1d5db; background: #f3f4f6; }
-.pc-chip--on   { background: #16a34a; color: #fff; border-color: #16a34a; }
+.pc-chip--on   { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
 .pc-count { font-size: 0.8rem; color: #9ca3af; margin: 0 0 12px; font-weight: 500; }
 
 /* ── Table card ──────────────────────────────────────────────────────────── */
@@ -758,8 +758,8 @@ const parentOptions = computed(() =>
 .pc-table tbody tr { border-bottom: 1px solid #f9fafb; transition: background 0.12s; }
 .pc-table tbody tr:last-child { border-bottom: none; }
 .pc-table tbody tr:hover { background: #fafafa; }
-.pc-row--manuel { background: #f0fdf4; }
-.pc-row--manuel:hover { background: #dcfce7 !important; }
+.pc-row--manuel { background: var(--color-primary-lighter); }
+.pc-row--manuel:hover { background: var(--color-primary-light) !important; }
 .pc-table td { padding: 10px 16px; vertical-align: middle; }
 
 .pc-num-cell { display: flex; align-items: center; gap: 6px; }
@@ -771,8 +771,8 @@ const parentOptions = computed(() =>
 }
 .pc-manuel-badge {
   font-size: 0.6rem; font-weight: 700; padding: 1px 6px;
-  border-radius: 100px; background: #dcfce7; color: #16a34a;
-  border: 1px solid #bbf7d0; letter-spacing: 0.3px;
+  border-radius: 100px; background: var(--color-primary-light); color: var(--color-primary);
+  border: 1px solid var(--color-primary-mid); letter-spacing: 0.3px;
 }
 .pc-libelle { color: #374151; }
 .pc-parent-hint { font-size: 0.72rem; color: #9ca3af; margin-left: 6px; font-family: monospace; }
@@ -808,13 +808,13 @@ const parentOptions = computed(() =>
 .pc-card-item {
   background: #fff;
   border: 1px solid #eef0f2;
-  border-left: 3px solid #16a34a;
+  border-left: 3px solid var(--color-primary);
   border-radius: 16px;
   padding: 14px 16px;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: box-shadow 0.15s, transform 0.15s;
 }
-.pc-card-item--manuel { background: #f7fdf9; border-color: #dcfce7; border-left-color: #16a34a; }
+.pc-card-item--manuel { background: #f7fdf9; border-color: var(--color-primary-light); border-left-color: var(--color-primary); }
 .pc-card-item--commente { cursor: pointer; }
 .pc-card-item--commente:active { transform: scale(0.99); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
 
@@ -854,7 +854,7 @@ const parentOptions = computed(() =>
 .pc-dialog__head {
   position: relative; overflow: hidden;
   display: flex; align-items: center; gap: 14px; padding: 22px;
-  background: linear-gradient(140deg, #22c55e 0%, #16a34a 50%, #14532d 100%);
+  background: linear-gradient(140deg, var(--color-primary-mid) 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%);
 }
 .pc-dialog__head--danger {
   background: linear-gradient(140deg, #f87171 0%, #dc2626 50%, #7f1d1d 100%);
@@ -933,11 +933,11 @@ const parentOptions = computed(() =>
 .pc-submit-btn {
   display: inline-flex; align-items: center;
   padding: 0 22px; height: 40px; border-radius: 10px;
-  background: #16a34a; color: #fff; font-size: 0.875rem; font-weight: 600;
+  background: var(--color-primary); color: #fff; font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer;
   transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.25);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
-.pc-submit-btn:hover:not(:disabled) { background: #15803d; }
+.pc-submit-btn:hover:not(:disabled) { background: var(--color-primary-dark); }
 .pc-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>

@@ -17,6 +17,7 @@ interface Vente {
   pieceReference?: string
   mouvementReference?: string
   createdByNom?: string
+  tableNumero?: string
 }
 
 const api = useApi()
@@ -50,6 +51,37 @@ async function charger() {
   }
 }
 onMounted(charger)
+
+// ── Filtres de la liste (les cartes de synthèse ci-dessus, elles, portent
+// toujours sur l'ensemble des ventes chargées, pas sur ce sous-ensemble). Par
+// defaut, seule la date du jour : la liste des ventes grossit vite et
+// personne ne veut refaire defiler l'historique complet chaque matin.
+const aujourdhui = () => new Date().toISOString().slice(0, 10)
+const filtreDu = ref(aujourdhui())
+const filtreAu = ref(aujourdhui())
+const filtreTable = ref('')
+const filtreClient = ref('')
+const filtrePiece = ref('')
+const filtreReference = ref('')
+
+function reinitialiserFiltres() {
+  filtreDu.value = aujourdhui()
+  filtreAu.value = aujourdhui()
+  filtreTable.value = ''
+  filtreClient.value = ''
+  filtrePiece.value = ''
+  filtreReference.value = ''
+}
+
+const ventesFiltrees = computed(() => ventes.value.filter((v) => {
+  if (filtreDu.value && v.dateVente < filtreDu.value) return false
+  if (filtreAu.value && v.dateVente > filtreAu.value) return false
+  if (filtreTable.value && !(v.tableNumero || '').toLowerCase().includes(filtreTable.value.toLowerCase())) return false
+  if (filtreClient.value && !(v.clientNom || '').toLowerCase().includes(filtreClient.value.toLowerCase())) return false
+  if (filtrePiece.value && !(v.pieceReference || '').toLowerCase().includes(filtrePiece.value.toLowerCase())) return false
+  if (filtreReference.value && !(v.reference || '').toLowerCase().includes(filtreReference.value.toLowerCase())) return false
+  return true
+}))
 
 // Chaque vente porte sa devise et le taux figé au moment de l'opération :
 // les cumuls se font donc vente par vente, ramenées en USD avec LEUR taux.
@@ -139,13 +171,27 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
       </div>
     </div>
 
+    <!-- ── Filtres ───────────────────────────────────────────── -->
+    <div class="d-flex ga-3 mt-4 mb-2 flex-wrap align-end">
+      <v-text-field v-model="filtreDu" type="date" label="Du" variant="outlined" density="comfortable" rounded="lg" hide-details style="max-width: 170px" />
+      <v-text-field v-model="filtreAu" type="date" label="Au" variant="outlined" density="comfortable" rounded="lg" hide-details style="max-width: 170px" />
+      <v-text-field v-model="filtreTable" label="Table" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 140px" />
+      <v-text-field v-model="filtreClient" label="Client" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 180px" />
+      <v-text-field v-model="filtrePiece" label="Pièce" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 160px" />
+      <v-text-field v-model="filtreReference" label="Référence" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 180px" />
+      <v-btn variant="text" color="primary" prepend-icon="mdi-filter-remove-outline" @click="reinitialiserFiltres">
+        Réinitialiser
+      </v-btn>
+    </div>
+
     <!-- ── Liste ─────────────────────────────────────────────── -->
-    <v-card class="classroom-card mt-4">
-      <v-card-title class="text-subtitle-1 font-weight-semibold pa-4 pb-2">
-        Historique des ventes
+    <v-card class="classroom-card">
+      <v-card-title class="text-subtitle-1 font-weight-semibold pa-4 pb-2 d-flex align-center justify-space-between">
+        <span>Historique des ventes</span>
+        <span class="text-caption text-medium-emphasis font-weight-regular">{{ ventesFiltrees.length }} vente(s)</span>
       </v-card-title>
       <v-data-table
-        :items="ventes"
+        :items="ventesFiltrees"
         :loading="loading"
         density="comfortable"
         items-per-page="15"
@@ -153,6 +199,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
           { title: 'Date', key: 'dateVente' },
           { title: 'Référence', key: 'reference' },
           { title: 'Client', key: 'clientNom', sortable: false },
+          { title: 'Table', key: 'tableNumero', sortable: false },
           { title: 'Règlement', key: 'modeReglement', sortable: false },
           { title: 'Total HT', key: 'totalHt', align: 'end' },
           { title: 'TVA', key: 'totalTva', align: 'end' },
@@ -165,6 +212,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
         <template #[`item.dateVente`]="{ item }">{{ fmtDate(item.dateVente) }}</template>
         <template #[`item.reference`]="{ item }">
           <code class="text-caption text-primary">{{ item.reference }}</code>
+        </template>
+        <template #[`item.tableNumero`]="{ item }">
+          <span v-if="item.tableNumero">Table {{ item.tableNumero }}</span>
+          <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #[`item.modeReglement`]="{ item }">
           <span class="d-inline-flex align-center">
@@ -192,7 +243,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
         <template #no-data>
           <div class="vte-empty">
             <v-icon icon="mdi-receipt-text-outline" size="42" color="#d1d5db" class="mb-2" />
-            <p>Aucune vente enregistrée.</p>
+            <p v-if="ventes.length">Aucune vente ne correspond aux filtres.</p>
+            <p v-else>Aucune vente enregistrée.</p>
           </div>
         </template>
       </v-data-table>
@@ -229,7 +281,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
   border-radius: 12px;
   flex-shrink: 0;
 }
-.vte-stat--ca  .vte-stat__icon { background: #dcfce7; color: #16a34a; }
+.vte-stat--ca  .vte-stat__icon { background: var(--color-primary-light); color: var(--color-primary); }
 .vte-stat--tva .vte-stat__icon { background: #ede9fe; color: #7c3aed; }
 .vte-stat--nb  .vte-stat__icon { background: #dbeafe; color: #2563eb; }
 .vte-stat__label { font-size: 0.78rem; color: #9ca3af; margin-bottom: 2px; }
