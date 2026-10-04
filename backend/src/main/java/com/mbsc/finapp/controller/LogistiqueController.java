@@ -24,6 +24,12 @@ public class LogistiqueController {
         return service.listerArticles();
     }
 
+    /** Un article à jour — relu par l'écran de vente pour proposer le prix en vigueur. */
+    @GetMapping("/articles/{id}")
+    public ArticleResponse consulterArticle(@PathVariable Long id) {
+        return service.consulterArticle(id);
+    }
+
     @PostMapping("/articles")
     @ResponseStatus(HttpStatus.CREATED)
     public ArticleResponse creerArticle(@Valid @RequestBody ArticleRequest req) {

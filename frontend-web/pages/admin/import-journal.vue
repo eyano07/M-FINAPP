@@ -1,5 +1,7 @@
 <script setup lang="ts">
-definePageMeta({ roles: ['ADMIN', 'DFIN'] })
+// Reserve a l'administrateur : l'import ecrit au grand livre, tresorerie
+// comprise, sans passer par une note de frais (voir ImportJournalService).
+definePageMeta({ roles: ['ADMIN'] })
 
 interface Rapport {
   simulation: boolean

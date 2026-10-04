@@ -33,9 +33,10 @@ const api = useApi()
 const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
 
-// Définir la composition d'un plat, c'est définir ce qu'on vend : même règle
-// que le prix et l'imputation comptable (RestaurantService.ECRITURE_CARTE).
-const canWrite = computed(() => auth.hasRole('ADMIN'))
+// Composer un plat en ingrédients est le travail quotidien du chef
+// cuisinier (responsable restaurant) — l'administrateur, lui, se limite à
+// créer la fiche article sur la carte (RestaurantService.ECRITURE).
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
 
 const recettes = ref<Recette[]>([])
 const provisions = ref<Provision[]>([])
@@ -84,6 +85,62 @@ const margeEstimee = computed(() => {
   const prixUSD = r.prixVente / tauxChange.value
   return ((prixUSD - coutEstime.value) / prixUSD) * 100
 })
+
+// ── Devise d'affichage de cette page : bouton poussoir local, par défaut
+// FC — indépendant de la préférence globale du module (parametresStore),
+// pour ne pas la modifier au passage sur un simple écran de consultation.
+const deviseAffichage = ref<'CDF' | 'USD'>('CDF')
+
+/** Formate un montant tenu en USD (coût moyen des provisions, coût de revient). */
+// La devise est celle choisie sur cet écran ; le nombre de décimales, celui
+// des paramètres du restaurant (parametres.fmtDans).
+function fmtUSD(montantUSD: number): string {
+  if (deviseAffichage.value === 'CDF') {
+    if (tauxChange.value <= 0) return '—'
+    return parametres.fmtDans(montantUSD * tauxChange.value, 'CDF')
+  }
+  return parametres.fmtDans(montantUSD, 'USD')
+}
+/** Formate un montant tenu en FC (Article.prixVente). */
+function fmtFC(montantFC?: number | null): string {
+  if (montantFC == null) return '—'
+  if (deviseAffichage.value === 'CDF') {
+    return parametres.fmtDans(montantFC, 'CDF')
+  }
+  if (tauxChange.value <= 0) return '—'
+  return parametres.fmtDans(montantFC / tauxChange.value, 'USD')
+}
+
+// ── Prix de vente, modifiable directement depuis la fiche ────────────────
+const editionPrix = ref(false)
+const prixEdite = ref<number | null>(null)
+const enregistrementPrix = ref(false)
+
+function activerEditionPrix() {
+  prixEdite.value = recetteSelectionnee.value?.prixVente ?? null
+  editionPrix.value = true
+}
+function annulerEditionPrix() {
+  editionPrix.value = false
+}
+async function enregistrerPrix() {
+  if (!platSelectionneId.value) return
+  erreur.value = ''
+  enregistrementPrix.value = true
+  try {
+    const maj = await api<Recette>(`/restaurant/recettes/${platSelectionneId.value}/prix-vente`, {
+      method: 'PUT',
+      body: { prixVente: prixEdite.value },
+    })
+    const i = recettes.value.findIndex(r => r.platId === maj.platId)
+    if (i !== -1) recettes.value[i] = maj
+    editionPrix.value = false
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Échec de la modification du prix de vente.')
+  } finally {
+    enregistrementPrix.value = false
+  }
+}
 
 async function charger() {
   loading.value = true
@@ -297,7 +354,7 @@ const fmtQte = (n?: number | null) =>
             class="fiche-ligne__qte"
             @update:model-value="modifie = true"
           />
-          <span class="fiche-ligne__cout">{{ parametres.fmtMontant(coutLigne(l)) }}</span>
+          <span class="fiche-ligne__cout">{{ fmtUSD(coutLigne(l)) }}</span>
           <v-btn
             v-if="canWrite"
             icon="mdi-close" size="x-small" variant="text" title="Retirer"
@@ -307,13 +364,40 @@ const fmtQte = (n?: number | null) =>
 
         <v-divider class="my-4" />
 
+        <div class="d-flex justify-end mb-2">
+          <v-btn-toggle v-model="deviseAffichage" mandatory density="compact" variant="outlined" rounded="lg">
+            <v-btn value="CDF" size="x-small">FC</v-btn>
+            <v-btn value="USD" size="x-small">$US</v-btn>
+          </v-btn-toggle>
+        </div>
+
         <div class="fiche-total">
           <span>Coût de revient estimé par portion</span>
-          <strong>{{ parametres.fmtMontant(coutEstime) }}</strong>
+          <strong>{{ fmtUSD(coutEstime) }}</strong>
         </div>
-        <div v-if="recetteSelectionnee.prixVente" class="fiche-total fiche-total--secondaire">
+        <div class="fiche-total fiche-total--secondaire">
           <span>Prix de vente</span>
-          <span>{{ parametres.fmtMontantDepuisFC(recetteSelectionnee.prixVente) }}</span>
+          <span v-if="!editionPrix" class="d-flex align-center ga-1">
+            {{ fmtFC(recetteSelectionnee.prixVente) }}
+            <v-btn
+              v-if="canWrite"
+              icon="mdi-pencil-outline" size="x-small" variant="text" title="Modifier le prix de vente"
+              @click="activerEditionPrix"
+            />
+          </span>
+          <span v-else class="d-flex align-center ga-1">
+            <v-text-field
+              v-model.number="prixEdite"
+              type="number" min="0" density="compact" variant="outlined" hide-details
+              style="max-width: 130px" suffix="FC"
+              @keyup.enter="enregistrerPrix"
+              @keyup.esc="annulerEditionPrix"
+            />
+            <v-btn icon="mdi-check" size="x-small" variant="tonal" color="primary"
+              :loading="enregistrementPrix" title="Enregistrer" @click="enregistrerPrix" />
+            <v-btn icon="mdi-close" size="x-small" variant="text"
+              :disabled="enregistrementPrix" title="Annuler" @click="annulerEditionPrix" />
+          </span>
         </div>
         <div v-if="margeEstimee != null" class="fiche-total fiche-total--secondaire">
           <span>Marge théorique</span>

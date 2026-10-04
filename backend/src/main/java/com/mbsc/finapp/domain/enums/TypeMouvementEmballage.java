@@ -66,4 +66,27 @@ public enum TypeMouvementEmballage {
     public int delta(int quantite) {
         return sens * quantite;
     }
+
+    /**
+     * true pour un mouvement saisi a la main sur l'ecran des mouvements, donc
+     * annulable depuis cet ecran. VENTE, RETOUR_VENTE et ACHAT sont produits
+     * par la vente ou par le paiement d'une note d'achat, et ne s'annulent
+     * qu'avec l'operation qui les a produits.
+     */
+    public boolean estSaisieManuelle() {
+        return this != VENTE && this != RETOUR_VENTE && this != ACHAT;
+    }
+
+    /**
+     * true si le mouvement fait aussi perdre la boisson elle-meme, pas
+     * seulement son contenant : il s'accompagne d'une sortie de stock.
+     */
+    public boolean sortDuStockDeBoisson() {
+        return this == CASSE_PLEINE || this == PERIME || this == CADEAU;
+    }
+
+    /** true pour un ecart d'inventaire, reserve a l'administrateur. */
+    public boolean estAjustement() {
+        return this == AJUSTEMENT_PLUS || this == AJUSTEMENT_MOINS;
+    }
 }

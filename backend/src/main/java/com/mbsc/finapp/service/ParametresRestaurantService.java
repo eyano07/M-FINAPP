@@ -57,8 +57,14 @@ public class ParametresRestaurantService {
     public ParametresRestaurantResponse enregistrer(ParametresRestaurantRequest req) {
         ParametresRestaurant p = get();
         p.setDeviseAffichage(req.deviseAffichage());
+        // null a un sens ici : l'arrondi automatique (FC sans décimale, USD à 2).
+        p.setDecimalesMontants(req.decimalesMontants());
+        if (req.decimalesQuantites() != null) {
+            p.setDecimalesQuantites(req.decimalesQuantites());
+        }
         p = repository.save(p);
-        log.info("Paramètres restaurant mis à jour [deviseAffichage={}]", p.getDeviseAffichage());
+        log.info("Paramètres restaurant mis à jour [deviseAffichage={}, decimalesMontants={}, decimalesQuantites={}]",
+            p.getDeviseAffichage(), p.getDecimalesMontants(), p.getDecimalesQuantites());
         return ParametresRestaurantResponse.from(p);
     }
 }

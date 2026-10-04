@@ -128,6 +128,9 @@ public class VenteService {
                 + devise + ". Demandez a un administrateur d'enregistrer le taux du jour.");
         }
 
+        TableRestaurant table = req.tableId() == null ? null : tableRestaurantRepository.findById(req.tableId())
+            .orElseThrow(() -> RessourceIntrouvableException.of("Table", req.tableId()));
+
         Vente vente = Vente.builder()
             .reference(referenceGenerator.pourVente())
             .dateVente(date)
@@ -137,10 +140,19 @@ public class VenteService {
             .modeReglement(req.modeReglement())
             .devise(devise)
             .tauxJournalier(tauxDuJour)
-            .table(req.tableId() == null ? null : tableRestaurantRepository.findById(req.tableId())
-                .orElseThrow(() -> RessourceIntrouvableException.of("Table", req.tableId())))
+            .table(table)
             .createdBy(auteur)
             .build();
+
+        // Rattacher une vente a une table la marque occupee automatiquement :
+        // un brouillon ou une addition en cours suffit a le justifier, sans
+        // attendre une bascule manuelle. Le seul chemin pour la liberer reste
+        // le bouton dedie (changerStatutTable) — payer la note ne l'y remet
+        // jamais tout seul, la table pouvant rester occupee au dela du seul
+        // reglement (client qui s'attarde, table a nettoyer...).
+        if (table != null) {
+            table.setOccupee(true);
+        }
 
         boolean contientMarchandise = false;
         int ordre = 1;

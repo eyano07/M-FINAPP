@@ -437,11 +437,25 @@ function onNoteFraisSelect(id: number | null) {
   // taux du jour, uniquement pour l'affichage : le paiement réel est
   // recalculé côté serveur à partir du montant et de la devise de la note).
   const estUSD = (note.devise || 'CDF').toUpperCase() === 'USD'
+  // Arrondi au centime comme le serveur (ConversionDeviseService), qui
+  // recalcule de toute façon le montant réel : sans cet arrondi, une note
+  // de 237 800 FC s'affichait « 108,0909090909091 ».
   form.montantUSD = estUSD
     ? note.montant
-    : (tauxChange.value > 0 ? note.montant / tauxChange.value : note.montant)
+    : (tauxChange.value > 0 ? Math.round((note.montant / tauxChange.value) * 100) / 100 : note.montant)
   form.libelle = note.objet || ''
 }
+
+/**
+ * Note en francs choisie pour un paiement : son montant exact s'affiche sous
+ * le champ, plutôt qu'une reconversion du montant arrondi en dollars
+ * (108,09 × 2 200 = 237 798 FC au lieu des 237 800 FC réels).
+ */
+const noteEnFrancs = computed(() => {
+  if (form.sens !== 'DECAISSEMENT' || !form.noteFraisId) return null
+  const n = notesAPayer.value.find(x => x.id === form.noteFraisId)
+  return n && (n.devise || 'CDF').toUpperCase() !== 'USD' ? n : null
+})
 
 const notesOptions = computed(() =>
   notesAPayer.value.map((n) => ({
@@ -854,7 +868,9 @@ const fmtTaux = computed(() =>
               density="comfortable"
               rounded="lg"
               :rules="rules.montant"
-              :hint="form.montantUSD ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round((form.montantUSD ?? 0) * tauxChange))} FC` : ''"
+              :hint="noteEnFrancs
+                ? `Note de ${new Intl.NumberFormat('fr-FR').format(noteEnFrancs.montant)} FC, convertie au taux du jour`
+                : (form.montantUSD ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round((form.montantUSD ?? 0) * tauxChange))} FC` : '')"
               persistent-hint
               :readonly="form.sens === 'DECAISSEMENT' && !!form.noteFraisId"
               class="mb-3"
@@ -1387,11 +1403,16 @@ const fmtTaux = computed(() =>
   padding: 14px 20px 20px;
 }
 
-/* Ticket thermique : uniquement a l'impression (voir @media print plus bas). */
-.recu-ticket { display: none; }
 </style>
 
 <style>
+/* Ticket thermique : uniquement a l'impression (voir @media print plus
+   bas) — non scope, comme le reste de ce bloc : une regle .recu-ticket
+   scopee ici serait plus specifique que le display:block du @media print
+   ci-dessous (qui ne porte pas l'attribut data-v-* de la portee), et le
+   garderait cache meme a l'impression. */
+.recu-ticket { display: none; }
+
 /* Le reçu est un overlay hors dialog Vuetify (les dialogs sont masqués à
    l'impression par .v-overlay-container dans classroom.scss) : à
    l'impression, on masque tout le contenu normal de la page et les
@@ -1404,6 +1425,10 @@ const fmtTaux = computed(() =>
   .recu-overlay {
     position: static;
     padding: 0;
+    /* Le centrage flex (voir la regle de base) plaquerait sinon le ticket
+       au milieu de la page au lieu de partir du haut, comme sur une
+       imprimante thermique. */
+    display: block;
   }
   .recu-card {
     max-width: none;
@@ -1418,7 +1443,13 @@ const fmtTaux = computed(() =>
     display: block;
     width: 100%;
     max-width: 74mm;
-    margin: 0 auto;
+    /* Pas de "margin: auto" : certains moteurs d'impression (ex. "Enregistrer
+       en PDF") n'honorent pas toujours le @page size 80mm ci-dessus et
+       gardent une page bien plus large — un centrage horizontal y ferait
+       flotter le ticket au milieu au lieu de partir du bord, comme sur une
+       vraie imprimante thermique ou le papier fait a peine plus large que
+       le contenu. */
+    margin: 0;
     font-family: 'Courier New', monospace;
     font-size: 11px;
     line-height: 1.4;

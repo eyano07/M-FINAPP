@@ -29,6 +29,23 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
     boolean existsByCompteId(Long compteId);
 
     /**
+     * true si cette pièce porte une opération de trésorerie (caisse, banque
+     * ou mobile money) : le journal de l'opération la tient pour réglée,
+     * l'extourner seule désynchroniserait le solde du journal de celui du
+     * grand livre — voir ComptabiliteService.annuler.
+     */
+    @Query("""
+        select count(e) > 0 from EcritureGrandLivre e
+        left join e.piece p
+        left join e.transaction t
+        left join e.transactionBancaire tb
+        left join e.transactionMobileMoney tm
+        where p.id = :pieceId
+          and (t.id is not null or tb.id is not null or tm.id is not null)
+    """)
+    boolean existsTresorerieParPieceId(@Param("pieceId") Long pieceId);
+
+    /**
      * Balance agregee (tous comptes) calculee a la volee depuis le Grand Livre.
      * Retourne [numeroCompte, libelle, type, totalDebit, totalCredit].
      */

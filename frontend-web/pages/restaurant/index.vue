@@ -17,6 +17,8 @@ interface BoissonStat {
   stockPleines: number
   bouteillesVides?: number | null
   casiers?: number | null
+  /** Bouteilles par casier ; null si la boisson n'a pas de conditionnement. */
+  contenanceCasier?: number | null
 }
 interface VentesJour { date: string; quantite: number; montant: number }
 interface PerteType { type: string; label: string; quantite: number; valeur: number }
@@ -87,6 +89,10 @@ watch([mois, annee], charger)
 const fmtNb = (n?: number | null) => new Intl.NumberFormat('fr-FR').format(n || 0)
 
 // ── Analyse IA (à la demande) ────────────────────────────────────────────
+// Rôles admis par RestaurantAnalyseIaService : le bouton n'est pas proposé
+// aux autres lecteurs du module (DA, comptable, caissier), qui recevraient un refus.
+const auth = useAuthStore()
+const peutAnalyser = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN']))
 const chargementIa = ref(false)
 const erreurIa = ref('')
 const analyse = ref<AnalyseIa | null>(null)
@@ -96,7 +102,6 @@ async function genererAnalyse() {
   erreurIa.value = ''
   try {
     analyse.value = await api<AnalyseIa>('/restaurant/tableau-bord/analyse-ia', {
-      method: 'POST',
       params: { du: du.value, au: au.value },
     })
   } catch (e: any) {
@@ -119,6 +124,36 @@ const cb: any = {
 
 const fmtDateCourte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
 
+// Chart.js peint sur un <canvas> : contrairement au DOM, son API 2D ne sait
+// pas resoudre var(--color-primary) (couleur invalide → noir). On lit donc
+// la couleur de marque directement depuis le store — une chaine hex simple,
+// exploitable telle quelle par Canvas — plutot que de sonder le CSS calcule :
+// une sonde DOM lue dans onMounted peut s'executer AVANT que
+// useParametresStore().charger() (voir stores/parametres.ts, appele au
+// niveau du layout) n'ait fini d'appliquer la vraie couleur admin sur
+// :root, et capturer a tort la teinte par defaut du store. Une lecture
+// reactive du store n'a pas ce probleme : le graphique se met a jour de
+// lui-meme des que la couleur arrive, quel que soit l'ordre de chargement.
+const identite = useParametresStore()
+const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#16A34A')
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!m) return hex
+  const [r, g, b] = [m[1], m[2], m[3]].map(h => parseInt(h, 16))
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/**
+ * Ramène un montant USD (devise de base) vers la préférence d'affichage du
+ * module — mêmes règles que parametres.fmtMontant, mais un NOMBRE pour
+ * alimenter le graphique plutôt qu'une chaîne déjà formatée.
+ */
+function versDeviseAffichage(montantUSD: number): number {
+  return parametres.devise === 'CDF' && parametres.tauxChange > 0
+    ? montantUSD * parametres.tauxChange
+    : montantUSD
+}
+
 /** Ventes par jour : quantité (barres) et chiffre d'affaires (courbe), deux axes. */
 const ventesJourData = computed(() => ({
   labels: (tb.value?.ventesParJour || []).map(v => fmtDateCourte(v.date)),
@@ -127,15 +162,18 @@ const ventesJourData = computed(() => ({
       type: 'bar' as const,
       label: 'Bouteilles vendues',
       data: (tb.value?.ventesParJour || []).map(v => v.quantite),
-      backgroundColor: 'color-mix(in srgb, var(--color-primary) 65%, transparent)',
-      borderColor: 'var(--color-primary)',
+      backgroundColor: hexToRgba(couleurPrimaireHex.value, 0.65),
+      borderColor: couleurPrimaireHex.value,
       borderRadius: 6,
       yAxisID: 'y',
     },
     {
       type: 'line' as const,
-      label: 'Chiffre d\'affaires (USD)',
-      data: (tb.value?.ventesParJour || []).map(v => v.montant),
+      // Reactif a la preference d'affichage : afficher "(USD)" alors que
+      // les valeurs tracees (et les KPI juste au-dessus) sont converties en
+      // FC laissait croire a un bug des que la preference etait sur FC.
+      label: `Chiffre d'affaires (${parametres.devise === 'CDF' ? 'FC' : 'USD'})`,
+      data: (tb.value?.ventesParJour || []).map(v => versDeviseAffichage(v.montant)),
       borderColor: '#2563eb',
       backgroundColor: 'rgba(37,99,235,0.08)',
       tension: 0.4,
@@ -152,9 +190,25 @@ const ventesJourOpts: any = {
     y: { type: 'linear', position: 'left', beginAtZero: true, ticks: { precision: 0 } },
     y1: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } },
   },
+  plugins: {
+    ...cb.plugins,
+    tooltip: {
+      ...cb.plugins.tooltip,
+      callbacks: {
+        // ctx.parsed.y est deja dans la devise d'affichage (voir
+        // versDeviseAffichage ci-dessus) : on le formate directement,
+        // sans repasser par fmtMontant qui attend un montant en USD brut.
+        label: (ctx: any) => {
+          if (ctx.dataset.type !== 'line') return `${ctx.dataset.label}: ${ctx.parsed.y}`
+          const texte = parametres.fmtDans(ctx.parsed.y, parametres.devise)
+          return `${ctx.dataset.label}: ${texte}`
+        },
+      },
+    },
+  },
 }
 
-const COULEURS = ['var(--color-primary)', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const COULEURS = computed(() => [couleurPrimaireHex.value, '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d'])
 
 /** Répartition du chiffre d'affaires entre les boissons vendues. */
 const repartitionVentesData = computed(() => {
@@ -163,8 +217,8 @@ const repartitionVentesData = computed(() => {
     labels: items.map(b => b.libelle),
     datasets: [{
       data: items.map(b => b.chiffreAffaires),
-      backgroundColor: items.map((_, i) => COULEURS[i % COULEURS.length] + 'cc'),
-      borderColor: items.map((_, i) => COULEURS[i % COULEURS.length]),
+      backgroundColor: items.map((_, i) => hexToRgba(COULEURS.value[i % COULEURS.value.length], 0.8)),
+      borderColor: items.map((_, i) => COULEURS.value[i % COULEURS.value.length]),
       borderWidth: 2,
       hoverOffset: 8,
     }],
@@ -324,22 +378,34 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
             { title: 'Vendu', key: 'quantiteVendue', align: 'end' },
             { title: 'CA', key: 'chiffreAffaires', align: 'end' },
             { title: 'Stock plein', key: 'stockPleines', align: 'end' },
-            { title: 'Vides', key: 'bouteillesVides', align: 'end' },
+            { title: 'Stock vide', key: 'bouteillesVides', align: 'end' },
           ]"
           :items="tb.parBoisson"
           items-per-page="10"
         >
           <template #item.quantiteVendue="{ item }">{{ fmtNb(item.quantiteVendue) }}</template>
           <template #item.chiffreAffaires="{ item }">{{ parametres.fmtMontant(item.chiffreAffaires) }}</template>
-          <template #item.stockPleines="{ item }">{{ fmtNb(item.stockPleines) }}</template>
+          <!-- « N casiers + M bouteilles », avec le total en bouteilles dessous — voir composables/useCasiers. -->
+          <template #item.stockPleines="{ item }">
+            <div>{{ formatCasiers(item.stockPleines, item.contenanceCasier || 0) }}</div>
+            <div v-if="item.contenanceCasier" class="text-caption text-medium-emphasis">
+              soit {{ fmtNb(item.stockPleines) }} bouteille{{ item.stockPleines > 1 ? 's' : '' }}
+            </div>
+          </template>
           <template #item.bouteillesVides="{ item }">
-            {{ item.bouteillesVides != null ? `${fmtNb(item.bouteillesVides)} (${item.casiers} casier${(item.casiers || 0) > 1 ? 's' : ''})` : '—' }}
+            <template v-if="item.bouteillesVides != null">
+              <div>{{ formatCasiers(item.bouteillesVides, item.contenanceCasier || 0) }}</div>
+              <div v-if="item.contenanceCasier" class="text-caption text-medium-emphasis">
+                soit {{ fmtNb(item.bouteillesVides) }} bouteille{{ item.bouteillesVides > 1 ? 's' : '' }}
+              </div>
+            </template>
+            <span v-else class="text-medium-emphasis">—</span>
           </template>
         </v-data-table>
       </v-card>
 
       <!-- ── Analyse IA ────────────────────────────────────────────── -->
-      <div class="rdb-ia">
+      <div v-if="peutAnalyser" class="rdb-ia">
         <v-btn
           variant="tonal"
           color="deep-purple"

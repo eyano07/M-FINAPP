@@ -20,7 +20,7 @@ interface Etablissement { id: number; nom: string; actif: boolean }
 interface Entrepot { id: number; code: string; nom: string; actif: boolean }
 interface StockNiveau { articleId: number; entrepotId: number; quantite: number }
 interface TableRestau { id: number; numero: string }
-interface SalleAvecTables { id: number; nom: string; tables: TableRestau[] }
+interface SalleAvecTables { id: number; nom: string; tables: TableRestau[]; majorationPourcentage?: number }
 
 interface LigneForm {
   articleId: number | null
@@ -64,6 +64,17 @@ const tauxTva = ref(0)
 /** Table du restaurant, plate et prefixee par sa salle — vide si le module Restaurant n'est pas actif ou sans salle configuree. */
 const tablesOptions = computed(() =>
   salles.value.flatMap(s => s.tables.map(t => ({ title: `${s.nom} — Table ${t.numero}`, value: t.id }))))
+
+/** Majoration (%) de la salle de chaque table, ex. 15 pour une salle VIP a +15% — voir SalleRestaurant.majorationPourcentage. */
+const majorationParTable = computed(() => {
+  const m: Record<number, number> = {}
+  for (const s of salles.value) {
+    for (const t of s.tables) m[t.id] = s.majorationPourcentage || 0
+  }
+  return m
+})
+const majorationActuelle = computed(() =>
+  form.tableId != null ? (majorationParTable.value[form.tableId] || 0) : 0)
 
 // Le client peut venir du répertoire ou être saisi librement.
 const modeClient = ref<'REPERTOIRE' | 'LIBRE'>('REPERTOIRE')
@@ -161,11 +172,15 @@ function supprimerLigne(i: number) {
 
 // Le prix catalogue de l'article est tenu en FC — un choix independant de
 // la devise de base du grand livre (article.prixVente n'est jamais touche
-// par ConversionDeviseService), gere ici cote client de bout en bout.
+// par ConversionDeviseService), gere ici cote client de bout en bout. La
+// majoration de la salle (table choisie) s'applique avant toute conversion :
+// une proposition de prix, jamais imposee — le caissier reste libre de la
+// corriger, comme pour tout prix sur cet ecran.
 const prixCatalogue = (article: Article | null) => {
   if (article?.prixVente == null) return null
-  if (form.devise === 'CDF') return article.prixVente
-  return tauxChange.value > 0 ? arrondi(article.prixVente / tauxChange.value) : null
+  const prixMajore = article.prixVente * (1 + majorationActuelle.value / 100)
+  if (form.devise === 'CDF') return arrondi(prixMajore)
+  return tauxChange.value > 0 ? arrondi(prixMajore / tauxChange.value) : null
 }
 
 /** Reprend le prix catalogue quand on choisit un article. */
@@ -179,6 +194,33 @@ function onArticleSelect(i: number, articleId: number | null) {
   if (article?.minerais) {
     form.lignes[i].quantite = 1
     chargerCamions(articleId!)
+  }
+  if (articleId != null) actualiserPrix(i, articleId, prix)
+}
+
+/**
+ * Le catalogue est chargé à l'ouverture de l'écran, qui peut rester ouvert
+ * toute la journée à la caisse : un prix de vente modifié entre-temps ne s'y
+ * verrait pas. L'article choisi est donc relu, et la proposition corrigée si
+ * elle a changé — sauf si le caissier a déjà modifié le prix de la ligne.
+ * Une vente enregistrée garde toujours son propre prix, quoi qu'il arrive
+ * ensuite au catalogue.
+ */
+async function actualiserPrix(i: number, articleId: number, prixPropose: number | null) {
+  try {
+    const frais = await api<Article>(`/logistique/articles/${articleId}`)
+    for (const liste of [articles.value, catalogueComplet.value]) {
+      const k = liste.findIndex((a) => a.id === articleId)
+      if (k >= 0) liste[k] = { ...liste[k], ...frais }
+    }
+    const ligne = form.lignes[i]
+    const prix = prixCatalogue(articleDe(articleId))
+    if (ligne && ligne.articleId === articleId && prix != null
+      && (prixPropose == null || ligne.prixUnitaire === prixPropose)) {
+      ligne.prixUnitaire = prix
+    }
+  } catch {
+    // Relecture impossible (réseau) : la proposition du catalogue chargé reste.
   }
 }
 
@@ -356,6 +398,26 @@ const raisonsBlocage = computed(() => {
 
 const peutEnregistrer = computed(() => raisonsBlocage.value.length === 0)
 
+// ── Confirmation avant « Créer et valider » ───────────────────────────────
+// Valider comptabilise la vente et sort les articles du stock : un clic par
+// erreur ne doit pas suffire. Le brouillon, lui, reste modifiable et n'en a
+// pas besoin.
+const confirmationValidation = ref(false)
+const LIBELLES_REGLEMENT: Record<string, string> = {
+  CAISSE: 'Au comptant — Caisse',
+  BANQUE: 'Au comptant — Banque',
+  MOBILE_MONEY: 'Au comptant — Mobile Money',
+  CREDIT: 'À crédit (créance client)',
+}
+const nomClientChoisi = computed(() =>
+  modeClient.value === 'REPERTOIRE'
+    ? (clients.value.find((c) => c.id === form.clientId)?.nom ?? '—')
+    : (form.clientNom || '—'))
+async function confirmerCreationValidation() {
+  await enregistrer(true)
+  confirmationValidation.value = false
+}
+
 async function enregistrer(validerEnsuite: boolean) {
   if (!peutEnregistrer.value) {
     erreur.value = raisonsBlocage.value[0] || 'Complétez au moins une ligne et les informations de règlement.'
@@ -363,6 +425,7 @@ async function enregistrer(validerEnsuite: boolean) {
   }
   envoi.value = true
   erreur.value = ''
+  let venteCreee: { id: number } | null = null
   try {
     const body = {
       dateVente: form.dateVente,
@@ -384,13 +447,23 @@ async function enregistrer(validerEnsuite: boolean) {
           camionId: l.camionId,
         })),
     }
-    const vente = await api<{ id: number }>('/ventes', { method: 'POST', body })
+    venteCreee = await api<{ id: number }>('/ventes', { method: 'POST', body })
 
     if (validerEnsuite) {
-      await api(`/ventes/${vente.id}/valider`, { method: 'POST' })
+      await api(`/ventes/${venteCreee.id}/valider`, { method: 'POST' })
     }
-    await router.push(`/ventes/${vente.id}`)
+    await router.push(`/ventes/${venteCreee.id}`)
   } catch (e: any) {
+    if (venteCreee) {
+      // Créée mais pas validée : rester sur ce formulaire inviterait à
+      // recommencer, ce qui créerait une seconde vente. On ouvre donc le
+      // brouillon, qui affiche l'erreur et se valide de là une fois corrigé.
+      await router.push({
+        path: `/ventes/${venteCreee.id}`,
+        query: { erreurValidation: messageErreurApi(e, 'La validation a échoué.') },
+      })
+      return
+    }
     erreur.value = messageErreurApi(e, "Erreur lors de l'enregistrement de la vente.")
   } finally {
     envoi.value = false
@@ -479,7 +552,9 @@ const contreValeur = computed(() => {
         density="comfortable"
         rounded="lg"
         clearable
-        hint="Facultatif : rattache cette vente à une table du restaurant"
+        :hint="majorationActuelle > 0
+          ? `Majoration de salle : +${majorationActuelle}% appliquée aux prix proposés ci-dessous`
+          : 'Facultatif : rattache cette vente à une table du restaurant'"
         persistent-hint
         class="mb-4"
       />
@@ -778,11 +853,44 @@ const contreValeur = computed(() => {
         prepend-icon="mdi-check-circle-outline"
         :loading="envoi"
         :disabled="!peutEnregistrer"
-        @click="enregistrer(true)"
+        @click="confirmationValidation = true"
       >
         Créer et valider
       </v-btn>
     </div>
+
+    <v-dialog
+      :model-value="confirmationValidation"
+      max-width="500"
+      :persistent="envoi"
+      @update:model-value="v => { if (!v && !envoi) confirmationValidation = false }"
+    >
+      <v-card rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold">Créer et valider cette vente ?</v-card-title>
+        <v-card-text>
+          <p class="mb-1">Client : <strong>{{ nomClientChoisi }}</strong></p>
+          <p class="mb-1">Règlement : <strong>{{ LIBELLES_REGLEMENT[form.modeReglement] || form.modeReglement }}</strong></p>
+          <p class="mb-1">Net à payer : <strong>{{ fmtMontant(totaux.ttc) }}</strong></p>
+          <p v-if="form.modeReglement === 'CAISSE' && monnaieARendre != null && monnaieARendre >= 0" class="mb-1">
+            Monnaie à rendre : <strong>{{ fmtMontant(monnaieARendre) }}</strong>
+          </p>
+          <p class="text-medium-emphasis mt-3 mb-0">
+            La vente sera comptabilisée et les articles sortiront du stock<template
+              v-if="form.modeReglement === 'CAISSE'">, le montant entrera en caisse</template><template
+              v-else-if="form.modeReglement === 'CREDIT'">, une créance sera ouverte au nom du client</template>.
+            Elle ne pourra plus être modifiée, seulement annulée par un administrateur.
+            Pour pouvoir encore la corriger, enregistrez-la plutôt en brouillon.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="envoi" @click="confirmationValidation = false">Retour</v-btn>
+          <v-btn color="primary" variant="flat" :loading="envoi" @click="confirmerCreationValidation">
+            Oui, créer et valider
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 

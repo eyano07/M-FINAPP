@@ -2,7 +2,10 @@
 definePageMeta({ module: 'RESTAURANT' })
 
 /**
- * État du stock de la carte (plats et boissons).
+ * État consolidé du stock de la carte (plats et boissons) : une ligne par
+ * article, au coût moyen pondéré — sans tenir compte des lots (fournisseur,
+ * date d'achat, prix) qui le composent. Pour cette traçabilité par lot, voir
+ * la page « Stock cuisine & bar » (/restaurant/stock).
  *
  * Lecture seule : les entrées et sorties de stock passent par le module
  * Logistique (réception fournisseur) et par les ventes (déstockage au coût
@@ -20,6 +23,8 @@ interface StockNiveau {
   quantite: number
   valeurTotale: number
   coutMoyen: number
+  /** Prix d'achat moyen HORS transport et manutention ; coutMoyen les inclut. */
+  prixAchatMoyen: number
   stockMin: number
   sousSeuil: boolean
 }
@@ -72,19 +77,35 @@ const platsSansCout = computed(() =>
     typesParArticle.value[l.articleId] === 'PLAT' && l.quantite > 0 && (!l.coutMoyen || l.coutMoyen <= 0))
 )
 
-const fmtQte = (q: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(q || 0)
+const fmtQte = (q: number) => parametres.fmtQuantite(q)
+
+/**
+ * Part de transport et manutention incorporée au coût moyen d'une unité
+ * (coutMoyen - prixAchatMoyen) : 0 si l'article n'en a reçu aucun (tout le
+ * stock antérieur à cette fonctionnalité, ou un plat, dont le coût moyen est
+ * son coût de production).
+ */
+function fraisApproche(item: StockNiveau): number {
+  const f = (item.coutMoyen || 0) - (item.prixAchatMoyen || 0)
+  return f > 0.000001 ? f : 0
+}
 </script>
 
 <template>
   <div>
     <div class="page-head">
       <div>
-        <h1 class="page-title">Stock cuisine &amp; bar</h1>
-        <p class="page-sub">Quantités et valorisation au coût moyen pondéré</p>
+        <h1 class="page-title">Stock consolidé</h1>
+        <p class="page-sub">Une ligne par article, quels que soient ses lots — quantités et valorisation au coût moyen pondéré</p>
       </div>
-      <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-silverware-fork-knife" to="/restaurant/carte">
-        La carte
-      </v-btn>
+      <div class="d-flex ga-2">
+        <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-format-list-bulleted" to="/restaurant/stock">
+          Stock par lot
+        </v-btn>
+        <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-silverware-fork-knife" to="/restaurant/carte">
+          La carte
+        </v-btn>
+      </div>
     </div>
 
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
@@ -121,6 +142,9 @@ const fmtQte = (q: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDi
       </div>
     </div>
 
+    <p class="text-caption text-medium-emphasis mb-2">
+      Transport et manutention : part de ces frais incorporée à chaque unité — le coût moyen et la valeur du stock les incluent déjà. Pour un plat, le coût moyen est son coût de production.
+    </p>
     <v-btn-toggle v-model="filtreType" mandatory density="comfortable" variant="outlined" rounded="lg" class="mb-4">
       <v-btn value="TOUS">Tous</v-btn>
       <v-btn value="PLAT">Plats</v-btn>
@@ -134,6 +158,7 @@ const fmtQte = (q: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDi
           { title: 'Libellé', key: 'articleLibelle' },
           { title: 'Entrepôt', key: 'entrepotCode' },
           { title: 'Quantité', key: 'quantite', align: 'end' },
+          { title: 'Transport et manutention', key: 'fraisApprocheUnitaire', align: 'end', sortable: false },
           { title: 'Coût moyen', key: 'coutMoyen', align: 'end' },
           { title: 'Valeur', key: 'valeurTotale', align: 'end' },
           { title: 'Seuil', key: 'stockMin', align: 'end' },
@@ -146,6 +171,11 @@ const fmtQte = (q: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDi
           <span :class="item.sousSeuil ? 'font-weight-bold text-error' : ''">
             {{ fmtQte(item.quantite) }} {{ item.uniteMesure || '' }}
           </span>
+        </template>
+        <!-- Un plat n'a pas de frais d'approche : son coût est celui de sa production. -->
+        <template #item.fraisApprocheUnitaire="{ item }">
+          <span v-if="typesParArticle[item.articleId] === 'PLAT' || !fraisApproche(item)" class="text-medium-emphasis">—</span>
+          <span v-else>{{ parametres.fmtMontant(fraisApproche(item)) }}</span>
         </template>
         <template #item.coutMoyen="{ item }">
           <span :class="item.coutMoyen > 0 ? '' : 'text-warning font-weight-medium'">

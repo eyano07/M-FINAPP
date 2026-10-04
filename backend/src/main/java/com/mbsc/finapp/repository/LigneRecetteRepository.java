@@ -29,4 +29,6 @@ public interface LigneRecetteRepository extends JpaRepository<LigneRecette, Long
     void deleteByPlatId(Long platId);
 
     boolean existsByProvisionId(Long provisionId);
+
+    boolean existsByPlatId(Long platId);
 }

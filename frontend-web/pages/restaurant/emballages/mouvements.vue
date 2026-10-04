@@ -10,6 +10,10 @@ definePageMeta({ module: 'RESTAURANT' })
  * La casse d'une bouteille pleine et la péremption font aussi sortir la
  * boisson de son propre stock (avec écriture comptable) : ces deux types
  * exigent donc un entrepôt.
+ *
+ * Un mouvement saisi ici s'annule ici : le serveur ajoute le mouvement
+ * inverse (le journal reste en ajout seul) et, pour une perte de boisson,
+ * rétablit son stock.
  */
 interface Emballage {
   id: number
@@ -32,6 +36,11 @@ interface Mouvement {
   motif?: string
   venteReference?: string
   createdByNom?: string
+  annule: boolean
+  /** Mouvement que celui-ci annule, pour le mouvement inverse d'une annulation. */
+  annulationDeId?: number
+  /** Calculé par le serveur : saisie manuelle, pas encore annulée, pas elle-même une annulation. */
+  annulable: boolean
 }
 
 const api = useApi()
@@ -55,7 +64,7 @@ const au = ref('')
 const META_MVT: Record<string, { label: string; couleur: string; auto?: boolean; sens: number; necessiteEntrepot?: boolean }> = {
   VENTE: { label: 'Vente', couleur: 'success', auto: true, sens: 1 },
   RETOUR_VENTE: { label: 'Vente annulée', couleur: 'grey', auto: true, sens: -1 },
-  ACHAT: { label: 'Réception (consigne rendue)', couleur: 'orange', sens: -1 },
+  ACHAT: { label: 'Réception (consigne rendue)', couleur: 'orange', auto: true, sens: -1 },
   CASSE: { label: 'Casse — bouteille vide', couleur: 'error', sens: -1 },
   CASSE_PLEINE: { label: 'Casse — bouteille pleine', couleur: 'error', sens: -1, necessiteEntrepot: true },
   PERIME: { label: 'Boisson périmée', couleur: 'deep-orange', sens: 0, necessiteEntrepot: true },
@@ -174,6 +183,32 @@ async function enregistrer() {
   }
 }
 
+// ── Annulation d'un mouvement saisi par erreur ─────────────────────────────
+// Un ajustement d'inventaire ne s'annule, comme il ne se saisit, que par
+// l'administrateur (voir RestaurantService.annulerMouvementEmballage).
+const peutAnnuler = (m: Mouvement) =>
+  canWrite.value && m.annulable && (!TYPES_AJUSTEMENT.includes(m.type) || auth.hasRole('ADMIN'))
+
+const aAnnuler = ref<Mouvement | null>(null)
+const annulation = ref(false)
+
+async function confirmerAnnulation() {
+  const m = aAnnuler.value
+  if (!m) return
+  annulation.value = true
+  erreur.value = ''
+  try {
+    await api(`/restaurant/emballages/mouvements/${m.id}/annuler`, { method: 'POST' })
+    aAnnuler.value = null
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Échec de l'annulation du mouvement.")
+    aAnnuler.value = null
+  } finally {
+    annulation.value = false
+  }
+}
+
 const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—')
 </script>
 
@@ -224,6 +259,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           { title: 'Motif', key: 'motif' },
           { title: 'Vente', key: 'venteReference' },
           { title: 'Saisi par', key: 'createdByNom' },
+          { title: '', key: 'actions', align: 'end', sortable: false },
         ]"
         :items="mouvements"
         :loading="loading"
@@ -236,6 +272,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
             {{ META_MVT[item.type]?.label ?? item.type }}
           </v-chip>
           <v-icon v-if="META_MVT[item.type]?.auto" icon="mdi-flash-outline" size="14" class="ml-1 text-medium-emphasis" title="Automatique" />
+          <v-chip v-if="item.annule" size="x-small" variant="tonal" color="grey" class="ml-1">Annulé</v-chip>
         </template>
         <template #item.delta="{ item }">
           <span v-if="item.delta === 0" class="text-medium-emphasis">— (boisson seule)</span>
@@ -246,6 +283,18 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         <template #item.motif="{ item }">{{ item.motif || '—' }}</template>
         <template #item.venteReference="{ item }">{{ item.venteReference || '—' }}</template>
         <template #item.createdByNom="{ item }">{{ item.createdByNom || '—' }}</template>
+        <template #item.actions="{ item }">
+          <v-btn
+            v-if="peutAnnuler(item)"
+            icon="mdi-undo-variant"
+            size="small"
+            variant="text"
+            color="error"
+            :title="`Annuler ce mouvement (${META_MVT[item.type]?.label ?? item.type})`"
+            :aria-label="`Annuler ce mouvement (${META_MVT[item.type]?.label ?? item.type})`"
+            @click="aAnnuler = item"
+          />
+        </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">Aucun mouvement sur cette période.</div>
         </template>
@@ -256,6 +305,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       <v-card class="pa-6">
         <h2 class="text-h6 mb-4">Casse, perte ou ajustement</h2>
 
+        <v-card-text class="pa-0">
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-4">{{ erreur }}</v-alert>
 
         <v-alert type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
@@ -317,13 +367,37 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
             ({{ apercu.apres }} bouteille{{ apercu.apres > 1 ? 's' : '' }} au total).
           </template>
         </v-alert>
+        </v-card-text>
 
-        <div class="d-flex justify-end ga-2">
+        <div class="d-flex justify-end ga-2 mt-4">
           <v-btn variant="text" :disabled="saving" @click="dialog = false">Annuler</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving" :disabled="apercu?.invalide" @click="enregistrer">
             Enregistrer
           </v-btn>
         </div>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog :model-value="!!aAnnuler" max-width="480" @update:model-value="v => { if (!v && !annulation) aAnnuler = null }">
+      <v-card v-if="aAnnuler" rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold">
+          Annuler ce mouvement ({{ META_MVT[aAnnuler.type]?.label ?? aAnnuler.type }}) ?
+        </v-card-title>
+        <v-card-text>
+          <p v-if="aAnnuler.delta !== 0" class="mb-2">
+            Un mouvement inverse de {{ Math.abs(aAnnuler.delta) }} bouteille(s) sera ajouté au journal
+            pour {{ aAnnuler.delta < 0 ? 'rendre' : 'retirer' }} les vides {{ aAnnuler.emballageLibelle }}.
+          </p>
+          <p v-if="META_MVT[aAnnuler.type]?.necessiteEntrepot" class="mb-2">
+            Les {{ aAnnuler.quantite }} bouteille(s) reviennent dans le stock de la boisson, et l'écriture de perte est extournée.
+          </p>
+          <p class="text-medium-emphasis mb-0">Vous pourrez ensuite saisir le bon mouvement.</p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="annulation" @click="aAnnuler = null">Garder</v-btn>
+          <v-btn color="error" variant="flat" :loading="annulation" @click="confirmerAnnulation">Annuler le mouvement</v-btn>
+        </v-card-actions>
       </v-card>
     </v-dialog>
   </div>

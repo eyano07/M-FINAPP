@@ -29,6 +29,17 @@ public interface CamionMineraiRepository extends JpaRepository<CamionMinerai, Lo
 
     boolean existsByArticleIdAndPlaqueIgnoreCaseAndDateReception(Long articleId, String plaque, LocalDate dateReception);
 
+    /** Mouvements valides qui sont l'entree en stock d'un camion. */
+    @Query("""
+        select m.id from CamionMinerai c join c.mouvement m
+        where m.statut = com.mbsc.finapp.domain.enums.StatutMouvement.VALIDE
+    """)
+    List<Long> idsMouvementsValides();
+
+    /** Plaque du camion dont ce mouvement est l'entree en stock, s'il y en a un. */
+    @Query("select c.plaque from CamionMinerai c join c.mouvement m where m.id = :mouvementId")
+    List<String> plaquesParMouvement(@Param("mouvementId") Long mouvementId);
+
     /**
      * true si une ligne de vente reference encore ce camion — y compris une
      * vente ANNULEE, dont les lignes sont conservees pour la piste d'audit. Le

@@ -15,7 +15,7 @@ definePageMeta({ module: 'RESTAURANT' })
  */
 interface Provision { id: number; code: string; libelle: string; uniteMesure?: string }
 interface Entrepot { id: number; code: string; nom: string }
-/** Forme exacte de StockGrandLivreResponse (backend) : un solde couranu, pas un journal à motif libre. */
+/** Forme exacte de StockGrandLivreResponse (backend) : un solde courant, pas un journal à motif libre. */
 interface LigneGrandLivre {
   id: number
   dateEcriture: string
@@ -27,9 +27,16 @@ interface LigneGrandLivre {
   qteApres: number
   valeurUnitaire: number
   valeurApres: number
+  mouvementId?: number
+  mouvementStatut?: 'BROUILLON' | 'VALIDE' | 'ANNULE'
+  /** Calculé par le serveur : réception directe ou sortie saisie ici, pas une production ni un achat par note. */
+  annulable: boolean
 }
 
 const api = useApi()
+/** Nombre de décimales des montants et quantités affichés (paramètres du restaurant). */
+const parametresRestaurant = useRestaurantParametresStore()
+onMounted(() => { parametresRestaurant.charger() })
 const auth = useAuthStore()
 const loading = ref(false)
 const savingEntree = ref(false)
@@ -41,14 +48,16 @@ const entrepots = ref<Entrepot[]>([])
 const historique = ref<LigneGrandLivre[]>([])
 const tauxChange = ref(0)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
 
 const COMPTE_FOURNISSEUR = '4011'
+/** Le serveur n'accepte qu'un fournisseur en contrepartie d'une réception directe. */
+const PREFIXE_FOURNISSEURS = '40'
 
 const formEntree = reactive({
   articleId: null as number | null,
   quantite: null as number | null,
-  deviseCout: 'USD' as 'USD' | 'CDF',
+  deviseCout: 'CDF' as 'USD' | 'CDF',
   coutUnitaire: null as number | null,
   entrepotId: null as number | null,
   compteContrepartieNumero: COMPTE_FOURNISSEUR as string | null,
@@ -59,8 +68,8 @@ const formEntree = reactive({
 const coutEquivalent = computed(() => {
   if (!formEntree.coutUnitaire || tauxChange.value <= 0) return null
   return formEntree.deviseCout === 'USD'
-    ? `≈ ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(formEntree.coutUnitaire * tauxChange.value)} FC`
-    : `≈ ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD' }).format(formEntree.coutUnitaire / tauxChange.value)}`
+    ? `≈ ${parametresRestaurant.fmtDans(formEntree.coutUnitaire * tauxChange.value, 'CDF')}`
+    : `≈ ${parametresRestaurant.fmtDans(formEntree.coutUnitaire / tauxChange.value, 'USD')}`
 })
 
 const formSortie = reactive({
@@ -163,11 +172,53 @@ async function enregistrerSortie() {
   }
 }
 
+// ── Annulation d'un mouvement saisi par erreur ─────────────────────────────
+// Le bouton n'apparaît que sur la première ligne du mouvement : une ligne du
+// grand livre de stock est un solde, et un mouvement annulé en ajoute une
+// seconde (la contre-passation) sous la même référence.
+const premiereLigneDuMouvement = computed(() => {
+  const vues = new Set<number>()
+  const premieres = new Set<number>()
+  for (const l of historique.value) {
+    if (l.mouvementId == null || vues.has(l.mouvementId)) continue
+    vues.add(l.mouvementId)
+    premieres.add(l.id)
+  }
+  return premieres
+})
+const peutAnnuler = (l: LigneGrandLivre) => canWrite.value && l.annulable && premiereLigneDuMouvement.value.has(l.id)
+
+const aAnnuler = ref<LigneGrandLivre | null>(null)
+const annulation = ref(false)
+
+async function confirmerAnnulation() {
+  const ligne = aAnnuler.value
+  if (!ligne?.mouvementId) return
+  annulation.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    await api(`/restaurant/provisions/mouvements/${ligne.mouvementId}/annuler`, { method: 'POST' })
+    succes.value = `Mouvement ${ligne.mouvementReference} annulé : le stock est rétabli et ses écritures sont extournées.`
+    aAnnuler.value = null
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Échec de l'annulation du mouvement.")
+    aAnnuler.value = null
+  } finally {
+    annulation.value = false
+  }
+}
+
 const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—')
-const fmtQte = (q: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(q || 0)
-/** valeurUnitaire/valeurApres (StockGrandLivreResponse) sont déjà en USD — devise de base du grand livre, aucune conversion à faire. */
+const fmtQte = (q: number) => parametresRestaurant.fmtQuantite(q)
+/**
+ * valeurUnitaire/valeurApres (StockGrandLivreResponse) sont en USD, devise de
+ * base du grand livre : affichés dans la devise du restaurant (FC par défaut),
+ * au taux du jour, comme sur les autres écrans du module.
+ */
 const fmtUSD = (montant?: number | null) =>
-  montant == null ? '—' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD' }).format(montant)
+  parametresRestaurant.fmtMontant(montant)
 </script>
 
 <template>
@@ -217,7 +268,15 @@ const fmtUSD = (montant?: number | null) =>
         <p class="text-caption text-medium-emphasis mb-3" style="min-height: 1.2em">{{ coutEquivalent }}</p>
         <v-select v-model="formEntree.entrepotId" :items="entrepots.map(e => ({ title: `${e.code} — ${e.nom}`, value: e.id }))"
           label="Entrepôt *" variant="outlined" density="comfortable" class="mb-3" />
-        <ComptabiliteSelecteurCompte v-model="formEntree.compteContrepartieNumero" label="Contrepartie (fournisseur, caisse...)" class="mb-3" />
+        <ComptabiliteSelecteurCompte
+          v-model="formEntree.compteContrepartieNumero"
+          :prefixe="PREFIXE_FOURNISSEURS"
+          label="Fournisseur (compte 40x) *"
+          class="mb-1"
+        />
+        <p class="text-caption text-medium-emphasis mb-3">
+          Réception à crédit. Un achat payé comptant passe par une note de frais, que la caisse règle.
+        </p>
         <v-text-field v-model="formEntree.dateReception" type="date" label="Date" variant="outlined" density="comfortable" class="mb-4" />
         <v-btn color="success" variant="flat" rounded="lg" block :loading="savingEntree" :disabled="!provisions.length" @click="enregistrerEntree">
           Enregistrer l'entrée
@@ -255,6 +314,7 @@ const fmtUSD = (montant?: number | null) =>
           { title: 'Solde qté', key: 'qteApres', align: 'end' },
           { title: 'CMP', key: 'valeurUnitaire', align: 'end' },
           { title: 'Valeur stock', key: 'valeurApres', align: 'end' },
+          { title: '', key: 'actions', align: 'end', sortable: false },
         ]"
         :items="historique"
         :loading="loading"
@@ -275,11 +335,48 @@ const fmtUSD = (montant?: number | null) =>
         <template #item.qteApres="{ item }">{{ fmtQte(item.qteApres) }}</template>
         <template #item.valeurUnitaire="{ item }">{{ fmtUSD(item.valeurUnitaire) }}</template>
         <template #item.valeurApres="{ item }">{{ fmtUSD(item.valeurApres) }}</template>
+        <template #item.mouvementReference="{ item }">
+          {{ item.mouvementReference || '—' }}
+          <v-chip v-if="item.mouvementStatut === 'ANNULE'" size="x-small" variant="tonal" color="grey" class="ml-1">Annulé</v-chip>
+        </template>
+        <template #item.actions="{ item }">
+          <v-btn
+            v-if="peutAnnuler(item)"
+            icon="mdi-undo-variant"
+            size="small"
+            variant="text"
+            color="error"
+            :title="`Annuler le mouvement ${item.mouvementReference}`"
+            :aria-label="`Annuler le mouvement ${item.mouvementReference}`"
+            @click="aAnnuler = item"
+          />
+        </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">Aucun mouvement enregistré.</div>
         </template>
       </v-data-table>
     </v-card>
+
+    <v-dialog :model-value="!!aAnnuler" max-width="480" @update:model-value="v => { if (!v && !annulation) aAnnuler = null }">
+      <v-card v-if="aAnnuler" rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold">Annuler le mouvement {{ aAnnuler.mouvementReference }} ?</v-card-title>
+        <v-card-text>
+          <p v-if="aAnnuler.qteEntree" class="mb-2">
+            La réception de {{ fmtQte(aAnnuler.qteEntree) }} sort du stock, et ses deux écritures sont extournées :
+            l'entrée en stock et l'achat au fournisseur.
+          </p>
+          <p v-else class="mb-2">
+            Les {{ fmtQte(aAnnuler.qteSortie) }} sorties reviennent en stock, et l'écriture de consommation est extournée.
+          </p>
+          <p class="text-medium-emphasis mb-0">Vous pourrez ensuite saisir le bon mouvement.</p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="annulation" @click="aAnnuler = null">Garder</v-btn>
+          <v-btn color="error" variant="flat" :loading="annulation" @click="confirmerAnnulation">Annuler le mouvement</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 

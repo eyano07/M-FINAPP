@@ -99,7 +99,25 @@ const cb: any = {
     tooltip: { backgroundColor: '#1f2937', padding: 10, cornerRadius: 8, titleFont: { size: 12 }, bodyFont: { size: 11 } },
   },
 }
-const COULEURS = ['var(--color-primary)', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+// Chart.js peint sur un <canvas> : contrairement au DOM, son API 2D ne sait
+// pas resoudre var(--color-primary) (couleur invalide → noir). On lit donc
+// la couleur de marque directement depuis le store — une chaine hex simple,
+// exploitable telle quelle par Canvas — plutot que de sonder le CSS calcule :
+// une sonde DOM lue dans onMounted peut s'executer AVANT que
+// useParametresStore().charger() (voir stores/parametres.ts, appele au
+// niveau du layout) n'ait fini d'appliquer la vraie couleur admin sur
+// :root, et capturer a tort la teinte par defaut du store. Une lecture
+// reactive du store n'a pas ce probleme : le graphique se met a jour de
+// lui-meme des que la couleur arrive, quel que soit l'ordre de chargement.
+const identite = useParametresStore()
+const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#16A34A')
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!m) return hex
+  const [r, g, b] = [m[1], m[2], m[3]].map(h => parseInt(h, 16))
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+const COULEURS = computed(() => [couleurPrimaireHex.value, '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d'])
 
 /** Valeur du stock regroupee par entrepot. */
 const valeurParEntrepot = computed(() => {
@@ -111,8 +129,8 @@ const entrepotChartData = computed(() => ({
   labels: valeurParEntrepot.value.map(([code]) => code),
   datasets: [{
     data: valeurParEntrepot.value.map(([, v]) => v),
-    backgroundColor: valeurParEntrepot.value.map((_, i) => COULEURS[i % COULEURS.length] + 'cc'),
-    borderColor: valeurParEntrepot.value.map((_, i) => COULEURS[i % COULEURS.length]),
+    backgroundColor: valeurParEntrepot.value.map((_, i) => hexToRgba(COULEURS.value[i % COULEURS.value.length], 0.8)),
+    borderColor: valeurParEntrepot.value.map((_, i) => COULEURS.value[i % COULEURS.value.length]),
     borderWidth: 2, hoverOffset: 8,
   }],
 }))
@@ -134,17 +152,19 @@ const topArticlesOpts: any = { ...cb, indexAxis: 'y' as const, scales: { x: { be
 const TYPES = ['ENTREE', 'SORTIE', 'TRANSFERT']
 const typeChartData = computed(() => ({
   labels: TYPES,
-  datasets: [{ label: 'Mouvements', data: TYPES.map(t => mouvements.value.filter(m => m.type === t).length), backgroundColor: ['var(--color-primary)cc', '#dc2626cc', '#2563ebcc'], borderColor: ['var(--color-primary)', '#dc2626', '#2563eb'], borderRadius: 6 }],
+  datasets: [{ label: 'Mouvements', data: TYPES.map(t => mouvements.value.filter(m => m.type === t).length), backgroundColor: [hexToRgba(couleurPrimaireHex.value, 0.8), 'rgba(220,38,38,0.8)', 'rgba(37,99,235,0.8)'], borderColor: [couleurPrimaireHex.value, '#dc2626', '#2563eb'], borderRadius: 6 }],
 }))
 const typeChartOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
 
 /** Mouvements par statut. */
 const STATUTS = ['BROUILLON', 'VALIDE', 'ANNULE']
-const STATUT_CLR: Record<string, string> = { BROUILLON: '#f59e0b', VALIDE: 'var(--color-primary)', ANNULE: '#9ca3af' }
-const statutChartData = computed(() => ({
-  labels: STATUTS,
-  datasets: [{ data: STATUTS.map(s => mouvements.value.filter(m => m.statut === s).length), backgroundColor: STATUTS.map(s => STATUT_CLR[s] + 'cc'), borderColor: STATUTS.map(s => STATUT_CLR[s]), borderWidth: 2, hoverOffset: 8 }],
-}))
+const statutChartData = computed(() => {
+  const STATUT_CLR: Record<string, string> = { BROUILLON: '#f59e0b', VALIDE: couleurPrimaireHex.value, ANNULE: '#9ca3af' }
+  return {
+    labels: STATUTS,
+    datasets: [{ data: STATUTS.map(s => mouvements.value.filter(m => m.statut === s).length), backgroundColor: STATUTS.map(s => hexToRgba(STATUT_CLR[s], 0.8)), borderColor: STATUTS.map(s => STATUT_CLR[s]), borderWidth: 2, hoverOffset: 8 }],
+  }
+})
 const statutChartOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugins.legend, position: 'bottom' } }, cutout: '55%' }
 
 // ── Listes ───────────────────────────────────────────────────────────────

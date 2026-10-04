@@ -78,9 +78,14 @@ async function charger() {
 onMounted(charger)
 watch([mois, annee], charger)
 
-const fmtNb = (n?: number | null) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n || 0)
+/** Quantités de provisions, à l'arrondi choisi dans les paramètres du restaurant. */
+const fmtNb = (n?: number | null) => parametres.fmtQuantite(n)
 
 // ── Analyse IA (à la demande) ────────────────────────────────────────────
+// Rôles admis par RestaurantAnalyseIaService : le bouton n'est pas proposé
+// aux autres lecteurs du module (DA, comptable, caissier), qui recevraient un refus.
+const auth = useAuthStore()
+const peutAnalyser = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN']))
 const chargementIa = ref(false)
 const erreurIa = ref('')
 const analyse = ref<AnalyseIa | null>(null)
@@ -90,7 +95,6 @@ async function genererAnalyse() {
   erreurIa.value = ''
   try {
     analyse.value = await api<AnalyseIa>('/restaurant/provisions/tableau-bord/analyse-ia', {
-      method: 'POST',
       params: { du: du.value, au: au.value },
     })
   } catch (e: any) {
@@ -112,17 +116,36 @@ const cb: any = {
 }
 const fmtDateCourte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
 
+// Chart.js peint sur un <canvas> : contrairement au DOM, son API 2D ne sait
+// pas resoudre var(--color-primary) (couleur invalide → noir). On lit donc
+// la couleur de marque directement depuis le store — une chaine hex simple,
+// exploitable telle quelle par Canvas — plutot que de sonder le CSS calcule :
+// une sonde DOM lue dans onMounted peut s'executer AVANT que
+// useParametresStore().charger() (voir stores/parametres.ts, appele au
+// niveau du layout) n'ait fini d'appliquer la vraie couleur admin sur
+// :root, et capturer a tort la teinte par defaut du store. Une lecture
+// reactive du store n'a pas ce probleme : le graphique se met a jour de
+// lui-meme des que la couleur arrive, quel que soit l'ordre de chargement.
+const identite = useParametresStore()
+const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#16A34A')
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!m) return hex
+  const [r, g, b] = [m[1], m[2], m[3]].map(h => parseInt(h, 16))
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
 /** Entrées et sorties par jour, deux séries de barres. */
 const mouvementsJourData = computed(() => ({
   labels: (tb.value?.mouvementsParJour || []).map(m => fmtDateCourte(m.date)),
   datasets: [
-    { label: 'Entrées (achats)', data: (tb.value?.mouvementsParJour || []).map(m => m.quantiteEntree), backgroundColor: 'color-mix(in srgb, var(--color-primary) 70%, transparent)', borderColor: 'var(--color-primary)', borderRadius: 6 },
+    { label: 'Entrées (achats)', data: (tb.value?.mouvementsParJour || []).map(m => m.quantiteEntree), backgroundColor: hexToRgba(couleurPrimaireHex.value, 0.7), borderColor: couleurPrimaireHex.value, borderRadius: 6 },
     { label: 'Sorties (consommation)', data: (tb.value?.mouvementsParJour || []).map(m => m.quantiteSortie), backgroundColor: 'rgba(220,38,38,0.7)', borderColor: '#dc2626', borderRadius: 6 },
   ],
 }))
 const mouvementsJourOpts: any = { ...cb, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
 
-const COULEURS = ['var(--color-primary)', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const COULEURS = computed(() => [couleurPrimaireHex.value, '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d'])
 
 /** Répartition de la consommation entre provisions. */
 const repartitionConsoData = computed(() => {
@@ -131,8 +154,8 @@ const repartitionConsoData = computed(() => {
     labels: items.map(p => p.libelle),
     datasets: [{
       data: items.map(p => p.quantiteConsommee),
-      backgroundColor: items.map((_, i) => COULEURS[i % COULEURS.length] + 'cc'),
-      borderColor: items.map((_, i) => COULEURS[i % COULEURS.length]),
+      backgroundColor: items.map((_, i) => hexToRgba(COULEURS.value[i % COULEURS.value.length], 0.8)),
+      borderColor: items.map((_, i) => COULEURS.value[i % COULEURS.value.length]),
       borderWidth: 2,
       hoverOffset: 8,
     }],
@@ -140,15 +163,43 @@ const repartitionConsoData = computed(() => {
 })
 const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugins.legend, position: 'bottom' } }, cutout: '55%' }
 
+/** Ramène un montant USD vers la préférence d'affichage du module — mêmes règles que parametres.fmtMontant, mais un nombre pour le graphique. */
+function versDeviseAffichage(montantUSD: number): number {
+  return parametres.devise === 'CDF' && parametres.tauxChange > 0 ? montantUSD * parametres.tauxChange : montantUSD
+}
+
 /** Valeur du stock par provision. */
 const stockData = computed(() => {
   const items = (tb.value?.parProvision || []).filter(p => p.valeurStock > 0)
   return {
     labels: items.map(p => p.libelle),
-    datasets: [{ label: 'Valeur en stock', data: items.map(p => p.valeurStock), backgroundColor: 'rgba(126,34,206,0.65)', borderColor: '#7e22ce', borderRadius: 6 }],
+    datasets: [{
+      // Réactif à la préférence du module : ce graphique n'affichait
+      // jusqu'ici aucune devise du tout, alors que les valeurs tracées (et
+      // les KPI juste au-dessus) sont converties en FC dès que la
+      // préférence l'est.
+      label: `Valeur en stock (${parametres.devise === 'CDF' ? 'FC' : 'USD'})`,
+      data: items.map(p => versDeviseAffichage(p.valeurStock)),
+      backgroundColor: 'rgba(126,34,206,0.65)', borderColor: '#7e22ce', borderRadius: 6,
+    }],
   }
 })
-const stockOpts: any = { ...cb, indexAxis: 'y' as const, scales: { x: { beginAtZero: true } } }
+const stockOpts: any = {
+  ...cb,
+  indexAxis: 'y' as const,
+  scales: { x: { beginAtZero: true } },
+  plugins: {
+    ...cb.plugins,
+    tooltip: {
+      ...cb.plugins.tooltip,
+      // ctx.parsed.x (barres horizontales) est deja dans la devise
+      // d'affichage (voir versDeviseAffichage ci-dessus).
+      callbacks: {
+        label: (ctx: any) => parametres.fmtDans(ctx.parsed.x, parametres.devise),
+      },
+    },
+  },
+}
 </script>
 
 <template>
@@ -269,7 +320,7 @@ const stockOpts: any = { ...cb, indexAxis: 'y' as const, scales: { x: { beginAtZ
         </v-data-table>
       </v-card>
 
-      <div class="rdb-ia">
+      <div v-if="peutAnalyser" class="rdb-ia">
         <v-btn
           variant="tonal"
           color="deep-purple"

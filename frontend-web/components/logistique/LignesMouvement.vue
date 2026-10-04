@@ -12,6 +12,8 @@ export interface LigneMouvementForm {
 const props = defineProps<{
   modelValue: LigneMouvementForm[]
   type: 'ENTREE' | 'SORTIE' | 'TRANSFERT'
+  /** Écarte les plats, boissons et provisions, que le serveur refuse hors de l'administrateur. */
+  horsModuleRestaurant?: boolean
 }>()
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: LigneMouvementForm[]): void }>()
@@ -55,7 +57,11 @@ function fmt(v: number) {
     </div>
 
     <div v-for="(ligne, index) in lignes" :key="index" class="lignes-mvt__row">
-      <LogistiqueSelecteurArticle v-model="ligne.articleId" :label="`Article ${index + 1}`" />
+      <LogistiqueSelecteurArticle
+        v-model="ligne.articleId"
+        :label="`Article ${index + 1}`"
+        :hors-module-restaurant="horsModuleRestaurant"
+      />
       <LogistiqueSelecteurEntrepot v-if="montreSource" v-model="ligne.entrepotSourceId" label="Source" />
       <LogistiqueSelecteurEntrepot v-if="montreCible" v-model="ligne.entrepotCibleId" label="Cible" />
       <v-text-field

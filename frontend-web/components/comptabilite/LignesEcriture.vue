@@ -10,6 +10,12 @@ export interface LigneEcritureForm {
 <script setup lang="ts">
 const props = defineProps<{
   modelValue: LigneEcritureForm[]
+  /**
+   * Ne propose aucun compte de tresorerie (classe 5) : une piece saisie a la
+   * main ne peut pas encaisser ni decaisser — voir
+   * ComptabiliteService.exigerHorsTresorerie.
+   */
+  horsTresorerie?: boolean
 }>()
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: LigneEcritureForm[]): void }>()
@@ -67,7 +73,11 @@ function fmt(v: number) {
 
     <div v-for="(ligne, index) in lignes" :key="index" class="lignes-ecriture__row">
       <div class="lignes-ecriture__compte">
-        <ComptabiliteSelecteurCompte v-model="ligne.compteNumero" :label="`Compte ligne ${index + 1}`" />
+        <ComptabiliteSelecteurCompte
+          v-model="ligne.compteNumero"
+          :label="`Compte ligne ${index + 1}`"
+          :exclure-prefixe="horsTresorerie ? '5' : undefined"
+        />
       </div>
       <v-text-field
         :model-value="ligne.debit"

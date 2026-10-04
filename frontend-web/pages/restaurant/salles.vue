@@ -43,17 +43,28 @@ interface Salle {
   nom: string
   ordre: number
   actif: boolean
+  majorationPourcentage?: number
   tables: TableItem[]
 }
 
 const api = useApi()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
-onMounted(() => { parametresStore.charger() })
+/** Nombre de décimales des montants affichés (paramètres du restaurant). */
+const parametresRestaurant = useRestaurantParametresStore()
+onMounted(() => { parametresStore.charger(); parametresRestaurant.charger() })
 /** Disposition du plan (position, taille, ajout/suppression de tables) : reservee a l'administrateur. */
 const canWrite = computed(() => auth.hasRole('ADMIN'))
 /** Statut occupee/libre : action du quotidien, ouverte au responsable restaurant. */
-const peutGererStatut = computed(() => auth.hasAnyRole(['ADMIN', 'RESP_RESTAURANT']))
+const peutGererStatut = computed(() => auth.hasAnyRole(['ADMIN', 'RESP_RESTAURANT', 'CAISSIER']))
+/**
+ * Règlement de l'addition : distinct de peutGererStatut ci-dessus — le
+ * serveur (VenteService.reglerAdditionTable) le réserve à CAISSIER/ADMIN,
+ * le responsable restaurant n'y a pas accès. Utiliser peutGererStatut ici
+ * affichait le bouton puis le refusait après une saisie complète (canal,
+ * date) : la garde doit correspondre exactement à celle du serveur.
+ */
+const peutEncaisser = computed(() => auth.hasAnyRole(['ADMIN', 'CAISSIER']))
 
 /** Pas de la grille magnetique (px) — doit rester egal a --plan-grille dans le CSS ci-dessous. */
 const PAS_GRILLE = 22
@@ -129,18 +140,20 @@ function choisirSalle(id: number) {
 // ── Gestion des salles (créer / renommer / supprimer) ────────────────────
 const dialogSalle = ref(false)
 const editSalleId = ref<number | null>(null)
-const formSalle = reactive({ nom: '' })
+const formSalle = reactive({ nom: '', majorationPourcentage: 0 })
 const savingSalle = ref(false)
 
 function ouvrirCreationSalle() {
   editSalleId.value = null
   formSalle.nom = ''
+  formSalle.majorationPourcentage = 0
   erreur.value = ''
   dialogSalle.value = true
 }
 function ouvrirEditionSalle(s: Salle) {
   editSalleId.value = s.id
   formSalle.nom = s.nom
+  formSalle.majorationPourcentage = s.majorationPourcentage || 0
   erreur.value = ''
   dialogSalle.value = true
 }
@@ -152,7 +165,10 @@ async function enregistrerSalle() {
   savingSalle.value = true
   erreur.value = ''
   try {
-    const body = { nom: formSalle.nom, ordre: salles.value.length, actif: true }
+    const body = {
+      nom: formSalle.nom, ordre: salles.value.length, actif: true,
+      majorationPourcentage: formSalle.majorationPourcentage || 0,
+    }
     if (editSalleId.value) {
       await api(`/restaurant/salles/${editSalleId.value}`, { method: 'PUT', body })
     } else {
@@ -330,6 +346,19 @@ async function toggleOccupation() {
     const s = salleActive.value
     const original = s?.tables.find(x => x.id === t.id)
     if (original) original.occupee = nouvelEtat
+    // Liberer detache cote serveur les ventes de la table (voir
+    // RestaurantService.changerStatutTable) : la table redevient vierge,
+    // sans attendre un rechargement complet ou une re-selection.
+    if (!nouvelEtat) {
+      commandesTable.value = []
+      commandeOuverteId.value = null
+      t.aCommandeNonPayee = false
+      t.aCommandePayee = false
+      if (original) {
+        original.aCommandeNonPayee = false
+        original.aCommandePayee = false
+      }
+    }
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Échec de la mise à jour du statut.')
   } finally {
@@ -337,11 +366,12 @@ async function toggleOccupation() {
   }
 }
 
+// Montants d'une commande dans sa propre devise, au nombre de décimales choisi.
 function fmtCommande(c: Commande): string {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(c.totalTtc) + ' ' + c.devise
+  return fmtMontant(c.totalTtc, c.devise)
 }
 function fmtMontant(montant: number, devise: string): string {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(montant) + ' ' + devise
+  return parametresRestaurant.fmtDans(montant, devise === 'USD' ? 'USD' : 'CDF')
 }
 function toggleCommande(id: number) {
   commandeOuverteId.value = commandeOuverteId.value === id ? null : id
@@ -456,19 +486,26 @@ function imprimerAddition() {
 }
 
 /**
- * Position (en px, relative au coin haut-gauche de la table) de chaque
- * chaise, reparties en cercle/ellipse autour du perimetre — simple repere
- * visuel, pas une simulation geometrique exacte des coins du rectangle.
+ * Position (en px, relative au coin haut-gauche de la table) et orientation
+ * de chaque chaise, reparties en cercle/ellipse autour du perimetre — simple
+ * repere visuel, pas une simulation geometrique exacte des coins du
+ * rectangle. L'image de la chaise fait face vers le bas par defaut (dossier
+ * en haut) : `rot` la fait pivoter pour qu'elle fasse toujours face au
+ * centre de la table, quelle que soit sa position sur le cercle.
  */
-function positionsChaises(t: TableItem): { x: number; y: number }[] {
+function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[] {
   const cx = t.largeur / 2
   const cy = t.hauteur / 2
-  const rx = t.largeur / 2 + 14
-  const ry = t.hauteur / 2 + 14
+  const rx = t.largeur / 2 + 15
+  const ry = t.hauteur / 2 + 15
   const n = Math.max(0, t.nbChaises)
   return Array.from({ length: n }, (_, i) => {
     const angle = (i / n) * 2 * Math.PI - Math.PI / 2
-    return { x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) }
+    return {
+      x: cx + rx * Math.cos(angle),
+      y: cy + ry * Math.sin(angle),
+      rot: angle * 180 / Math.PI + 90,
+    }
   })
 }
 </script>
@@ -499,6 +536,7 @@ function positionsChaises(t: TableItem): { x: number; y: number }[] {
         @click="choisirSalle(s.id)"
       >
         {{ s.nom }}
+        <span v-if="s.majorationPourcentage" class="salle-majoration-badge">+{{ s.majorationPourcentage }}%</span>
       </v-btn>
       <v-btn v-if="canWrite" icon="mdi-plus" size="small" variant="tonal" title="Nouvelle salle" @click="ouvrirCreationSalle" />
     </div>
@@ -556,11 +594,13 @@ function positionsChaises(t: TableItem): { x: number; y: number }[] {
           :style="{ left: t.posX + 'px', top: t.posY + 'px', width: t.largeur + 'px', height: t.hauteur + 'px' }"
           @mousedown="demarrerDeplacement($event, i)"
         >
-          <span
+          <img
             v-for="(c, ci) in positionsChaises(t)" :key="ci"
+            src="/images/chaise.png"
+            alt=""
             class="chaise"
-            :style="{ left: c.x + 'px', top: c.y + 'px' }"
-          />
+            :style="{ left: c.x + 'px', top: c.y + 'px', transform: `rotate(${c.rot}deg)` }"
+          >
           <span class="table-item__numero">{{ t.numero }}</span>
           <v-icon v-if="t.occupee" icon="mdi-lock" size="14" class="table-item__verrou" />
           <v-icon
@@ -656,7 +696,7 @@ function positionsChaises(t: TableItem): { x: number; y: number }[] {
           </div>
 
           <v-btn
-            v-if="peutGererStatut && commandesNonPayees.length"
+            v-if="peutEncaisser && commandesNonPayees.length"
             block rounded="lg" variant="flat" color="primary" class="mt-3"
             prepend-icon="mdi-receipt-text-outline"
             @click="ouvrirAddition"
@@ -674,6 +714,14 @@ function positionsChaises(t: TableItem): { x: number; y: number }[] {
         <v-text-field
           v-model="formSalle.nom" label="Nom de la salle" placeholder="ex: Terrasse"
           variant="outlined" density="comfortable" class="mb-2" autofocus
+          @keyup.enter="enregistrerSalle"
+        />
+        <v-text-field
+          v-model.number="formSalle.majorationPourcentage" type="number" min="0" step="1"
+          label="Majoration des prix (%)" placeholder="0" suffix="%"
+          hint="Ex : 15 pour une salle VIP à +15 % sur chaque article. 0 = prix inchangé."
+          persistent-hint
+          variant="outlined" density="comfortable" class="mb-2"
           @keyup.enter="enregistrerSalle"
         />
         <div class="d-flex justify-end ga-2 mt-4">
@@ -791,6 +839,7 @@ function positionsChaises(t: TableItem): { x: number; y: number }[] {
 
 <style scoped>
 .salles-tabs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.salle-majoration-badge { margin-left: 6px; font-size: 0.72rem; font-weight: 700; opacity: 0.8; }
 
 /* Plan a gauche, panneau de la table selectionnee a droite — toujours visible
    sans avoir a deviner qu'il faut scroller sous le plan (560px de haut). */
@@ -903,16 +952,13 @@ function positionsChaises(t: TableItem): { x: number; y: number }[] {
 
 .chaise {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  margin-left: -5px;
-  margin-top: -5px;
-  background: #fff;
-  border: 2px solid var(--color-primary-dark);
-  border-radius: 3px;
+  width: 56px;
+  height: 48px;
+  margin-left: -28px;
+  margin-top: -24px;
+  object-fit: contain;
   pointer-events: none;
 }
-.table-item--occupee .chaise { border-color: #b91c1c; }
 
 .poignee {
   position: absolute;

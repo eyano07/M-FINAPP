@@ -58,4 +58,21 @@ public enum TypeArticle {
     public boolean estStocke() {
         return this != SERVICE;
     }
+
+    /**
+     * true si cet article est gere par un module metier dedie (Restaurant),
+     * qui porte sa propre autorisation et son propre invariant de stock —
+     * PLAT/BOISSON via la consigne et la production, PROVISION via les
+     * fiches techniques.
+     *
+     * <p>Ce predicat existe pour que StockService (module Logistique)
+     * refuse d'agir sur ces articles : les deux modules partagent
+     * exactement les memes tables de stock (articles, mouvements_stock,
+     * stock_niveaux), et un mouvement cree ou annule depuis la Logistique
+     * ne resynchronise ni le compteur de bouteilles vides, ni le statut
+     * d'une production ou d'une vente qui reference le meme mouvement.</p>
+     */
+    public boolean estGereParModuleDedie() {
+        return this == PLAT || this == BOISSON || this == PROVISION;
+    }
 }

@@ -27,6 +27,10 @@ import java.math.BigDecimal;
  * @param echangeConsigne    true si cet achat de boisson (module Restaurant) rend les
  *                           bouteilles vides equivalentes au paiement ; sans effet pour
  *                           tout autre type d'article
+ * @param fraisApproche      true pour la ligne de transport et manutention d'une note
+ *                           d'achat de marchandises : son compte (6015 ou 6025) est deduit
+ *                           par le serveur, et son montant est reparti au paiement sur le
+ *                           cout d'entree en stock des articles achetes
  */
 public record LigneNoteFraisRequest(
 
@@ -48,5 +52,6 @@ public record LigneNoteFraisRequest(
     Long entrepotId,
     Boolean soumisTva,
     String compteTva,
-    Boolean echangeConsigne
+    Boolean echangeConsigne,
+    Boolean fraisApproche
 ) {}

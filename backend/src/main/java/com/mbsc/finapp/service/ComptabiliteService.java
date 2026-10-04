@@ -12,7 +12,9 @@ import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EcritureGrandLivreRepository;
+import com.mbsc.finapp.repository.MouvementStockRepository;
 import com.mbsc.finapp.repository.PieceComptableRepository;
+import com.mbsc.finapp.repository.VenteRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -26,7 +28,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Module comptabilité générale : pièces comptables équilibrées, grand livre par compte,
@@ -41,6 +45,9 @@ public class ComptabiliteService {
     private final PieceComptableRepository pieceRepository;
     private final EcritureGrandLivreRepository ecritureRepository;
     private final CompteOHADARepository compteRepository;
+    /** Détectent une pièce d'origine stock/vente — voir {@link #annuler}. */
+    private final MouvementStockRepository mouvementStockRepository;
+    private final VenteRepository venteRepository;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     private final PeriodeComptableService periodeService;
@@ -55,6 +62,7 @@ public class ComptabiliteService {
     public PieceResponse creerPiece(PieceCreateRequest req) {
         User auteur = currentUser.requireUser();
         validerLignes(req.lignes());
+        exigerHorsTresorerie(req.journal(), req.lignes().stream().map(LigneEcritureRequest::compteNumero).toList());
 
         BigDecimal totalDebit = BigDecimal.ZERO;
         BigDecimal totalCredit = BigDecimal.ZERO;
@@ -128,6 +136,7 @@ public class ComptabiliteService {
                 "Seule une pièce BROUILLON peut être modifiée (état actuel : " + piece.getStatut() + ")");
         }
         validerLignes(req.lignes());
+        exigerHorsTresorerie(req.journal(), req.lignes().stream().map(LigneEcritureRequest::compteNumero).toList());
 
         BigDecimal totalDebit = BigDecimal.ZERO;
         BigDecimal totalCredit = BigDecimal.ZERO;
@@ -208,8 +217,18 @@ public class ComptabiliteService {
     @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<PieceResponse> listerPieces() {
+        // L'écran ne propose la comptabilisation et l'extourne que là où
+        // comptabiliser() et annuler() les accepteront.
+        java.util.Set<Long> liees = new java.util.HashSet<>(pieceRepository.idsPiecesLieesAUneOperation());
+        java.util.Set<Long> tresorerie = new java.util.HashSet<>(pieceRepository.idsPiecesTresorerie());
         return pieceRepository.findAllWithCreatedByOrderByDatePieceDesc().stream()
-            .map(p -> PieceResponse.from(p, false))
+            .map(p -> {
+                boolean touche = tresorerie.contains(p.getId());
+                return PieceResponse.from(p, false,
+                    p.getStatut() == StatutPiece.COMPTABILISEE && !liees.contains(p.getId()) && !touche,
+                    p.getStatut() == StatutPiece.BROUILLON && !touche && !JOURNAUX_TRESORERIE.contains(p.getJournal()),
+                    touche);
+            })
             .toList();
     }
 
@@ -227,6 +246,9 @@ public class ComptabiliteService {
             throw new TransitionInvalideException(
                 "Seule une pièce BROUILLON peut être comptabilisée (état actuel : " + piece.getStatut() + ")");
         }
+        // Un brouillon saisi avant cette règle ne doit pas pouvoir la
+        // contourner au moment de sa validation.
+        exigerHorsTresorerie(piece.getJournal(), piece.getLignes().stream().map(l -> l.getCompte().getNumero()).toList());
         // Le brouillon peut avoir été saisi puis validé plusieurs jours après :
         // c'est le taux du jour de la VALIDATION (pas de la saisie) qui fige
         // durablement chaque écriture en FC pour son affichage ultérieur en USD.
@@ -241,10 +263,55 @@ public class ComptabiliteService {
         return PieceResponse.from(piece);
     }
 
+    /**
+     * Extourne une pièce depuis l'écran Comptabilité.
+     *
+     * <p>Refuse toute pièce portant un mouvement de stock (donc, par
+     * transitivité, une production — qui n'a pas de pièce propre mais deux
+     * mouvements) ou une vente : ces pièces sont indissociables d'un état
+     * métier (niveau de stock, statut de production, statut de vente) que
+     * seul l'écran d'origine sait rejouer en cohérence. Une extourne directe
+     * ici solderait le grand livre sans toucher {@code stock_niveaux} ni le
+     * mouvement lui-même (resté VALIDE) : le module concerné continuerait
+     * d'afficher — et de vendre — un stock qui n'existe plus comptablement.</p>
+     *
+     * <p>Refuse de même toute pièce portant une opération de trésorerie
+     * (caisse, banque, mobile money) : l'opération resterait inscrite à son
+     * journal, la note de frais qu'elle règle resterait payée et la
+     * marchandise achetée resterait en stock, alors que le grand livre, lui,
+     * n'en garderait aucune trace. Une imputation erronée se corrige par une
+     * pièce de reclassement, un montant erroné par une note de frais.</p>
+     *
+     * <p>Refuse enfin toute pièce qui mouvemente un compte de trésorerie,
+     * même sans opération derrière elle (journal historique importé) : voir
+     * {@link #exigerHorsTresorerie}.</p>
+     */
     @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'ADMIN')")
     @Transactional
     public PieceResponse annuler(Long id) {
         PieceComptable originale = chargerAvecLignes(id);
+        if (mouvementStockRepository.existsAvecPieceId(id) || venteRepository.existsAvecPieceId(id)) {
+            throw new IllegalStateException(
+                "Cette pièce (" + originale.getReference() + ") est liée à un mouvement de stock ou à une "
+                + "vente : elle ne peut être extournée que depuis son écran d'origine "
+                + "(Logistique, Production, Restaurant ou Ventes), pas depuis la Comptabilité.");
+        }
+        if (ecritureRepository.existsTresorerieParPieceId(id)) {
+            throw new IllegalStateException(
+                "Cette pièce (" + originale.getReference() + ") enregistre une opération de caisse, de banque "
+                + "ou de mobile money : l'extourner seule laisserait l'opération à son journal. Corrigez une "
+                + "imputation par une pièce de reclassement ; un montant, par une note de frais d'encaissement "
+                + "ou de décaissement.");
+        }
+        // Même sans opération de trésorerie derrière elle (journal historique
+        // importé), une pièce qui mouvemente la classe 5 ne s'extourne pas
+        // d'ici : ce serait modifier la trésorerie sans note de frais.
+        if (originale.getLignes().stream().anyMatch(l -> estCompteTresorerie(l.getCompte().getNumero()))) {
+            throw new IllegalStateException(
+                "Cette pièce (" + originale.getReference() + ") mouvemente la trésorerie : l'extourner d'ici "
+                + "modifierait la caisse, la banque ou le mobile money sans passer par une note de frais. "
+                + "Une correction de trésorerie passe par une note de frais d'encaissement ou de décaissement.");
+        }
         return PieceResponse.from(extournerInterne(originale, currentUser.requireUser()));
     }
 
@@ -260,19 +327,28 @@ public class ComptabiliteService {
         return originale;
     }
 
+    /**
+     * Date d'une écriture qui corrige une opération passée : sa propre date,
+     * sauf si la période est clôturée — elle bascule alors à aujourd'hui pour
+     * rester dans une période ouverte. Règle de l'extourne, partagée avec les
+     * pièces qui l'accompagnent (écart de valorisation à l'annulation d'un
+     * mouvement de stock).
+     */
+    public LocalDate dateExtourne(LocalDate dateOrigine) {
+        LocalDate dateCloture = periodeService.dateCloture();
+        if (dateCloture != null && !dateOrigine.isAfter(dateCloture)) {
+            return LocalDate.now();
+        }
+        return dateOrigine;
+    }
+
     private PieceComptable extournerInterne(PieceComptable originale, User auteur) {
         if (originale.getStatut() != StatutPiece.COMPTABILISEE) {
             throw new TransitionInvalideException(
                 "Seule une pièce COMPTABILISEE peut être annulée (état actuel : " + originale.getStatut() + ")");
         }
 
-        // L'extourne conserve la date d'origine (sauf si la période est clôturée,
-        // auquel cas elle bascule à aujourd'hui pour rester dans une période ouverte).
-        LocalDate dateCloture = periodeService.dateCloture();
-        LocalDate dateExtourne = originale.getDatePiece();
-        if (dateCloture != null && !dateExtourne.isAfter(dateCloture)) {
-            dateExtourne = LocalDate.now();
-        }
+        LocalDate dateExtourne = dateExtourne(originale.getDatePiece());
         periodeService.verifierDateOuverte(dateExtourne);
 
         String libelleExtourne = "Extourne " + originale.getReference()
@@ -662,6 +738,54 @@ public class ComptabiliteService {
     private PieceComptable chargerAvecLignes(Long id) {
         return pieceRepository.findWithLignesById(id)
             .orElseThrow(() -> RessourceIntrouvableException.of("PieceComptable", id));
+    }
+
+    /**
+     * Racine des comptes de trésorerie : la classe 5 du SYSCOHADA (banques,
+     * caisse, monnaie électronique, valeurs à encaisser, virements
+     * internes...). C'est aussi la trésorerie des états financiers.
+     */
+    private static final String RACINE_COMPTES_TRESORERIE = "5";
+
+    /** Journaux réservés aux opérations de trésorerie. */
+    private static final Set<JournalComptable> JOURNAUX_TRESORERIE =
+        EnumSet.of(JournalComptable.CAISSE, JournalComptable.BANQUE, JournalComptable.MOBILE_MONEY);
+
+    public static boolean estCompteTresorerie(String numero) {
+        return numero != null && numero.startsWith(RACINE_COMPTES_TRESORERIE);
+    }
+
+    /**
+     * Refuse qu'une pièce saisie depuis l'écran Pièces comptables (création,
+     * modification, comptabilisation) mouvemente la trésorerie ou porte un
+     * journal de trésorerie. Un encaissement ou un décaissement passe par une
+     * note de frais — vérifiée par le DFIN, approuvée par le DA, exécutée par
+     * la caisse — ou par une opération de caisse, de banque ou de mobile
+     * money, réservée au caissier. Sans cette règle, une pièce manuelle
+     * (D charge / C 571) déplaçait de l'argent au grand livre en contournant
+     * tout ce circuit : le DFIN, qui vérifie les notes, pouvait s'en passer.
+     *
+     * <p>Aucune exception, pas même pour un solde d'ouverture : la reprise
+     * de la trésorerie est faite, et les exercices suivants reportent leurs
+     * soldes d'eux-mêmes. Les flux internes (caisse, ventes, stock, paie...)
+     * passent par {@link #creerPieceInterne} et ne sont pas concernés.</p>
+     */
+    private void exigerHorsTresorerie(JournalComptable journal, List<String> numerosComptes) {
+        if (JOURNAUX_TRESORERIE.contains(journal)) {
+            throw new IllegalArgumentException(
+                "Le journal " + journal + " est réservé aux opérations de trésorerie, qui ne se saisissent pas "
+                + "ici : un encaissement ou un décaissement passe par une note de frais.");
+        }
+        List<String> tresorerie = numerosComptes.stream()
+            .filter(ComptabiliteService::estCompteTresorerie)
+            .distinct()
+            .toList();
+        if (!tresorerie.isEmpty()) {
+            throw new IllegalArgumentException(
+                "Une pièce saisie ici ne peut pas mouvementer un compte de trésorerie (" + String.join(", ", tresorerie)
+                + ") : un encaissement ou un décaissement passe par une note de frais, vérifiée par le DFIN, "
+                + "approuvée par le DA et exécutée par la caisse.");
+        }
     }
 
     private void validerLignes(List<LigneEcritureRequest> lignes) {

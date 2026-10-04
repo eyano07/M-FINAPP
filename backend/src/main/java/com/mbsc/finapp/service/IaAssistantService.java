@@ -251,7 +251,7 @@ public class IaAssistantService {
             String reformule = chatGptClient.texte(systeme, utilisateur, 120);
             if (StringUtils.hasText(reformule)) {
                 String nettoye = reformule.strip().replaceAll("^\"|\"$", "");
-                return nettoye.length() > 200 ? nettoye.substring(0, 200) : nettoye;
+                return nettoye.length() > LIBELLE_PAIEMENT_MAX ? nettoye.substring(0, LIBELLE_PAIEMENT_MAX) : nettoye;
             }
         } catch (RuntimeException e) {
             log.warn("IA indisponible pour la reformulation du libelle ({}) : repli sur le gabarit local",
@@ -260,9 +260,23 @@ public class IaAssistantService {
         return gabaritLocal;
     }
 
+    /**
+     * Longueur maximale du libelle de paiement, reformule ou non : l'appelant y
+     * ajoute encore la conversion de devise (« (250700.00 CDF @ 2200.0000) »)
+     * avant de l'ecrire dans des colonnes de 255 caracteres (transaction,
+     * grand livre, piece).
+     */
+    private static final int LIBELLE_PAIEMENT_MAX = 200;
+
     private String libelleParDefaut(String reference, String objet, String detailLignes) {
         String detail = StringUtils.hasText(detailLignes) ? detailLignes : objet;
-        return "Reglement note de frais " + reference
+        String libelle = "Reglement note de frais " + reference
             + (StringUtils.hasText(detail) ? " - " + detail : "");
+        // Le detail enumere chaque ligne de la note : sans plafond, une note de
+        // quelques lignes depassait la colonne et faisait echouer le paiement
+        // des que l'IA etait indisponible.
+        return libelle.length() > LIBELLE_PAIEMENT_MAX
+            ? libelle.substring(0, LIBELLE_PAIEMENT_MAX - 1) + "…"
+            : libelle;
     }
 }

@@ -2,6 +2,7 @@ package com.mbsc.finapp.service;
 
 import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CompteOHADA;
+import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.EmballageBoisson;
 import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.LigneMouvementStock;
@@ -11,26 +12,36 @@ import com.mbsc.finapp.domain.LigneVente;
 import com.mbsc.finapp.domain.MouvementEmballage;
 import com.mbsc.finapp.domain.MouvementStock;
 import com.mbsc.finapp.domain.Production;
+import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.SalleRestaurant;
+import com.mbsc.finapp.domain.SortiePlat;
+import com.mbsc.finapp.domain.StockGrandLivre;
 import com.mbsc.finapp.domain.TableRestaurant;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.Vente;
 import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.FormeTable;
+import com.mbsc.finapp.domain.enums.JournalComptable;
+import com.mbsc.finapp.domain.enums.ModeReglement;
+import com.mbsc.finapp.domain.enums.MotifSortiePlat;
 import com.mbsc.finapp.domain.enums.RoleType;
+import com.mbsc.finapp.domain.enums.StatutMouvement;
 import com.mbsc.finapp.domain.enums.StatutProduction;
 import com.mbsc.finapp.domain.enums.StatutVente;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeMouvementEmballage;
+import com.mbsc.finapp.domain.enums.TypeMouvementStock;
 import com.mbsc.finapp.dto.logistique.ArticleRequest;
 import com.mbsc.finapp.dto.logistique.ArticleResponse;
 import com.mbsc.finapp.dto.logistique.EntrepotResponse;
 import com.mbsc.finapp.dto.logistique.StockGrandLivreResponse;
 import com.mbsc.finapp.dto.logistique.StockNiveauResponse;
+import com.mbsc.finapp.dto.restaurant.AnalyseVentesResponse;
 import com.mbsc.finapp.dto.restaurant.EmballageRequest;
 import com.mbsc.finapp.dto.restaurant.EmballageResponse;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageRequest;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageResponse;
+import com.mbsc.finapp.dto.restaurant.LotStockResponse;
 import com.mbsc.finapp.dto.restaurant.LigneProductionRequest;
 import com.mbsc.finapp.dto.restaurant.LigneRecetteRequest;
 import com.mbsc.finapp.dto.restaurant.LigneRecetteResponse;
@@ -43,6 +54,8 @@ import com.mbsc.finapp.dto.restaurant.RecetteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteResponse;
 import com.mbsc.finapp.dto.restaurant.SalleRequest;
 import com.mbsc.finapp.dto.restaurant.SalleResponse;
+import com.mbsc.finapp.dto.restaurant.SortiePlatRequest;
+import com.mbsc.finapp.dto.restaurant.SortiePlatResponse;
 import com.mbsc.finapp.dto.restaurant.TableRequest;
 import com.mbsc.finapp.dto.restaurant.TableResponse;
 import com.mbsc.finapp.dto.restaurant.TableauBordProvisionsResponse;
@@ -60,10 +73,15 @@ import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EmballageBoissonRepository;
 import com.mbsc.finapp.repository.EntrepotRepository;
 import com.mbsc.finapp.repository.LigneRecetteRepository;
+import com.mbsc.finapp.repository.LotStockRepository;
 import com.mbsc.finapp.repository.MouvementEmballageRepository;
 import com.mbsc.finapp.repository.MouvementStockRepository;
+import com.mbsc.finapp.repository.NoteFraisRepository;
 import com.mbsc.finapp.repository.ProductionRepository;
 import com.mbsc.finapp.repository.SalleRestaurantRepository;
+import com.mbsc.finapp.repository.SortiePlatRepository;
+import com.mbsc.finapp.repository.StockGrandLivreRepository;
+import com.mbsc.finapp.repository.StockNiveauRepository;
 import com.mbsc.finapp.repository.TableRestaurantRepository;
 import com.mbsc.finapp.repository.VenteRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
@@ -127,15 +145,40 @@ public class RestaurantService {
     private final TableRestaurantRepository tableRepository;
     private final LigneRecetteRepository ligneRecetteRepository;
     private final ProductionRepository productionRepository;
+    private final NoteFraisRepository noteFraisRepository;
+    private final StockNiveauRepository stockNiveauRepository;
+    /** Historique des provisions, lu en entités pour savoir quels mouvements l'écran peut annuler. */
+    private final StockGrandLivreRepository stockGrandLivreRepository;
     private final StockService stockService;
+    /** Ecriture directe de l'achat d'une provision — voir {@link #recevoirProvision}. */
+    private final ComptabiliteService comptabilite;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     /** Résout le taux du jour pour les réceptions de provisions cotées en FC. */
     private final ConversionDeviseService conversionDevise;
+    /** Lots actifs (date d'achat, fournisseur) — suivi de gestion, voir LotStockService. */
+    private final LotStockRepository lotStockRepository;
+    /** Sorties de plats hors vente (périmé, renversé, offert...) — voir {@link #enregistrerSortiePlat}. */
+    private final SortiePlatRepository sortiePlatRepository;
 
     private static final String LECTURE =
-        "hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN')";
+        "hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN')";
     private static final String ECRITURE = "hasAnyRole('RESP_RESTAURANT', 'ADMIN')";
+    /**
+     * Occuper/liberer une table est une action de service (le caissier y a
+     * autant besoin qu'au responsable restaurant), a distinguer de {@link
+     * #ECRITURE} qui couvre aussi la production, les provisions et les
+     * emballages — restes hors du quotidien du caissier.
+     */
+    private static final String ECRITURE_STATUT_TABLE = "hasAnyRole('RESP_RESTAURANT', 'CAISSIER', 'ADMIN')";
+    /**
+     * Analyse des ventes : un outil de pilotage de l'offre, reserve parmi les
+     * lecteurs du module ({@link #LECTURE}) a ceux qui la pilotent — le
+     * responsable restaurant, le DFIN et le DG. Exposee sous /restaurant
+     * comme le reste du module, donc soumise a son activation et a ses
+     * permissions (le DFIN et le DG y ont la lecture).
+     */
+    private static final String LECTURE_ANALYSES = "hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN')";
     /**
      * Creation et modification des plats/boissons de la carte (prix de vente,
      * imputation comptable) : reservees a l'administrateur — le responsable
@@ -190,8 +233,94 @@ public class RestaurantService {
     @Transactional
     public ArticleResponse modifierArticleCarte(Long id, ArticleRequest req) {
         exigerTypeCarte(req.type());
+        Article existant = exigerArticleDeLaCarte(id);
+        return stockService.modifierArticleInterne(id, completerParLExistant(existant, req));
+    }
+
+    /**
+     * Complète une requête de modification par les valeurs actuelles de
+     * l'article, pour tout champ laissé vide : {@code StockService
+     * .appliquerArticle} remplace tout, et un appel partiel effaçait sinon
+     * les comptes de l'article (le rendant impossible à vendre ou à
+     * réceptionner), son prix d'achat indicatif et son entrepôt
+     * d'affectation — ces deux derniers, les écrans de ce module ne les
+     * envoient même pas. La catégorie, elle, reste celle de la requête :
+     * la vider est un choix légitime.
+     */
+    private static ArticleRequest completerParLExistant(Article a, ArticleRequest req) {
+        return new ArticleRequest(
+            req.code(), req.libelle(), req.uniteMesure(), req.type(), req.categorie(),
+            req.entrepotId() != null ? req.entrepotId() : (a.getEntrepot() == null ? null : a.getEntrepot().getId()),
+            numeroOuExistant(req.compteStockNumero(), a.getCompteStock()),
+            numeroOuExistant(req.compteChargeNumero(), a.getCompteCharge()),
+            numeroOuExistant(req.compteProduitNumero(), a.getCompteProduit()),
+            numeroOuExistant(req.compteAchatNumero(), a.getCompteAchat()),
+            req.prixVente() != null ? req.prixVente() : a.getPrixVente(),
+            req.prixAchat() != null ? req.prixAchat() : a.getPrixAchat(),
+            req.minerais() != null ? req.minerais() : a.isMinerais(),
+            req.soumisTva() != null ? req.soumisTva() : a.isSoumisTva(),
+            req.stockMin() != null ? req.stockMin() : a.getStockMin(),
+            req.actif() != null ? req.actif() : a.isActif()
+        );
+    }
+
+    private static String numeroOuExistant(String numero, CompteOHADA existant) {
+        if (numero != null && !numero.isBlank()) {
+            return numero;
+        }
+        return existant == null ? null : existant.getNumero();
+    }
+
+    /**
+     * Suppression definitive d'un article de la carte, reservee a
+     * l'administrateur et seulement possible s'il n'a jamais ete implique
+     * dans une operation reelle (vente, achat, mouvement de stock, fiche
+     * technique, production, conditionnement) — sinon son historique
+     * deviendrait orphelin. Pour un article deja utilise, seule la
+     * desactivation (modifierArticleCarte avec actif=false) reste possible.
+     *
+     * <p>Libere aussi ses comptes comptables dedies (genererCompteDedie),
+     * qui redeviennent disponibles pour le prochain article : seuls les
+     * comptes manuels (manuel=true) sont retires, jamais un compte du
+     * referentiel officiel.</p>
+     */
+    @PreAuthorize(ECRITURE_CARTE)
+    @Transactional
+    public void supprimerArticleCarte(Long id) {
+        Article article = articleRepository.findById(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("Article", id));
         exigerArticleDeLaCarte(id);
-        return stockService.modifierArticleInterne(id, req);
+
+        boolean lie = venteRepository.existsLigneAvecArticle(id)
+            || noteFraisRepository.existsLigneAvecArticle(id)
+            || mouvementStockRepository.existsLigneAvecArticle(id)
+            || ligneRecetteRepository.existsByPlatId(id)
+            || ligneRecetteRepository.existsByProvisionId(id)
+            || productionRepository.existsByPlatId(id)
+            || productionRepository.existsLigneAvecProvision(id)
+            || emballageRepository.existsByArticleBoissonId(id);
+        if (lie) {
+            throw new IllegalStateException(
+                "Impossible de supprimer définitivement " + article.getLibelle()
+                + " : il est lié à au moins une opération (vente, achat, mouvement de stock, "
+                + "fiche technique, production ou conditionnement). Désactivez-le plutôt.");
+        }
+
+        stockNiveauRepository.deleteByArticleId(id);
+
+        List<CompteOHADA> comptesDedies = new ArrayList<>();
+        if (article.getCompteStock() != null) comptesDedies.add(article.getCompteStock());
+        if (article.getCompteCharge() != null) comptesDedies.add(article.getCompteCharge());
+        if (article.getCompteProduit() != null) comptesDedies.add(article.getCompteProduit());
+        if (article.getCompteAchat() != null) comptesDedies.add(article.getCompteAchat());
+
+        articleRepository.delete(article);
+        for (CompteOHADA c : comptesDedies) {
+            if (c.isManuel()) {
+                compteRepository.delete(c);
+            }
+        }
+        log.info("Article de carte supprimé définitivement [id={}, code={}]", id, article.getCode());
     }
 
     /** Etat du stock limite aux articles de la carte. */
@@ -205,6 +334,20 @@ public class RestaurantService {
         return stockService.etatStockInterne().stream()
             .filter(s -> idsCarte.contains(s.articleId()))
             .toList();
+    }
+
+    /**
+     * Lots de stock actifs des boissons (date d'achat, fournisseur, prix) —
+     * suivi de gestion séparé du coût moyen pondéré ci-dessus, voir
+     * {@link LotStockService}. Un plat n'a pas de lot d'achat : il ne figure
+     * que sur {@link #etatStockCarte()}.
+     */
+    @PreAuthorize(LECTURE)
+    @Transactional(readOnly = true)
+    public List<LotStockResponse> listerLotsBoissons() {
+        return lotStockRepository.findByArticle_TypeAndQuantiteRestanteGreaterThanOrderByDateEntreeAsc(
+                TypeArticle.BOISSON, java.math.BigDecimal.ZERO)
+            .stream().map(LotStockResponse::from).toList();
     }
 
     /** Entrepots disponibles pour une reception, sans exiger le module LOGISTIQUE. */
@@ -224,13 +367,14 @@ public class RestaurantService {
         }
     }
 
-    private void exigerArticleDeLaCarte(Long id) {
+    private Article exigerArticleDeLaCarte(Long id) {
         Article article = articleRepository.findById(id)
             .orElseThrow(() -> RessourceIntrouvableException.of("Article", id));
         if (!TYPES_CARTE.contains(article.getType())) {
             throw new IllegalArgumentException(
                 "L'article " + article.getCode() + " n'appartient pas à la carte du restaurant");
         }
+        return article;
     }
 
     // ---------------------------------------------------------------------
@@ -270,11 +414,12 @@ public class RestaurantService {
     }
 
     /**
-     * Remplace la fiche entière : définir ce qui compose un plat relève de la
-     * définition de la carte, donc de l'administrateur (même règle que le prix
-     * de vente et l'imputation comptable).
+     * Remplace la fiche entière : composer un plat en ingrédients est le
+     * travail quotidien du chef cuisinier (responsable restaurant), pas de
+     * l'administrateur — qui, lui, se limite à créer la fiche article
+     * (code, prix, imputation comptable) sur la carte.
      */
-    @PreAuthorize(ECRITURE_CARTE)
+    @PreAuthorize(ECRITURE)
     @Transactional
     public RecetteResponse enregistrerRecette(Long platId, RecetteRequest req) {
         Article plat = exigerPlat(platId);
@@ -295,6 +440,22 @@ public class RestaurantService {
                 .plat(plat).provision(provision).quantite(l.quantite()).build());
         }
         log.info("Fiche technique enregistrée [plat={}, ingrédients={}]", plat.getCode(), req.lignes().size());
+        return construireRecette(plat, ligneRecetteRepository.findByPlatIdAvecProvision(platId), cmpParArticle());
+    }
+
+    /**
+     * Ajuste le prix de vente directement depuis la fiche technique : le
+     * chef y voit déjà le coût de revient réel et la marge, c'est le bon
+     * endroit pour corriger un prix devenu trop juste — plutôt que de
+     * l'obliger à rouvrir la carte pour la même information.
+     */
+    @PreAuthorize(ECRITURE)
+    @Transactional
+    public RecetteResponse modifierPrixVenteCarte(Long platId, BigDecimal prixVente) {
+        Article plat = exigerPlat(platId);
+        plat.setPrixVente(prixVente);
+        articleRepository.save(plat);
+        log.info("Prix de vente modifié [plat={}, prix={}]", plat.getCode(), prixVente);
         return construireRecette(plat, ligneRecetteRepository.findByPlatIdAvecProvision(platId), cmpParArticle());
     }
 
@@ -435,7 +596,8 @@ public class RestaurantService {
         }
         Map<Long, BigDecimal> cmp = new LinkedHashMap<>();
         cumul.forEach((articleId, qv) -> cmp.put(articleId,
-            qv[0].signum() == 0 ? BigDecimal.ZERO : qv[1].divide(qv[0], 2, RoundingMode.HALF_UP)));
+            // 6 décimales : voir StockNiveauResponse (coût unitaire affiché en francs).
+            qv[0].signum() == 0 ? BigDecimal.ZERO : qv[1].divide(qv[0], 6, RoundingMode.HALF_UP)));
         return cmp;
     }
 
@@ -491,9 +653,15 @@ public class RestaurantService {
                 .stream()
                 .collect(java.util.stream.Collectors.groupingBy(v -> v.getTable().getId()));
 
+        // Tables regroupées par salle depuis la lecture unique ci-dessus, plutôt
+        // qu'une requête de plus par salle.
+        Map<Long, List<TableRestaurant>> tablesParSalle = toutesLesTables.stream()
+            .sorted(Comparator.comparing(TableRestaurant::getId))
+            .collect(java.util.stream.Collectors.groupingBy(t -> t.getSalle().getId()));
+
         return salleRepository.findAllByOrderByOrdreAscIdAsc().stream()
             .map(s -> {
-                List<TableResponse> tablesDto = tableRepository.findBySalleIdOrderByIdAsc(s.getId()).stream()
+                List<TableResponse> tablesDto = tablesParSalle.getOrDefault(s.getId(), List.of()).stream()
                     .map(t -> tableResponseAvecBadges(t, ventesParTable.getOrDefault(t.getId(), List.of())))
                     .toList();
                 return SalleResponse.avecTables(s, tablesDto);
@@ -523,7 +691,7 @@ public class RestaurantService {
     @PreAuthorize(LECTURE)
     @Transactional(readOnly = true)
     public List<VenteResponse> listerCommandesTable(Long tableId) {
-        return venteRepository.findActivesByTableIdIn(List.of(tableId)).stream()
+        return venteRepository.findActivesAvecDetailsByTableId(tableId).stream()
             .map(v -> VenteResponse.from(v, true))
             .toList();
     }
@@ -535,6 +703,7 @@ public class RestaurantService {
             .nom(req.nom())
             .ordre(req.ordre() == null ? 0 : req.ordre())
             .actif(req.actif() == null || req.actif())
+            .majorationPourcentage(req.majorationPourcentage() == null ? BigDecimal.ZERO : req.majorationPourcentage())
             .build();
         salle = salleRepository.save(salle);
         return SalleResponse.from(salle, List.of());
@@ -548,18 +717,40 @@ public class RestaurantService {
         salle.setNom(req.nom());
         if (req.ordre() != null) salle.setOrdre(req.ordre());
         if (req.actif() != null) salle.setActif(req.actif());
+        if (req.majorationPourcentage() != null) salle.setMajorationPourcentage(req.majorationPourcentage());
         salle = salleRepository.save(salle);
         return SalleResponse.from(salle, tableRepository.findBySalleIdOrderByIdAsc(id));
     }
 
-    /** Supprime la salle et ses tables (ON DELETE CASCADE). */
+    /**
+     * Supprime la salle et ses tables (ON DELETE CASCADE).
+     *
+     * <p>Detache d'abord TOUTES les ventes de ces tables, y compris ANNULEE
+     * (contrairement a {@link #changerStatutTable}, qui exclut deliberement
+     * les ventes annulees car elles ne representent plus une commande en
+     * cours) : sans ce detachement, une vente annulee garderait indefiniment
+     * son {@code table_id} et la suppression violerait la contrainte de cle
+     * etrangere {@code ventes.table_id} (HTTP 500 opaque).</p>
+     */
     @PreAuthorize(ECRITURE_SALLES)
     @Transactional
     public void supprimerSalle(Long id) {
         if (!salleRepository.existsById(id)) {
             throw RessourceIntrouvableException.of("Salle", id);
         }
+        List<Long> idsTables = tableRepository.findBySalleIdOrderByIdAsc(id).stream()
+            .map(TableRestaurant::getId)
+            .toList();
+        detacherToutesLesVentes(idsTables);
         salleRepository.deleteById(id);
+    }
+
+    /** Detache toutes les ventes (actives et annulees) des tables donnees — voir {@link #supprimerSalle}. */
+    private void detacherToutesLesVentes(List<Long> idsTables) {
+        if (idsTables.isEmpty()) {
+            return;
+        }
+        venteRepository.findAllByTableIdIn(idsTables).forEach(v -> v.setTable(null));
     }
 
     /**
@@ -574,6 +765,17 @@ public class RestaurantService {
     public SalleResponse enregistrerPlan(Long salleId, PlanSalleRequest req) {
         SalleRestaurant salle = salleRepository.findById(salleId)
             .orElseThrow(() -> RessourceIntrouvableException.of("Salle", salleId));
+        // Deux tables au même numéro rendaient ambigus la commande, le badge
+        // payé/non payé et l'addition. Vérifié ici pour un message clair ; la
+        // contrainte d'unicité (V87) le garantit en base.
+        Set<String> numeros = new java.util.HashSet<>();
+        for (TableRequest tr : req.tables()) {
+            if (!numeros.add(tr.numero().trim().toLowerCase(java.util.Locale.ROOT))) {
+                throw new IllegalArgumentException(
+                    "Deux tables portent le numéro « " + tr.numero().trim() + " » dans cette salle : "
+                    + "donnez-leur des numéros différents.");
+            }
+        }
 
         List<TableRestaurant> existantes = tableRepository.findBySalleIdOrderByIdAsc(salleId);
         Map<Long, TableRestaurant> existantesParId = existantes.stream()
@@ -586,6 +788,10 @@ public class RestaurantService {
         List<TableRestaurant> aSupprimer = existantes.stream()
             .filter(t -> !idsRecus.contains(t.getId()))
             .toList();
+        // Detache d'abord les ventes (actives et annulees) de ces tables —
+        // voir supprimerSalle : sans cela, une vente annulee garderait son
+        // table_id et la suppression violerait la contrainte de cle etrangere.
+        detacherToutesLesVentes(aSupprimer.stream().map(TableRestaurant::getId).toList());
         tableRepository.deleteAll(aSupprimer);
 
         List<TableRestaurant> resultat = new ArrayList<>();
@@ -601,7 +807,7 @@ public class RestaurantService {
                 table = new TableRestaurant();
                 table.setSalle(salle);
             }
-            table.setNumero(tr.numero());
+            table.setNumero(tr.numero().trim());
             table.setForme(tr.forme() == null ? FormeTable.CARRE : tr.forme());
             table.setPosX(tr.posX());
             table.setPosY(tr.posY());
@@ -619,16 +825,59 @@ public class RestaurantService {
     /**
      * Bascule l'occupation d'une table, independamment du plan : action du
      * quotidien (comme une vente ou une reception), ouverte au responsable
-     * restaurant — contrairement a la disposition elle-meme (ECRITURE_SALLES,
-     * reservee a l'administrateur).
+     * restaurant et au caissier — contrairement a la disposition elle-meme
+     * (ECRITURE_SALLES, reservee a l'administrateur). Une table peut aussi
+     * passer occupee automatiquement (voir VenteService.creer) ; ceci reste
+     * le seul chemin pour la liberer ou la reserver a la main.
+     *
+     * <p>Liberer une table (occupee -> false) cloture son cycle de service :
+     * les ventes qui y etaient rattachees restent des pieces comptables
+     * intactes (rien n'est annule ni supprime), mais ne pointent plus vers
+     * la table, qui redevient vierge pour le client suivant — sans quoi le
+     * badge paye/non-paye du plan continuerait indefiniment de refleter des
+     * commandes deja soldees depuis longtemps. Si une commande n'est pas
+     * encore payee, seul l'administrateur peut liberer quand meme (client
+     * parti sans regler, erreur a corriger...) ; le caissier et le
+     * responsable restaurant doivent d'abord regler l'addition.</p>
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_STATUT_TABLE)
     @Transactional
     public void changerStatutTable(Long tableId, boolean occupee) {
         TableRestaurant table = tableRepository.findById(tableId)
             .orElseThrow(() -> RessourceIntrouvableException.of("Table", tableId));
+
+        if (!occupee) {
+            List<Vente> ventesLiees = venteRepository.findActivesByTableIdIn(List.of(tableId));
+            boolean impayee = ventesLiees.stream().anyMatch(this::estImpayee);
+            User demandeur = currentUser.requireUser();
+            boolean estAdmin = demandeur.getRoles().stream().anyMatch(r -> r.getNom() == RoleType.ADMIN);
+            if (impayee && !estAdmin) {
+                // Seul le caissier encaisse : le responsable restaurant, qui
+                // peut aussi liberer une table, doit etre oriente vers lui
+                // plutot que vers une action qu'il ne peut pas faire.
+                boolean estCaissier = demandeur.getRoles().stream().anyMatch(r -> r.getNom() == RoleType.CAISSIER);
+                throw new IllegalStateException(
+                    "Impossible de libérer cette table : une commande n'est pas encore payée. "
+                    + (estCaissier
+                        ? "Encaissez-la ou réglez l'addition d'abord, ou demandez à un administrateur de libérer la table quand même."
+                        : "Seul le caissier peut l'encaisser ou régler l'addition : adressez-vous à lui, ou demandez à un "
+                          + "administrateur de libérer la table quand même."));
+            }
+            ventesLiees.forEach(v -> v.setTable(null));
+        }
+
         table.setOccupee(occupee);
         tableRepository.save(table);
+    }
+
+    /** Brouillon jamais paye, ou credit valide mais dont l'addition n'a pas encore ete reglee. */
+    private boolean estImpayee(Vente v) {
+        if (v.getStatut() == StatutVente.BROUILLON) {
+            return true;
+        }
+        return v.getStatut() == StatutVente.VALIDEE
+            && v.getModeReglement() == ModeReglement.CREDIT
+            && v.getPieceReglement() == null;
     }
 
     // ---------------------------------------------------------------------
@@ -656,13 +905,19 @@ public class RestaurantService {
      * Partager le compte generique de la racine entre toutes les provisions
      * rendrait le grand livre illisible par provision (impossible de savoir
      * combien a coute le riz plutot que le sel sans depouiller chaque piece).
-     * Le compte d'achat (6011) est commun aux provisions, plats et boissons —
-     * voir {@link #creerArticleCarte} — un seul espace de numerotation pour
-     * tout achat de marchandise du module Restaurant.
+     *
+     * <p>Une provision (vivres, epices, charbon) n'est PAS une marchandise
+     * revendue : elle a donc sa propre famille de comptes — 6021 "Achats de
+     * matieres premieres et fournitures liees" et 6032 sa variation de stock
+     * appariee — distincte de {@link #RACINE_COMPTE_ACHAT_MARCHANDISE} (6011)
+     * partagee entre plats et boissons. Melanger les deux polluait la marge
+     * commerciale SYSCOHADA (701 − 601 ± 6031) de tous les achats de cuisine,
+     * qui n'ont rien de marchandises revendues.</p>
      */
     private static final String RACINE_COMPTE_ACHAT_MARCHANDISE = "6011";
+    private static final String RACINE_COMPTE_ACHAT_PROVISION = "6021";
     private static final String RACINE_COMPTE_STOCK_PROVISION = "331";
-    private static final String RACINE_COMPTE_CHARGE_PROVISION = "6033";
+    private static final String RACINE_COMPTE_CHARGE_PROVISION = "6032";
 
     @PreAuthorize(ECRITURE)
     @Transactional
@@ -673,7 +928,7 @@ public class RestaurantService {
             genererCompteDedie(RACINE_COMPTE_STOCK_PROVISION, req.libelle()).getNumero(),
             genererCompteDedie(RACINE_COMPTE_CHARGE_PROVISION, req.libelle()).getNumero(),
             req.compteProduitNumero(),
-            genererCompteDedie(RACINE_COMPTE_ACHAT_MARCHANDISE, req.libelle()).getNumero(),
+            genererCompteDedie(RACINE_COMPTE_ACHAT_PROVISION, req.libelle()).getNumero(),
             req.prixVente(), req.prixAchat(), req.minerais(), req.soumisTva(), req.stockMin(), req.actif()
         );
         ArticleResponse cree = stockService.creerArticleInterne(reqAvecComptes);
@@ -732,8 +987,8 @@ public class RestaurantService {
     @Transactional
     public ArticleResponse modifierProvision(Long id, ArticleRequest req) {
         exigerTypeProvision(req.type());
-        exigerArticleProvision(id);
-        return stockService.modifierArticleInterne(id, req);
+        Article existant = exigerArticleProvision(id);
+        return stockService.modifierArticleInterne(id, completerParLExistant(existant, req));
     }
 
     @PreAuthorize(LECTURE)
@@ -748,11 +1003,101 @@ public class RestaurantService {
             .toList();
     }
 
+    /** Lots de stock actifs des provisions (date d'achat, fournisseur, prix) — voir {@link #listerLotsBoissons()}. */
+    @PreAuthorize(LECTURE)
+    @Transactional(readOnly = true)
+    public List<LotStockResponse> listerLotsProvisions() {
+        return lotStockRepository.findByArticle_TypeAndQuantiteRestanteGreaterThanOrderByDateEntreeAsc(
+                TypeArticle.PROVISION, java.math.BigDecimal.ZERO)
+            .stream().map(LotStockResponse::from).toList();
+    }
+
+    /**
+     * Historique des provisions — et d'elles seules : le grand livre de stock
+     * est commun à tous les articles, et cet écran affichait aussi les
+     * boissons, les plats et les marchandises de la Logistique.
+     *
+     * <p>Chaque ligne indique si l'écran peut annuler son mouvement (voir
+     * {@link #annulerMouvementProvision}) : le bouton n'est proposé que là où
+     * le serveur l'accepte.</p>
+     */
     @PreAuthorize(LECTURE)
     @Transactional(readOnly = true)
     public List<StockGrandLivreResponse> grandLivreProvisions(
             Long articleId, Long entrepotId, LocalDate du, LocalDate au) {
-        return stockService.grandLivreStockInterne(articleId, entrepotId, du, au);
+        List<StockGrandLivre> lignes = stockGrandLivreRepository.rechercher(articleId, entrepotId,
+                du != null ? du : LocalDate.of(2000, 1, 1), au != null ? au : LocalDate.now()).stream()
+            .filter(s -> s.getArticle().getType() == TypeArticle.PROVISION)
+            .toList();
+        Set<Long> idsMouvements = lignes.stream()
+            .map(StockGrandLivre::getMouvement)
+            .filter(java.util.Objects::nonNull)
+            .map(MouvementStock::getId)
+            .collect(java.util.stream.Collectors.toSet());
+        // Une seule requête par opération propriétaire, pas une par ligne.
+        Set<Long> appartenantAUneOperation = new java.util.HashSet<>();
+        if (!idsMouvements.isEmpty()) {
+            appartenantAUneOperation.addAll(productionRepository.idsMouvementsSortieParmi(idsMouvements));
+            appartenantAUneOperation.addAll(productionRepository.idsMouvementsEntreeParmi(idsMouvements));
+            appartenantAUneOperation.addAll(venteRepository.idsMouvementsParmi(idsMouvements));
+        }
+        return lignes.stream()
+            .map(s -> StockGrandLivreResponse.from(s,
+                mouvementProvisionAnnulable(s.getMouvement(), appartenantAUneOperation)))
+            .toList();
+    }
+
+    /**
+     * Mouvement de provision que ce module peut annuler seul : une réception
+     * directe (elle porte sa pièce d'achat) ou une sortie saisie ici. Pas une
+     * entrée issue du paiement d'une note de frais — le paiement resterait
+     * sans marchandise —, ni un mouvement qui appartient à une production.
+     */
+    private static boolean mouvementProvisionAnnulable(MouvementStock m, Set<Long> appartenantAUneOperation) {
+        if (m == null || m.getStatut() != StatutMouvement.VALIDE || appartenantAUneOperation.contains(m.getId())) {
+            return false;
+        }
+        return switch (m.getType()) {
+            case ENTREE -> m.getPieceAchat() != null;
+            case SORTIE -> true;
+            case TRANSFERT -> false;
+        };
+    }
+
+    /**
+     * Annule une réception directe ou une sortie de provision saisie par
+     * erreur : le stock est rétabli, la pièce de stock et, pour une
+     * réception, la pièce d'achat sont extournées. Sans cela, une erreur de
+     * saisie (100 kg reçus au lieu de 10) n'avait plus aucune voie de
+     * correction : la Logistique refuse ces articles et la Comptabilité
+     * refuse d'extourner seule une pièce de stock.
+     */
+    @PreAuthorize(ECRITURE)
+    @Transactional
+    public void annulerMouvementProvision(Long mouvementId) {
+        MouvementStock m = mouvementStockRepository.findWithLignesById(mouvementId)
+            .orElseThrow(() -> RessourceIntrouvableException.of("MouvementStock", mouvementId));
+        if (m.getStatut() != StatutMouvement.VALIDE) {
+            throw new TransitionInvalideException("Le mouvement " + m.getReference() + " est déjà annulé.");
+        }
+        if (m.getLignes().stream().anyMatch(l -> l.getArticle().getType() != TypeArticle.PROVISION)) {
+            throw new IllegalArgumentException(
+                "Le mouvement " + m.getReference() + " ne porte pas sur des provisions : "
+                + "il ne s'annule pas depuis cet écran.");
+        }
+        stockService.exigerAnnulableSeul(m);
+        if (m.getType() == TypeMouvementStock.ENTREE && m.getPieceAchat() == null) {
+            throw new IllegalStateException(
+                "L'entrée " + m.getReference() + " provient du paiement d'une note de frais : l'annuler seule "
+                + "laisserait le paiement sans marchandise. Seul l'administrateur peut la corriger, "
+                + "depuis la Logistique.");
+        }
+        if (m.getType() == TypeMouvementStock.TRANSFERT) {
+            throw new IllegalArgumentException(
+                "Le transfert " + m.getReference() + " s'annule depuis la Logistique.");
+        }
+        stockService.annulerMouvementInterne(m, currentUser.requireUser());
+        log.info("Mouvement de provision annulé [ref={}, type={}]", m.getReference(), m.getType());
     }
 
     /**
@@ -851,28 +1196,42 @@ public class RestaurantService {
         }
     }
 
-    private void exigerArticleProvision(Long id) {
+    private Article exigerArticleProvision(Long id) {
         Article article = articleRepository.findById(id)
             .orElseThrow(() -> RessourceIntrouvableException.of("Article", id));
         if (article.getType() != TypeArticle.PROVISION) {
             throw new IllegalArgumentException(
                 "L'article " + article.getCode() + " n'est pas une provision");
         }
+        return article;
     }
 
     /**
-     * Réception d'une provision : entrée en stock valorisée, avec pièce
-     * comptable — même mécanique que la réception de boissons, sans
-     * l'échange de consigne qui ne s'applique pas à ces articles.
+     * Réception d'une provision : achat immédiat, en deux écritures
+     * indissociables.
      *
-     * <p>Si le coût est coté en FC, le taux du jour est résolu une seule fois
-     * ici pour convertir en USD (devise de base du stock) avant stockage
-     * définitif. Contrairement à un achat de boissons via note de frais (qui
+     * <p><b>1. Achat</b> — {@code D 601x/602x (compte d'achat dédié de la
+     * provision) / C contrepartie} — puis <b>2. Entrée en stock</b> —
+     * {@code D 331x / C 6032/6033}, exactement le même schéma que pour un
+     * achat de boissons réglé par note de frais (voir {@code
+     * StockService.entreesDepuisNoteFraisInterne}). Une version antérieure ne
+     * produisait que la seconde écriture (via {@code
+     * enregistrerEntreeRestaurantInterne}) : le bilan en ressortait juste,
+     * mais l'achat (601/602) et sa variation de stock (603x) n'apparaissaient
+     * jamais au compte de résultat — le même défaut que la StockService
+     * documente déjà pour l'ancienne écriture directe des notes de frais.</p>
+     *
+     * <p>Le montant TOTAL (coût unitaire × quantité) est converti UNE SEULE
+     * FOIS si le coût est coté en FC, jamais le seul coût unitaire : convertir
+     * puis arrondir le coût unitaire à 2 décimales avant de le multiplier par
+     * une grande quantité pouvait faire entrer la provision en stock à une
+     * valeur significativement faussée (jusqu'à 12 % d'écart observé), et
+     * tout coût unitaire sous ~14 FC/2 800 (le taux) s'arrondissait carrément
+     * à zéro. Contrairement à un achat de boissons via note de frais (qui
      * peut attendre plusieurs jours l'approbation DFIN/DA avant règlement),
      * une réception de provision est immédiate : le taux du jour de la saisie
      * EST le taux de cette réception, il n'y a pas de délai à couvrir et donc
-     * aucun écart de change à constater plus tard. Un changement de taux
-     * ultérieur ne modifie jamais la valeur déjà enregistrée.</p>
+     * aucun écart de change à constater plus tard.</p>
      */
     @PreAuthorize(ECRITURE)
     @Transactional
@@ -882,17 +1241,58 @@ public class RestaurantService {
         if (article.getType() != TypeArticle.PROVISION) {
             throw new IllegalArgumentException("L'article " + article.getCode() + " n'est pas une provision");
         }
+        if (article.getCompteAchat() == null || article.getCompteStock() == null || article.getCompteCharge() == null) {
+            throw new IllegalArgumentException(
+                "La provision " + article.getCode() + " n'a pas tous ses comptes dédiés "
+                + "(achat, stock, variation de stock) : complétez sa fiche avant de réceptionner.");
+        }
         Entrepot entrepot = entrepotRepository.findById(req.entrepotId())
             .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
         CompteOHADA contrepartie = compteRepository.findByNumero(req.compteContrepartieNumero())
             .orElseThrow(() -> new IllegalArgumentException(
                 "Compte de contrepartie introuvable : " + req.compteContrepartieNumero()));
+        // Une réception directe est un achat à crédit : sa contrepartie ne
+        // peut être qu'un fournisseur. Créditer la caisse ou la banque d'ici
+        // sortirait de l'argent au grand livre sans aucune opération à leur
+        // journal — le solde du compte et celui du journal divergeraient sans
+        // que le rapprochement le voie. Un achat payé comptant passe par une
+        // note de frais, que la caisse règle.
+        if (!contrepartie.getNumero().startsWith(RACINE_COMPTE_FOURNISSEURS)) {
+            throw new IllegalArgumentException(
+                "La contrepartie d'une réception doit être un compte fournisseur (" + RACINE_COMPTE_FOURNISSEURS
+                + "x), pas " + contrepartie.getNumero() + " : un achat payé comptant passe par une note de "
+                + "frais, que la caisse règle.");
+        }
         LocalDate date = req.dateReception() == null ? LocalDate.now() : req.dateReception();
-        BigDecimal coutUnitaireUSD = conversionDevise.enDeviseBase(req.coutUnitaire(), req.devise()).montantBase();
+        User auteur = currentUser.requireUser();
 
-        stockService.enregistrerEntreeRestaurantInterne(
-            date, "Réception " + article.getLibelle(), entrepot, contrepartie, article,
-            req.quantite(), coutUnitaireUSD, currentUser.requireUser());
+        BigDecimal montantTotalUSD = conversionDevise
+            .enDeviseBase(req.coutUnitaire().multiply(req.quantite()), req.devise())
+            .montantBase();
+
+        String libelle = "Achat " + article.getLibelle();
+        PieceComptable pieceAchat = comptabilite.creerPieceInterne(JournalComptable.ACHATS, libelle, date, List.of(
+            ecritureRestaurant(article.getCompteAchat(), montantTotalUSD, BigDecimal.ZERO, libelle, date),
+            ecritureRestaurant(contrepartie, BigDecimal.ZERO, montantTotalUSD, libelle, date)
+        ), auteur);
+
+        MouvementStock reception = stockService.enregistrerEntreeAchatInterne(date, "Réception " + article.getLibelle(),
+            new StockService.AchatMarchandise(article, entrepot, req.quantite(), montantTotalUSD,
+                article.getCompteStock(), article.getCompteCharge()),
+            auteur);
+        // Rattachée à la réception : extournée avec elle à l'annulation, et
+        // protégée d'une extourne isolée depuis la Comptabilité, qui ferait
+        // disparaître l'achat en laissant la marchandise en stock.
+        reception.setPieceAchat(pieceAchat);
+    }
+
+    /** Racine des comptes fournisseurs, seule contrepartie admise pour une réception directe. */
+    private static final String RACINE_COMPTE_FOURNISSEURS = "40";
+
+    private EcritureGrandLivre ecritureRestaurant(CompteOHADA compte, BigDecimal debit, BigDecimal credit,
+                                                  String libelle, LocalDate date) {
+        return EcritureGrandLivre.builder()
+            .compte(compte).debit(debit).credit(credit).libelle(libelle).dateEcriture(date).build();
     }
 
     /**
@@ -916,8 +1316,109 @@ public class RestaurantService {
         String libelle = "Sortie provision — " + article.getLibelle()
             + (req.motif() != null && !req.motif().isBlank() ? " (" + req.motif() + ")" : "");
 
-        stockService.enregistrerSortieVenteInterne(date, libelle, entrepot,
+        stockService.enregistrerSortieVenteInterne(date, libelleMouvement(libelle), entrepot,
             List.of(new StockService.SortieVente(article, req.quantite())), currentUser.requireUser());
+    }
+
+    /**
+     * Le libellé d'un mouvement de stock est repris par sa pièce et ses
+     * écritures, trois colonnes de 255 caractères : un motif saisi plus long
+     * (jusqu'à 500) faisait échouer l'enregistrement. Tronqué ici, le motif
+     * reste entier là où il est conservé (sortie de plat, mouvement de vides).
+     */
+    private static String libelleMouvement(String libelle) {
+        return libelle.length() <= 255 ? libelle : libelle.substring(0, 254) + "…";
+    }
+
+    // ---------------------------------------------------------------------
+    // Sorties de plats hors vente (périmé, moisi, renversé, offert...)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Sortie de stock d'un plat qui ne sera pas vendu : périmé, moisi,
+     * renversé, brûlé, offert, repas du personnel...
+     *
+     * <p><b>Comptabilisée comme la part « coût » d'une vente.</b> Le plat
+     * quitte le stock au coût de production moyen, par la même sortie que
+     * pour une vente : D 736x Variations des stocks de produits finis /
+     * C 361x stock du plat, au journal STOCK. La production stockée diminue
+     * d'autant, si bien que le coût des ingrédients consommés reste en charge
+     * sans produit en face — la perte apparaît au résultat. Même traitement
+     * que la casse ou la péremption d'une boisson ; le motif sert au suivi.</p>
+     *
+     * <p>Un plat au coût de production nul (entré sans coût) sort sans
+     * écriture : il n'y a rien à constater.</p>
+     */
+    @PreAuthorize(ECRITURE)
+    @Transactional
+    public SortiePlatResponse enregistrerSortiePlat(SortiePlatRequest req) {
+        Article plat = articleRepository.findById(req.articleId())
+            .orElseThrow(() -> RessourceIntrouvableException.of("Article", req.articleId()));
+        if (plat.getType() != TypeArticle.PLAT) {
+            throw new IllegalArgumentException("L'article " + plat.getCode() + " n'est pas un plat : "
+                + "une boisson perdue se déclare depuis les mouvements de bouteilles, une provision depuis ses entrées / sorties.");
+        }
+        String precision = req.precision() == null || req.precision().isBlank() ? null : req.precision().trim();
+        if (req.motif() == MotifSortiePlat.AUTRE && precision == null) {
+            throw new IllegalArgumentException("Précisez la raison de la sortie : le motif « Autre » ne l'explique pas.");
+        }
+        Entrepot entrepot = entrepotRepository.findById(req.entrepotId())
+            .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
+        LocalDate date = req.dateSortie() == null ? LocalDate.now() : req.dateSortie();
+        User auteur = currentUser.requireUser();
+
+        String libelle = "Sortie de plat — " + req.motif().libelle() + " — " + plat.getLibelle()
+            + (precision != null ? " (" + precision + ")" : "");
+        MouvementStock mouvement = stockService.enregistrerSortieVenteInterne(date, libelleMouvement(libelle), entrepot,
+            List.of(new StockService.SortieVente(plat, req.quantite())), auteur);
+        BigDecimal valeur = mouvement.getLignes().stream()
+            .map(LigneMouvementStock::getMontant)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        SortiePlat sortie = sortiePlatRepository.save(SortiePlat.builder()
+            .article(plat)
+            .entrepot(entrepot)
+            .mouvementStock(mouvement)
+            .quantite(req.quantite())
+            .motif(req.motif())
+            .precisionMotif(precision)
+            .dateSortie(date)
+            .valeur(valeur)
+            .createdBy(auteur)
+            .build());
+        log.info("Sortie de plat enregistrée [plat={}, qte={}, motif={}, valeur={}, mouvement={}]",
+            plat.getCode(), req.quantite(), req.motif(), valeur, mouvement.getReference());
+        return SortiePlatResponse.from(sortie);
+    }
+
+    @PreAuthorize(LECTURE)
+    @Transactional(readOnly = true)
+    public List<SortiePlatResponse> listerSortiesPlats(LocalDate du, LocalDate au) {
+        LocalDate debut = du != null ? du : LocalDate.of(2000, 1, 1);
+        LocalDate fin = au != null ? au : LocalDate.of(2999, 12, 31);
+        return sortiePlatRepository.rechercher(debut, fin).stream().map(SortiePlatResponse::from).toList();
+    }
+
+    /**
+     * Annule une sortie de plat saisie par erreur : les portions reviennent en
+     * stock au coût auquel elles étaient sorties, et la pièce est extournée.
+     * La sortie reste dans l'historique, marquée annulée.
+     */
+    @PreAuthorize(ECRITURE)
+    @Transactional
+    public SortiePlatResponse annulerSortiePlat(Long id) {
+        SortiePlat sortie = sortiePlatRepository.findById(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("SortiePlat", id));
+        if (sortie.isAnnulee()) {
+            throw new TransitionInvalideException("Cette sortie de plat est déjà annulée.");
+        }
+        User auteur = currentUser.requireUser();
+        stockService.annulerMouvementInterne(sortie.getMouvementStock(), auteur);
+        sortie.setAnnulee(true);
+        sortie.setAnnuleeLe(java.time.Instant.now());
+        sortie.setAnnuleePar(auteur);
+        log.info("Sortie de plat annulée [id={}, mouvement={}]", id, sortie.getMouvementStock().getReference());
+        return SortiePlatResponse.from(sortie);
     }
 
     // ---------------------------------------------------------------------
@@ -1039,13 +1540,96 @@ public class RestaurantService {
             };
             String libelle = motifLibelle + " — " + e.getArticleBoisson().getLibelle()
                 + (req.motif() != null && !req.motif().isBlank() ? " (" + req.motif() + ")" : "");
-            stockService.enregistrerSortieVenteInterne(
-                m.getDateMouvement(), libelle, entrepot,
+            MouvementStock sortie = stockService.enregistrerSortieVenteInterne(
+                m.getDateMouvement(), libelleMouvement(libelle), entrepot,
                 List.of(new StockService.SortieVente(e.getArticleBoisson(), BigDecimal.valueOf(req.quantite()))),
                 auteur);
+            // Retrouvée à l'annulation de la perte, pour rétablir le stock.
+            m.setMouvementStock(sortie);
         }
 
         return MouvementEmballageResponse.from(m);
+    }
+
+    /**
+     * Annule un mouvement de vides saisi à la main. Le journal des vides
+     * reste en ajout seul : l'effet sur le compteur est compensé par un
+     * mouvement inverse qui cite le mouvement annulé, lequel est marqué
+     * annulé et sort des pertes du tableau de bord. Pour une perte de
+     * boisson (casse d'une pleine, péremption, cadeau), la sortie de stock
+     * est aussi annulée — stock rétabli, pièce extournée.
+     *
+     * <p>Les mouvements automatiques (vente, retour de vente, échange de
+     * consigne) ne s'annulent qu'avec l'opération qui les a produits ; un
+     * ajustement d'inventaire, réservé à l'administrateur à la saisie, l'est
+     * aussi à l'annulation.</p>
+     */
+    @PreAuthorize(ECRITURE)
+    @Transactional
+    public MouvementEmballageResponse annulerMouvementEmballage(Long id) {
+        MouvementEmballage m = mouvementRepository.findByIdPourMiseAJour(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("MouvementEmballage", id));
+        if (m.isAnnule()) {
+            throw new TransitionInvalideException("Ce mouvement est déjà annulé.");
+        }
+        if (m.getAnnulationDe() != null) {
+            throw new IllegalArgumentException(
+                "Ce mouvement est lui-même l'annulation du mouvement n° " + m.getAnnulationDe().getId()
+                + " : il ne s'annule pas.");
+        }
+        if (!m.getType().estSaisieManuelle()) {
+            throw new IllegalArgumentException(
+                "Les mouvements automatiques (vente, retour de vente, échange de consigne) "
+                + "s'annulent avec l'opération qui les a produits.");
+        }
+        if (m.getType().estAjustement() && !estAdmin()) {
+            throw new AccessDeniedException("Seul un administrateur peut annuler un ajustement d'inventaire");
+        }
+        if (m.getType().sortDuStockDeBoisson() && m.getMouvementStock() == null) {
+            throw new IllegalStateException(
+                "Cette perte a été saisie avant que les pertes ne soient reliées à leur sortie de stock : "
+                + "son stock ne peut pas être rétabli d'ici. L'administrateur peut annuler la sortie depuis "
+                + "la Logistique, puis corriger le compteur de vides par un ajustement.");
+        }
+        User auteur = currentUser.requireUser();
+        EmballageBoisson e = chargerEmballage(m.getEmballage().getId());
+
+        if (m.getMouvementStock() != null) {
+            stockService.annulerMouvementInterne(m.getMouvementStock(), auteur);
+        }
+        int delta = m.getType().delta(m.getQuantiteBouteilles());
+        if (delta != 0) {
+            TypeMouvementEmballage inverse = delta < 0
+                ? TypeMouvementEmballage.AJUSTEMENT_PLUS : TypeMouvementEmballage.AJUSTEMENT_MOINS;
+            // Datée comme le mouvement annulé : sur toute période, les deux
+            // s'annulent l'un l'autre.
+            MouvementEmballage inverseM = appliquerEtJournaliser(e, inverse, Math.abs(delta), m.getDateMouvement(),
+                "Annulation du mouvement n° " + m.getId() + " (" + libelleMouvementVides(m.getType()) + ")",
+                null, auteur);
+            inverseM.setAnnulationDe(m);
+        }
+        m.setAnnule(true);
+        log.info("Mouvement de vides annulé [id={}, type={}, par={}]", m.getId(), m.getType(), auteur.getEmail());
+        return MouvementEmballageResponse.from(m);
+    }
+
+    private static String libelleMouvementVides(TypeMouvementEmballage type) {
+        return switch (type) {
+            case CASSE -> "casse d'une bouteille vide";
+            case CASSE_PLEINE -> "casse d'une bouteille pleine";
+            case PERIME -> "boisson périmée";
+            case CADEAU -> "boisson offerte";
+            case AJUSTEMENT_PLUS -> "ajustement d'inventaire en plus";
+            case AJUSTEMENT_MOINS -> "ajustement d'inventaire en moins";
+            case VENTE -> "vente";
+            case RETOUR_VENTE -> "retour de vente";
+            case ACHAT -> "échange de consigne";
+        };
+    }
+
+    private boolean estAdmin() {
+        return currentUser.requireUser().getRoles().stream()
+            .anyMatch(r -> r.getNom() == RoleType.ADMIN);
     }
 
     // ---------------------------------------------------------------------
@@ -1118,7 +1702,8 @@ public class RestaurantService {
             BigDecimal valeur = entry.getValue()[1];
             valeurStockPleines = valeurStockPleines.add(valeur);
             cmupParArticle.put(entry.getKey(),
-                qte.signum() == 0 ? BigDecimal.ZERO : valeur.divide(qte, 2, RoundingMode.HALF_UP));
+                // 6 décimales : voir StockNiveauResponse.
+                qte.signum() == 0 ? BigDecimal.ZERO : valeur.divide(qte, 6, RoundingMode.HALF_UP));
         }
 
         // ── Ventes ──────────────────────────────────────────────────────
@@ -1156,6 +1741,11 @@ public class RestaurantService {
         Map<String, BigDecimal> valeurPerteParType = new LinkedHashMap<>();
         BigDecimal valeurPertes = BigDecimal.ZERO;
         for (MouvementEmballage m : mouvementRepository.rechercherPeriode(du, au)) {
+            // Une perte annulée n'a pas eu lieu : sa sortie de stock a été
+            // rétablie, elle ne doit pas non plus peser ici.
+            if (m.isAnnule()) {
+                continue;
+            }
             TypeMouvementEmballage type = m.getType();
             if (type != TypeMouvementEmballage.CASSE_PLEINE && type != TypeMouvementEmballage.PERIME
                 && type != TypeMouvementEmballage.CADEAU && type != TypeMouvementEmballage.CASSE) {
@@ -1217,7 +1807,8 @@ public class RestaurantService {
                 vente[0], vente[1],
                 stock == null ? BigDecimal.ZERO : stock[0],
                 emb == null ? null : emb.getBouteillesVides(),
-                emb == null ? null : emb.casiers()
+                emb == null ? null : emb.casiers(),
+                emb == null ? null : emb.getContenanceCasier()
             ));
         }
         List<BoissonStatResponse> topBoissons = parBoisson.stream()
@@ -1263,8 +1854,165 @@ public class RestaurantService {
         if (vente.getDevise() == Devise.USD) {
             return montant;
         }
+        // Une vente sans taux enregistré est convertie au taux en vigueur à
+        // sa date — jamais laissée en francs : additionnés tels quels aux
+        // dollars, 56 000 FC comptaient pour 56 000 USD de chiffre
+        // d'affaires. Sans aucun taux connu, la conversion échoue avec un
+        // message explicite plutôt que de produire un total faux.
         BigDecimal taux = vente.getTauxJournalier();
-        return taux == null || taux.signum() <= 0 ? montant : montant.divide(taux, 2, RoundingMode.HALF_UP);
+        if (taux == null || taux.signum() <= 0) {
+            taux = conversionDevise.tauxALaDate(vente.getDateVente());
+        }
+        return conversionDevise.enDeviseBase(montant, vente.getDevise(), taux).montantBase();
+    }
+
+    /**
+     * Analyse des ventes de la carte sur une période arbitraire (semaine,
+     * mois, trimestre... le découpage est décidé côté client, qui fournit
+     * simplement les bornes) : meilleures/moins bonnes ventes, marge par
+     * article, par catégorie et tendance journalière. Ouverte à ceux qui
+     * pilotent l'offre : voir {@link #LECTURE_ANALYSES}.
+     *
+     * <p>Le coût de chaque ligne est le coût HISTORIQUE réellement passé en
+     * charge (lu sur la sortie de stock liée à la vente), jamais recalculé
+     * au CMP courant — même principe que {@link #tableauBord}, appliqué ici
+     * ligne à ligne plutôt qu'en moyenne globale : une marge par article n'a
+     * de sens que si chaque article porte son propre coût, pas une moyenne
+     * de tous les autres.</p>
+     */
+    @PreAuthorize(LECTURE_ANALYSES)
+    @Transactional(readOnly = true)
+    public AnalyseVentesResponse analyserVentes(LocalDate du, LocalDate au) {
+        List<LigneVente> lignes = venteRepository.ligneVentesCartePeriode(du, au);
+
+        // Cout reel de chaque (mouvement, article) : un seul aller-retour en
+        // base pour toutes les ventes de la periode plutot qu'un par ligne.
+        //
+        // Une vente peut porter PLUSIEURS lignes du meme article (ex. "une
+        // boisson de plus" sur une table deja servie, voir
+        // VenteService.ajouterLigne) : chacune devient sa propre ligne de
+        // sortie de stock, au meme cout unitaire mais avec son propre
+        // montant. Les additionner (merge) est indispensable — un simple
+        // ecrasement (put) perdait le cout de toutes les lignes sauf la
+        // derniere lue, sous-evaluant le cout total impute a cette vente.
+        Set<Long> mouvementIds = new java.util.HashSet<>();
+        for (LigneVente l : lignes) {
+            MouvementStock m = l.getVente().getMouvement();
+            if (m != null) mouvementIds.add(m.getId());
+        }
+        Map<String, BigDecimal> coutParMouvementArticle = new LinkedHashMap<>();
+        if (!mouvementIds.isEmpty()) {
+            for (MouvementStock m : mouvementStockRepository.findAllByIdInWithLignes(mouvementIds)) {
+                for (LigneMouvementStock lms : m.getLignes()) {
+                    coutParMouvementArticle.merge(
+                        m.getId() + ":" + lms.getArticle().getId(), lms.getMontant(), BigDecimal::add);
+                }
+            }
+        }
+        // Quantite totale vendue par (mouvement, article) : sert a repartir
+        // le cout agrege ci-dessus au prorata de CHAQUE ligne de vente,
+        // plutot que de le lui attribuer en entier — ce qui le compterait
+        // une fois par ligne partageant le meme article, au lieu d'une seule
+        // fois au total.
+        Map<String, BigDecimal> quantiteParMouvementArticle = new LinkedHashMap<>();
+        for (LigneVente l : lignes) {
+            MouvementStock m = l.getVente().getMouvement();
+            if (m == null) continue;
+            quantiteParMouvementArticle.merge(
+                m.getId() + ":" + l.getArticle().getId(), l.getQuantite(), BigDecimal::add);
+        }
+
+        record Cumul(BigDecimal quantite, BigDecimal ca, BigDecimal cout) {
+            Cumul plus(BigDecimal q, BigDecimal c, BigDecimal k) {
+                return new Cumul(quantite.add(q), ca.add(c), cout.add(k));
+            }
+        }
+        Map<Long, Cumul> parArticleId = new LinkedHashMap<>();
+        Map<String, Cumul> parCategorieCle = new LinkedHashMap<>();
+        Map<String, String[]> categorieInfo = new LinkedHashMap<>(); // cle -> [categorie, type]
+        Map<LocalDate, Cumul> parJourMap = new TreeMap<>();
+
+        for (LigneVente l : lignes) {
+            Vente v = l.getVente();
+            Article a = l.getArticle();
+            BigDecimal ca = montantEnUSD(l.getPrixUnitaire().multiply(l.getQuantite()), v);
+            MouvementStock m = v.getMouvement();
+            BigDecimal cout = BigDecimal.ZERO;
+            if (m != null) {
+                String cle = m.getId() + ":" + a.getId();
+                BigDecimal coutTotalCle = coutParMouvementArticle.getOrDefault(cle, BigDecimal.ZERO);
+                BigDecimal quantiteTotaleCle = quantiteParMouvementArticle.getOrDefault(cle, BigDecimal.ZERO);
+                // Repartition au prorata de la quantite de CETTE ligne dans le
+                // total vendu de cet article sur cette vente : attribuer le
+                // cout total a chaque ligne partageant la cle le compterait
+                // plusieurs fois des qu'un article a plus d'une ligne.
+                cout = quantiteTotaleCle.signum() == 0 ? BigDecimal.ZERO
+                    : coutTotalCle.multiply(l.getQuantite()).divide(quantiteTotaleCle, 2, RoundingMode.HALF_UP);
+            }
+
+            parArticleId.merge(a.getId(), new Cumul(l.getQuantite(), ca, cout),
+                (x, y) -> x.plus(y.quantite(), y.ca(), y.cout()));
+
+            String categorie = a.getCategorie() != null && !a.getCategorie().isBlank() ? a.getCategorie() : "Sans catégorie";
+            String cleCategorie = a.getType() + "|" + categorie;
+            categorieInfo.putIfAbsent(cleCategorie, new String[]{categorie, a.getType().name()});
+            parCategorieCle.merge(cleCategorie, new Cumul(l.getQuantite(), ca, cout),
+                (x, y) -> x.plus(y.quantite(), y.ca(), y.cout()));
+
+            parJourMap.merge(v.getDateVente(), new Cumul(l.getQuantite(), ca, BigDecimal.ZERO),
+                (x, y) -> x.plus(y.quantite(), y.ca(), BigDecimal.ZERO));
+        }
+
+        // Un article actif de la carte jamais vendu sur la periode est le
+        // signal le plus fort de "moins vendu" qui soit — l'omettre (comme
+        // ferait une simple agregation des lignes de vente) le cacherait
+        // derriere les articles vendus au moins une fois.
+        for (Article a : articleRepository.findAll()) {
+            if (!TYPES_CARTE.contains(a.getType()) || !a.isActif()) continue;
+            parArticleId.putIfAbsent(a.getId(), new Cumul(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+        }
+
+        List<AnalyseVentesResponse.ArticleStatResponse> parArticle = new ArrayList<>();
+        for (var entry : parArticleId.entrySet()) {
+            Article a = articleRepository.findById(entry.getKey()).orElse(null);
+            if (a == null) continue;
+            Cumul c = entry.getValue();
+            BigDecimal marge = c.ca().subtract(c.cout());
+            BigDecimal margePct = c.ca().signum() == 0 ? BigDecimal.ZERO
+                : marge.divide(c.ca(), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
+            parArticle.add(new AnalyseVentesResponse.ArticleStatResponse(
+                a.getId(), a.getCode(), a.getLibelle(), a.getType().name(),
+                a.getCategorie() != null && !a.getCategorie().isBlank() ? a.getCategorie() : "Sans catégorie",
+                c.quantite(), c.ca(), c.cout(), marge, margePct
+            ));
+        }
+        parArticle.sort(Comparator.comparing(AnalyseVentesResponse.ArticleStatResponse::quantiteVendue).reversed());
+
+        List<AnalyseVentesResponse.CategorieStatResponse> parCategorie = parCategorieCle.entrySet().stream()
+            .map(e -> {
+                String[] info = categorieInfo.get(e.getKey());
+                Cumul c = e.getValue();
+                return new AnalyseVentesResponse.CategorieStatResponse(
+                    info[0], info[1], c.quantite(), c.ca(), c.cout(), c.ca().subtract(c.cout()));
+            })
+            .sorted(Comparator.comparing(AnalyseVentesResponse.CategorieStatResponse::chiffreAffaires).reversed())
+            .toList();
+
+        List<AnalyseVentesResponse.VenteJourResponse> parJour = parJourMap.entrySet().stream()
+            .map(e -> new AnalyseVentesResponse.VenteJourResponse(e.getKey(), e.getValue().quantite(), e.getValue().ca()))
+            .toList();
+
+        BigDecimal totalQuantite = parArticle.stream().map(AnalyseVentesResponse.ArticleStatResponse::quantiteVendue)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalCa = parArticle.stream().map(AnalyseVentesResponse.ArticleStatResponse::chiffreAffaires)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalCout = parArticle.stream().map(AnalyseVentesResponse.ArticleStatResponse::cout)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return new AnalyseVentesResponse(
+            du, au, totalQuantite, totalCa, totalCout, totalCa.subtract(totalCout),
+            parArticle, parCategorie, parJour
+        );
     }
 
     // ---------------------------------------------------------------------

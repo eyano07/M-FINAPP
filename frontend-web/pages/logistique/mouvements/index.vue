@@ -11,6 +11,10 @@ interface Mouvement {
   libelle?: string
   statut: string
   pieceReference?: string
+  /** Validé et hors de toute opération (vente, production, camion) qui doive l'annuler elle-même. */
+  annulable: boolean
+  /** Porte sur un plat, une boisson ou une provision : seul l'administrateur l'annule d'ici. */
+  moduleRestaurant: boolean
 }
 
 const api = useApi()
@@ -19,7 +23,19 @@ const loading = ref(false)
 const erreur = ref('')
 const mouvements = ref<Mouvement[]>([])
 
-const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE']))
+// Mêmes rôles que StockService (créer, valider, annuler). L'administrateur y
+// est le dernier recours pour les articles du module Restaurant — voir
+// StockService.exigerHorsModuleDedie.
+const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'ADMIN']))
+const estAdmin = computed(() => auth.hasRole('ADMIN'))
+const peutAnnuler = (m: Mouvement) =>
+  m.statut === 'VALIDE' && m.annulable && (!m.moduleRestaurant || estAdmin.value)
+function motifNonAnnulable(m: Mouvement): string | null {
+  if (m.statut !== 'VALIDE') return null
+  if (!m.annulable) return "Appartient à une vente, une production, un camion ou une perte de boisson : s'annule depuis cette opération."
+  if (m.moduleRestaurant && !estAdmin.value) return "Article du module Restaurant : s'annule depuis ses écrans."
+  return null
+}
 
 const statutColor: Record<string, string> = {
   BROUILLON: 'grey',
@@ -113,9 +129,17 @@ function fmtDate(d: string) {
             <v-btn v-if="item.statut === 'BROUILLON'" size="small" color="success" variant="tonal" @click="valider(item.id)">
               Valider
             </v-btn>
-            <v-btn v-if="item.statut === 'VALIDE'" size="small" color="error" variant="tonal" @click="annuler(item.id)">
+            <v-btn v-if="peutAnnuler(item)" size="small" color="error" variant="tonal" @click="annuler(item.id)">
               Annuler
             </v-btn>
+            <v-icon
+              v-else-if="motifNonAnnulable(item)"
+              icon="mdi-lock-outline"
+              size="18"
+              class="text-medium-emphasis"
+              :title="motifNonAnnulable(item)!"
+              :aria-label="motifNonAnnulable(item)!"
+            />
           </div>
         </template>
       </v-data-table>

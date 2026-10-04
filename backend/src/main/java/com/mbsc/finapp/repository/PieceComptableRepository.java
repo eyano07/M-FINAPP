@@ -29,6 +29,40 @@ public interface PieceComptableRepository extends JpaRepository<PieceComptable, 
     List<PieceComptable> findAllWithCreatedByOrderByDatePieceDesc();
 
     /**
+     * Pieces que l'ecran Comptabilite ne peut pas extourner seules — voir
+     * ComptabiliteService.annuler : celles d'un mouvement de stock (stock,
+     * achat d'une reception, ecart d'annulation), d'une vente (vente,
+     * reglement, reevaluation) ou d'une operation de tresorerie. Une seule
+     * requete pour toute la liste des pieces, plutot qu'une verification par
+     * piece.
+     */
+    @Query(value = """
+        select piece_id from mouvements_stock where piece_id is not null
+        union select piece_achat_id from mouvements_stock where piece_achat_id is not null
+        union select piece_ecart_annulation_id from mouvements_stock where piece_ecart_annulation_id is not null
+        union select piece_id from ventes where piece_id is not null
+        union select piece_reglement_id from ventes where piece_reglement_id is not null
+        union select piece_reevaluation_id from ventes where piece_reevaluation_id is not null
+        union select piece_id from grand_livre
+              where piece_id is not null
+                and (transaction_id is not null or transaction_bancaire_id is not null
+                     or transaction_mobile_money_id is not null)
+    """, nativeQuery = true)
+    List<Long> idsPiecesLieesAUneOperation();
+
+    /**
+     * Pieces qui mouvementent au moins un compte de tresorerie (classe 5) :
+     * l'ecran Pieces comptables ne peut ni les comptabiliser ni les
+     * extourner — voir ComptabiliteService.exigerHorsTresorerie.
+     */
+    @Query(value = """
+        select distinct e.piece_id from grand_livre e
+        join comptes_ohada c on c.id = e.compte_id
+        where e.piece_id is not null and c.numero like '5%'
+    """, nativeQuery = true)
+    List<Long> idsPiecesTresorerie();
+
+    /**
      * Livre-journal : pièces comptabilisées et annulées d'une période, avec
      * leurs lignes et comptes, triées chronologiquement (obligation OHADA).
      * Les brouillons sont exclus.

@@ -3,6 +3,8 @@ package com.mbsc.finapp.domain;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 /** Salle du restaurant (ex. "Terrasse", "Salle principale"), support du plan de tables. */
 @Entity
 @Table(name = "salles_restaurant")
@@ -28,4 +30,15 @@ public class SalleRestaurant {
     @Column(nullable = false)
     @Builder.Default
     private boolean actif = true;
+
+    /**
+     * Majoration appliquee au prix catalogue de chaque article vendu a une
+     * table de cette salle (ex. 15.00 = +15%, salle VIP). 0 = prix inchange.
+     * Purement indicative cote serveur : comme tout prix de vente dans cette
+     * application, la majoration se propose au client au moment de choisir
+     * l'article, jamais imposee — voir ventes/nouvelle.vue prixCatalogue.
+     */
+    @Column(name = "majoration_pourcentage", nullable = false, precision = 5, scale = 2)
+    @Builder.Default
+    private BigDecimal majorationPourcentage = BigDecimal.ZERO;
 }

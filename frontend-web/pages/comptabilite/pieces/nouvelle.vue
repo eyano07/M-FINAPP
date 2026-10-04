@@ -12,11 +12,10 @@ const router = useRouter()
 const saving = ref(false)
 const erreur = ref('')
 
+// Ni Caisse, ni Banque, ni Mobile Money : une pièce saisie ici ne peut pas
+// encaisser ni décaisser (voir ComptabiliteService.exigerHorsTresorerie).
 const journaux = [
   { title: 'Opérations diverses', value: 'OPERATIONS_DIVERSES' },
-  { title: 'Caisse', value: 'CAISSE' },
-  { title: 'Banque', value: 'BANQUE' },
-  { title: 'Mobile Money', value: 'MOBILE_MONEY' },
   { title: 'Achats', value: 'ACHATS' },
   { title: 'Ventes', value: 'VENTES' },
 ]
@@ -111,6 +110,11 @@ async function enregistrer() {
     </div>
 
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4">{{ erreur }}</v-alert>
+    <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+      Une pièce saisie ici ne mouvemente jamais la trésorerie (caisse, banques, mobile money : comptes de
+      classe 5). Un encaissement ou un décaissement passe par une note de frais, vérifiée par le DFIN,
+      approuvée par le DA et exécutée par la caisse.
+    </v-alert>
 
     <v-card class="classroom-card pa-6 mb-4">
       <v-row>
@@ -168,7 +172,7 @@ async function enregistrer() {
     </v-card>
 
     <v-card class="classroom-card pa-6 mb-4">
-      <ComptabiliteLignesEcriture v-model="form.lignes" />
+      <ComptabiliteLignesEcriture v-model="form.lignes" hors-tresorerie />
     </v-card>
 
     <div class="d-flex justify-end ga-3">

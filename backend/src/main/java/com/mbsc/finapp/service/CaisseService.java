@@ -425,13 +425,21 @@ public class CaisseService {
         // les bouteilles vides equivalentes, au meme moment que l'entree en
         // stock de la boisson elle-meme — voir
         // RestaurantService.enregistrerAchatVidesDepuisNoteFraisInterne.
-        for (LigneNoteFrais ligne : note.getLignes()) {
-            if (ligne.isAchatMarchandise() && ligne.isEchangeConsigne()
-                && ligne.getArticle() != null && ligne.getArticle().getType() == TypeArticle.BOISSON) {
-                restaurantService.enregistrerAchatVidesDepuisNoteFraisInterne(
-                    ligne.getArticle(), RestaurantService.bouteilles(ligne.getQuantiteMarchandise()),
-                    dateReglement, "Échange de consigne — " + note.getReference(), caissier);
-            }
+        //
+        // Lignes triees par article : chacune verrouille le conditionnement
+        // de sa boisson jusqu'a la fin de la transaction, et une vente
+        // simultanee verrouille les siens dans ce meme ordre (voir
+        // RestaurantService.lignesBoissonOrdonnees). Dans l'ordre de saisie,
+        // les deux pouvaient s'attendre mutuellement.
+        List<LigneNoteFrais> lignesConsigne = note.getLignes().stream()
+            .filter(l -> l.isAchatMarchandise() && l.isEchangeConsigne()
+                && l.getArticle() != null && l.getArticle().getType() == TypeArticle.BOISSON)
+            .sorted(java.util.Comparator.comparing((LigneNoteFrais l) -> l.getArticle().getId()))
+            .toList();
+        for (LigneNoteFrais ligne : lignesConsigne) {
+            restaurantService.enregistrerAchatVidesDepuisNoteFraisInterne(
+                ligne.getArticle(), RestaurantService.bouteilles(ligne.getQuantiteMarchandise()),
+                dateReglement, "Échange de consigne — " + note.getReference(), caissier);
         }
         // Ecart de change realise : la note a ete engagee a un taux fige lors
         // de sa transmission, elle est reglee au taux du jour. La difference
@@ -563,7 +571,20 @@ public class CaisseService {
     /**
      * Construit une ligne de credit par ligne de recette de la note, chacune
      * imputee a son propre compte (ou au compte de produits divers 758 par
-     * defaut). Symetrique de {@link #construireLignesDebit}.
+     * defaut). Symetrique de {@code RegleTresorerieService
+     * .construireLignesDebitDepuisNote} — y compris pour la TVA : une ligne
+     * soumise a la TVA est ventilee entre son compte de produit (HT) et son
+     * compte de TVA, plutot que de crediter le compte de produit pour la
+     * totalite TTC (ce qui declarait a tort la TVA comme un produit).
+     *
+     * <p>Le poids de chaque ligne dans le montant total converti est son
+     * montant TTC ({@link LigneNoteFrais#montantTtc()} — HT × quantite pour
+     * une ligne d'achat/vente de marchandise, plus la TVA), jamais le seul
+     * {@link LigneNoteFrais#getMontant()} (le prix unitaire brut, sans
+     * quantite ni TVA) : sur une note a plusieurs lignes, ce dernier sous-
+     * evaluait le poids de toute ligne quantifiee ou soumise a la TVA,
+     * faisant absorber l'ecart par la derniere ligne plutot que de refleter
+     * la ventilation reellement encaissee.</p>
      */
     private List<EcritureComptableService.LigneCredit> construireLignesCredit(
             NoteFrais note, ConversionDeviseService.Conversion conversionTotale) {
@@ -576,18 +597,42 @@ public class CaisseService {
                 ? ligne.getCompteImputation()
                 : comptabilite.compteProduitsDiversParDefaut();
 
-            BigDecimal montantCDF;
+            // Montant de la ligne dans la devise DE BASE du grand livre (USD),
+            // jamais dans celle de la note : une ligne d'une note en CDF est
+            // déjà exprimée en CDF (montantTtc()), donc convertie comme le
+            // montant total (versBase, qui DIVISE par le taux — voir
+            // ConversionDeviseService) — jamais multipliée par lui, ce qui
+            // inflaterait chaque ligne d'un facteur égal au taux. Diviser
+            // ad hoc ici reproduirait le même risque d'erreur de sens que la
+            // classe met en garde contre : on délègue donc à enDeviseBase,
+            // qui porte la règle une seule fois. Bogue resté invisible tant
+            // qu'une note n'avait qu'une seule ligne (toujours "dernière
+            // ligne", jamais cette branche) — jusqu'au panier à plusieurs
+            // produits, qui l'a exposé (note CDF à 3 lignes, 2026-09-27).
+            BigDecimal montantBase;
             boolean derniereLigne = (i == lignes.size() - 1);
             if (derniereLigne) {
-                montantCDF = conversionTotale.montantBase().subtract(sommeConvertie);
-            } else if (conversionTotale.estConvertie()) {
-                montantCDF = ligne.getMontant().multiply(conversionTotale.tauxApplique())
-                    .setScale(2, RoundingMode.HALF_UP);
+                montantBase = conversionTotale.montantBase().subtract(sommeConvertie);
             } else {
-                montantCDF = ligne.getMontant();
+                montantBase = conversionDevise.enDeviseBase(
+                    ligne.montantTtc(), note.getDevise(), conversionTotale.tauxApplique()).montantBase();
             }
-            sommeConvertie = sommeConvertie.add(montantCDF);
-            resultat.add(new EcritureComptableService.LigneCredit(compte, montantCDF));
+            sommeConvertie = sommeConvertie.add(montantBase);
+
+            BigDecimal taux = ligne.getTauxTvaApplique();
+            if (ligne.isSoumisTva() && taux != null && taux.signum() > 0) {
+                BigDecimal montantTva = montantBase.multiply(taux)
+                    .divide(BigDecimal.valueOf(100).add(taux), 2, RoundingMode.HALF_UP);
+                BigDecimal montantHt = montantBase.subtract(montantTva);
+                resultat.add(new EcritureComptableService.LigneCredit(compte, montantHt));
+                // Toujours la TVA collectee, jamais ligne.getCompteTva() : une
+                // note d'encaissement saisie avant que ce compte ne depende du
+                // sens de la note porte encore 4452 (TVA recuperable).
+                resultat.add(new EcritureComptableService.LigneCredit(
+                    comptabilite.compteParNumero(VenteService.COMPTE_TVA_FACTUREE), montantTva));
+            } else {
+                resultat.add(new EcritureComptableService.LigneCredit(compte, montantBase));
+            }
         }
         return resultat;
     }

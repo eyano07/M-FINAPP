@@ -46,4 +46,18 @@ public class LigneMouvementStock {
     @Column(nullable = false, precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal montant = BigDecimal.ZERO;
+
+    /**
+     * Part hors frais d'approche de {@link #montant} : le prix paye pour une
+     * entree, la part de {@code StockNiveau.valeurAchat} retiree pour une
+     * sortie ou deplacee par un transfert. {@code null} pour une ligne
+     * anterieure a ce suivi : lue alors comme {@link #montant}.
+     */
+    @Column(name = "montant_achat", precision = 15, scale = 2)
+    private BigDecimal montantAchat;
+
+    /** {@link #montantAchat}, ou {@link #montant} pour une ligne anterieure a ce suivi. */
+    public BigDecimal montantAchatOuMontant() {
+        return montantAchat != null ? montantAchat : montant;
+    }
 }

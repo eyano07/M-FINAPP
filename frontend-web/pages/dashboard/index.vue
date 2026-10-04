@@ -231,10 +231,6 @@ const greeting = computed(() => {
 
 // ── Charts ─────────────────────────────────────────────────────────────────
 const ST_ALL = ['SOUMISE', 'APPROUVEE', 'REJETEE', 'PAYEE', 'ANNULEE']
-const ST_CLR: Record<string, string> = {
-  SOUMISE: '#f59e0b', APPROUVEE: '#22c55e', REJETEE: '#ef4444',
-  PAYEE: 'var(--color-primary)', ANNULEE: '#9ca3af',
-}
 const MOIS = ['Janv.', 'Févr.', 'Mars', 'Avr.', 'Mai', 'Juin']
 
 const cb: any = {
@@ -246,12 +242,35 @@ const cb: any = {
   },
 }
 
+// Chart.js peint sur un <canvas> : contrairement au DOM, son API 2D ne sait
+// pas resoudre var(--color-primary) (couleur invalide → noir). On lit donc
+// la couleur de marque directement depuis le store — une chaine hex simple,
+// exploitable telle quelle par Canvas — plutot que de sonder le CSS calcule :
+// une sonde DOM lue dans onMounted peut s'executer AVANT que
+// useParametresStore().charger() (voir stores/parametres.ts, appele au
+// niveau du layout) n'ait fini d'appliquer la vraie couleur admin sur
+// :root, et capturer a tort la teinte par defaut du store. Une lecture
+// reactive du store n'a pas ce probleme : le graphique se met a jour de
+// lui-meme des que la couleur arrive, quel que soit l'ordre de chargement.
+const identite = useParametresStore()
+const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#16A34A')
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!m) return hex
+  const [r, g, b] = [m[1], m[2], m[3]].map(h => parseInt(h, 16))
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+const ST_CLR = computed<Record<string, string>>(() => ({
+  SOUMISE: '#f59e0b', APPROUVEE: '#22c55e', REJETEE: '#ef4444',
+  PAYEE: couleurPrimaireHex.value, ANNULEE: '#9ca3af',
+}))
+
 // 1. Courbe
 const lineData = computed(() => {
   const t = notes.value.length
   return {
     labels: MOIS,
-    datasets: [{ label: 'Notes soumises', data: [0.45,0.55,0.65,0.75,0.88,1.0].map(f => Math.round(t*f)), borderColor: 'var(--color-primary)', backgroundColor: 'color-mix(in srgb, var(--color-primary) 5%, transparent)', tension: 0.45, fill: false, pointBackgroundColor: 'var(--color-primary)', pointRadius: 5 }],
+    datasets: [{ label: 'Notes soumises', data: [0.45,0.55,0.65,0.75,0.88,1.0].map(f => Math.round(t*f)), borderColor: couleurPrimaireHex.value, backgroundColor: hexToRgba(couleurPrimaireHex.value, 0.05), tension: 0.45, fill: false, pointBackgroundColor: couleurPrimaireHex.value, pointRadius: 5 }],
   }
 })
 const lineOpts: any = { ...cb, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
@@ -268,7 +287,7 @@ const resultatNetLineData = computed(() => ({
     backgroundColor: 'rgba(124,58,237,0.08)',
     tension: 0.35,
     fill: true,
-    pointBackgroundColor: resultatNetEvolution.value.map(p => p.valeur >= 0 ? 'var(--color-primary)' : '#dc2626'),
+    pointBackgroundColor: resultatNetEvolution.value.map(p => p.valeur >= 0 ? couleurPrimaireHex.value : '#dc2626'),
     pointRadius: 5,
   }],
 }))
@@ -281,7 +300,7 @@ const resultatNetLineOpts: any = {
 // 2. Barres
 const barData = computed(() => ({
   labels: ST_ALL,
-  datasets: [{ label: 'Montant (USD)', data: ST_ALL.map(s => notes.value.filter(n => n.statut === s).reduce((a,n) => a+toUSD(n.montant||0, n.devise), 0)), backgroundColor: ST_ALL.map(s => ST_CLR[s]+'bb'), borderColor: ST_ALL.map(s => ST_CLR[s]), borderWidth: 1.5, borderRadius: 6 }],
+  datasets: [{ label: 'Montant (USD)', data: ST_ALL.map(s => notes.value.filter(n => n.statut === s).reduce((a,n) => a+toUSD(n.montant||0, n.devise), 0)), backgroundColor: ST_ALL.map(s => hexToRgba(ST_CLR.value[s], 0.78)), borderColor: ST_ALL.map(s => ST_CLR.value[s]), borderWidth: 1.5, borderRadius: 6 }],
 }))
 const barOpts: any = { ...cb, scales: { y: { beginAtZero: true } } }
 
@@ -305,7 +324,7 @@ const pieOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugins.
 // 5. Anneau
 const donutData = computed(() => ({
   labels: ST_ALL,
-  datasets: [{ data: ST_ALL.map(s => notes.value.filter(n => n.statut===s).length), backgroundColor: ST_ALL.map(s => ST_CLR[s]+'cc'), borderColor: ST_ALL.map(s => ST_CLR[s]), borderWidth: 2, hoverOffset: 8 }],
+  datasets: [{ data: ST_ALL.map(s => notes.value.filter(n => n.statut===s).length), backgroundColor: ST_ALL.map(s => hexToRgba(ST_CLR.value[s], 0.78)), borderColor: ST_ALL.map(s => ST_CLR.value[s]), borderWidth: 2, hoverOffset: 8 }],
 }))
 const donutOpts: any = { ...pieOpts, cutout: '60%' }
 
@@ -321,7 +340,7 @@ const radarData = computed(() => {
       Math.max(0, 100 - Math.round(notes.value.filter(n => n.priorite==='HAUTE').length/t*100)),
       Math.min(notes.value.length*7, 100),
       Math.round(notes.value.filter(n => n.statut!=='REJETEE').length/t*100),
-    ], backgroundColor: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', borderColor: 'var(--color-primary)', pointBackgroundColor: 'var(--color-primary)', pointRadius: 4 }],
+    ], backgroundColor: hexToRgba(couleurPrimaireHex.value, 0.15), borderColor: couleurPrimaireHex.value, pointBackgroundColor: couleurPrimaireHex.value, pointRadius: 4 }],
   }
 })
 const radarOpts: any = { ...cb, scales: { r: { beginAtZero: true, max: 100, ticks: { stepSize: 25, font: { size: 10 }, color: '#9ca3af' }, grid: { color: '#f3f4f6' }, pointLabels: { font: { size: 11 }, color: '#374151' } } } }

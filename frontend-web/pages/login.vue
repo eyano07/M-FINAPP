@@ -159,7 +159,8 @@ async function submit() {
   position: relative;
   display: none;
   flex: 0 0 42%;
-  background: linear-gradient(145deg, #0a3d1f 0%, #145a32 50%, #0d4f2a 100%);
+  background: linear-gradient(145deg,
+    var(--color-primary-darkest) 0%, var(--color-primary-darker) 50%, var(--color-primary-dark) 100%);
   overflow: hidden;
   padding: 56px 52px;
 }
@@ -176,12 +177,12 @@ async function submit() {
 }
 .brand-panel__blob--a {
   width: 380px; height: 380px;
-  background: rgba(30, 142, 62, 0.35);
+  background: color-mix(in srgb, var(--color-primary) 35%, transparent);
   top: -80px; right: -100px;
 }
 .brand-panel__blob--b {
   width: 260px; height: 260px;
-  background: rgba(26, 115, 232, 0.18);
+  background: color-mix(in srgb, var(--color-primary-light) 60%, transparent);
   bottom: 40px; left: -60px;
 }
 

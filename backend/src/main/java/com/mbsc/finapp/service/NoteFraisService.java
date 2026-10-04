@@ -23,6 +23,7 @@ import com.mbsc.finapp.dto.notes.CreerNoteReglementCamionsRequest;
 import com.mbsc.finapp.dto.notes.LigneCompteRequest;
 import com.mbsc.finapp.dto.notes.LigneNoteFraisRequest;
 import com.mbsc.finapp.dto.notes.ModifierComptesRequest;
+import com.mbsc.finapp.dto.notes.ModifierObjetRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisDetailResponse;
 import com.mbsc.finapp.dto.notes.NoteFraisRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisResponse;
@@ -78,11 +79,11 @@ import java.util.Set;
  *
  * <p><b>Cas particulier RESP_RESTAURANT.</b> Le responsable restaurant ne
  * crée jamais de note de frais libre : il ne peut soumettre qu'une note
- * "spéciale" d'achat de boissons ou de provisions (une seule ligne, achat de
- * marchandise, article de type BOISSON ou PROVISION), qui suit ensuite
- * exactement le même circuit que toute autre note de décaissement. Cela
- * impose tout achat de boissons ou de provisions dans le circuit
- * d'approbation DFIN/DA et son règlement par la caisse — voir
+ * "spéciale" d'achat de boissons et/ou de provisions (une ou plusieurs
+ * lignes, chacune un achat de marchandise, article de type BOISSON ou
+ * PROVISION), qui suit ensuite exactement le même circuit que toute autre
+ * note de décaissement. Cela impose tout achat de boissons ou de provisions
+ * dans le circuit d'approbation DFIN/DA et son règlement par la caisse — voir
  * {@link #validerNoteRespRestaurant} et {@code CaisseService.payerNote}
  * (échange de consigne appliqué au paiement, boissons uniquement).</p>
  */
@@ -252,7 +253,7 @@ public class NoteFraisService {
     // Creation / modification (BROUILLON)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse creer(NoteFraisRequest req) {
         User auteur = currentUser.requireUser();
@@ -289,7 +290,7 @@ public class NoteFraisService {
         return NoteFraisDetailResponse.from(note);
     }
 
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse modifier(Long id, NoteFraisRequest req) {
         NoteFrais note = charger(id);
@@ -301,7 +302,7 @@ public class NoteFraisService {
         note.setDescription(req.description());
         note.setDevise(req.devise() == null ? Devise.CDF : req.devise());
 
-        List<LigneNoteFrais> nouvelles = creerLignes(req.lignes());
+        List<LigneNoteFrais> nouvelles = creerLignes(req.lignes(), note.getSens());
         note.remplacerLignes(nouvelles);
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
@@ -444,7 +445,7 @@ public class NoteFraisService {
             .map(c -> new LigneNoteFraisRequest(
                 detteEstimee(c), COMPTE_FOURNISSEURS,
                 "Camion " + c.getPlaque() + " - " + c.getArticle().getLibelle(),
-                false, null, null, null, null, false, null, null))
+                false, null, null, null, null, false, null, null, null))
             .toList();
         String objet = camions.size() == 1
             ? "Règlement fournisseur minerais - camion " + camions.get(0).getPlaque()
@@ -465,7 +466,7 @@ public class NoteFraisService {
             .map(ch -> new LigneNoteFraisRequest(
                 ch.getMontant(), COMPTE_FOURNISSEURS,
                 ch.getLibelle() + " - camion " + ch.getCamion().getPlaque(),
-                false, null, null, null, null, false, null, null))
+                false, null, null, null, null, false, null, null, null))
             .toList();
         String objet = charges.size() == 1
             ? "Règlement frais connexes minerais - " + charges.get(0).getLibelle()
@@ -537,11 +538,13 @@ public class NoteFraisService {
 
     /**
      * Le responsable restaurant ne cree jamais de note de frais libre : ses
-     * seules notes "speciales" possibles sont un achat de boissons ou de
-     * provisions — une ligne unique, achat de marchandise, article BOISSON ou
-     * PROVISION, en decaissement. Toute autre forme (plusieurs lignes, depense
-     * libre, article d'un autre type) est refusee, sans quoi le role
-     * deviendrait une porte d'entree generale vers les notes de frais.
+     * seules notes "speciales" possibles sont un achat de boissons et/ou de
+     * provisions — une ou plusieurs lignes, chacune un achat de marchandise,
+     * article BOISSON ou PROVISION, en decaissement (plusieurs produits
+     * receptionnes ensemble, ex. chez un meme fournisseur, tiennent alors sur
+     * une seule note). Toute autre forme (depense libre, article d'un autre
+     * type) est refusee, sans quoi le role deviendrait une porte d'entree
+     * generale vers les notes de frais.
      */
     private void validerNoteRespRestaurant(NoteFrais note) {
         if (!estRespRestaurantSeul()) {
@@ -551,25 +554,32 @@ public class NoteFraisService {
             throw new IllegalArgumentException(
                 "Le responsable restaurant ne peut créer qu'une note d'achat de boissons ou de provisions (décaissement)");
         }
-        if (note.getLignes().size() != 1) {
+        if (note.getLignes().isEmpty()) {
             throw new IllegalArgumentException(
-                "Une note d'achat de boissons ou de provisions ne comporte qu'une seule ligne");
+                "Une note d'achat de boissons ou de provisions doit comporter au moins une ligne");
         }
-        LigneNoteFrais ligne = note.getLignes().get(0);
-        TypeArticle type = ligne.getArticle() == null ? null : ligne.getArticle().getType();
-        if (!ligne.isAchatMarchandise() || (type != TypeArticle.BOISSON && type != TypeArticle.PROVISION)) {
-            throw new IllegalArgumentException(
-                "Le responsable restaurant ne peut créer qu'une note d'achat de boissons ou de provisions "
-                    + "(achat de marchandise, article de type BOISSON ou PROVISION)");
-        }
-        // L'echange de consigne n'a de sens que pour une boisson consignee :
-        // une provision n'a jamais de conditionnement, la verification serait
-        // un faux refus sans rapport avec sa propre nature.
-        if (type == TypeArticle.BOISSON && ligne.isEchangeConsigne()
-            && !emballageBoissonRepository.existsByArticleBoissonId(ligne.getArticle().getId())) {
-            throw new IllegalArgumentException(
-                "La boisson \"" + ligne.getArticle().getLibelle() + "\" n'a pas de conditionnement défini : "
-                    + "créez-le avant de demander l'échange de consigne");
+        for (LigneNoteFrais ligne : note.getLignes()) {
+            // Le transport et la manutention accompagnent l'achat : leur ligne
+            // est déjà contrôlée (une seule, avec au moins un achat) par
+            // imputerFraisApproche.
+            if (ligne.isFraisApproche()) {
+                continue;
+            }
+            TypeArticle type = ligne.getArticle() == null ? null : ligne.getArticle().getType();
+            if (!ligne.isAchatMarchandise() || (type != TypeArticle.BOISSON && type != TypeArticle.PROVISION)) {
+                throw new IllegalArgumentException(
+                    "Le responsable restaurant ne peut créer qu'une note d'achat de boissons ou de provisions "
+                        + "(achat de marchandise, article de type BOISSON ou PROVISION)");
+            }
+            // L'echange de consigne n'a de sens que pour une boisson consignee :
+            // une provision n'a jamais de conditionnement, la verification serait
+            // un faux refus sans rapport avec sa propre nature.
+            if (type == TypeArticle.BOISSON && ligne.isEchangeConsigne()
+                && !emballageBoissonRepository.existsByArticleBoissonId(ligne.getArticle().getId())) {
+                throw new IllegalArgumentException(
+                    "La boisson \"" + ligne.getArticle().getLibelle() + "\" n'a pas de conditionnement défini : "
+                        + "créez-le avant de demander l'échange de consigne");
+            }
         }
     }
 
@@ -609,6 +619,27 @@ public class NoteFraisService {
                 .findFirst()
                 .orElseThrow(() -> RessourceIntrouvableException.of("LigneNoteFrais", ligneReq.ligneId()));
             CompteOHADA nouveauCompte = resoudreCompte(ligneReq.compteImputation());
+            if (ligne.isAchatMarchandise() || ligne.isFraisApproche()) {
+                // Le compte d'une ligne d'achat de marchandise découle de
+                // l'article (son compte d'achat 601x/602x) : au paiement, la
+                // marchandise entre aussi en stock par une seconde écriture.
+                // Réimputée vers le compte de stock, la ligne le débiterait
+                // une seconde fois — stock doublé au bilan, achat absent du
+                // résultat, balance pourtant équilibrée. Même règle pour les
+                // frais de transport et manutention, dont le compte découle
+                // de la nature des achats (6015 ou 6025) et qui entrent eux
+                // aussi dans le coût du stock.
+                boolean inchange = nouveauCompte != null && ligne.getCompteImputation() != null
+                    && nouveauCompte.getId().equals(ligne.getCompteImputation().getId());
+                if (!inchange) {
+                    throw new IllegalArgumentException(ligne.isFraisApproche()
+                        ? "La ligne " + ligne.getId() + " porte les frais de transport et manutention des achats : "
+                          + "son compte découle de la nature des achats et ne se réimpute pas ici."
+                        : "La ligne " + ligne.getId() + " est un achat de marchandise : son compte découle de "
+                          + "l'article et ne se réimpute pas ici. Corrigez au besoin le compte d'achat de l'article.");
+                }
+                continue;
+            }
             String ancien = ligne.getCompteImputation() != null ? ligne.getCompteImputation().getNumero() : "(aucun)";
             String nouveau = nouveauCompte != null ? nouveauCompte.getNumero() : "(aucun)";
             ligne.setCompteImputation(nouveauCompte);
@@ -623,25 +654,72 @@ public class NoteFraisService {
         return NoteFraisDetailResponse.from(note);
     }
 
+    /**
+     * Le DFIN corrige le libelle (objet) d'une note soumise (SOUMISE), sans
+     * devoir en etre le createur : une saisie maladroite ou une faute de
+     * frappe de l'employe ne doit pas obliger a renvoyer la note pour un
+     * nouveau cycle de soumission. Memes garanties que
+     * {@link #modifierComptesLignes} : trace dans les observations, n'altere
+     * ni le montant ni l'etat du workflow.
+     */
+    @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
+    @Transactional
+    public NoteFraisDetailResponse modifierObjet(Long id, ModifierObjetRequest req) {
+        NoteFrais note = charger(id);
+        exigerEtat(note, StatutNote.SOUMISE, "modifier le libellé");
+
+        User auteur = currentUser.requireUser();
+        String ancien = note.getObjet();
+        String nouveau = req.objet().trim();
+        note.setObjet(nouveau);
+        note.addObservation(observation(note, auteur, note.getStatut(),
+            "Libellé modifié par le DFIN : \"" + ancien + "\" → \"" + nouveau + "\""));
+        note = noteRepository.saveAndFlush(note);
+
+        log.info("Note {} : libellé modifié par le DFIN (par {})", note.getReference(), auteur.getEmail());
+        return NoteFraisDetailResponse.from(note);
+    }
+
     /** Construit et rattache les lignes de depense a une note neuve. */
     private void construireLignes(NoteFrais note, List<LigneNoteFraisRequest> lignesReq) {
-        for (LigneNoteFrais l : creerLignes(lignesReq)) {
+        for (LigneNoteFrais l : creerLignes(lignesReq, note.getSens())) {
             note.addLigne(l);
         }
     }
 
-    /** Compte de TVA récupérable sur achats, retenu automatiquement pour tout achat de marchandise soumis à la TVA. */
+    /** Compte de TVA récupérable, pour une ligne de décaissement soumise à la TVA. */
     private static final String COMPTE_TVA_ACHATS = "4452";
-    /** Compte de stock par défaut d'un article de marchandise créé à la volée depuis une note de frais. */
+    /**
+     * Compte de TVA collectée, pour une ligne d'encaissement soumise à la TVA —
+     * le même que celui des ventes. Lui appliquer 4452 faisait apparaître la
+     * TVA d'une recette comme une baisse de TVA récupérable dans la
+     * déclaration (TvaService sépare collectée 443x et déductible 445x).
+     */
+    private static final String COMPTE_TVA_VENTES = VenteService.COMPTE_TVA_FACTUREE;
+    /**
+     * Comptes par défaut d'un article de marchandise créé à la volée depuis
+     * une note de frais : les trois que {@link #creerLignes} exige ensuite
+     * (stock, variation de stock, achat). Ne renseigner que le compte de
+     * stock faisait échouer la création à chaque fois, sur la garde même qui
+     * suit.
+     */
     private static final String COMPTE_STOCK_PAR_DEFAUT = "3111";
+    private static final String COMPTE_VARIATION_PAR_DEFAUT = "6031";
+    private static final String COMPTE_ACHAT_PAR_DEFAUT = "6011";
 
-    private List<LigneNoteFrais> creerLignes(List<LigneNoteFraisRequest> lignesReq) {
+    private List<LigneNoteFrais> creerLignes(List<LigneNoteFraisRequest> lignesReq, SensTransaction sens) {
+        String compteTvaDuSens = sens == SensTransaction.ENCAISSEMENT ? COMPTE_TVA_VENTES : COMPTE_TVA_ACHATS;
         List<LigneNoteFrais> lignes = new ArrayList<>();
         int ordre = 1;
         for (LigneNoteFraisRequest l : lignesReq) {
             boolean soumisTva = Boolean.TRUE.equals(l.soumisTva());
+            boolean fraisApproche = Boolean.TRUE.equals(l.fraisApproche());
 
             boolean achatMarchandise = Boolean.TRUE.equals(l.achatMarchandise());
+            if (fraisApproche && achatMarchandise) {
+                throw new IllegalArgumentException(
+                    "Une ligne ne peut pas être à la fois un achat de marchandise et des frais de transport et manutention.");
+            }
             CompteOHADA compteImputation;
             Article article = null;
             Entrepot entrepot = null;
@@ -687,6 +765,9 @@ public class NoteFraisService {
                 // résultat faux : ni l'achat (601) ni sa variation de stock
                 // (6031) n'y apparaissaient jamais.
                 compteImputation = article.getCompteAchat();
+            } else if (fraisApproche) {
+                // Compte fixé après la boucle, selon la nature des achats de la note.
+                compteImputation = null;
             } else {
                 compteImputation = resoudreCompte(l.compteImputation());
             }
@@ -701,17 +782,57 @@ public class NoteFraisService {
                 .article(article)
                 .entrepot(entrepot)
                 .echangeConsigne(achatMarchandise && Boolean.TRUE.equals(l.echangeConsigne()))
+                .fraisApproche(fraisApproche)
                 .soumisTva(soumisTva)
-                // Le compte de TVA récupérable n'est plus choisi par
-                // l'utilisateur : 4452 est le seul compte pertinent pour une
-                // TVA récupérable sur achat de marchandise.
-                .compteTva(soumisTva ? resoudreCompte(COMPTE_TVA_ACHATS) : null)
+                // Le compte de TVA n'est pas choisi par l'utilisateur : il
+                // découle du sens de la note (récupérable ou collectée).
+                .compteTva(soumisTva ? resoudreCompte(compteTvaDuSens) : null)
                 // Figé à la saisie : le montant TTC annoncé sur la note ne
                 // doit pas bouger si le taux légal change avant le paiement.
                 .tauxTvaApplique(soumisTva ? tauxTvaService.tauxALaDate(java.time.LocalDate.now()) : null)
                 .build());
         }
+        imputerFraisApproche(lignes, sens);
         return lignes;
+    }
+
+    /** Frais sur achats de marchandises (boissons, marchandises revendues). */
+    private static final String COMPTE_FRAIS_ACHATS_MARCHANDISES = "6015";
+    /** Frais sur achats de matières premières (provisions de cuisine). */
+    private static final String COMPTE_FRAIS_ACHATS_MATIERES = "6025";
+
+    /**
+     * Impute la ligne de frais d'approche (transport, manutention) d'une note
+     * d'achat. Son compte n'est pas choisi à l'écran : il découle de ce que la
+     * note achète — 6025 « Frais sur achats » de matières premières si elle
+     * contient une provision, 6015 « Frais sur achats » de marchandises sinon —
+     * comme le compte d'une ligne d'achat découle de son article. Au paiement,
+     * son montant est réparti sur le coût d'entrée en stock des articles
+     * achetés (voir RegleTresorerieService.construireLignesDebitDepuisNote).
+     */
+    private void imputerFraisApproche(List<LigneNoteFrais> lignes, SensTransaction sens) {
+        List<LigneNoteFrais> frais = lignes.stream().filter(LigneNoteFrais::isFraisApproche).toList();
+        if (frais.isEmpty()) {
+            return;
+        }
+        if (sens == SensTransaction.ENCAISSEMENT) {
+            throw new IllegalArgumentException(
+                "Des frais de transport et manutention ne s'ajoutent qu'à une note d'achat (décaissement).");
+        }
+        if (frais.size() > 1) {
+            throw new IllegalArgumentException(
+                "Une note ne porte qu'une seule ligne de frais de transport et manutention.");
+        }
+        List<LigneNoteFrais> achats = lignes.stream().filter(LigneNoteFrais::isAchatMarchandise).toList();
+        if (achats.isEmpty()) {
+            throw new IllegalArgumentException(
+                "Des frais de transport et manutention se répartissent sur des achats de marchandise : "
+                + "la note n'en contient aucun.");
+        }
+        boolean contientProvision = achats.stream()
+            .anyMatch(a -> a.getArticle() != null && a.getArticle().getType() == TypeArticle.PROVISION);
+        frais.get(0).setCompteImputation(resoudreCompte(
+            contientProvision ? COMPTE_FRAIS_ACHATS_MATIERES : COMPTE_FRAIS_ACHATS_MARCHANDISES));
     }
 
     // ---------------------------------------------------------------------
@@ -812,7 +933,7 @@ public class NoteFraisService {
     // ---------------------------------------------------------------------
 
     /** Le createur soumet sa note au DFIN (BROUILLON|REJETEE_DA -> SOUMISE). */
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse soumettre(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -1028,8 +1149,10 @@ public class NoteFraisService {
     /**
      * Retrouve un article de marchandise existant par son nom, ou le crée à
      * la volée : l'achat d'une marchandise ne nécessite plus de passer par
-     * l'écran Logistique au préalable. Le compte de stock par défaut
-     * ({@value #COMPTE_STOCK_PAR_DEFAUT}) reste modifiable ensuite depuis
+     * l'écran Logistique au préalable. Ses comptes par défaut (stock
+     * {@value #COMPTE_STOCK_PAR_DEFAUT}, variation
+     * {@value #COMPTE_VARIATION_PAR_DEFAUT}, achat
+     * {@value #COMPTE_ACHAT_PAR_DEFAUT}) restent modifiables ensuite depuis
      * la fiche article, au même titre qu'un article créé normalement.
      */
     private Article trouverOuCreerArticle(String nom) {
@@ -1040,6 +1163,8 @@ public class NoteFraisService {
                 .libelle(libelle)
                 .type(TypeArticle.MARCHANDISE)
                 .compteStock(resoudreCompte(COMPTE_STOCK_PAR_DEFAUT))
+                .compteCharge(resoudreCompte(COMPTE_VARIATION_PAR_DEFAUT))
+                .compteAchat(resoudreCompte(COMPTE_ACHAT_PAR_DEFAUT))
                 .soumisTva(true)
                 .stockMin(java.math.BigDecimal.ZERO)
                 .actif(true)

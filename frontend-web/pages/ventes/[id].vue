@@ -71,7 +71,7 @@ watch(() => vente.value?.reference, async (reference) => {
   }
 }, { immediate: true })
 
-const canWrite = computed(() => auth.hasAnyRole(['CAISSIER']))
+const canWrite = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
 const peutValider = computed(() => canWrite.value && vente.value?.statut === 'BROUILLON')
 // Annuler defait une vente deja comptabilisee : reserve a l'administrateur.
 const peutAnnuler = computed(() => auth.hasRole('ADMIN') && vente.value?.statut === 'VALIDEE')
@@ -113,12 +113,32 @@ const erreurLigne = ref('')
 // avant de pre-remplir le prix unitaire — jamais recopie tel quel si la
 // vente est en USD.
 const arrondi = (v: number) => Math.round(v * 100) / 100
-watch(() => nouvelleLigne.articleId, (articleId) => {
-  const article = articlesDisponibles.value.find((a) => a.id === articleId)
-  if (!article || article.prixVente == null) return
-  nouvelleLigne.prixUnitaire = vente.value?.devise === 'USD'
+const proposition = (article?: ArticleOption) => {
+  if (!article || article.prixVente == null) return null
+  return vente.value?.devise === 'USD'
     ? (tauxChange.value > 0 ? arrondi(article.prixVente / tauxChange.value) : null)
     : article.prixVente
+}
+watch(() => nouvelleLigne.articleId, async (articleId) => {
+  if (articleId == null) return
+  const prix = proposition(articlesDisponibles.value.find((a) => a.id === articleId))
+  if (prix != null) nouvelleLigne.prixUnitaire = prix
+  // Le catalogue n'est chargé qu'une fois : un prix modifié depuis ne s'y
+  // verrait pas. L'article choisi est relu, et la proposition corrigée tant
+  // que le prix de la ligne n'a pas été retouché. Les lignes déjà
+  // enregistrées gardent leur propre prix.
+  try {
+    const frais = await api<ArticleOption>(`/logistique/articles/${articleId}`)
+    const k = articlesDisponibles.value.findIndex((a) => a.id === articleId)
+    if (k >= 0) articlesDisponibles.value[k] = { ...articlesDisponibles.value[k], ...frais }
+    const prixFrais = proposition(frais)
+    if (nouvelleLigne.articleId === articleId && prixFrais != null
+      && (prix == null || nouvelleLigne.prixUnitaire === prix)) {
+      nouvelleLigne.prixUnitaire = prixFrais
+    }
+  } catch {
+    // Relecture impossible (réseau) : la proposition du catalogue chargé reste.
+  }
 })
 
 async function chargerArticlesPourAjout() {
@@ -226,6 +246,14 @@ async function charger() {
 
 onMounted(async () => {
   await charger()
+  // Arrivée depuis « Créer et valider » : la vente a été créée, mais sa
+  // validation a échoué (voir ventes/nouvelle.vue) — on le dit ici, sur le
+  // brouillon lui-même, plutôt que de laisser croire que rien n'a été fait.
+  const erreurValidation = route.query.erreurValidation
+  if (typeof erreurValidation === 'string' && erreurValidation) {
+    erreur.value = `La vente a été enregistrée en brouillon, mais sa validation a échoué : ${erreurValidation}`
+    await navigateTo({ path: route.path, query: {} }, { replace: true })
+  }
   // Ouverture directe en mode impression depuis la liste (?print=1)
   if (vente.value && route.query.print === '1') {
     await nextTick()
@@ -247,6 +275,17 @@ async function action(chemin: string) {
   } finally {
     busy.value = false
   }
+}
+
+// ── Confirmation avant de valider ou d'annuler ────────────────────────────
+// Les deux engagent la comptabilité et le stock, et ne se défont pas d'un
+// simple clic : un clic par erreur ne doit pas suffire.
+const confirmation = ref<'valider' | 'annuler' | null>(null)
+async function confirmer() {
+  const quoi = confirmation.value
+  if (!quoi) return
+  await action(quoi)
+  confirmation.value = null
 }
 
 function imprimer() {
@@ -310,6 +349,53 @@ const contreValeur = computed(() => {
     : `≈ ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(ttc / tauxVente.value)}`
 })
 
+// ── Rendu de monnaie (brouillon, paiement au comptant) — même mécanique
+// que ventes/nouvelle.vue : un calculateur optionnel, jamais envoyé au
+// serveur, qui aide le caissier à valider avec le bon rendu de monnaie en
+// tête. Le client peut mélanger les devises (ex. 2 billets de 20$ + 1 de
+// 5000 FC), chaque billet est ramené dans la devise de la vente.
+interface BilletRecu { devise: 'CDF' | 'USD'; coupure: number | null; quantite: number | null }
+const COUPURES: Record<'CDF' | 'USD', number[]> = {
+  USD: [1, 2, 5, 10, 20, 50, 100],
+  CDF: [50, 100, 200, 500, 1000, 5000, 10000, 20000],
+}
+const billetsRecus = ref<BilletRecu[]>([])
+function ajouterBillet() {
+  billetsRecus.value.push({ devise: deviseVente.value as 'CDF' | 'USD', coupure: null, quantite: 1 })
+}
+function supprimerBillet(i: number) {
+  billetsRecus.value.splice(i, 1)
+}
+const montantRecuTotal = computed(() => {
+  let total = 0
+  let saisi = false
+  for (const b of billetsRecus.value) {
+    if (!b.coupure || !b.quantite || b.quantite <= 0) continue
+    saisi = true
+    const montantLigne = b.coupure * b.quantite
+    if (b.devise === deviseVente.value) {
+      total += montantLigne
+    } else if (tauxVente.value > 0) {
+      total += b.devise === 'USD' ? montantLigne * tauxVente.value : montantLigne / tauxVente.value
+    }
+  }
+  return saisi ? arrondi(total) : null
+})
+const monnaieARendre = computed(() => {
+  if (montantRecuTotal.value == null || !vente.value) return null
+  return arrondi(montantRecuTotal.value - vente.value.totalTtc)
+})
+const fmtBillet = (montant: number, devise: 'CDF' | 'USD') =>
+  devise === 'USD'
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(montant || 0)
+    : `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(montant || 0)} FC`
+const monnaieARendreEquivalent = computed(() => {
+  if (monnaieARendre.value == null || monnaieARendre.value < 0 || tauxVente.value <= 0) return ''
+  return deviseVente.value === 'USD'
+    ? `≈ ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(monnaieARendre.value * tauxVente.value)} FC`
+    : `≈ ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(monnaieARendre.value / tauxVente.value)}`
+})
+
 const fmtQte = (q: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 3 }).format(q || 0)
 const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '')
 </script>
@@ -352,7 +438,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
               rounded="lg"
               prepend-icon="mdi-check-circle-outline"
               :loading="busy"
-              @click="action('valider')"
+              @click="confirmation = 'valider'"
             >
               Valider
             </v-btn>
@@ -374,7 +460,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
               rounded="lg"
               prepend-icon="mdi-close-circle-outline"
               :loading="busy"
-              @click="action('annuler')"
+              @click="confirmation = 'annuler'"
             >
               Annuler la vente
             </v-btn>
@@ -437,11 +523,13 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
               <template v-if="vente.etablissementNom"> · {{ vente.etablissementNom }}</template>
             </span>
           </div>
-          <div v-if="vente.entrepotNom" class="vd-info">
+          <!-- Entrepôt et devise : utiles à l'écran, retirés de la facture
+               imprimée (le taux figure déjà sous le net à payer). -->
+          <div v-if="vente.entrepotNom" class="vd-info vd-noprint">
             <span class="vd-info__label">Entrepôt</span>
             <span class="vd-info__value">{{ vente.entrepotNom }}</span>
           </div>
-          <div class="vd-info">
+          <div class="vd-info vd-noprint">
             <span class="vd-info__label">Devise</span>
             <span class="vd-info__value">
               {{ deviseVente === 'USD' ? 'Dollar américain (USD)' : 'Franc congolais (FC)' }}
@@ -565,6 +653,68 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
         </div>
       </div>
 
+      <!-- ── Rendu de monnaie (brouillon, paiement au comptant en caisse) ── -->
+      <div v-if="peutValider && vente.modeReglement === 'CAISSE'" class="vd-rendu-monnaie vd-noprint">
+        <div class="vd-rendu-monnaie__head">
+          <span class="vd-section" style="margin: 0">Billets reçus du client</span>
+          <v-btn size="small" variant="text" color="primary" prepend-icon="mdi-plus" @click="ajouterBillet">
+            Ajouter un billet
+          </v-btn>
+        </div>
+        <p v-if="!billetsRecus.length" class="text-caption text-medium-emphasis mb-2">
+          Optionnel — précisez les billets remis pour calculer automatiquement la monnaie à rendre
+          avant de valider (ex. 2 billets de 20$ + 1 billet de 5000 FC).
+        </p>
+
+        <div v-for="(b, i) in billetsRecus" :key="i" class="vd-billet-ligne">
+          <v-btn-toggle
+            v-model="b.devise"
+            mandatory
+            density="comfortable"
+            variant="outlined"
+            rounded="lg"
+            @update:model-value="b.coupure = null"
+          >
+            <v-btn value="CDF" size="small">FC</v-btn>
+            <v-btn value="USD" size="small">$US</v-btn>
+          </v-btn-toggle>
+          <v-select
+            v-model.number="b.coupure"
+            :items="COUPURES[b.devise]"
+            label="Coupure"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            class="vd-billet-coupure"
+          />
+          <span class="vd-billet-x">×</span>
+          <v-text-field
+            v-model.number="b.quantite"
+            type="number"
+            min="1"
+            label="Qté"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            class="vd-billet-qte"
+          />
+          <span class="vd-billet-total">{{ fmtBillet((b.coupure || 0) * (b.quantite || 0), b.devise) }}</span>
+          <v-btn icon="mdi-close" size="x-small" variant="text" color="grey" @click="supprimerBillet(i)" />
+        </div>
+
+        <template v-if="montantRecuTotal != null">
+          <div class="vd-total-row" style="margin-top: 8px">
+            <span>Total reçu</span>
+            <strong>{{ fmtUSD(montantRecuTotal) }}</strong>
+          </div>
+          <div class="vd-total-row vd-total-row--ttc" :class="{ 'vd-rendu-monnaie--negatif': monnaieARendre != null && monnaieARendre < 0 }">
+            <span>{{ (monnaieARendre ?? 0) >= 0 ? 'Monnaie à rendre' : 'Montant manquant' }}</span>
+            <strong>{{ fmtUSD(Math.abs(monnaieARendre ?? 0)) }}</strong>
+          </div>
+          <div v-if="monnaieARendreEquivalent" class="vd-contre-valeur">{{ monnaieARendreEquivalent }}</div>
+        </template>
+      </div>
+
       <!-- ── Rattachements comptables ────────────────────────── -->
       <v-card v-if="vente.pieceReference || vente.mouvementReference" class="classroom-card pa-4 mt-4 vd-noprint">
         <p class="vd-section">Rattachements comptables</p>
@@ -596,6 +746,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
         <div class="vd-ticket__marque">
           <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo" class="vd-ticket__logo">
           <p class="vd-ticket__nom">{{ parametresStore.parametres.nom }}</p>
+          <p class="vd-ticket__type">Facture</p>
         </div>
         <div class="vd-ticket__sep" />
         <p class="vd-ticket__ref">{{ vente.reference }}</p>
@@ -631,6 +782,65 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
     </template>
 
     <!-- ── Encaissement de la créance ──────────────────────── -->
+    <v-dialog
+      :model-value="!!confirmation"
+      max-width="500"
+      class="no-print"
+      :persistent="busy"
+      @update:model-value="v => { if (!v && !busy) confirmation = null }"
+    >
+      <v-card v-if="confirmation && vente" rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold text-wrap">
+          {{ confirmation === 'valider' ? 'Valider' : 'Annuler' }} la vente {{ vente.reference }} ?
+        </v-card-title>
+        <v-card-text>
+          <template v-if="confirmation === 'valider'">
+            <p class="mb-1">Client : <strong>{{ vente.clientNom }}</strong></p>
+            <p class="mb-1">
+              Règlement : <strong>{{ reglementLabel[vente.modeReglement] }}</strong>
+              <template v-if="vente.etablissementNom"> · {{ vente.etablissementNom }}</template>
+            </p>
+            <p class="mb-1">
+              Net à payer : <strong>{{ fmtUSD(vente.totalTtc) }}</strong>
+              <span v-if="contreValeur" class="text-medium-emphasis"> ({{ contreValeur }})</span>
+            </p>
+            <p v-if="monnaieARendre != null && monnaieARendre >= 0" class="mb-1">
+              Monnaie à rendre : <strong>{{ fmtUSD(monnaieARendre) }}</strong>
+            </p>
+            <p v-else-if="monnaieARendre != null" class="mb-1 text-error">
+              Montant reçu insuffisant : il manque <strong>{{ fmtUSD(-monnaieARendre) }}</strong>.
+            </p>
+            <p class="text-medium-emphasis mt-3 mb-0">
+              La vente sera comptabilisée et les articles sortiront du stock<template
+                v-if="vente.modeReglement === 'CAISSE'">, le montant entrera en caisse</template><template
+                v-else-if="vente.modeReglement === 'CREDIT'">, une créance sera ouverte au nom du client</template><template
+                v-else>, le règlement sera enregistré ({{ reglementLabel[vente.modeReglement] }})</template>.
+              Elle ne pourra plus être modifiée, seulement annulée par un administrateur.
+            </p>
+          </template>
+          <template v-else>
+            <p class="mb-2">
+              Les articles reviennent en stock et les écritures de la vente
+              ({{ fmtUSD(vente.totalTtc) }}) sont extournées.
+            </p>
+            <p class="text-medium-emphasis mb-0">Une vente annulée ne peut pas être rétablie.</p>
+          </template>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="busy" @click="confirmation = null">Retour</v-btn>
+          <v-btn
+            :color="confirmation === 'valider' ? 'primary' : 'error'"
+            variant="flat"
+            :loading="busy"
+            @click="confirmer"
+          >
+            {{ confirmation === 'valider' ? 'Oui, valider' : 'Oui, annuler la vente' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="dialogReglement" max-width="480" class="no-print">
       <v-card class="classroom-card pa-6">
         <div class="d-flex align-center ga-3 mb-4">
@@ -746,6 +956,34 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 .vd-total-row--ttc strong { font-size: 1.15rem; color: var(--color-primary); }
 .vd-contre-valeur { text-align: right; font-size: 0.75rem; color: #9ca3af; padding-top: 4px; }
 
+.vd-rendu-monnaie {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed #e5e7eb;
+}
+.vd-rendu-monnaie__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.vd-rendu-monnaie--negatif strong { color: #dc2626 !important; }
+.vd-rendu-monnaie .vd-total-row, .vd-rendu-monnaie .vd-contre-valeur { max-width: 380px; margin-left: auto; }
+
+.vd-billet-ligne {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.vd-billet-coupure { max-width: 110px; }
+.vd-billet-qte { max-width: 72px; }
+.vd-billet-x { color: #9ca3af; font-size: 0.85rem; }
+.vd-billet-total {
+  flex: 1;
+  text-align: right;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+}
+
 .vd-lien { font-size: 0.82rem; color: #374151; display: flex; align-items: center; }
 .vd-lien code { margin-left: 4px; }
 
@@ -807,7 +1045,12 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
     display: block;
     width: 100%;
     max-width: 74mm;
-    margin: 0 auto;
+    /* Pas de "margin: auto" : certains moteurs d'impression ("Enregistrer en
+       PDF" notamment) n'honorent pas toujours le @page size 80mm injecte par
+       imprimerTicket() et gardent une page bien plus large — un centrage
+       horizontal y ferait flotter le ticket au milieu au lieu de partir du
+       bord, comme sur une vraie imprimante thermique. */
+    margin: 0;
     font-family: 'Courier New', monospace;
     font-size: 11px;
     line-height: 1.4;
@@ -817,6 +1060,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
   .vd-ticket__marque { text-align: center; margin-bottom: 4px; }
   .vd-ticket__logo { max-width: 40mm; max-height: 18mm; object-fit: contain; margin-bottom: 4px; }
   .vd-ticket__nom { font-size: 13px; font-weight: 700; text-transform: uppercase; }
+  .vd-ticket__type { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
   .vd-ticket__ref { font-weight: 700; }
   .vd-ticket__sep {
     border-top: 1px dashed #000;

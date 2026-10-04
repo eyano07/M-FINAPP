@@ -27,6 +27,8 @@ interface LigneNoteFrais {
   soumisTva?: boolean
   compteTva?: string | null
   compteTvaLibelle?: string | null
+  /** Transport et manutention, incorporés au coût des marchandises achetées. */
+  fraisApproche?: boolean
 }
 interface PieceJointe {
   id: number
@@ -154,12 +156,19 @@ const peutVerifier     = computed(() => isDFIN.value && statut.value === 'SOUMIS
 // Le DFIN peut corriger le compte d'imputation des lignes pendant sa
 // vérification (note SOUMISE), qu'il en soit ou non le créateur — voir
 // NoteFraisService.modifierComptesLignes côté backend.
-const peutModifierComptes = computed(() => isDFIN.value && statut.value === 'SOUMISE')
+// Une note faite uniquement d'achats de marchandise n'a aucun compte a
+// reimputer : le compte de chaque ligne decoule de son article.
+const peutModifierComptes = computed(() => isDFIN.value && statut.value === 'SOUMISE'
+  && (note.value?.lignes || []).some(l => !l.achatMarchandise))
+// Meme fenetre que peutModifierComptes : le DFIN corrige une saisie
+// maladroite de l'employe pendant sa verification, sans renvoyer la note
+// pour un nouveau cycle de soumission — voir NoteFraisService.modifierObjet.
+const peutModifierObjet = computed(() => isDFIN.value && statut.value === 'SOUMISE')
 const peutValiderRejeter = computed(() => isDA.value && statut.value === 'VERIFIEE_DFIN')
 const peutPrioriser    = computed(() => isDA.value && ['VALIDEE_DA', 'TRANSMISE_CAISSE'].includes(statut.value || ''))
 const peutTransmettre  = computed(() => isDFIN.value && statut.value === 'VALIDEE_DA')
 const peutAnnuler      = computed(() =>
-  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','LOGISTIQUE','ADMIN']) &&
+  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','RESP_RESTAURANT','LOGISTIQUE','ADMIN']) &&
   ['BROUILLON','SOUMISE','VERIFIEE_DFIN','VALIDEE_DA','REJETEE_DA'].includes(statut.value || ''))
 
 /** Message contextuel quand aucune action n'est disponible. */
@@ -241,11 +250,20 @@ async function definirPriorite() {
   busy.value = true
   erreur.value = ''
   try {
-    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/priorite`, {
+    const noteActuelleId = id.value
+    // Juste apres la validation (DA), definir la priorite est la derniere
+    // etape avant d'enchainer sur la note suivante — voir action(). Un
+    // ajustement de priorite plus tard (note deja TRANSMISE_CAISSE) n'a en
+    // revanche aucune file "suivante" a laquelle rattacher cette action.
+    const venaitDEtreValidee = statut.value === 'VALIDEE_DA'
+    note.value = await api<NoteDetail>(`/notes-frais/${noteActuelleId}/priorite`, {
       method: 'POST',
       body: { priorite: prioriteChoisie.value, commentaire: observation.value || null },
     })
     observation.value = ''
+    if (venaitDEtreValidee) {
+      await allerNoteSuivante('VERIFIEE_DFIN', noteActuelleId)
+    }
   } catch (e: any) {
     erreur.value = e?.data?.message || 'Echec.'
   } finally { busy.value = false }
@@ -306,6 +324,39 @@ async function enregistrerComptes() {
     erreur.value = e?.data?.message || "Echec de la modification des comptes."
   } finally {
     enregistrementComptes.value = false
+  }
+}
+
+// ── Libellé (objet), correction par le DFIN pendant la vérification ──────
+const editionObjet = ref(false)
+const objetEdite = ref('')
+const enregistrementObjet = ref(false)
+
+function activerEditionObjet() {
+  objetEdite.value = note.value?.objet || ''
+  editionObjet.value = true
+}
+function annulerEditionObjet() {
+  editionObjet.value = false
+}
+async function enregistrerObjet() {
+  const valeur = objetEdite.value.trim()
+  if (!valeur || valeur === note.value?.objet) {
+    annulerEditionObjet()
+    return
+  }
+  enregistrementObjet.value = true
+  erreur.value = ''
+  try {
+    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/objet`, {
+      method: 'PUT',
+      body: { objet: valeur },
+    })
+    editionObjet.value = false
+  } catch (e: any) {
+    erreur.value = e?.data?.message || "Echec de la modification du libellé."
+  } finally {
+    enregistrementObjet.value = false
   }
 }
 
@@ -534,7 +585,30 @@ const peutGererPieces = computed(() =>
           </div>
 
           <div class="nd-hero__body">
-            <h1 class="nd-hero__objet">{{ note.objet }}</h1>
+            <div v-if="!editionObjet" class="nd-hero__objet-row">
+              <h1 class="nd-hero__objet">{{ note.objet }}</h1>
+              <button
+                v-if="peutModifierObjet"
+                type="button" class="nd-hero__edit-btn nd-noprint"
+                title="Modifier le libellé" @click="activerEditionObjet"
+              >
+                <v-icon icon="mdi-pencil-outline" size="15" />
+              </button>
+            </div>
+            <div v-else class="nd-hero__objet-edit nd-noprint">
+              <v-text-field
+                v-model="objetEdite"
+                density="compact" variant="solo" hide-details bg-color="white"
+                maxlength="200"
+                class="nd-hero__objet-input"
+                @keyup.enter="enregistrerObjet"
+                @keyup.esc="annulerEditionObjet"
+              />
+              <v-btn size="small" variant="flat" color="indigo" icon="mdi-check"
+                :loading="enregistrementObjet" title="Enregistrer" @click="enregistrerObjet" />
+              <v-btn size="small" variant="tonal" icon="mdi-close"
+                :disabled="enregistrementObjet" title="Annuler" @click="annulerEditionObjet" />
+            </div>
             <p class="nd-hero__montant">{{ montantFmt }}</p>
           </div>
         </div>
@@ -595,7 +669,10 @@ const peutGererPieces = computed(() =>
           </div>
           <div class="nd-lignes">
             <div v-for="l in note.lignes" :key="l.id" class="nd-ligne">
-              <div v-if="editionComptes" class="nd-ligne__compte-edit nd-noprint">
+              <!-- Une ligne d'achat de marchandise garde le compte d'achat de son
+                   article : le serveur refuse de la réimputer (le stock serait
+                   compté deux fois), le sélecteur n'est donc pas proposé. -->
+              <div v-if="editionComptes && !l.achatMarchandise" class="nd-ligne__compte-edit nd-noprint">
                 <ComptabiliteSelecteurCompte
                   v-model="comptesEdites[l.id]"
                   label="Compte d'imputation"
@@ -605,14 +682,18 @@ const peutGererPieces = computed(() =>
               <div v-else class="nd-ligne__compte">
                 <v-icon icon="mdi-book-open-variant" size="15" class="mr-1" />
                 {{ l.compteImputation ? `${l.compteImputation} — ${l.compteImputationLibelle || ''}` : (estEncaissement ? 'Compte par défaut (758)' : 'Compte par défaut (6588)') }}
+                <span v-if="editionComptes" class="text-caption text-medium-emphasis ml-1">· fixé par l'article</span>
               </div>
               <p v-if="l.description" class="nd-ligne__desc">{{ l.description }}</p>
-              <div v-if="l.achatMarchandise || l.soumisTva" class="nd-ligne__badges">
+              <div v-if="l.achatMarchandise || l.soumisTva || l.fraisApproche" class="nd-ligne__badges">
+                <v-chip v-if="l.fraisApproche" size="x-small" variant="tonal" color="teal" prepend-icon="mdi-truck-outline">
+                  Frais d'approche · incorporés au coût des marchandises de la note
+                </v-chip>
                 <v-chip v-if="l.achatMarchandise" size="x-small" variant="tonal" color="teal" prepend-icon="mdi-package-variant">
                   {{ l.articleLibelle || 'Marchandise' }}{{ l.quantiteMarchandise ? ` · ${l.quantiteMarchandise} × ${fmtMontant(l.montant)}` : '' }}{{ l.entrepotNom ? ` · ${l.entrepotNom}` : '' }}
                 </v-chip>
                 <v-chip v-if="l.soumisTva" size="x-small" variant="tonal" color="indigo" prepend-icon="mdi-percent-outline">
-                  TVA récupérable{{ l.compteTva ? ` · ${l.compteTva}` : '' }}
+                  {{ estEncaissement ? 'TVA collectée' : 'TVA récupérable' }}{{ l.compteTva ? ` · ${l.compteTva}` : '' }}
                 </v-chip>
               </div>
               <span class="nd-ligne__montant">
@@ -792,7 +873,7 @@ const peutGererPieces = computed(() =>
 
               <template v-if="peutValiderRejeter">
                 <v-btn color="success" block rounded="lg" elevation="0"
-                  prepend-icon="mdi-check" :loading="busy" @click="action('valider', false, 'VERIFIEE_DFIN')">
+                  prepend-icon="mdi-check" :loading="busy" @click="action('valider')">
                   Valider (DA)
                 </v-btn>
                 <v-btn color="error" block rounded="lg" variant="tonal"
@@ -969,9 +1050,31 @@ const peutGererPieces = computed(() =>
   font-size: clamp(1.1rem, 2vw, 1.5rem);
   font-weight: 700;
   color: #fff;
-  margin: 0 0 10px;
+  margin: 0;
   line-height: 1.3;
 }
+.nd-hero__objet-row { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.nd-hero__edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 24px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+.nd-hero__edit-btn:hover { background: rgba(255, 255, 255, 0.3); }
+.nd-hero__objet-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  max-width: 480px;
+}
+.nd-hero__objet-input :deep(.v-field) { border-radius: 8px; }
 .nd-hero__montant {
   font-size: 2rem;
   font-weight: 800;

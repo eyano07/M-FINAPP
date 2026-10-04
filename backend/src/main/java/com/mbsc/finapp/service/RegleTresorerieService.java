@@ -1,11 +1,14 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CompteOHADA;
+import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.LigneNoteFrais;
 import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
 import com.mbsc.finapp.domain.enums.SensTransaction;
 import com.mbsc.finapp.domain.enums.StatutNote;
+import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeCompte;
 import com.mbsc.finapp.exception.ReglePrioriteException;
 import com.mbsc.finapp.repository.EcritureGrandLivreRepository;
@@ -67,11 +70,11 @@ public class RegleTresorerieService {
      * @param libelleCanal  designation du canal pour les messages d'erreur,
      *                      ex. "la caisse", "la banque", "le mobile money"
      */
-    public void validerReglePriorite(NoteFrais note, BigDecimal montantCDF,
+    public void validerReglePriorite(NoteFrais note, BigDecimal montantBase,
                                      String comptePrefixe, String libelleCanal) {
         PrioriteNote priorite = note.getPriorite();
         Long noteId = note.getId();
-        BigDecimal montant = montantCDF;
+        BigDecimal montant = montantBase;
 
         // ── 1. Blocage si des notes de priorité supérieure sont en attente ──
         if (priorite == PrioriteNote.BASSE) {
@@ -97,12 +100,13 @@ public class RegleTresorerieService {
         // HAUTE : aucun blocage sur la priorité
 
         // ── 2. Vérification du solde disponible (après réserve HP > MP) ─────
-        // Tout est comparé dans la devise de base (CDF), y compris la réserve
-        // des notes en attente qui peuvent être libellées en USD.
+        // Tout est comparé dans la devise de base du grand livre (USD), y
+        // compris la réserve des notes en attente, qui peuvent être libellées
+        // en FC.
         BigDecimal soldeCompte = ecritureRepository.soldePourCompte(comptePrefixe);
         if (soldeCompte == null) soldeCompte = BigDecimal.ZERO;
 
-        // Réserve = montant total (converti en CDF) des notes de priorité
+        // Réserve = montant total (converti en devise de base) des notes de priorité
         // STRICTEMENT supérieure en attente
         BigDecimal reserve = BigDecimal.ZERO;
         if (priorite == PrioriteNote.MOYENNE) {
@@ -117,14 +121,24 @@ public class RegleTresorerieService {
 
         BigDecimal soldeDisponible = soldeCompte.subtract(reserve);
         if (montant.compareTo(soldeDisponible) > 0) {
+            // Montants en devise de base (USD) : les étiqueter « FC », comme
+            // une version antérieure, faisait lire 108,09 FC pour une note de
+            // 237 800 FC. Le montant d'origine est rappelé s'il diffère.
+            String base = " " + ConversionDeviseService.DEVISE_BASE;
+            String origine = note.getDevise() != null && note.getDevise() != ConversionDeviseService.DEVISE_BASE
+                ? note.getMontant().setScale(2, RoundingMode.HALF_UP).toPlainString() + " " + note.getDevise() + ", soit "
+                : "";
             throw new ReglePrioriteException(
                 "Solde insuffisant pour payer la note \"" + note.getReference()
-                + "\" (" + montant.toPlainString() + " FC). "
-                + "Solde actuel de " + libelleCanal + " : " + soldeCompte.toPlainString() + " FC"
+                + "\" (" + origine + montant.setScale(2, RoundingMode.HALF_UP).toPlainString() + base + "). "
+                // Entre parenthèses : « de » + « le compte mobile money »
+                // donnait « de le compte ».
+                + "Solde actuel (" + libelleCanal + ") : " + soldeCompte.setScale(2, RoundingMode.HALF_UP).toPlainString() + base
                 + (reserve.signum() > 0
-                    ? ", dont " + reserve.toPlainString() + " FC réservés pour des notes HAUTE priorité en attente."
+                    ? ", dont " + reserve.setScale(2, RoundingMode.HALF_UP).toPlainString() + base
+                        + " réservés pour des notes HAUTE priorité en attente."
                     : ".")
-                + " Solde disponible : " + soldeDisponible.toPlainString() + " FC.");
+                + " Solde disponible : " + soldeDisponible.setScale(2, RoundingMode.HALF_UP).toPlainString() + base + ".");
         }
 
         // ── 3. Reserve de tresorerie minimale par priorite (fixee par le DA) ─
@@ -176,6 +190,10 @@ public class RegleTresorerieService {
         List<LigneNoteFrais> lignes = note.getLignes();
         List<EcritureComptableService.LigneDebit> lignesDebit = new ArrayList<>();
         List<StockService.EntreeNoteFrais> entreesStock = new ArrayList<>();
+        // Achats à porter au stock, et frais d'approche (transport,
+        // manutention) à répartir sur eux une fois toutes les lignes converties.
+        List<AchatAPorter> achats = new ArrayList<>();
+        BigDecimal fraisApproche = BigDecimal.ZERO;
         BigDecimal sommeConvertie = BigDecimal.ZERO;
         for (int i = 0; i < lignes.size(); i++) {
             LigneNoteFrais ligne = lignes.get(i);
@@ -186,19 +204,28 @@ public class RegleTresorerieService {
             // Le montant de la ligne est HORS TAXE ; c'est son montant TTC
             // (HT + TVA au taux fige a la saisie, voir LigneNoteFrais#montantTtc)
             // qui pese dans la repartition proportionnelle du montant total
-            // credite en tresorerie — pas le seul HT, qui sous-evaluerait le
+            // debite en tresorerie — pas le seul HT, qui sous-evaluerait le
             // poids d'une ligne soumise a la TVA.
-            BigDecimal montantCDF;
+            //
+            // Montant de la ligne dans la devise DE BASE du grand livre
+            // (USD), jamais dans celle de la note : une ligne d'une note en
+            // CDF est deja exprimee en CDF (montantTtc()), donc convertie
+            // comme le montant total (enDeviseBase, qui DIVISE par le taux —
+            // voir ConversionDeviseService) — jamais multipliee par lui, ce
+            // qui inflaterait chaque ligne d'un facteur egal au taux. Bogue
+            // reste invisible tant qu'une note n'avait qu'une seule ligne
+            // (toujours "derniere ligne", jamais cette branche) — jusqu'au
+            // panier a plusieurs produits, qui l'a expose (note CDF a 3
+            // lignes payee en caisse, 2026-09-27).
+            BigDecimal montantBase;
             boolean derniereLigne = (i == lignes.size() - 1);
             if (derniereLigne) {
-                montantCDF = conversionTotale.montantBase().subtract(sommeConvertie);
-            } else if (conversionTotale.estConvertie()) {
-                montantCDF = ligne.montantTtc().multiply(conversionTotale.tauxApplique())
-                    .setScale(2, RoundingMode.HALF_UP);
+                montantBase = conversionTotale.montantBase().subtract(sommeConvertie);
             } else {
-                montantCDF = ligne.montantTtc();
+                montantBase = conversionDevise.enDeviseBase(
+                    ligne.montantTtc(), note.getDevise(), conversionTotale.tauxApplique()).montantBase();
             }
-            sommeConvertie = sommeConvertie.add(montantCDF);
+            sommeConvertie = sommeConvertie.add(montantBase);
 
             // Une depense soumise a la TVA est ventilee entre le compte de
             // charge (HT) et le compte de TVA recuperable, plutot que
@@ -207,20 +234,20 @@ public class RegleTresorerieService {
             // utilise est celui fige a la saisie de la ligne, pas le taux du
             // jour du paiement : le montant TTC annonce sur la note ne doit
             // jamais bouger au gre d'un changement de taux legal entre-temps.
-            BigDecimal montantHt = montantCDF;
+            BigDecimal montantHt = montantBase;
             if (ligne.isSoumisTva() && ligne.getCompteTva() != null) {
                 BigDecimal taux = ligne.getTauxTvaApplique();
                 if (taux != null && taux.signum() > 0) {
-                    BigDecimal montantTva = montantCDF.multiply(taux)
+                    BigDecimal montantTva = montantBase.multiply(taux)
                         .divide(CENT.add(taux), 2, RoundingMode.HALF_UP);
-                    montantHt = montantCDF.subtract(montantTva);
+                    montantHt = montantBase.subtract(montantTva);
                     lignesDebit.add(new EcritureComptableService.LigneDebit(compte, montantHt));
                     lignesDebit.add(new EcritureComptableService.LigneDebit(ligne.getCompteTva(), montantTva));
                 } else {
-                    lignesDebit.add(new EcritureComptableService.LigneDebit(compte, montantCDF));
+                    lignesDebit.add(new EcritureComptableService.LigneDebit(compte, montantBase));
                 }
             } else {
-                lignesDebit.add(new EcritureComptableService.LigneDebit(compte, montantCDF));
+                lignesDebit.add(new EcritureComptableService.LigneDebit(compte, montantBase));
             }
 
             // La TVA n'est jamais portee au stock (elle est recuperable, pas
@@ -228,11 +255,66 @@ public class RegleTresorerieService {
             // identique a celui debite au compte de stock, qui valorise
             // l'entree — la comptabilite et le stock restent en accord.
             if (ligne.isAchatMarchandise() && ligne.getArticle() != null && ligne.getEntrepot() != null) {
-                entreesStock.add(new StockService.EntreeNoteFrais(
-                    ligne.getArticle(), ligne.getEntrepot(), ligne.getQuantiteMarchandise(), montantHt));
+                achats.add(new AchatAPorter(ligne.getArticle(), ligne.getEntrepot(), ligne.getQuantiteMarchandise(), montantHt));
+            } else if (ligne.isFraisApproche()) {
+                // Part HT seulement : une TVA sur le transport est récupérable,
+                // elle n'entre pas dans le coût des marchandises.
+                fraisApproche = fraisApproche.add(montantHt);
             }
         }
+
+        // Le transport et la manutention entrent dans le coût d'acquisition
+        // des marchandises : chaque article les porte au stock en plus de son
+        // prix. Débités en 6015/6025 au paiement (ligne ci-dessus), ils sont
+        // repris dans la valeur d'entrée — D 311x / C 603x pour prix + frais —,
+        // si bien que 601 + 6015 − 603 reste nul tant que la marchandise dort
+        // en stock, et que le coût sorti à la vente les inclut.
+        List<BigDecimal> parts = repartirFraisApproche(fraisApproche, achats);
+        for (int i = 0; i < achats.size(); i++) {
+            AchatAPorter a = achats.get(i);
+            entreesStock.add(new StockService.EntreeNoteFrais(
+                a.article(), a.entrepot(), a.quantite(), a.montantHt().add(parts.get(i)), a.montantHt(),
+                note.getBeneficiaire()));
+        }
         return new VentilationNote(lignesDebit, entreesStock);
+    }
+
+    private record AchatAPorter(Article article, Entrepot entrepot, BigDecimal quantite, BigDecimal montantHt) {}
+
+    /**
+     * Part des frais d'approche revenant à chaque achat. Pour des boissons,
+     * par bouteille : le transport d'une Primus coûte celui d'une D'jino,
+     * quel que soit leur prix. Sinon — provisions en kg, en litres ou en
+     * sacs, que l'on ne peut pas additionner —, au prorata du montant de
+     * chaque ligne. Arrondi au centime ; le dernier achat absorbe le
+     * reliquat, pour que la somme des parts égale exactement les frais.
+     */
+    private static List<BigDecimal> repartirFraisApproche(BigDecimal frais, List<AchatAPorter> achats) {
+        List<BigDecimal> parts = new ArrayList<>();
+        if (frais.signum() == 0 || achats.isEmpty()) {
+            achats.forEach(a -> parts.add(BigDecimal.ZERO));
+            return parts;
+        }
+        boolean parBouteille = achats.stream()
+            .allMatch(a -> a.article().getType() == TypeArticle.BOISSON);
+        List<BigDecimal> poids = achats.stream()
+            .map(a -> parBouteille ? a.quantite() : a.montantHt())
+            .toList();
+        BigDecimal totalPoids = poids.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal cumul = BigDecimal.ZERO;
+        for (int i = 0; i < achats.size(); i++) {
+            BigDecimal part;
+            if (i == achats.size() - 1) {
+                part = frais.subtract(cumul);
+            } else if (totalPoids.signum() == 0) {
+                part = frais.divide(BigDecimal.valueOf(achats.size()), 2, RoundingMode.HALF_UP);
+            } else {
+                part = frais.multiply(poids.get(i)).divide(totalPoids, 2, RoundingMode.HALF_UP);
+            }
+            cumul = cumul.add(part);
+            parts.add(part);
+        }
+        return parts;
     }
 
     /**

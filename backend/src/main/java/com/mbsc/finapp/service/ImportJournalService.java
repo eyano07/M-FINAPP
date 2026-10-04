@@ -68,6 +68,15 @@ public class ImportJournalService {
 
     private static final Logger log = LoggerFactory.getLogger(ImportJournalService.class);
 
+    /**
+     * L'import écrit directement au grand livre, trésorerie comprise (caisse,
+     * banques, mobile money) : réservé à l'administrateur. Ouvert au DFIN, il
+     * lui permettait de modifier la trésorerie sans passer par une note de
+     * frais — ce que l'écran des pièces comptables lui interdit (voir
+     * ComptabiliteService.exigerHorsTresorerie). Décision du 2026-09-27.
+     */
+    private static final String REPRISE = "hasRole('ADMIN')";
+
     /** Au-dela, le fichier est probablement une erreur de manipulation. */
     private static final int MAX_LIGNES = 20_000;
     private static final long MAX_TAILLE = 10L * 1024 * 1024;
@@ -153,7 +162,7 @@ public class ImportJournalService {
     // Point d'entree
     // -----------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
+    @PreAuthorize(REPRISE)
     @Transactional
     public ImportJournalResponse importer(MultipartFile fichier, boolean simulation,
                                           Map<String, String> substitutions,
@@ -859,7 +868,7 @@ public class ImportJournalService {
      *
      * @return substitutions « ancien:nouveau » a transmettre a l'import
      */
-    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
+    @PreAuthorize(REPRISE)
     @Transactional
     public Map<String, String> corrigerAutomatiquement(MultipartFile fichier, ModeRegroupement mode) {
         ImportJournalResponse analyse = importer(fichier, true, Map.of(), mode, null, ModeImport.AJOUTER);
@@ -946,7 +955,7 @@ public class ImportJournalService {
      * lecture disparaissent, ce qui evite qu'un second import bute sur un
      * detail de format.</p>
      */
-    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
+    @PreAuthorize(REPRISE)
     public byte[] genererFichierCorrige(MultipartFile fichier, Map<String, String> substitutions) {
         if (fichier == null || fichier.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Aucun fichier fourni.");
@@ -1073,7 +1082,7 @@ public class ImportJournalService {
     // -----------------------------------------------------------------
 
     /** Classeur vierge aux bonnes colonnes, avec une ecriture d'exemple. */
-    @PreAuthorize("hasAnyRole('ADMIN', 'DFIN')")
+    @PreAuthorize(REPRISE)
     public byte[] modele() {
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
             Sheet sh = wb.createSheet("Journal");

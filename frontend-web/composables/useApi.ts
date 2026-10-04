@@ -50,9 +50,25 @@ export function useApi() {
 
 /** Message d'erreur lisible pour l'utilisateur à partir d'une erreur API. */
 export function messageErreurApi(e: unknown, fallback = 'Une erreur est survenue'): string {
-  const err = e as { response?: { status?: number }, data?: { message?: string, fieldErrors?: Record<string, string> } }
-  if (err?.response?.status === 403) {
+  const err = e as { name?: string, response?: { status?: number }, data?: { message?: string, fieldErrors?: Record<string, string> } }
+  const statut = err?.response?.status
+  if (statut === 403) {
     return "Accès refusé : vous n'avez pas les droits nécessaires pour cette action."
+  }
+  // Serveur injoignable derrière le proxy (redémarrage lors d'une mise à
+  // jour, arrêt) : la demande ne l'a pas atteint, rien n'a été enregistré.
+  // Sans ce cas, l'utilisateur ne voyait que le message générique de l'écran
+  // (« Erreur lors de l'enregistrement… ») et cherchait une faute de saisie.
+  if (statut === 502 || statut === 503) {
+    return "Le serveur est momentanément indisponible (redémarrage en cours ?) : rien n'a été enregistré. Réessayez dans une minute."
+  }
+  // Ici en revanche le serveur a pu traiter la demande après que le proxy a
+  // cessé d'attendre, ou la connexion a pu tomber en chemin.
+  if (statut === 504) {
+    return "Le serveur a mis trop de temps à répondre. Vérifiez si l'opération a bien été enregistrée avant de réessayer."
+  }
+  if (!statut && err?.name === 'FetchError') {
+    return "Impossible de joindre le serveur (connexion interrompue ?). Vérifiez si l'opération a bien été enregistrée avant de réessayer."
   }
   // Erreur de validation Bean Validation (@Valid) : le message générique
   // "Validation echouee" ne dit rien d'exploitable, le détail utile est dans

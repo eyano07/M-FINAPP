@@ -104,18 +104,21 @@ public class BanqueService {
     }
 
     /**
-     * Un achat de boissons du module Restaurant doit être réglé par la
-     * caisse : c'est ce canal, et lui seul, qui déclenche l'échange de
-     * consigne (voir CaisseService.payerNote). Le payer par un autre canal
-     * laisserait le stock de bouteilles vides désynchronisé du stock réel.
+     * Un achat de boissons avec échange de consigne doit être réglé par la
+     * caisse : c'est ce canal, et lui seul, qui rend les bouteilles vides
+     * (voir CaisseService.payerNote). Le payer par un autre canal laisserait
+     * le stock de vides désynchronisé du stock réel. Sans échange de
+     * consigne, rien ne l'impose : un gros achat peut se régler par virement
+     * — l'entrée en stock, elle, suit n'importe quel canal.
      */
     private void exigerAbsenceAchatBoisson(NoteFrais note, String libelleCanal) {
-        boolean achatBoisson = note.getLignes().stream()
-            .anyMatch(l -> l.isAchatMarchandise() && l.getArticle() != null
+        boolean echangeConsigne = note.getLignes().stream()
+            .anyMatch(l -> l.isAchatMarchandise() && l.isEchangeConsigne() && l.getArticle() != null
                 && l.getArticle().getType() == TypeArticle.BOISSON);
-        if (achatBoisson) {
+        if (echangeConsigne) {
             throw new TransitionInvalideException(
-                "Un achat de boissons doit être réglé par la caisse, pas par " + libelleCanal);
+                "Un achat de boissons avec échange de consigne doit être réglé par la caisse, qui rend "
+                + "les bouteilles vides — pas par " + libelleCanal + ".");
         }
     }
 

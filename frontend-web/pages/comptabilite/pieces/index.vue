@@ -13,6 +13,15 @@ interface Piece {
   totalDebit: number
   totalCredit: number
   createdByEmail?: string
+  /**
+   * Calculé par le serveur : une pièce de stock, de vente ou de trésorerie
+   * s'annule depuis son opération d'origine, jamais seule d'ici.
+   */
+  extournable: boolean
+  /** Brouillon validable d'ici : ni journal ni compte de trésorerie. */
+  comptabilisable: boolean
+  /** Mouvemente la trésorerie (classe 5) : ni comptabilisée ni extournée d'ici. */
+  tresorerie: boolean
 }
 
 const api = useApi()
@@ -107,6 +116,22 @@ async function basculerOuverture(item: Piece) {
   }
 }
 
+// La trésorerie ne se modifie jamais depuis cet écran (voir
+// ComptabiliteService.exigerHorsTresorerie) : on dit pourquoi une action
+// manque plutôt que de la proposer pour la voir refusée.
+const MOTIF_TRESORERIE = 'Mouvemente la trésorerie : un encaissement ou un décaissement passe par une note de frais, pas par cet écran.'
+function motifVerrou(item: Piece): string | null {
+  if (item.statut === 'BROUILLON' && !item.comptabilisable) {
+    return item.tresorerie ? MOTIF_TRESORERIE + ' Supprimez ce brouillon.' : 'Journal réservé à la trésorerie : supprimez ce brouillon.'
+  }
+  if (item.statut === 'COMPTABILISEE' && !item.extournable) {
+    return item.tresorerie
+      ? MOTIF_TRESORERIE
+      : "Pièce d'un mouvement de stock ou d'une vente : elle s'annule depuis son opération d'origine."
+  }
+  return null
+}
+
 function fmt(v: number) {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v)
 }
@@ -121,7 +146,9 @@ function fmtDate(d: string) {
     <div class="page-head">
       <div>
         <h1 class="page-title">Pièces comptables</h1>
-        <p class="page-sub">Journal entries — écritures en partie double équilibrées</p>
+        <p class="page-sub">
+          Opérations sans mouvement de trésorerie — un encaissement ou un décaissement passe par une note de frais
+        </p>
       </div>
       <v-btn
         v-if="canWrite"
@@ -176,7 +203,7 @@ function fmtDate(d: string) {
           <div class="d-flex ga-1">
             <template v-if="canWrite">
               <v-btn
-                v-if="item.statut === 'BROUILLON'"
+                v-if="item.statut === 'BROUILLON' && item.comptabilisable"
                 size="small"
                 color="success"
                 variant="tonal"
@@ -193,7 +220,7 @@ function fmtDate(d: string) {
                 @click="supprimerBrouillon(item.id)"
               />
               <v-btn
-                v-if="item.statut === 'COMPTABILISEE'"
+                v-if="item.statut === 'COMPTABILISEE' && item.extournable"
                 size="small"
                 color="error"
                 variant="tonal"
@@ -201,6 +228,14 @@ function fmtDate(d: string) {
               >
                 Annuler
               </v-btn>
+              <v-icon
+                v-if="motifVerrou(item)"
+                icon="mdi-lock-outline"
+                size="18"
+                class="text-medium-emphasis"
+                :title="motifVerrou(item)!"
+                :aria-label="motifVerrou(item)!"
+              />
             </template>
             <v-btn
               v-if="peutBasculerOuverture"

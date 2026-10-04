@@ -180,6 +180,19 @@ public class Vente {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /**
+     * Verrou optimiste : un double-clic (ou deux requêtes concurrentes) sur
+     * le règlement de la même créance ne peuvent plus régler deux fois la
+     * même vente — sans lui, les deux lisaient {@code pieceReglement == null}
+     * avant que l'une ou l'autre n'ait sauvegardé, et généraient chacune leur
+     * propre pièce de règlement (caisse débitée deux fois pour une seule
+     * créance). Même principe que {@code StockNiveau.version}.
+     */
+    @Version
+    @Column(nullable = false)
+    @Builder.Default
+    private long version = 0L;
+
     @OneToMany(mappedBy = "vente", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("ordre ASC, id ASC")
     @Builder.Default

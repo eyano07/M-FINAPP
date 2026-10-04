@@ -24,6 +24,22 @@ interface NavItem {
   essentiel?: boolean
 }
 
+/**
+ * Sous-rubrique repliable à l'intérieur d'une rubrique (Restaurant > Cuisine,
+ * Bar, Stocks) : visible si au moins un de ses liens l'est, repliée par défaut
+ * sauf si elle contient la page courante.
+ */
+interface NavSousGroupe {
+  id: string
+  title: string
+  icon: string
+  items: NavItem[]
+}
+type NavEntree = NavItem | NavSousGroupe
+function estSousGroupe(e: NavEntree): e is NavSousGroupe {
+  return 'items' in e
+}
+
 // Le Directeur metier (DIRECTEUR) n'a pas acces au tableau de bord
 // (statistiques/graphiques globaux) : il ne voit que ses notes de frais.
 // LOGISTIQUE non plus : il a son propre tableau de bord (logistiqueItems,
@@ -131,19 +147,44 @@ const transportItems: NavItem[] = [
 // Toutes les pages du restaurant appellent /restaurant/* et jamais
 // /logistique/* : le responsable restaurant n'a pas le module LOGISTIQUE, le
 // filtre serveur lui renverrait un 403 sur sa propre carte.
-const restaurantItems: NavItem[] = [
+const restaurantItems: NavEntree[] = [
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/restaurant', module: 'RESTAURANT' },
+  // Pilotage de l'offre : parmi les lecteurs du module, seuls ceux admis par
+  // RestaurantService.LECTURE_ANALYSES (le caissier, le DA et le comptable
+  // lisent le module sans avoir cet ecran).
+  { title: 'Analyses des ventes', icon: 'mdi-chart-timeline-variant', to: '/restaurant/analyses-ventes', module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN'] },
   { title: 'Carte', icon: 'mdi-silverware-fork-knife', to: '/restaurant/carte', module: 'RESTAURANT' },
-  { title: 'Fiches techniques', icon: 'mdi-clipboard-text-outline', to: '/restaurant/recettes', module: 'RESTAURANT' },
-  { title: 'Production', icon: 'mdi-chef-hat', to: '/restaurant/production', module: 'RESTAURANT', niveau: 'ECRITURE' },
   { title: 'Salles et tables', icon: 'mdi-floor-plan', to: '/restaurant/salles', module: 'RESTAURANT' },
-  { title: 'Stock cuisine & bar', icon: 'mdi-clipboard-list-outline', to: '/restaurant/stock', module: 'RESTAURANT' },
-  { title: 'Provisions', icon: 'mdi-sack', to: '/restaurant/provisions', module: 'RESTAURANT' },
-  { title: 'Tableau de bord Provisions', icon: 'mdi-chart-box-outline', to: '/restaurant/provisions/tableau-bord', module: 'RESTAURANT' },
-  { title: 'Achat de provisions', icon: 'mdi-truck-delivery-outline', to: '/restaurant/provisions/receptions', module: 'RESTAURANT', niveau: 'ECRITURE' },
-  { title: 'Réceptions', icon: 'mdi-bottle-wine-outline', to: '/restaurant/receptions', module: 'RESTAURANT', niveau: 'ECRITURE' },
-  { title: 'Bouteilles vides', icon: 'mdi-bottle-wine-outline', to: '/restaurant/emballages', module: 'RESTAURANT' },
-  { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/restaurant/emballages/mouvements', module: 'RESTAURANT' },
+  {
+    id: 'restaurant-cuisine', title: 'Cuisine', icon: 'mdi-stove', items: [
+      { title: 'Fiches techniques', icon: 'mdi-clipboard-text-outline', to: '/restaurant/recettes', module: 'RESTAURANT' },
+      { title: 'Production', icon: 'mdi-chef-hat', to: '/restaurant/production', module: 'RESTAURANT', niveau: 'ECRITURE' },
+      // Périmé, moisi, renversé, offert... : consultable par les lecteurs du
+      // module, saisie réservée au responsable restaurant et à l'administrateur.
+      { title: 'Sorties de plats', icon: 'mdi-food-off-outline', to: '/restaurant/sorties-plats', module: 'RESTAURANT' },
+      { title: 'Achat de provisions', icon: 'mdi-truck-delivery-outline', to: '/restaurant/provisions/receptions', module: 'RESTAURANT', niveau: 'ECRITURE' },
+      // Consultable par tous les lecteurs du module ; les formulaires
+      // (réception directe, utilisation, casse, péremption) restent réservés
+      // au responsable restaurant et à l'administrateur, sur la page même.
+      { title: 'Entrées / sorties de provisions', icon: 'mdi-swap-vertical', to: '/restaurant/provisions/mouvements', module: 'RESTAURANT' },
+    ],
+  },
+  {
+    id: 'restaurant-bar', title: 'Bar', icon: 'mdi-glass-cocktail', items: [
+      { title: 'Bouteilles vides', icon: 'mdi-bottle-wine-outline', to: '/restaurant/emballages', module: 'RESTAURANT' },
+      { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/restaurant/emballages/mouvements', module: 'RESTAURANT' },
+      { title: 'Achat de boissons', icon: 'mdi-truck-delivery-outline', to: '/restaurant/receptions', module: 'RESTAURANT', niveau: 'ECRITURE' },
+    ],
+  },
+  {
+    id: 'restaurant-stocks', title: 'Stocks', icon: 'mdi-warehouse', items: [
+      { title: 'Tableau de bord Provisions', icon: 'mdi-chart-box-outline', to: '/restaurant/provisions/tableau-bord', module: 'RESTAURANT' },
+      { title: 'Stock cuisine & bar', icon: 'mdi-clipboard-list-outline', to: '/restaurant/stock', module: 'RESTAURANT' },
+      { title: 'Stock consolidé', icon: 'mdi-view-list-outline', to: '/restaurant/stock/consolide', module: 'RESTAURANT' },
+      { title: 'Provisions', icon: 'mdi-sack', to: '/restaurant/provisions', module: 'RESTAURANT' },
+      { title: 'Provisions (consolidé)', icon: 'mdi-view-list-outline', to: '/restaurant/provisions/consolide', module: 'RESTAURANT' },
+    ],
+  },
   { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/restaurant/parametres', module: 'RESTAURANT' },
 ]
 
@@ -167,7 +208,8 @@ const adminItems: NavItem[] = [
   { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/admin/parametres', roles: ['ADMIN'] },
   { title: 'Modules', icon: 'mdi-view-grid-outline', to: '/admin/modules', roles: ['ADMIN'] },
   { title: 'Permissions', icon: 'mdi-shield-key-outline', to: '/admin/permissions', roles: ['ADMIN'] },
-  { title: 'Importer un journal', icon: 'mdi-database-import-outline', to: '/admin/import-journal', roles: ['ADMIN', 'DFIN'] },
+  // Administrateur seul : l'import ecrit la tresorerie sans note de frais.
+  { title: 'Importer un journal', icon: 'mdi-database-import-outline', to: '/admin/import-journal', roles: ['ADMIN'] },
 ]
 
 /**
@@ -193,7 +235,7 @@ const proxyModel = computed({
   set: (v: boolean) => emit('update:modelValue', v),
 })
 
-interface NavGroup { id: string; label: string; items: NavItem[] }
+interface NavGroup { id: string; label: string; items: NavEntree[] }
 
 // Chaque rubrique (auparavant une liste a plat, toujours depliee) devient un
 // groupe repliable : un menu principal plus court, chaque rubrique masquant
@@ -208,17 +250,41 @@ const GROUPES: NavGroup[] = [
   { id: 'transport', label: 'Transport', items: transportItems },
   { id: 'admin', label: 'Administration', items: adminItems },
 ]
-const groupesVisibles = computed(() => GROUPES.filter(g => g.items.some(visible)))
-
-/** Rubrique(s) actuellement depliee(s) — independantes les unes des autres (pas
- * l'exclusivite d'un accordeon strict) : replier Logistique en consultant DRH
- * serait plus genant qu'utile ici. Repliee par defaut, sauf la rubrique de la
- * page courante (voir plus bas), pour ne pas reafficher tout le menu ouvert. */
-const route = useRoute()
-function groupeDeRoute(chemin: string) {
-  return GROUPES.find(g => g.items.some(item => chemin.startsWith(item.to)))?.id
+function entreeVisible(e: NavEntree) {
+  return estSousGroupe(e) ? e.items.some(visible) : visible(e)
 }
-const ouverts = ref<Set<string>>(new Set([groupeDeRoute(route.path)].filter((id): id is string => !!id)))
+const groupesVisibles = computed(() => GROUPES.filter(g => g.items.some(entreeVisible)))
+
+/** Rubrique(s) et sous-rubrique(s) actuellement depliee(s) — independantes les
+ * unes des autres (pas l'exclusivite d'un accordeon strict) : replier Logistique
+ * en consultant DRH serait plus genant qu'utile ici. Repliees par defaut, sauf
+ * celles de la page courante (voir plus bas), pour ne pas reafficher tout le
+ * menu ouvert. */
+const route = useRoute()
+function correspond(chemin: string, to: string) {
+  return chemin === to || chemin.startsWith(to + '/')
+}
+/**
+ * Rubrique (et sous-rubrique) de la page courante. Le lien le plus precis
+ * l'emporte : /restaurant/provisions/receptions est dans Cuisine, pas dans
+ * Stocks ou figure /restaurant/provisions, ni sous le tableau de bord
+ * /restaurant.
+ */
+function ouvertsPourRoute(chemin: string): string[] {
+  let meilleur: { ids: string[]; longueur: number } | undefined
+  for (const g of GROUPES) {
+    for (const e of g.items) {
+      const liens = estSousGroupe(e) ? e.items.map(item => ({ item, ids: [g.id, e.id] })) : [{ item: e, ids: [g.id] }]
+      for (const { item, ids } of liens) {
+        if (correspond(chemin, item.to) && (!meilleur || item.to.length > meilleur.longueur)) {
+          meilleur = { ids, longueur: item.to.length }
+        }
+      }
+    }
+  }
+  return meilleur?.ids ?? []
+}
+const ouverts = ref<Set<string>>(new Set(ouvertsPourRoute(route.path)))
 function basculer(id: string) {
   const s = new Set(ouverts.value)
   if (s.has(id)) s.delete(id); else s.add(id)
@@ -226,14 +292,34 @@ function basculer(id: string) {
 }
 // Navigation directe (lien externe, rechargement) vers une page d'une rubrique
 // repliee : la deplie automatiquement plutot que de laisser la page active
-// invisible dans un menu ferme. N'ajoute que la rubrique concernee, ne
-// referme jamais les autres.
+// invisible dans un menu ferme. N'ajoute que la rubrique (et la sous-rubrique)
+// concernee, ne referme jamais les autres.
 watch(() => route.path, (chemin) => {
-  const id = groupeDeRoute(chemin)
-  if (id && !ouverts.value.has(id)) {
-    ouverts.value = new Set([...ouverts.value, id])
+  const ids = ouvertsPourRoute(chemin).filter(id => !ouverts.value.has(id))
+  if (ids.length) {
+    ouverts.value = new Set([...ouverts.value, ...ids])
   }
 })
+
+/** Ligne affichee dans une rubrique : un lien (decale s'il appartient a une sous-rubrique) ou l'en-tete d'une sous-rubrique. */
+type LigneMenu =
+  | { sorte: 'lien'; item: NavItem; imbrique: boolean }
+  | { sorte: 'sousGroupe'; sousGroupe: NavSousGroupe }
+function lignes(g: NavGroup): LigneMenu[] {
+  return g.items.flatMap((e): LigneMenu[] => {
+    if (!estSousGroupe(e)) {
+      return visible(e) ? [{ sorte: 'lien', item: e, imbrique: false }] : []
+    }
+    const liens = e.items.filter(visible)
+    if (!liens.length) {
+      return []
+    }
+    const entete: LigneMenu = { sorte: 'sousGroupe', sousGroupe: e }
+    return ouverts.value.has(e.id)
+      ? [entete, ...liens.map((item): LigneMenu => ({ sorte: 'lien', item, imbrique: true }))]
+      : [entete]
+  })
+}
 </script>
 
 <template>
@@ -277,17 +363,37 @@ watch(() => route.path, (chemin) => {
         <v-icon :icon="ouverts.has(g.id) ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="15" />
       </button>
       <nav v-show="ouverts.has(g.id)" class="modern-drawer__nav">
-        <template v-for="item in g.items" :key="item.to">
+        <template v-for="l in lignes(g)" :key="l.sorte === 'lien' ? l.item.to : l.sousGroupe.id">
+          <button
+            v-if="l.sorte === 'sousGroupe'"
+            type="button"
+            class="modern-drawer__item modern-drawer__subgroup-toggle"
+            :aria-expanded="ouverts.has(l.sousGroupe.id)"
+            @click="basculer(l.sousGroupe.id)"
+          >
+            <span class="modern-drawer__item-icon">
+              <v-icon :icon="l.sousGroupe.icon" size="18" />
+            </span>
+            <span class="modern-drawer__item-label">{{ l.sousGroupe.title }}</span>
+            <v-icon
+              :icon="ouverts.has(l.sousGroupe.id) ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+              size="16"
+              class="modern-drawer__subgroup-chevron"
+            />
+          </button>
           <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
+            v-else
+            :to="l.item.to"
+            :class="['modern-drawer__item', {
+              'modern-drawer__item--essentiel': l.item.essentiel,
+              'modern-drawer__item--imbrique': l.imbrique,
+            }]"
             active-class="modern-drawer__item--active"
           >
             <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
+              <v-icon :icon="l.item.icon" size="18" />
             </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
+            <span class="modern-drawer__item-label">{{ l.item.title }}</span>
           </nuxt-link>
         </template>
       </nav>
@@ -295,7 +401,7 @@ watch(() => route.path, (chemin) => {
 
     <template #append>
       <div class="modern-drawer__footer">
-        MBSC &copy; {{ new Date().getFullYear() }}
+        Eyano MBSC &copy; {{ new Date().getFullYear() }}
       </div>
     </template>
   </v-navigation-drawer>
@@ -460,6 +566,33 @@ watch(() => route.path, (chemin) => {
 
 .modern-drawer__item-label {
   flex: 1;
+}
+
+/* Sous-rubrique (Restaurant > Cuisine, Bar, Stocks) : un en-tete qui a
+   l'allure d'un lien, avec un chevron, et des liens decales dessous pour
+   marquer la hierarchie. */
+.modern-drawer__subgroup-toggle {
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.modern-drawer__subgroup-chevron {
+  color: #d1d5db;
+  transition: color 0.15s;
+}
+.modern-drawer__subgroup-toggle:hover .modern-drawer__subgroup-chevron {
+  color: #9ca3af;
+}
+.modern-drawer__item--imbrique {
+  margin-left: 16px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  font-size: 0.8125rem;
 }
 
 .modern-drawer__footer {

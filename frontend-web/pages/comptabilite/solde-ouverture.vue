@@ -114,6 +114,9 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
       Cette pièce est marquée <strong>« solde d'ouverture »</strong> : la balance la porte en colonnes
       d'ouverture et non en mouvements de la période. Sans ce marqueur, une reprise de stock ou de
       charge serait comptée comme un flux de l'exercice et fausserait le compte de résultat.
+      <br>
+      Les comptes de trésorerie (classe 5 : caisse, banques, mobile money) n'y figurent pas : leur solde ne
+      se saisit pas ici, pas plus que tout autre mouvement de trésorerie.
     </v-alert>
 
     <v-alert v-if="succes" type="success" variant="tonal" class="mb-4" closable @click:close="succes = ''">{{ succes }}</v-alert>
@@ -142,7 +145,7 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
 
       <div v-for="(l, i) in lignes" :key="i" class="so-ligne">
         <div class="so-compte">
-          <ComptabiliteSelecteurCompte v-model="l.compteNumero" label="Compte" />
+          <ComptabiliteSelecteurCompte v-model="l.compteNumero" label="Compte" exclure-prefixe="5" />
         </div>
         <v-text-field v-model.number="l.debit" type="number" label="Débit" variant="outlined"
           density="compact" hide-details class="so-montant" />

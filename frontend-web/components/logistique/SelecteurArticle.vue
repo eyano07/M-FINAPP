@@ -4,15 +4,22 @@ interface Article {
   code: string
   libelle: string
   uniteMesure?: string
+  type?: string
 }
+
+/** Types gérés par le module Restaurant (TypeArticle.estGereParModuleDedie côté serveur). */
+const TYPES_MODULE_RESTAURANT = ['PLAT', 'BOISSON', 'PROVISION']
 
 const props = withDefaults(defineProps<{
   modelValue: number | null
   label?: string
   disabled?: boolean
+  /** Écarte les plats, boissons et provisions (saisie d'un mouvement hors administrateur). */
+  horsModuleRestaurant?: boolean
 }>(), {
   label: 'Article',
   disabled: false,
+  horsModuleRestaurant: false,
 })
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: number | null): void }>()
@@ -36,7 +43,9 @@ async function charger() {
 onMounted(charger)
 
 const items = computed(() =>
-  articles.value.map(a => ({ title: `${a.code} — ${a.libelle}`, value: a.id }))
+  articles.value
+    .filter(a => !props.horsModuleRestaurant || !TYPES_MODULE_RESTAURANT.includes(a.type ?? ''))
+    .map(a => ({ title: `${a.code} — ${a.libelle}`, value: a.id }))
 )
 
 const proxy = computed({

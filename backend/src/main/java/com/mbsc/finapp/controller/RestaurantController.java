@@ -5,20 +5,25 @@ import com.mbsc.finapp.dto.logistique.ArticleResponse;
 import com.mbsc.finapp.dto.logistique.EntrepotResponse;
 import com.mbsc.finapp.dto.logistique.StockGrandLivreResponse;
 import com.mbsc.finapp.dto.logistique.StockNiveauResponse;
+import com.mbsc.finapp.dto.restaurant.AnalyseVentesResponse;
 import com.mbsc.finapp.dto.restaurant.EmballageRequest;
 import com.mbsc.finapp.dto.restaurant.EmballageResponse;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageRequest;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageResponse;
+import com.mbsc.finapp.dto.restaurant.LotStockResponse;
 import com.mbsc.finapp.dto.restaurant.PlanSalleRequest;
 import com.mbsc.finapp.dto.restaurant.ProductionRequest;
 import com.mbsc.finapp.dto.restaurant.ProductionResponse;
 import com.mbsc.finapp.dto.restaurant.ProvisionEntreeRequest;
 import com.mbsc.finapp.dto.restaurant.ProvisionSortieRequest;
+import com.mbsc.finapp.dto.restaurant.ModifierPrixVenteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteResponse;
 import com.mbsc.finapp.dto.restaurant.RestaurantAnalyseIaResponse;
 import com.mbsc.finapp.dto.restaurant.SalleRequest;
 import com.mbsc.finapp.dto.restaurant.SalleResponse;
+import com.mbsc.finapp.dto.restaurant.SortiePlatRequest;
+import com.mbsc.finapp.dto.restaurant.SortiePlatResponse;
 import com.mbsc.finapp.dto.restaurant.StatutTableRequest;
 import com.mbsc.finapp.dto.restaurant.TableauBordProvisionsResponse;
 import com.mbsc.finapp.dto.restaurant.TableauBordRestaurantResponse;
@@ -75,13 +80,29 @@ public class RestaurantController {
      * la période. Déclenchée à la demande (bouton) plutôt qu'au chargement,
      * comme l'analyse financière comptable — un appel au modèle a un coût et
      * une latence qu'il ne faut pas imposer à chaque consultation.
+     *
+     * <p>En GET : l'analyse ne modifie rien, et ModuleAccessFilter exige le
+     * droit d'écriture sur le module pour toute autre méthode — ce qui la
+     * refusait au DFIN et au DG, qui lisent le module sans y écrire.</p>
      */
-    @PostMapping("/tableau-bord/analyse-ia")
+    @GetMapping("/tableau-bord/analyse-ia")
     public RestaurantAnalyseIaResponse analyserTableauBord(
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
     ) {
         return analyseIaService.analyser(du, au);
+    }
+
+    /**
+     * Analyse des ventes de la carte sur une période : meilleures et moins
+     * bonnes ventes, marge par article. Sous /restaurant comme le reste du
+     * module : désactiver le module doit aussi fermer cet écran.
+     */
+    @GetMapping("/analyses-ventes")
+    public AnalyseVentesResponse analyserVentes(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au) {
+        return service.analyserVentes(du, au);
     }
 
     // ── Carte : plats et boissons ────────────────────────────────────────
@@ -102,10 +123,22 @@ public class RestaurantController {
         return service.modifierArticleCarte(id, req);
     }
 
+    @DeleteMapping("/carte/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void supprimerArticleCarte(@PathVariable Long id) {
+        service.supprimerArticleCarte(id);
+    }
+
     /** Etat du stock limite aux articles de la carte. */
     @GetMapping("/stock")
     public List<StockNiveauResponse> etatStock() {
         return service.etatStockCarte();
+    }
+
+    /** Lots de stock actifs des boissons (date d'achat, fournisseur, prix) — suivi de gestion, voir LotStockService. */
+    @GetMapping("/stock/lots")
+    public List<LotStockResponse> listerLotsBoissons() {
+        return service.listerLotsBoissons();
     }
 
     /**
@@ -133,6 +166,12 @@ public class RestaurantController {
     @PutMapping("/recettes/{platId}")
     public RecetteResponse enregistrerRecette(@PathVariable Long platId, @Valid @RequestBody RecetteRequest req) {
         return service.enregistrerRecette(platId, req);
+    }
+
+    @PutMapping("/recettes/{platId}/prix-vente")
+    public RecetteResponse modifierPrixVente(@PathVariable Long platId,
+                                              @Valid @RequestBody ModifierPrixVenteRequest req) {
+        return service.modifierPrixVenteCarte(platId, req.prixVente());
     }
 
     @GetMapping("/productions")
@@ -239,6 +278,12 @@ public class RestaurantController {
         return service.enregistrerMouvement(req);
     }
 
+    /** Annule un mouvement de vides saisi à la main (et, pour une perte de boisson, sa sortie de stock). */
+    @PostMapping("/emballages/mouvements/{id}/annuler")
+    public MouvementEmballageResponse annulerMouvementEmballage(@PathVariable Long id) {
+        return service.annulerMouvementEmballage(id);
+    }
+
     // ── Provisions : vivres, épices, charbon... ──────────────────────────
 
     @GetMapping("/provisions")
@@ -260,6 +305,12 @@ public class RestaurantController {
     @GetMapping("/provisions/stock")
     public List<StockNiveauResponse> etatStockProvisions() {
         return service.etatStockProvisions();
+    }
+
+    /** Lots de stock actifs des provisions (date d'achat, fournisseur, prix) — suivi de gestion, voir LotStockService. */
+    @GetMapping("/provisions/lots")
+    public List<LotStockResponse> listerLotsProvisions() {
+        return service.listerLotsProvisions();
     }
 
     @GetMapping("/provisions/mouvements")
@@ -284,6 +335,36 @@ public class RestaurantController {
         service.enregistrerSortieProvision(req);
     }
 
+    // ── Sorties de plats hors vente (périmé, moisi, renversé, offert...) ──
+
+    @GetMapping("/plats/sorties")
+    public List<SortiePlatResponse> listerSortiesPlats(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        return service.listerSortiesPlats(du, au);
+    }
+
+    /** Sortie comptabilisée au coût de production moyen (D 736x / C 361x). */
+    @PostMapping("/plats/sorties")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SortiePlatResponse enregistrerSortiePlat(@Valid @RequestBody SortiePlatRequest req) {
+        return service.enregistrerSortiePlat(req);
+    }
+
+    /** Remet les portions en stock et extourne la pièce ; la sortie reste dans l'historique, annulée. */
+    @PostMapping("/plats/sorties/{id}/annuler")
+    public SortiePlatResponse annulerSortiePlat(@PathVariable Long id) {
+        return service.annulerSortiePlat(id);
+    }
+
+    /** Annule une réception directe ou une sortie de provision saisie par erreur. */
+    @PostMapping("/provisions/mouvements/{id}/annuler")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void annulerMouvementProvision(@PathVariable Long id) {
+        service.annulerMouvementProvision(id);
+    }
+
     @GetMapping("/provisions/tableau-bord")
     public TableauBordProvisionsResponse tableauBordProvisions(
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
@@ -294,7 +375,8 @@ public class RestaurantController {
         return service.tableauBordProvisions(debut, fin);
     }
 
-    @PostMapping("/provisions/tableau-bord/analyse-ia")
+    /** Pendant de {@link #analyserTableauBord} pour les provisions, en GET pour la même raison. */
+    @GetMapping("/provisions/tableau-bord/analyse-ia")
     public RestaurantAnalyseIaResponse analyserTableauBordProvisions(
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au

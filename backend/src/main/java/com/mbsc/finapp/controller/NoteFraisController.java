@@ -7,6 +7,7 @@ import com.mbsc.finapp.dto.notes.NoteFraisDetailResponse;
 import com.mbsc.finapp.dto.notes.NoteFraisRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisResponse;
 import com.mbsc.finapp.dto.notes.ModifierComptesRequest;
+import com.mbsc.finapp.dto.notes.ModifierObjetRequest;
 import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteRequest;
 import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteResponse;
 import com.mbsc.finapp.dto.notes.PrioriteRequest;
@@ -98,6 +99,13 @@ public class NoteFraisController {
     public NoteFraisDetailResponse modifierComptes(@PathVariable Long id,
                                                     @Valid @RequestBody ModifierComptesRequest req) {
         return service.modifierComptesLignes(id, req);
+    }
+
+    /** Correction du libelle (objet) par le DFIN lors de la verification (note SOUMISE). */
+    @PutMapping("/{id}/objet")
+    public NoteFraisDetailResponse modifierObjet(@PathVariable Long id,
+                                                  @Valid @RequestBody ModifierObjetRequest req) {
+        return service.modifierObjet(id, req);
     }
 
     // --- Transitions de workflow -----------------------------------------

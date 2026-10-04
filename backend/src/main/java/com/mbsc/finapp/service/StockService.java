@@ -2,6 +2,7 @@ package com.mbsc.finapp.service;
 
 import com.mbsc.finapp.domain.*;
 import com.mbsc.finapp.domain.enums.JournalComptable;
+import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.domain.enums.StatutMouvement;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeMouvementStock;
@@ -41,9 +42,17 @@ public class StockService {
     private final StockNiveauRepository niveauRepository;
     private final StockGrandLivreRepository stockGrandLivreRepository;
     private final CompteOHADARepository compteRepository;
+    /** Opérations métier propriétaires d'un mouvement — voir {@link #exigerAnnulableSeul}. */
+    private final VenteRepository venteRepository;
+    private final ProductionRepository productionRepository;
+    private final CamionMineraiRepository camionRepository;
+    private final MouvementEmballageRepository mouvementEmballageRepository;
+    private final SortiePlatRepository sortiePlatRepository;
     private final ComptabiliteService comptabilite;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
+    /** Suivi de gestion des lots (date d'achat, fournisseur, FIFO ou CMP) — jamais comptable, voir sa javadoc. */
+    private final LotStockService lotStock;
 
     // ---------------------------------------------------------------------
     // Articles
@@ -55,6 +64,19 @@ public class StockService {
     @Transactional(readOnly = true)
     public List<ArticleResponse> listerArticles() {
         return articleRepository.findAllWithComptes().stream().map(ArticleResponse::from).toList();
+    }
+
+    /**
+     * Un article, à jour : l'écran de vente le relit au moment où il est
+     * choisi, pour proposer le prix de vente en vigueur plutôt que celui du
+     * catalogue chargé à l'ouverture de l'écran — qui peut rester ouvert
+     * toute la journée à la caisse. Mêmes droits que {@link #listerArticles}.
+     */
+    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @Transactional(readOnly = true)
+    public ArticleResponse consulterArticle(Long id) {
+        return ArticleResponse.from(articleRepository.findById(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("Article", id)));
     }
 
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'DFIN', 'ADMIN')")
@@ -87,10 +109,11 @@ public class StockService {
         article.setLibelle(req.libelle());
         article.setUniteMesure(req.uniteMesure());
         article.setType(type);
-        // Pertinente uniquement pour une boisson (carte du restaurant) : neutralisee
-        // pour tout autre type, plutot que de laisser trainer une valeur qui n'aurait
-        // plus de sens si l'article change de type.
-        boolean categorieApplicable = type == TypeArticle.BOISSON && StringUtils.hasText(req.categorie());
+        // Pertinente uniquement pour un plat ou une boisson (carte du restaurant) :
+        // neutralisee pour tout autre type, plutot que de laisser trainer une
+        // valeur qui n'aurait plus de sens si l'article change de type.
+        boolean categorieApplicable = (type == TypeArticle.BOISSON || type == TypeArticle.PLAT)
+            && StringUtils.hasText(req.categorie());
         article.setCategorie(categorieApplicable ? req.categorie().trim() : null);
         article.setPrixVente(req.prixVente());
         article.setPrixAchat(req.prixAchat());
@@ -176,8 +199,18 @@ public class StockService {
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<MouvementResponse> listerMouvements() {
+        // Une requête par propriétaire possible, pas une par mouvement : l'écran
+        // ne propose « Annuler » que là où annuler() l'acceptera.
+        java.util.Set<Long> rattaches = new java.util.HashSet<>(venteRepository.idsMouvementsValides());
+        rattaches.addAll(productionRepository.idsMouvementsSortieValides());
+        rattaches.addAll(productionRepository.idsMouvementsEntreeValides());
+        rattaches.addAll(camionRepository.idsMouvementsValides());
+        rattaches.addAll(mouvementEmballageRepository.idsMouvementsStockValides());
+        java.util.Set<Long> restaurant = new java.util.HashSet<>(mouvementRepository.idsValidesModuleRestaurant());
         return mouvementRepository.findAllWithCreatedBy().stream()
-            .map(m -> MouvementResponse.from(m, false))
+            .map(m -> MouvementResponse.from(m, false,
+                m.getStatut() == StatutMouvement.VALIDE && !rattaches.contains(m.getId()),
+                restaurant.contains(m.getId())))
             .toList();
     }
 
@@ -207,6 +240,7 @@ public class StockService {
             Article article = articleRepository.findById(l.articleId())
                 .orElseThrow(() -> RessourceIntrouvableException.of("Article", l.articleId()));
             exigerMarchandise(article);
+            exigerHorsModuleDedie(article);
             BigDecimal cout = l.coutUnitaire() == null ? BigDecimal.ZERO : l.coutUnitaire();
             mouvement.addLigne(LigneMouvementStock.builder()
                 .article(article)
@@ -237,8 +271,11 @@ public class StockService {
             appliquerLigne(mouvement, ligne, ecrituresCompta);
         }
 
-        // Génération de la pièce comptable (hors transfert) si écritures présentes.
-        if (mouvement.getType() != TypeMouvementStock.TRANSFERT && !ecrituresCompta.isEmpty()) {
+        // Génération de la pièce comptable si écritures présentes. Un transfert
+        // n'en produit normalement aucune (même compte de stock des deux
+        // côtés) : seulement s'il a fallu constater un écart de valorisation
+        // à la sortie de l'entrepôt source (voir sortie()).
+        if (!ecrituresCompta.isEmpty()) {
             String libelle = "Stock " + mouvement.getType() + " " + mouvement.getReference()
                 + (StringUtils.hasText(mouvement.getLibelle()) ? " - " + mouvement.getLibelle() : "");
             PieceComptable piece = comptabilite.creerPieceInterne(
@@ -260,22 +297,89 @@ public class StockService {
             throw new TransitionInvalideException(
                 "Seul un mouvement VALIDE peut être annulé (état actuel : " + mouvement.getStatut() + ")");
         }
-
-        // Annule l'effet de chaque ligne sur les niveaux de stock (mouvement inverse).
+        exigerAnnulableSeul(mouvement);
         for (LigneMouvementStock ligne : mouvement.getLignes()) {
-            annulerLigne(mouvement, ligne);
+            exigerHorsModuleDedie(ligne.getArticle());
         }
 
-        // Extourne comptable si une pièce avait été générée. Passage par la
-        // variante interne : l'autorisation est déjà portée par ce service
-        // (LOGISTIQUE/ADMIN), l'extourne ne doit pas exiger le rôle DFIN.
-        if (mouvement.getPiece() != null) {
-            comptabilite.annulerInterne(mouvement.getPiece().getId(), currentUser.requireUser());
-        }
-
-        mouvement.setStatut(StatutMouvement.ANNULE);
+        annulerMouvement(mouvement, currentUser.requireUser());
         log.info("Mouvement de stock annulé [ref={}]", mouvement.getReference());
         return MouvementResponse.from(mouvement);
+    }
+
+    /**
+     * Refuse d'annuler seul un mouvement qui appartient à une opération
+     * métier : la sortie de stock d'une vente, l'un des deux mouvements d'une
+     * production, l'entrée en stock d'un camion de minerais, la sortie d'une
+     * perte de boisson. Annulé ici, le
+     * mouvement laisserait son opération dans un état incohérent (vente
+     * toujours valide sans coût des ventes, production validée sans
+     * portions...) : seul l'écran de l'opération sait la défaire entière.
+     */
+    public void exigerAnnulableSeul(MouvementStock mouvement) {
+        List<String> ventes = venteRepository.referencesParMouvement(mouvement.getId());
+        if (!ventes.isEmpty()) {
+            throw new IllegalStateException(
+                "Le mouvement " + mouvement.getReference() + " est la sortie de stock de la vente "
+                + ventes.get(0) + " : annulez la vente, qui rétablira le stock avec elle.");
+        }
+        List<String> productions = productionRepository.referencesParMouvement(mouvement.getId());
+        if (!productions.isEmpty()) {
+            throw new IllegalStateException(
+                "Le mouvement " + mouvement.getReference() + " appartient à la production "
+                + productions.get(0) + " : annulez la production depuis l'écran Production du restaurant, "
+                + "qui annule ses deux mouvements ensemble.");
+        }
+        List<String> camions = camionRepository.plaquesParMouvement(mouvement.getId());
+        if (!camions.isEmpty()) {
+            throw new IllegalStateException(
+                "Le mouvement " + mouvement.getReference() + " est l'entrée en stock du camion "
+                + camions.get(0) + " : supprimez le camion depuis l'écran Minerais.");
+        }
+        // Annulée seule, la sortie d'une perte laisserait la perte au journal
+        // des vides et au tableau de bord : c'est la perte qui s'annule.
+        if (mouvementEmballageRepository.existsByMouvementStockId(mouvement.getId())) {
+            throw new IllegalStateException(
+                "Le mouvement " + mouvement.getReference() + " est la sortie d'une perte de boisson : "
+                + "annulez la perte depuis les mouvements de bouteilles vides du restaurant.");
+        }
+        // Même raison : annulée seule, la sortie laisserait la sortie de plat
+        // (et son motif) dans l'historique comme si elle avait eu lieu.
+        if (sortiePlatRepository.existsByMouvementStockId(mouvement.getId())) {
+            throw new IllegalStateException(
+                "Le mouvement " + mouvement.getReference() + " est une sortie de plat (perte, cadeau...) : "
+                + "annulez-la depuis l'écran Sorties de plats du restaurant.");
+        }
+    }
+
+    /**
+     * Défait un mouvement validé : rejoue chaque ligne à l'envers sur les
+     * niveaux de stock, extourne sa pièce de stock et, pour une réception
+     * directe de provision, sa pièce d'achat. Si rejouer une sortie fait
+     * apparaître un écart de valorisation (voir {@link #sortie}), il est
+     * constaté par une pièce dédiée, rattachée au mouvement.
+     *
+     * <p>Passe par les variantes internes de la comptabilité :
+     * l'autorisation est portée par l'appelant, l'extourne ne doit pas
+     * exiger le rôle DFIN.</p>
+     */
+    private void annulerMouvement(MouvementStock mouvement, User auteur) {
+        List<EcritureGrandLivre> ecarts = new ArrayList<>();
+        for (LigneMouvementStock ligne : mouvement.getLignes()) {
+            annulerLigne(mouvement, ligne, ecarts);
+        }
+        if (mouvement.getPiece() != null) {
+            comptabilite.annulerInterne(mouvement.getPiece().getId(), auteur);
+        }
+        if (mouvement.getPieceAchat() != null) {
+            comptabilite.annulerInterne(mouvement.getPieceAchat().getId(), auteur);
+        }
+        if (!ecarts.isEmpty()) {
+            mouvement.setPieceEcartAnnulation(comptabilite.creerPieceInterne(
+                JournalComptable.STOCK, "Écart de valorisation — annulation " + mouvement.getReference(),
+                comptabilite.dateExtourne(mouvement.getDateMouvement()), ecarts, auteur));
+        }
+        mouvement.setStatut(StatutMouvement.ANNULE);
     }
 
     // ---------------------------------------------------------------------
@@ -464,8 +568,17 @@ public class StockService {
         return saved;
     }
 
-    /** Une ligne d'entrée en stock issue d'un achat de marchandise réglé par note de frais. */
-    public record EntreeNoteFrais(Article article, Entrepot entrepot, BigDecimal quantite, BigDecimal montantHt) {}
+    /**
+     * Une ligne d'entrée en stock issue d'un achat de marchandise réglé par note de frais.
+     *
+     * @param montant      coût d'entrée : prix HT plus la part des frais d'approche
+     *                     (transport, manutention) qui revient à cet achat
+     * @param montantAchat prix HT seul, sans les frais — voir StockNiveau.valeurAchat
+     * @param fournisseur  bénéficiaire de la note de frais (traçabilité du lot — voir
+     *                     {@link LotStockService}), {@code null} si non applicable
+     */
+    public record EntreeNoteFrais(Article article, Entrepot entrepot, BigDecimal quantite,
+                                  BigDecimal montant, BigDecimal montantAchat, String fournisseur) {}
 
     /**
      * Entrée en stock issue d'un achat de marchandises réglé par note de
@@ -507,26 +620,35 @@ public class StockService {
         for (EntreeNoteFrais e : entrees) {
             exigerMarchandise(e.article());
             BigDecimal cout = e.quantite().signum() != 0
-                ? e.montantHt().divide(e.quantite(), 6, RoundingMode.HALF_UP)
+                ? e.montant().divide(e.quantite(), 6, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
             mouvement.addLigne(LigneMouvementStock.builder()
                 .article(e.article())
                 .entrepotCible(e.entrepot())
                 .quantite(e.quantite())
                 .coutUnitaire(cout)
-                .montant(e.montantHt())
+                .montant(e.montant())
+                .montantAchat(e.montantAchat())
                 .build());
         }
 
         MouvementStock saved = mouvementRepository.save(mouvement);
         List<EcritureGrandLivre> ecritures = new ArrayList<>();
-        for (LigneMouvementStock ligne : saved.getLignes()) {
+        for (int i = 0; i < saved.getLignes().size(); i++) {
+            LigneMouvementStock ligne = saved.getLignes().get(i);
+            EntreeNoteFrais e = entrees.get(i);
             StockNiveau niveau = entree(ligne.getArticle(), ligne.getEntrepotCible(),
-                ligne.getQuantite(), ligne.getMontant());
+                ligne.getQuantite(), ligne.getMontant(), ligne.montantAchatOuMontant());
             ecrireStockGrandLivre(ligne.getArticle(), ligne.getEntrepotCible(),
                 saved, ligne.getQuantite(), BigDecimal.ZERO, niveau);
             ajouterEcriture(ecritures, compteStock(ligne.getArticle()), ligne.getMontant(), BigDecimal.ZERO, saved);
             ajouterEcriture(ecritures, compteCharge(ligne.getArticle()), BigDecimal.ZERO, ligne.getMontant(), saved);
+            BigDecimal prixAchatUnite = e.quantite().signum() != 0
+                ? e.montantAchat().divide(e.quantite(), 6, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+            BigDecimal prixTransportUnite = e.quantite().signum() != 0
+                ? e.montant().subtract(e.montantAchat()).divide(e.quantite(), 6, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+            lotStock.enregistrerEntree(ligne.getArticle(), ligne.getEntrepotCible(), date, e.fournisseur(),
+                ligne.getQuantite(), prixAchatUnite, prixTransportUnite, ligne);
         }
         PieceComptable piece = comptabilite.creerPieceInterne(
             JournalComptable.STOCK, libelle, date, ecritures, auteur);
@@ -588,12 +710,13 @@ public class StockService {
             .quantite(achat.quantite())
             .coutUnitaire(cout)
             .montant(achat.montant())
+            .montantAchat(achat.montant())
             .build());
 
         MouvementStock saved = mouvementRepository.save(mouvement);
         LigneMouvementStock ligne = saved.getLignes().get(0);
         StockNiveau niveau = entree(ligne.getArticle(), ligne.getEntrepotCible(),
-            ligne.getQuantite(), ligne.getMontant());
+            ligne.getQuantite(), ligne.getMontant(), ligne.getMontant());
         ecrireStockGrandLivre(ligne.getArticle(), ligne.getEntrepotCible(), saved,
             ligne.getQuantite(), BigDecimal.ZERO, niveau);
 
@@ -610,20 +733,19 @@ public class StockService {
         return saved;
     }
 
-    /** Réintègre le stock et extourne la pièce d'un mouvement issu d'une vente annulée. */
+    /**
+     * Défait un mouvement pour le compte d'un module métier (vente,
+     * production, camion de minerais, correction d'une réception ou d'une
+     * perte du restaurant) — voir {@link #annulerMouvement}. Sans effet sur
+     * un mouvement absent ou déjà annulé.
+     */
     @Transactional
     public void annulerMouvementInterne(MouvementStock mouvement, User auteur) {
         if (mouvement == null || mouvement.getStatut() != StatutMouvement.VALIDE) {
             return;
         }
-        for (LigneMouvementStock ligne : mouvement.getLignes()) {
-            annulerLigne(mouvement, ligne);
-        }
-        if (mouvement.getPiece() != null) {
-            comptabilite.annulerInterne(mouvement.getPiece().getId(), auteur);
-        }
-        mouvement.setStatut(StatutMouvement.ANNULE);
-        log.info("Mouvement de stock annulé (vente) [ref={}]", mouvement.getReference());
+        annulerMouvement(mouvement, auteur);
+        log.info("Mouvement de stock annulé [ref={}]", mouvement.getReference());
     }
 
     /** Refuse un article SERVICE là où un bien stocké est attendu. */
@@ -632,6 +754,37 @@ public class StockService {
             throw new IllegalArgumentException(
                 "L'article \"" + article.getLibelle() + "\" est un service : il n'a pas de stock.");
         }
+    }
+
+    /**
+     * Refuse qu'un mouvement créé ou annulé depuis la Logistique porte sur un
+     * article PLAT/BOISSON/PROVISION : ces articles partagent les mêmes
+     * tables de stock que le module Restaurant, mais leur cycle de vie
+     * (échange de consigne, production, note de frais) n'est connu que de ce
+     * module. Une sortie créée ici ne toucherait jamais le compteur de
+     * bouteilles vides. Sans effet sur les variantes internes
+     * (enregistrerSortieVenteInterne, entreesDepuisNoteFraisInterne...),
+     * appelées par ces modules pour leurs propres articles.
+     *
+     * <p>L'administrateur en est exempté : c'est le dernier recours pour ce
+     * que le module Restaurant n'annule pas lui-même — l'entrée en stock
+     * issue du paiement d'une note de frais, notamment. À lui, alors,
+     * d'ajuster le compteur de vides si la correction le demande. Même pour
+     * lui, un mouvement qui appartient à une vente ou à une production reste
+     * refusé (voir {@link #exigerAnnulableSeul}).</p>
+     */
+    private void exigerHorsModuleDedie(Article article) {
+        if (article.getType().estGereParModuleDedie() && !estAdmin()) {
+            throw new IllegalArgumentException(
+                "L'article \"" + article.getLibelle() + "\" (" + article.getType()
+                + ") est géré par le module Restaurant : utilisez ses propres écrans "
+                + "(réception, sortie, perte, production, vente) plutôt que la Logistique.");
+        }
+    }
+
+    private boolean estAdmin() {
+        return currentUser.requireUser().getRoles().stream()
+            .anyMatch(r -> r.getNom() == RoleType.ADMIN);
     }
 
     // ---------------------------------------------------------------------
@@ -658,77 +811,182 @@ public class StockService {
             case ENTREE -> {
                 Entrepot cible = exigerEntrepot(ligne.getEntrepotCible(), "entrepôt cible", mouvement);
                 BigDecimal montant = ligne.getCoutUnitaire().multiply(qte).setScale(2, RoundingMode.HALF_UP);
-                StockNiveau niveau = entree(article, cible, qte, montant);
+                StockNiveau niveau = entree(article, cible, qte, montant, montant);
                 ligne.setMontant(montant);
+                ligne.setMontantAchat(montant);
                 ecrireStockGrandLivre(article, cible, mouvement, qte, BigDecimal.ZERO, niveau);
                 // Comptable : Débit compte stock / Crédit contrepartie
                 ajouterEcriture(ecrituresCompta, compteStock(article), montant, BigDecimal.ZERO, mouvement);
                 ajouterEcriture(ecrituresCompta, compteContrepartie(mouvement), BigDecimal.ZERO, montant, mouvement);
+                // Suivi de gestion (traçabilité) : sans fournisseur ni frais connus ici,
+                // à la différence d'un achat par note de frais — voir LotStockService.
+                lotStock.enregistrerEntree(article, cible, mouvement.getDateMouvement(), null,
+                    qte, ligne.getCoutUnitaire(), BigDecimal.ZERO, ligne);
             }
             case SORTIE -> {
                 Entrepot source = exigerEntrepot(ligne.getEntrepotSource(), "entrepôt source", mouvement);
                 // Identification specifique si un cout est impose (camion de
                 // minerais), CMP sinon — voir SortieVente.coutImpose.
                 BigDecimal cmp = coutImpose != null ? coutImpose : coutMoyen(article, source);
-                BigDecimal montant = cmp.multiply(qte).setScale(2, RoundingMode.HALF_UP);
-                StockNiveau niveau = sortie(article, source, qte, montant);
+                BigDecimal montant = coutImpose != null
+                    ? cmp.multiply(qte).setScale(2, RoundingMode.HALF_UP)
+                    : montantSortieAuCmp(article, source, qte, cmp);
+                BigDecimal partAchat = partAchatSortie(article, source, qte);
+                StockNiveau niveau = sortie(article, source, qte, montant, partAchat, ecrituresCompta, mouvement);
+                ligne.setMontantAchat(partAchat);
                 ligne.setCoutUnitaire(cmp);
                 ligne.setMontant(montant);
                 ecrireStockGrandLivre(article, source, mouvement, BigDecimal.ZERO, qte, niveau);
                 // Comptable : Débit compte charge / Crédit compte stock
                 ajouterEcriture(ecrituresCompta, compteCharge(article), montant, BigDecimal.ZERO, mouvement);
                 ajouterEcriture(ecrituresCompta, compteStock(article), BigDecimal.ZERO, montant, mouvement);
+                // Suivi de gestion : déplète les lots en FIFO ou au prorata (résultat sans emploi ici, pas de transfert derrière).
+                lotStock.consommer(article, source, qte, ligne);
             }
             case TRANSFERT -> {
                 Entrepot source = exigerEntrepot(ligne.getEntrepotSource(), "entrepôt source", mouvement);
                 Entrepot cible = exigerEntrepot(ligne.getEntrepotCible(), "entrepôt cible", mouvement);
                 BigDecimal cmp = coutMoyen(article, source);
-                BigDecimal montant = cmp.multiply(qte).setScale(2, RoundingMode.HALF_UP);
-                StockNiveau niveauSource = sortie(article, source, qte, montant);
-                StockNiveau niveauCible = entree(article, cible, qte, montant);
+                // Un transfert qui vide la source emporte toute sa valeur :
+                // le reliquat d'arrondi suit la marchandise au lieu de rester
+                // sans elle dans l'entrepot de depart.
+                BigDecimal montant = montantSortieAuCmp(article, source, qte, cmp);
+                // La valeur hors frais suit la marchandise, comme sa valeur complète.
+                BigDecimal partAchat = partAchatSortie(article, source, qte);
+                StockNiveau niveauSource = sortie(article, source, qte, montant, partAchat, ecrituresCompta, mouvement);
+                StockNiveau niveauCible = entree(article, cible, qte, montant, partAchat);
+                ligne.setMontantAchat(partAchat);
                 ligne.setCoutUnitaire(cmp);
                 ligne.setMontant(montant);
                 ecrireStockGrandLivre(article, source, mouvement, BigDecimal.ZERO, qte, niveauSource);
                 ecrireStockGrandLivre(article, cible, mouvement, qte, BigDecimal.ZERO, niveauCible);
-                // Pas d'écriture comptable pour un transfert interne.
+                // Pas d'écriture comptable pour un transfert interne, hormis
+                // un éventuel écart de valorisation constaté par sortie().
+                // Suivi de gestion : les lots déplétés à la source réapparaissent à l'identique en cible.
+                lotStock.transferer(lotStock.consommer(article, source, qte, ligne), cible, ligne);
             }
         }
     }
 
-    private void annulerLigne(MouvementStock mouvement, LigneMouvementStock ligne) {
+    /**
+     * Valeur d'une sortie au CMP. La sortie qui vide le niveau emporte
+     * exactement la valeur restante, plutôt que CMP × quantité : chaque
+     * sortie arrondit au centime, et sans cette règle les arrondis successifs
+     * laissaient à la fin quelques centimes sans marchandise pour les porter.
+     */
+    private BigDecimal montantSortieAuCmp(Article article, Entrepot entrepot, BigDecimal qte, BigDecimal cmp) {
+        StockNiveau niveau = niveau(article, entrepot);
+        if (qte.compareTo(niveau.getQuantite()) == 0 && niveau.getValeurTotale().signum() >= 0) {
+            return niveau.getValeurTotale();
+        }
+        return cmp.multiply(qte).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * @param ecarts reçoit les écritures d'un éventuel écart de valorisation
+     *        (voir {@link #sortie}), à comptabiliser par l'appelant
+     */
+    private void annulerLigne(MouvementStock mouvement, LigneMouvementStock ligne, List<EcritureGrandLivre> ecarts) {
         Article article = ligne.getArticle();
         BigDecimal qte = ligne.getQuantite();
         BigDecimal montant = ligne.getMontant();
+        // Suivi de gestion : restitue ce que cette ligne avait consommé et/ou retire ce
+        // qu'elle avait créé — couvre ENTREE, SORTIE et TRANSFERT sans distinction (voir
+        // LotStockService.annuler), donc placé une seule fois avant le switch comptable.
+        lotStock.annuler(ligne);
         // Chaque contre-passation est journalisée dans le grand livre de stock
         // (piste d'audit complète, comme le Stock Ledger d'ERPNext).
         switch (mouvement.getType()) {
             case ENTREE -> {
-                StockNiveau niveau = sortie(article, ligne.getEntrepotCible(), qte, montant);
+                StockNiveau niveau = sortie(article, ligne.getEntrepotCible(), qte, montant,
+                    ligne.montantAchatOuMontant(), ecarts, mouvement);
                 ecrireStockGrandLivre(article, ligne.getEntrepotCible(), mouvement, BigDecimal.ZERO, qte, niveau);
             }
             case SORTIE -> {
-                StockNiveau niveau = entree(article, ligne.getEntrepotSource(), qte, montant);
+                StockNiveau niveau = entree(article, ligne.getEntrepotSource(), qte, montant, ligne.montantAchatOuMontant());
                 ecrireStockGrandLivre(article, ligne.getEntrepotSource(), mouvement, qte, BigDecimal.ZERO, niveau);
             }
             case TRANSFERT -> {
-                StockNiveau niveauSource = entree(article, ligne.getEntrepotSource(), qte, montant);
-                StockNiveau niveauCible = sortie(article, ligne.getEntrepotCible(), qte, montant);
+                StockNiveau niveauSource = entree(article, ligne.getEntrepotSource(), qte, montant, ligne.montantAchatOuMontant());
+                StockNiveau niveauCible = sortie(article, ligne.getEntrepotCible(), qte, montant,
+                    ligne.montantAchatOuMontant(), ecarts, mouvement);
                 ecrireStockGrandLivre(article, ligne.getEntrepotSource(), mouvement, qte, BigDecimal.ZERO, niveauSource);
                 ecrireStockGrandLivre(article, ligne.getEntrepotCible(), mouvement, BigDecimal.ZERO, qte, niveauCible);
             }
         }
     }
 
-    /** Entrée de stock : ajoute quantité et valeur, recalcule le CMP implicite. */
-    private StockNiveau entree(Article article, Entrepot entrepot, BigDecimal qte, BigDecimal montant) {
+    /**
+     * Entrée de stock : ajoute quantité et valeur, recalcule le CMP implicite.
+     *
+     * @param montant      coût d'entrée complet (frais d'approche compris)
+     * @param montantAchat même entrée hors frais d'approche — égal à montant
+     *                     quand il n'y en a pas (voir StockNiveau.valeurAchat)
+     */
+    private StockNiveau entree(Article article, Entrepot entrepot, BigDecimal qte, BigDecimal montant,
+                               BigDecimal montantAchat) {
         StockNiveau niveau = niveau(article, entrepot);
         niveau.setQuantite(niveau.getQuantite().add(qte));
         niveau.setValeurTotale(niveau.getValeurTotale().add(montant));
+        niveau.setValeurAchat(niveau.getValeurAchat().add(montantAchat));
+        plafonnerValeurAchat(niveau);
         return niveauRepository.save(niveau);
     }
 
-    /** Sortie de stock : retire la quantité et la valeur correspondante au CMP. */
-    private StockNiveau sortie(Article article, Entrepot entrepot, BigDecimal qte, BigDecimal montant) {
+    /**
+     * Part de la valeur hors frais qu'emporte une sortie de {@code qte} : au
+     * prorata de la quantité, ou la totalité si la sortie vide le niveau — le
+     * prix d'achat moyen des unités restantes ne bouge donc pas.
+     */
+    private BigDecimal partAchatSortie(Article article, Entrepot entrepot, BigDecimal qte) {
+        StockNiveau niveau = niveau(article, entrepot);
+        BigDecimal quantite = niveau.getQuantite();
+        if (quantite.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        if (qte.compareTo(quantite) >= 0) {
+            return niveau.getValeurAchat();
+        }
+        return niveau.getValeurAchat().multiply(qte).divide(quantite, 2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * La valeur hors frais ne peut dépasser la valeur complète (les frais ne
+     * sont jamais négatifs), ni rester sans marchandise, ni être négative.
+     * Valeur de gestion : la corriger n'appelle aucune écriture.
+     */
+    private static void plafonnerValeurAchat(StockNiveau niveau) {
+        BigDecimal v = niveau.getValeurAchat();
+        if (niveau.getQuantite().signum() == 0 || v.signum() < 0) {
+            v = BigDecimal.ZERO;
+        } else if (v.compareTo(niveau.getValeurTotale()) > 0) {
+            v = niveau.getValeurTotale();
+        }
+        niveau.setValeurAchat(v);
+    }
+
+    /**
+     * Sortie de stock : retire la quantité et la valeur indiquées.
+     *
+     * <p>Un niveau ne peut garder de valeur sans marchandise, ni une valeur
+     * négative. Une sortie peut pourtant y conduire : annulation d'une entrée
+     * dont le stock a déjà été en partie consommé à un coût moyen mêlé (deux
+     * productions à 20 puis 30, dix portions vendues à 25, première
+     * production annulée : il reste 5 sans aucune portion), coût imposé,
+     * arrondi. Effacer cet écart en silence désynchronisait le niveau de
+     * stock du grand livre, qui gardait le montant ; refuser la sortie
+     * bloquait l'annulation sans aucun moyen d'en sortir. L'écart est donc
+     * constaté — voir {@link #constaterEcart} — et le niveau remis à zéro :
+     * stock et grand livre restent égaux.</p>
+     *
+     * @param partAchat part de la valeur hors frais retirée avec la
+     *        marchandise (voir {@link #partAchatSortie}, ou la part mémorisée
+     *        sur la ligne annulée)
+     * @param ecritures reçoit les écritures de l'écart éventuel
+     * @param mouvement mouvement à l'origine de la sortie, pour le libellé
+     */
+    private StockNiveau sortie(Article article, Entrepot entrepot, BigDecimal qte, BigDecimal montant,
+                               BigDecimal partAchat, List<EcritureGrandLivre> ecritures, MouvementStock mouvement) {
         StockNiveau niveau = niveau(article, entrepot);
         if (niveau.getQuantite().compareTo(qte) < 0) {
             throw new IllegalArgumentException(
@@ -739,15 +997,38 @@ public class StockService {
         }
         niveau.setQuantite(niveau.getQuantite().subtract(qte));
         BigDecimal nouvelleValeur = niveau.getValeurTotale().subtract(montant);
-        // Évite une valeur résiduelle négative due aux arrondis quand le stock tombe à 0.
-        if (niveau.getQuantite().signum() == 0 || nouvelleValeur.signum() < 0) {
-            nouvelleValeur = BigDecimal.ZERO.max(nouvelleValeur);
-            if (niveau.getQuantite().signum() == 0) {
-                nouvelleValeur = BigDecimal.ZERO;
-            }
+        boolean ecart = nouvelleValeur.signum() < 0
+            || (niveau.getQuantite().signum() == 0 && nouvelleValeur.signum() != 0);
+        if (ecart) {
+            constaterEcart(article, entrepot, nouvelleValeur, ecritures, mouvement);
+            nouvelleValeur = BigDecimal.ZERO;
         }
         niveau.setValeurTotale(nouvelleValeur);
+        niveau.setValeurAchat(niveau.getValeurAchat().subtract(partAchat));
+        plafonnerValeurAchat(niveau);
         return niveauRepository.save(niveau);
+    }
+
+    /**
+     * Écritures d'un écart de valorisation, entre le compte de variation de
+     * l'article et son compte de stock. Un écart positif est une valeur
+     * restée en stock sans marchandise pour la porter : elle passe en charge
+     * (D variation / C stock). Un écart négatif est une valeur retirée
+     * au-delà de ce que le stock portait : elle est reprise (D stock /
+     * C variation).
+     */
+    private void constaterEcart(Article article, Entrepot entrepot, BigDecimal ecart,
+                                List<EcritureGrandLivre> ecritures, MouvementStock mouvement) {
+        BigDecimal montant = ecart.abs();
+        if (ecart.signum() > 0) {
+            ajouterEcriture(ecritures, compteCharge(article), montant, BigDecimal.ZERO, mouvement);
+            ajouterEcriture(ecritures, compteStock(article), BigDecimal.ZERO, montant, mouvement);
+        } else {
+            ajouterEcriture(ecritures, compteStock(article), montant, BigDecimal.ZERO, mouvement);
+            ajouterEcriture(ecritures, compteCharge(article), BigDecimal.ZERO, montant, mouvement);
+        }
+        log.warn("Écart de valorisation constaté [article={}, entrepôt={}, mouvement={}, écart={}]",
+            article.getCode(), entrepot.getCode(), mouvement.getReference(), ecart.toPlainString());
     }
 
     private StockNiveau niveau(Article article, Entrepot entrepot) {
@@ -782,6 +1063,9 @@ public class StockService {
         // Un ecart ne doit jamais faire passer la valorisation sous zero
         // (arrondi residuel si une sortie s'est intercalee entre-temps).
         niveau.setValeurTotale(nouvelleValeur.signum() < 0 ? BigDecimal.ZERO : nouvelleValeur);
+        // Des frais (charges connexes d'un camion) : la valeur hors frais ne
+        // bouge pas, hormis le plafond si la valeur complète est descendue.
+        plafonnerValeurAchat(niveau);
         StockNiveau saved = niveauRepository.save(niveau);
         ecrireStockGrandLivre(article, entrepot, date, null, BigDecimal.ZERO, BigDecimal.ZERO, saved);
     }
@@ -992,11 +1276,12 @@ public class StockService {
             .quantite(uneUnite)
             .coutUnitaire(prixAchat)
             .montant(prixAchat)
+            .montantAchat(prixAchat)
             .build());
 
         MouvementStock saved = mouvementRepository.save(mouvement);
         LigneMouvementStock ligne = saved.getLignes().get(0);
-        StockNiveau niveau = entree(article, entrepot, uneUnite, prixAchat);
+        StockNiveau niveau = entree(article, entrepot, uneUnite, prixAchat, prixAchat);
         ecrireStockGrandLivre(article, entrepot, saved, uneUnite, BigDecimal.ZERO, niveau);
 
         List<EcritureGrandLivre> ecritures = new ArrayList<>();

@@ -6,6 +6,13 @@ definePageMeta({ module: 'RESTAURANT' })
  *
  * Stockées et consommées en interne (préparation des plats), jamais vendues —
  * contrairement à la carte, pas de prix de vente ni de compte produit.
+ *
+ * Le tableau affiche une ligne par LOT actif (date d'achat, fournisseur,
+ * prix) plutôt qu'une ligne par provision : une même provision peut avoir
+ * été reçue à plusieurs dates, fournisseurs ou prix — voir
+ * /restaurant/provisions/consolide pour la vue agrégée (une ligne par
+ * provision, sans tenir compte des lots). Suivi de gestion, sans effet sur
+ * la comptabilité (toujours au coût moyen pondéré).
  */
 interface Provision {
   id: number
@@ -27,8 +34,21 @@ interface StockNiveau {
   quantite: number
   valeurTotale: number
   coutMoyen: number
+  /** Prix d'achat moyen HORS transport et manutention ; coutMoyen les inclut. */
+  prixAchatMoyen: number
   stockMin: number
   sousSeuil: boolean
+}
+interface LotProvision {
+  id: number
+  articleId: number
+  dateEntree: string
+  fournisseur?: string | null
+  quantiteRestante: number
+  prixAchatUnitaire: number
+  prixTransportUnitaire: number
+  coutUnitaire: number
+  valeur: number
 }
 
 const api = useApi()
@@ -39,20 +59,23 @@ const saving = ref(false)
 const erreur = ref('')
 const provisions = ref<Provision[]>([])
 const stock = ref<StockNiveau[]>([])
+const lots = ref<LotProvision[]>([])
 const dialog = ref(false)
 const editId = ref<number | null>(null)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
 
 /**
- * 331 Matières consommables / 6033 Variations des stocks d'autres
- * approvisionnements / 6011 Achats de marchandises dans la Région (même
- * défaut que la carte pour un achat de marchandise) — vérifiés actifs et
- * imputables.
+ * Racines des comptes d'une provision, les mêmes que celles sous lesquelles
+ * le serveur crée ses comptes dédiés (RestaurantService.creerProvision) :
+ * 331 Matières consommables / 6032 Variations des stocks de matières
+ * premières / 6021 Achats de matières premières. Une provision n'est pas
+ * une marchandise revendue : ni 6011 ni 6033 — vérifiés actifs et
+ * imputables. Ne sert qu'à compléter une ancienne provision sans compte.
  */
 const COMPTE_STOCK_DEFAUT = '331'
-const COMPTE_CHARGE_DEFAUT = '6033'
-const COMPTE_ACHAT_DEFAUT = '6011'
+const COMPTE_CHARGE_DEFAUT = '6032'
+const COMPTE_ACHAT_DEFAUT = '6021'
 
 const form = reactive({
   code: '',
@@ -72,13 +95,15 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [provs, niveaux] = await Promise.all([
+    const [provs, niveaux, lotsProv] = await Promise.all([
       api<Provision[]>('/restaurant/provisions'),
       api<StockNiveau[]>('/restaurant/provisions/stock'),
+      api<LotProvision[]>('/restaurant/provisions/lots'),
       parametres.charger(),
     ])
     provisions.value = provs
     stock.value = niveaux
+    lots.value = lotsProv
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les provisions.')
   } finally {
@@ -87,13 +112,36 @@ async function charger() {
 }
 onMounted(charger)
 
-/** Fusionne la fiche article et son niveau de stock pour l'affichage. */
-const lignes = computed(() =>
-  provisions.value.map(p => {
-    const s = stock.value.find(x => x.articleId === p.id)
-    return { ...p, quantite: s?.quantite ?? 0, coutMoyen: s?.coutMoyen ?? 0, valeurTotale: s?.valeurTotale ?? 0, sousSeuil: s?.sousSeuil ?? false }
+/**
+ * Une ligne par lot actif d'une provision (date d'achat, fournisseur, prix) ;
+ * une ligne unique avec tirets si elle n'en a aucun (jamais reçue, ou stock
+ * épuisé) — pour que le catalogue reste complet même sans lot.
+ */
+const lignes = computed(() => {
+  const parProvision = new Map<number, LotProvision[]>()
+  for (const l of lots.value) {
+    const arr = parProvision.get(l.articleId)
+    if (arr) arr.push(l)
+    else parProvision.set(l.articleId, [l])
+  }
+  return provisions.value.flatMap(p => {
+    const sousSeuil = stock.value.find(s => s.articleId === p.id)?.sousSeuil ?? false
+    const lotsDeP = parProvision.get(p.id) ?? []
+    if (lotsDeP.length === 0) {
+      return [{
+        ...p, sousSeuil, rowKey: `p${p.id}`,
+        dateEntree: null as string | null, fournisseur: null as string | null,
+        quantite: 0, prixAchatUnitaire: 0, prixTransportUnitaire: 0, coutUnitaire: 0, valeur: 0,
+      }]
+    }
+    return lotsDeP.map(l => ({
+      ...p, sousSeuil, rowKey: `l${l.id}`,
+      dateEntree: l.dateEntree, fournisseur: l.fournisseur ?? null,
+      quantite: l.quantiteRestante, prixAchatUnitaire: l.prixAchatUnitaire,
+      prixTransportUnitaire: l.prixTransportUnitaire, coutUnitaire: l.coutUnitaire, valeur: l.valeur,
+    }))
   })
-)
+})
 
 function ouvrirCreation() {
   editId.value = null
@@ -159,7 +207,8 @@ async function enregistrer() {
   }
 }
 
-const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(q || 0)}${u ? ' ' + u : ''}`
+const fmtQte = (q: number, u?: string) => `${parametres.fmtQuantite(q)}${u ? ' ' + u : ''}`
+const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—')
 </script>
 
 <template>
@@ -170,6 +219,9 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
         <p class="page-sub">Vivres, épices, charbon — stockés et consommés en interne</p>
       </div>
       <div class="d-flex ga-2">
+        <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-view-list-outline" to="/restaurant/provisions/consolide">
+          Stock consolidé
+        </v-btn>
         <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-swap-horizontal-bold" to="/restaurant/provisions/mouvements">
           Entrées / sorties
         </v-btn>
@@ -201,28 +253,48 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
       </div>
     </div>
 
+    <p class="text-caption text-medium-emphasis mb-2">
+      Une ligne par lot actif (date d'achat, fournisseur, prix).
+      <strong>Sortie des lots : CMP</strong> — chaque sortie prélève sur tous les lots au prorata, d'où des quantités parfois décimales.
+      Suivi de gestion, sans effet sur la comptabilité, qui reste au coût moyen pondéré.
+    </p>
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
           { title: 'Code', key: 'code' },
           { title: 'Libellé', key: 'libelle' },
           { title: 'Unité', key: 'uniteMesure' },
-          { title: 'Quantité en stock', key: 'quantite', align: 'end' },
-          { title: 'Coût moyen', key: 'coutMoyen', align: 'end' },
-          { title: 'Valeur', key: 'valeurTotale', align: 'end' },
+          { title: 'Date d\'achat', key: 'dateEntree' },
+          { title: 'Fournisseur', key: 'fournisseur' },
+          { title: 'Quantité', key: 'quantite', align: 'end' },
+          { title: 'Prix d\'achat', key: 'prixAchatUnitaire', align: 'end' },
+          { title: 'Transport et manutention', key: 'prixTransportUnitaire', align: 'end' },
+          { title: 'Coût unitaire', key: 'coutUnitaire', align: 'end' },
+          { title: 'Valeur', key: 'valeur', align: 'end' },
           { title: 'Statut', key: 'actif' },
           { title: 'Actions', key: 'actions', sortable: false, align: 'end' },
         ]"
         :items="lignes"
+        item-value="rowKey"
         :loading="loading"
         items-per-page="15"
       >
         <template #item.uniteMesure="{ item }">{{ item.uniteMesure || '—' }}</template>
+        <template #item.dateEntree="{ item }">{{ fmtDate(item.dateEntree) }}</template>
+        <template #item.fournisseur="{ item }">
+          <span v-if="!item.fournisseur" class="text-medium-emphasis">—</span>
+          <span v-else>{{ item.fournisseur }}</span>
+        </template>
         <template #item.quantite="{ item }">
           <span :class="item.sousSeuil ? 'font-weight-bold text-error' : ''">{{ fmtQte(item.quantite, item.uniteMesure) }}</span>
         </template>
-        <template #item.coutMoyen="{ item }">{{ item.coutMoyen > 0 ? parametres.fmtMontant(item.coutMoyen) : '—' }}</template>
-        <template #item.valeurTotale="{ item }">{{ parametres.fmtMontant(item.valeurTotale) }}</template>
+        <template #item.prixAchatUnitaire="{ item }">{{ item.prixAchatUnitaire > 0 ? parametres.fmtMontant(item.prixAchatUnitaire) : '—' }}</template>
+        <template #item.prixTransportUnitaire="{ item }">
+          <span v-if="!(item.prixTransportUnitaire > 0.000001)" class="text-medium-emphasis">—</span>
+          <span v-else>{{ parametres.fmtMontant(item.prixTransportUnitaire) }}</span>
+        </template>
+        <template #item.coutUnitaire="{ item }">{{ item.coutUnitaire > 0 ? parametres.fmtMontant(item.coutUnitaire) : '—' }}</template>
+        <template #item.valeur="{ item }">{{ item.valeur > 0 ? parametres.fmtMontant(item.valeur) : '—' }}</template>
         <template #item.actif="{ item }">
           <v-chip :color="item.actif ? 'success' : 'grey'" size="small" variant="tonal">{{ item.actif ? 'Actif' : 'Inactif' }}</v-chip>
         </template>
@@ -241,6 +313,7 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
       <v-card class="pa-6">
         <h2 class="text-h6 mb-4">{{ editId ? 'Modifier la' : 'Nouvelle' }} provision</h2>
 
+        <v-card-text class="pa-0">
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-4">{{ erreur }}</v-alert>
 
         <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
@@ -253,14 +326,15 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
           Un compte d'achat, de stock et de charge dédié à cette provision sera créé automatiquement.
         </v-alert>
         <template v-else>
-          <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (601x)" class="mb-3" />
-          <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock" class="mb-3" />
-          <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de charge (sortie)" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (602x)" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock (33x)" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de variation de stock (603x)" class="mb-3" />
         </template>
 
         <v-switch v-model="form.actif" label="Actif" color="success" density="compact" hide-details class="mb-4" />
+        </v-card-text>
 
-        <div class="d-flex justify-end ga-2">
+        <div class="d-flex justify-end ga-2 mt-4">
           <v-btn variant="text" :disabled="saving" @click="dialog = false">Annuler</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving" @click="enregistrer">Enregistrer</v-btn>
         </div>

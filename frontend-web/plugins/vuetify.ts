@@ -1,5 +1,6 @@
 import { createVuetify } from 'vuetify'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
+import { fr } from 'vuetify/locale'
 
 /**
  * Theme MBSC - clone visuel Google Classroom.
@@ -26,6 +27,13 @@ const classroomLight = {
 export default defineNuxtPlugin((nuxtApp) => {
   const vuetify = createVuetify({
     ssr: true,
+    // Textes propres aux composants (pagination des tableaux, « Aucune
+    // donnée », sélecteurs de date...) : anglais par défaut sinon.
+    locale: {
+      locale: 'fr',
+      fallback: 'fr',
+      messages: { fr },
+    },
     theme: {
       defaultTheme: 'classroomLight',
       themes: { classroomLight },

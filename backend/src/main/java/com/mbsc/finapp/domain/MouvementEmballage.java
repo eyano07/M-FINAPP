@@ -53,6 +53,31 @@ public class MouvementEmballage {
     @ToString.Exclude
     private Vente vente;
 
+    /**
+     * Sortie de stock de la boisson declenchee par une perte (casse d'une
+     * pleine, peremption, cadeau), retablie si ce mouvement est annule.
+     * {@code null} pour tout autre mouvement, et pour une perte saisie avant
+     * que ce lien n'existe.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "mouvement_stock_id")
+    @ToString.Exclude
+    private MouvementStock mouvementStock;
+
+    /**
+     * true si ce mouvement a ete annule : son effet sur le compteur a ete
+     * compense par le mouvement inverse qui le cite ({@link #annulationDe}).
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean annule = false;
+
+    /** Mouvement que celui-ci annule, pour le mouvement inverse d'une annulation. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "annulation_de_id")
+    @ToString.Exclude
+    private MouvementEmballage annulationDe;
+
     /** Motif libre : indispensable pour justifier une casse ou un ecart d'inventaire. */
     @Column(length = 500)
     private String motif;

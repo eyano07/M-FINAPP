@@ -35,14 +35,26 @@ const erreur = ref('')
 const articles = ref<ArticleCarte[]>([])
 const tauxChange = ref(0)
 const dialog = ref(false)
+const dialogCard = ref<{ $el: HTMLElement } | null>(null)
+/** Ramene le haut de la boite de dialogue en vue : sans ca, une erreur
+ * affichee sous le titre reste hors champ si l'utilisateur avait defile
+ * plus bas dans ce long formulaire pour atteindre "Enregistrer". */
+function remonterEnHautDialogue() {
+  nextTick(() => dialogCard.value?.$el?.scrollTo?.({ top: 0, behavior: 'smooth' }))
+}
 const editId = ref<number | null>(null)
 const filtreType = ref<'TOUS' | 'PLAT' | 'BOISSON'>('TOUS')
 const filtreCategorie = ref<string | null>(null)
 
-/** Suggestions de depart pour la categorie d'une boisson ; le champ reste en saisie libre. */
+/** Suggestions de depart pour la categorie d'un article ; le champ reste en saisie libre. */
 const CATEGORIES_BOISSON_SUGGEREES = [
   'Bière', 'Vin', 'Champagne', 'Whisky', 'Vodka', 'Alcool', 'Jus', 'Soda', 'Eau',
 ]
+const CATEGORIES_PLAT_SUGGEREES = [
+  'Entrée', 'Plat principal', 'Accompagnement', 'Dessert', 'Petit-déjeuner', 'Grillade',
+]
+const categoriesSuggerees = computed(() =>
+  form.type === 'BOISSON' ? CATEGORIES_BOISSON_SUGGEREES : CATEGORIES_PLAT_SUGGEREES)
 
 // Creer/modifier un plat ou une boisson (prix, imputation comptable) est
 // reserve a l'administrateur (voir RestaurantService.ECRITURE_CARTE) : le
@@ -75,7 +87,7 @@ const form = reactive({
   compteChargeNumero: '' as string | null,
   compteProduitNumero: '' as string | null,
   compteAchatNumero: '' as string | null,
-  devisePrixVente: 'USD' as 'USD' | 'CDF',
+  devisePrixVente: 'CDF' as 'USD' | 'CDF',
   prixVenteSaisi: null as number | null,
   soumisTva: true,
   stockMin: 0,
@@ -86,15 +98,15 @@ const form = reactive({
 const prixVenteEquivalent = computed(() => {
   if (!form.prixVenteSaisi || tauxChange.value <= 0) return null
   return form.devisePrixVente === 'USD'
-    ? `≈ ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(form.prixVenteSaisi * tauxChange.value)} FC`
-    : `≈ ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD' }).format(form.prixVenteSaisi / tauxChange.value)}`
+    ? `≈ ${parametres.fmtDans(form.prixVenteSaisi * tauxChange.value, 'CDF')}`
+    : `≈ ${parametres.fmtDans(form.prixVenteSaisi / tauxChange.value, 'USD')}`
 })
 
 const articlesFiltres = computed(() => {
   const parType = filtreType.value === 'TOUS'
     ? articles.value
     : articles.value.filter(a => a.type === filtreType.value)
-  return filtreType.value === 'BOISSON' && filtreCategorie.value
+  return filtreType.value !== 'TOUS' && filtreCategorie.value
     ? parType.filter(a => a.categorie === filtreCategorie.value)
     : parType
 })
@@ -102,10 +114,11 @@ const articlesFiltres = computed(() => {
 const nbPlats = computed(() => articles.value.filter(a => a.type === 'PLAT').length)
 const nbBoissons = computed(() => articles.value.filter(a => a.type === 'BOISSON').length)
 
-/** Categories reellement utilisees par les boissons de la carte, pour le filtre. */
+/** Categories reellement utilisees par le type actuellement affiche, pour le filtre. */
 const categoriesUtilisees = computed(() => {
+  if (filtreType.value === 'TOUS') return []
   const set = new Set(
-    articles.value.filter(a => a.type === 'BOISSON' && a.categorie).map(a => a.categorie as string))
+    articles.value.filter(a => a.type === filtreType.value && a.categorie).map(a => a.categorie as string))
   return Array.from(set).sort((a, b) => a.localeCompare(b))
 })
 
@@ -143,15 +156,25 @@ function appliquerComptesDefaut() {
   if (!form.compteAchatNumero) form.compteAchatNumero = d.achat
 }
 
+/**
+ * Prix de vente déjà enregistré (en FC), conservé à l'ouverture de l'édition
+ * pour ne JAMAIS l'écraser si le taux du jour est indisponible : le champ
+ * est alors désactivé et prixVenteSaisi reste null, mais ce null signifiait
+ * jusqu'ici "effacer le prix" à l'enregistrement — rendant l'article
+ * invendable pour une simple correction de libellé faite sans taux dispo.
+ */
+const prixVenteActuelFC = ref<number | null>(null)
+
 function ouvrirCreation(type: 'PLAT' | 'BOISSON') {
   editId.value = null
+  prixVenteActuelFC.value = null
   const d = COMPTES_DEFAUT[type]
   Object.assign(form, {
     code: '', libelle: '', uniteMesure: type === 'PLAT' ? 'portion' : 'bouteille',
     type, categorie: null,
     compteStockNumero: d.stock, compteChargeNumero: d.charge, compteProduitNumero: d.produit,
     compteAchatNumero: d.achat,
-    devisePrixVente: 'USD', prixVenteSaisi: null, soumisTva: true, stockMin: 0, actif: true,
+    devisePrixVente: 'CDF', prixVenteSaisi: null, soumisTva: true, stockMin: 0, actif: true,
   })
   erreur.value = ''
   dialog.value = true
@@ -159,6 +182,7 @@ function ouvrirCreation(type: 'PLAT' | 'BOISSON') {
 
 function ouvrirEdition(a: ArticleCarte) {
   editId.value = a.id
+  prixVenteActuelFC.value = a.prixVente ?? null
   Object.assign(form, {
     code: a.code,
     libelle: a.libelle,
@@ -169,8 +193,10 @@ function ouvrirEdition(a: ArticleCarte) {
     compteChargeNumero: a.compteChargeNumero || '',
     compteProduitNumero: a.compteProduitNumero || '',
     compteAchatNumero: a.compteAchatNumero || '',
-    devisePrixVente: 'USD',
-    prixVenteSaisi: a.prixVente != null && tauxChange.value > 0 ? a.prixVente / tauxChange.value : null,
+    // En FC, la devise dans laquelle le prix est enregistré : il s'affiche
+    // exact, sans passer par un équivalent en dollars recalculé.
+    devisePrixVente: 'CDF',
+    prixVenteSaisi: a.prixVente ?? null,
     soumisTva: a.soumisTva,
     stockMin: a.stockMin,
     actif: a.actif,
@@ -182,6 +208,7 @@ function ouvrirEdition(a: ArticleCarte) {
 async function enregistrer() {
   if (!form.code.trim() || !form.libelle.trim()) {
     erreur.value = 'Code et libellé sont obligatoires.'
+    remonterEnHautDialogue()
     return
   }
   saving.value = true
@@ -193,14 +220,16 @@ async function enregistrer() {
       libelle: form.libelle,
       uniteMesure: form.uniteMesure,
       type: form.type,
-      categorie: form.type === 'BOISSON' ? (form.categorie || null) : null,
+      categorie: form.categorie || null,
       compteStockNumero: form.compteStockNumero,
       compteChargeNumero: form.compteChargeNumero,
       compteProduitNumero: form.compteProduitNumero,
       compteAchatNumero: form.compteAchatNumero,
       prixVente: form.prixVenteSaisi != null
         ? (form.devisePrixVente === 'USD' ? form.prixVenteSaisi * tauxChange.value : form.prixVenteSaisi)
-        : null,
+        // Champ vide SANS taux disponible en édition : on ne touche pas au prix
+        // existant plutôt que de l'effacer (voir prixVenteActuelFC ci-dessus).
+        : (editId.value ? prixVenteActuelFC.value : null),
       soumisTva: form.soumisTva,
       stockMin: form.stockMin,
       actif: form.actif,
@@ -214,8 +243,77 @@ async function enregistrer() {
     await charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, "Échec de l'enregistrement.")
+    remonterEnHautDialogue()
   } finally {
     saving.value = false
+  }
+}
+
+/** Prix de vente : toujours affiché en FC (devise de saisie native de l'article), quelle que
+ * soit la préférence d'affichage du module (qui, elle, ne s'applique qu'aux montants tenus en USD). */
+function fmtPrixVenteFC(montant?: number | null): string {
+  if (montant == null) return '—'
+  return parametres.fmtDans(montant, 'CDF')
+}
+
+// ── Activer / désactiver rapidement, sans ouvrir le formulaire complet ────
+const togglingId = ref<number | null>(null)
+async function toggleActif(item: ArticleCarte) {
+  togglingId.value = item.id
+  erreur.value = ''
+  try {
+    await api(`/restaurant/carte/${item.id}`, {
+      method: 'PUT',
+      body: {
+        code: item.code,
+        libelle: item.libelle,
+        uniteMesure: item.uniteMesure,
+        type: item.type,
+        categorie: item.categorie || null,
+        compteStockNumero: item.compteStockNumero,
+        compteChargeNumero: item.compteChargeNumero,
+        compteProduitNumero: item.compteProduitNumero,
+        compteAchatNumero: item.compteAchatNumero,
+        prixVente: item.prixVente ?? null,
+        soumisTva: item.soumisTva,
+        stockMin: item.stockMin,
+        actif: !item.actif,
+      },
+    })
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Échec du changement de statut.')
+  } finally {
+    togglingId.value = null
+  }
+}
+
+// ── Suppression définitive (admin) : uniquement si l'article n'est lié à
+// aucune opération — voir RestaurantService.supprimerArticleCarte, qui
+// rejette sinon avec un message explicite repris tel quel ici.
+const dialogSuppression = ref(false)
+const articleASupprimer = ref<ArticleCarte | null>(null)
+const suppressionEnCours = ref(false)
+const erreurSuppression = ref('')
+
+function ouvrirConfirmationSuppression(item: ArticleCarte) {
+  articleASupprimer.value = item
+  erreurSuppression.value = ''
+  dialogSuppression.value = true
+}
+
+async function confirmerSuppression() {
+  if (!articleASupprimer.value) return
+  suppressionEnCours.value = true
+  erreurSuppression.value = ''
+  try {
+    await api(`/restaurant/carte/${articleASupprimer.value.id}`, { method: 'DELETE' })
+    dialogSuppression.value = false
+    await charger()
+  } catch (e: any) {
+    erreurSuppression.value = messageErreurApi(e, 'Échec de la suppression.')
+  } finally {
+    suppressionEnCours.value = false
   }
 }
 </script>
@@ -265,7 +363,7 @@ async function enregistrer() {
       <v-btn value="BOISSON">Boissons</v-btn>
     </v-btn-toggle>
 
-    <div v-if="filtreType === 'BOISSON' && categoriesUtilisees.length" class="d-flex flex-wrap ga-2 mb-4">
+    <div v-if="filtreType !== 'TOUS' && categoriesUtilisees.length" class="d-flex flex-wrap ga-2 mb-4">
       <v-chip
         :variant="!filtreCategorie ? 'flat' : 'outlined'"
         :color="!filtreCategorie ? 'indigo' : undefined"
@@ -314,7 +412,7 @@ async function enregistrer() {
           <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #item.uniteMesure="{ item }">{{ item.uniteMesure || '—' }}</template>
-        <template #item.prixVente="{ item }">{{ parametres.fmtMontantDepuisFC(item.prixVente) }}</template>
+        <template #item.prixVente="{ item }">{{ fmtPrixVenteFC(item.prixVente) }}</template>
         <template #item.actif="{ item }">
           <v-chip :color="item.actif ? 'success' : 'grey'" size="small" variant="tonal">
             {{ item.actif ? 'Actif' : 'Inactif' }}
@@ -327,6 +425,21 @@ async function enregistrer() {
             title="Fiche technique" to="/restaurant/recettes"
           />
           <v-btn v-if="canWrite" size="small" variant="text" icon="mdi-pencil-outline" title="Modifier" @click="ouvrirEdition(item)" />
+          <v-btn
+            v-if="canWrite"
+            size="small" variant="text"
+            :icon="item.actif ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+            :title="item.actif ? 'Désactiver (masquer)' : 'Activer'"
+            :loading="togglingId === item.id"
+            @click="toggleActif(item)"
+          />
+          <v-btn
+            v-if="canWrite"
+            size="small" variant="text" color="error"
+            icon="mdi-delete-outline"
+            title="Supprimer définitivement"
+            @click="ouvrirConfirmationSuppression(item)"
+          />
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
@@ -342,12 +455,18 @@ async function enregistrer() {
           {{ editId ? 'Modifier' : 'Nouveau' }} {{ META_TYPE[form.type]?.label?.toLowerCase() }}
         </h2>
 
+        <v-card-text ref="dialogCard" class="pa-0">
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-4">{{ erreur }}</v-alert>
 
         <v-alert v-if="form.type === 'PLAT'" type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
           Un plat est suivi en stock : la production du jour l'y fait entrer, la vente l'en sort au coût moyen.
           Définissez sa fiche technique puis passez par l'écran Production : le coût de revient sera calculé
           depuis les provisions réellement consommées.
+        </v-alert>
+
+        <v-alert v-if="!editId" type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
+          <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
+          Un compte d'achat, de stock, de charge et de vente dédié à cet article sera créé automatiquement.
         </v-alert>
 
         <v-btn-toggle
@@ -372,10 +491,9 @@ async function enregistrer() {
         <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model="form.uniteMesure" label="Unité (portion, bouteille...)" variant="outlined" density="comfortable" class="mb-3" />
         <v-combobox
-          v-if="form.type === 'BOISSON'"
           v-model="form.categorie"
-          :items="CATEGORIES_BOISSON_SUGGEREES"
-          label="Catégorie (Alcool, Vin, Whisky...)"
+          :items="categoriesSuggerees"
+          :label="form.type === 'BOISSON' ? 'Catégorie (Alcool, Vin, Whisky...)' : 'Catégorie (Entrée, Plat principal, Dessert...)'"
           hint="Choisissez une catégorie existante ou saisissez-en une nouvelle"
           persistent-hint
           clearable
@@ -401,11 +519,7 @@ async function enregistrer() {
         <p class="text-caption text-medium-emphasis mb-3" style="min-height: 1.2em">{{ prixVenteEquivalent }}</p>
         <v-text-field v-model.number="form.stockMin" type="number" label="Seuil de réapprovisionnement" variant="outlined" density="comfortable" class="mb-3" />
 
-        <v-alert v-if="!editId" type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
-          <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
-          Un compte d'achat, de stock, de charge et de vente dédié à cet article sera créé automatiquement.
-        </v-alert>
-        <template v-else>
+        <template v-if="editId">
           <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (601x)" class="mb-3" />
           <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock" class="mb-3" />
           <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de charge (déstockage)" class="mb-3" />
@@ -414,10 +528,35 @@ async function enregistrer() {
 
         <v-switch v-model="form.soumisTva" label="Soumis à la TVA" color="primary" density="compact" hide-details class="mb-2" />
         <v-switch v-model="form.actif" label="Actif" color="success" density="compact" hide-details class="mb-4" />
+        </v-card-text>
 
-        <div class="d-flex justify-end ga-2">
+        <div class="d-flex justify-end ga-2 mt-4">
           <v-btn variant="text" :disabled="saving" @click="dialog = false">Annuler</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving" @click="enregistrer">Enregistrer</v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="dialogSuppression" max-width="440">
+      <v-card class="pa-6">
+        <h2 class="text-h6 mb-4">Supprimer définitivement ?</h2>
+
+        <v-alert v-if="erreurSuppression" type="error" variant="tonal" density="compact" rounded="lg" class="mb-4">
+          {{ erreurSuppression }}
+        </v-alert>
+
+        <p class="text-body-2 mb-4">
+          <strong>{{ articleASupprimer?.libelle }}</strong> sera définitivement supprimé de la carte, ainsi que
+          ses comptes comptables dédiés (qui redeviendront disponibles pour un prochain article). Cette action
+          est irréversible et n'est possible que si l'article n'est lié à aucune opération (vente, achat,
+          mouvement de stock, fiche technique, production, conditionnement) — désactivez-le plutôt sinon.
+        </p>
+
+        <div class="d-flex justify-end ga-2">
+          <v-btn variant="text" :disabled="suppressionEnCours" @click="dialogSuppression = false">Annuler</v-btn>
+          <v-btn color="error" variant="flat" :loading="suppressionEnCours" @click="confirmerSuppression">
+            Supprimer définitivement
+          </v-btn>
         </div>
       </v-card>
     </v-dialog>

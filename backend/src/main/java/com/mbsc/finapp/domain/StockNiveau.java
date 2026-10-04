@@ -40,6 +40,16 @@ public class StockNiveau {
     private BigDecimal valeurTotale = BigDecimal.ZERO;
 
     /**
+     * Valeur du stock HORS frais d'approche (transport, manutention) : le
+     * seul prix paye aux fournisseurs. Tenue en parallele de
+     * {@link #valeurTotale}, qui les inclut, pour afficher un prix d'achat
+     * moyen a cote du cout moyen. Valeur de gestion, sans ecriture comptable.
+     */
+    @Column(name = "valeur_achat", nullable = false, precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal valeurAchat = BigDecimal.ZERO;
+
+    /**
      * Verrou optimiste : deux validations simultanées sur le même couple
      * (article, entrepôt) ne peuvent plus s'écraser silencieusement.
      */

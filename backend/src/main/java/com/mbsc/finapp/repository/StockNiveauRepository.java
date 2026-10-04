@@ -20,4 +20,7 @@ public interface StockNiveauRepository extends JpaRepository<StockNiveau, Long> 
         order by a.code, e.code
     """)
     List<StockNiveau> findAllWithDetails();
+
+    /** Nettoyage lors de la suppression definitive d'un article (voir RestaurantService.supprimerArticleCarte). */
+    void deleteByArticleId(Long articleId);
 }

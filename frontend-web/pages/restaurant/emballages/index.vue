@@ -34,7 +34,7 @@ const boissons = ref<Boisson[]>([])
 const dialog = ref(false)
 const editId = ref<number | null>(null)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
 
 const FORMATS = ['33CL', '50CL', '65CL', '1L', '1.5L']
 
@@ -232,6 +232,7 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
       <v-card class="pa-6">
         <h2 class="text-h6 mb-4">{{ editId ? 'Modifier le' : 'Nouveau' }} conditionnement</h2>
 
+        <v-card-text class="pa-0">
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-4">{{ erreur }}</v-alert>
 
         <v-autocomplete
@@ -267,8 +268,9 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
           class="mb-3"
         />
         <v-switch v-model="form.actif" label="Actif" color="success" density="compact" hide-details class="mb-4" />
+        </v-card-text>
 
-        <div class="d-flex justify-end ga-2">
+        <div class="d-flex justify-end ga-2 mt-4">
           <v-btn variant="text" :disabled="saving" @click="dialog = false">Annuler</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving" @click="enregistrer">Enregistrer</v-btn>
         </div>

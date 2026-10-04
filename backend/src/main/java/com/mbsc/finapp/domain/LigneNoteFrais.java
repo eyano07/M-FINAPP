@@ -77,6 +77,17 @@ public class LigneNoteFrais {
     private boolean echangeConsigne = false;
 
     /**
+     * true pour la ligne de frais d'approche (transport, manutention) d'une
+     * note d'achat de marchandises : imputee en « frais sur achats » (6015 ou
+     * 6025), puis repartie au paiement sur les articles achetes et incorporee
+     * a leur cout d'entree en stock — voir
+     * RegleTresorerieService.construireLignesDebitDepuisNote.
+     */
+    @Column(name = "frais_approche", nullable = false)
+    @Builder.Default
+    private boolean fraisApproche = false;
+
+    /**
      * true si l'achat est soumis a la TVA : la TVA s'ajoute alors par-dessus
      * le montant HT de la ligne (au taux {@link #tauxTvaApplique}), et est
      * comptabilisee separement sur {@link #compteTva} (TVA recuperable) au
@@ -86,7 +97,11 @@ public class LigneNoteFrais {
     @Builder.Default
     private boolean soumisTva = false;
 
-    /** Compte de TVA recuperable (ex. 4452), obligatoire si soumisTva est vrai. */
+    /**
+     * Compte de TVA, obligatoire si soumisTva est vrai : 4452 (TVA recuperable)
+     * sur une note de decaissement, 4431 (TVA collectee) sur une note
+     * d'encaissement.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "compte_tva_id")
     private CompteOHADA compteTva;

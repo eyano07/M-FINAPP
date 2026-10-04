@@ -192,11 +192,25 @@ function onNoteFraisSelect(id: number | null) {
   const note = notesAPayer.value.find((n) => n.id === id)
   if (!note) return
   const estUSD = (note.devise || 'CDF').toUpperCase() === 'USD'
+  // Arrondi au centime comme le serveur (ConversionDeviseService), qui
+  // recalcule de toute façon le montant réel : sans cet arrondi, une note
+  // de 237 800 FC s'affichait « 108,0909090909091 ».
   form.montantUSD = estUSD
     ? note.montant
-    : (tauxChange.value > 0 ? note.montant / tauxChange.value : note.montant)
+    : (tauxChange.value > 0 ? Math.round((note.montant / tauxChange.value) * 100) / 100 : note.montant)
   form.libelle = note.objet || ''
 }
+
+/**
+ * Note en francs choisie pour un paiement : son montant exact s'affiche sous
+ * le champ, plutôt qu'une reconversion du montant arrondi en dollars
+ * (108,09 × 2 200 = 237 798 FC au lieu des 237 800 FC réels).
+ */
+const noteEnFrancs = computed(() => {
+  if (form.sens !== 'DECAISSEMENT' || !form.noteFraisId) return null
+  const n = notesAPayer.value.find(x => x.id === form.noteFraisId)
+  return n && (n.devise || 'CDF').toUpperCase() !== 'USD' ? n : null
+})
 
 const notesOptions = computed(() =>
   notesAPayer.value.map((n) => ({
@@ -519,7 +533,9 @@ const fmtTaux = computed(() =>
               density="comfortable"
               rounded="lg"
               :rules="rules.montant"
-              :hint="form.montantUSD ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round((form.montantUSD ?? 0) * tauxChange))} FC` : ''"
+              :hint="noteEnFrancs
+                ? `Note de ${new Intl.NumberFormat('fr-FR').format(noteEnFrancs.montant)} FC, convertie au taux du jour`
+                : (form.montantUSD ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round((form.montantUSD ?? 0) * tauxChange))} FC` : '')"
               persistent-hint
               :readonly="form.sens === 'DECAISSEMENT' && !!form.noteFraisId"
               class="mb-3"

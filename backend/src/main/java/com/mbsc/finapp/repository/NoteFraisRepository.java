@@ -49,18 +49,7 @@ public interface NoteFraisRepository extends JpaRepository<NoteFrais, Long> {
     long countPendingByPriority(@Param("priorite") PrioriteNote priorite,
                                 @Param("excludeId") Long excludeId);
 
-    /**
-     * Somme des montants des notes TRANSMISE_CAISSE ayant une priorité
-     * strictement supérieure à {@code priorite} (pour le calcul de la réserve).
-     * Ordre de priorité : HAUTE > MOYENNE > BASSE.
-     */
-    @Query("""
-        select coalesce(sum(n.montant), 0) from NoteFrais n
-        where n.statut = com.mbsc.finapp.domain.enums.StatutNote.TRANSMISE_CAISSE
-          and n.priorite in :priorites
-          and n.id <> :excludeId
-    """)
-    java.math.BigDecimal sumMontantPendingByPriorities(
-        @Param("priorites") List<PrioriteNote> priorites,
-        @Param("excludeId") Long excludeId);
+    /** Une seule ligne de note de frais citant cet article suffit a interdire sa suppression definitive. */
+    @Query("select count(l) > 0 from LigneNoteFrais l where l.article.id = :articleId")
+    boolean existsLigneAvecArticle(@Param("articleId") Long articleId);
 }
