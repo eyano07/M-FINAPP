@@ -640,7 +640,7 @@ const peutGererPieces = computed(() =>
               </div>
             </template>
             <div class="nd-print-sign">
-              <span class="nd-print-sign__label">Caissier</span>
+              <span class="nd-print-sign__label">{{ rolesStore.libelle('CAISSIER') }}</span>
               <div class="nd-print-sign__line" />
               <span class="nd-print-sign__hint">Signature et cachet</span>
             </div>
@@ -670,7 +670,7 @@ const peutGererPieces = computed(() =>
             <div class="nd-actions-list">
               <v-btn v-if="peutSoumettre" color="primary" block rounded="lg" elevation="0"
                 prepend-icon="mdi-send-circle" :loading="busy" @click="action('soumettre')">
-                Soumettre au DFIN
+                Soumettre à {{ lDFIN }}
               </v-btn>
 
               <v-btn v-if="peutEncaisser" color="teal" block rounded="lg" elevation="0"
@@ -680,17 +680,17 @@ const peutGererPieces = computed(() =>
 
               <v-btn v-if="peutVerifier" color="indigo" block rounded="lg" elevation="0"
                 prepend-icon="mdi-check-circle" :loading="busy" @click="action('verifier')">
-                Vérifier (DFIN)
+                Vérifier ({{ lDFIN }})
               </v-btn>
 
               <template v-if="peutValiderRejeter">
                 <v-btn color="success" block rounded="lg" elevation="0"
                   prepend-icon="mdi-check" :loading="busy" @click="action('valider')">
-                  Valider (DA)
+                  Valider ({{ lDA }})
                 </v-btn>
                 <v-btn color="error" block rounded="lg" variant="tonal"
                   prepend-icon="mdi-close" :loading="busy" @click="action('rejeter', true)">
-                  Rejeter (DA)
+                  Rejeter ({{ lDA }})
                 </v-btn>
               </template>
 

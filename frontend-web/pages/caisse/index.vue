@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const rolesStore = useRolesStore()
 definePageMeta({ module: 'CAISSE', niveau: 'ECRITURE' })
 
 interface Transaction {
@@ -436,9 +437,9 @@ const fmtTaux = computed(() =>
           class="mt-3 text-left"
         >
           {{ notesEnAttenteDfin.length }} note{{ notesEnAttenteDfin.length > 1 ? 's' : '' }}
-          validée{{ notesEnAttenteDfin.length > 1 ? 's' : '' }} par le DA
+          validée{{ notesEnAttenteDfin.length > 1 ? 's' : '' }} par {{ rolesStore.libelle('DA') }}
           {{ notesEnAttenteDfin.length > 1 ? 'attendent' : 'attend' }} encore la transmission
-          à la trésorerie par le DFIN — elle{{ notesEnAttenteDfin.length > 1 ? 's' : '' }}
+          à la trésorerie par {{ rolesStore.libelle('DFIN') }} — elle{{ notesEnAttenteDfin.length > 1 ? 's' : '' }}
           apparaîtr{{ notesEnAttenteDfin.length > 1 ? 'ont' : 'a' }} ici une fois transmise{{ notesEnAttenteDfin.length > 1 ? 's' : '' }}.
         </v-alert>
       </div>
@@ -515,7 +516,7 @@ const fmtTaux = computed(() =>
           { title: 'Sens', key: 'sens', align: 'center' },
           { title: 'Montant (USD)', key: 'montant', align: 'end' },
           { title: 'Taux du jour', key: 'tauxJournalier', align: 'end', sortable: false },
-          { title: 'Caissier', key: 'caissierNom', sortable: false },
+          { title: rolesStore.libelle('CAISSIER'), key: 'caissierNom', sortable: false },
           { title: 'Reçu', key: 'numeroRecu', sortable: false },
         ]"
       >
@@ -742,7 +743,7 @@ const fmtTaux = computed(() =>
             <strong>{{ recuData.objet || '—' }}</strong>
           </div>
           <div class="recu-doc__row">
-            <span>Caissier</span>
+            <span>{{ rolesStore.libelle('CAISSIER') }}</span>
             <strong>{{ recuData.caissierNom || '—' }}</strong>
           </div>
         </div>
@@ -758,7 +759,7 @@ const fmtTaux = computed(() =>
             <div class="recu-doc__sign-line" />
           </div>
           <div class="recu-doc__sign">
-            <span>Caissier</span>
+            <span>{{ rolesStore.libelle('CAISSIER') }}</span>
             <div class="recu-doc__sign-line" />
           </div>
         </div>

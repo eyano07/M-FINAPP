@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const rolesStore = useRolesStore()
 import { useAuthStore } from '~/stores/auth'
 import { Bar, Line, Pie, Doughnut, Radar, Scatter, Bubble } from 'vue-chartjs'
 
@@ -383,7 +384,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
       <p class="dash__empty-title">Aucune note n'attend votre action</p>
       <p class="dash__empty-sub">
         {{ enCoursAilleurs }} note{{ enCoursAilleurs !== 1 ? 's' : '' }} encore
-        dans le circuit, en attente d'un autre intervenant (DFIN, DA ou caisse).
+        dans le circuit, en attente d'un autre intervenant ({{ rolesStore.libelle('DFIN') }}, {{ rolesStore.libelle('DA') }} ou caisse).
       </p>
     </div>
 

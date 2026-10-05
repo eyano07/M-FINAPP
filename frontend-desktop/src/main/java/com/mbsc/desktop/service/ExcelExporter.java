@@ -1,5 +1,6 @@
 package com.mbsc.desktop.service;
 
+import com.mbsc.desktop.config.RoleLabels;
 import com.mbsc.desktop.api.NoteDtos;
 import com.mbsc.desktop.model.LocalEcriture;
 import com.mbsc.desktop.model.LocalTransaction;
@@ -92,7 +93,7 @@ public final class ExcelExporter {
             buildSubtitleRow(wb, sheet, 1, "Exporté le : " + LocalDateTime.now().format(DATETIME_FMT), 0, 6);
             buildSubtitleRow(wb, sheet, 2, ecritures.size() + " écriture(s)", 0, 6);
 
-            String[] headers = {"N°", "Date", "Compte", "Libellé", "Caissier", "Débit ($)", "Crédit ($)"};
+            String[] headers = {"N°", "Date", "Compte", "Libellé", RoleLabels.caissier(), "Débit ($)", "Crédit ($)"};
             buildHeaderRow(wb, sheet, 4, headers, "1a73e8");
 
             CellStyle evenStyle = dataStyle(wb, "e3f2fd");

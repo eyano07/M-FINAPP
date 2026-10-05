@@ -1,10 +1,12 @@
 package com.mbsc.desktop.api;
 
+import com.mbsc.desktop.config.RoleLabels;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.mbsc.desktop.config.AppConfig;
+import com.mbsc.desktop.config.RoleLabels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,6 +79,26 @@ public class ApiClient {
         setAccessToken(auth.accessToken());
         log.info("Caissier authentifie : {}", email);
         return auth;
+    }
+
+    /** Recupere le nom d'affichage du role caissier (best-effort : l'ancien nom reste utilise en cas d'echec). */
+    public void chargerLibellesRoles() {
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(AppConfig.API_BASE_URL + "/roles/libelles"))
+                .header("Authorization", "Bearer " + accessToken)
+                .GET()
+                .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                var libelles = mapper.readTree(resp.body());
+                if (libelles.hasNonNull("CAISSIER")) {
+                    RoleLabels.definirCaissier(libelles.get("CAISSIER").asText());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Libelles de roles indisponibles : {}", e.getMessage());
+        }
     }
 
     /** Pousse un lot de transactions de maniere idempotente. */

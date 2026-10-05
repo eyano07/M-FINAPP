@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const rolesStore = useRolesStore()
 definePageMeta({ module: 'RESTAURANT' })
 
 /**
@@ -166,7 +167,7 @@ async function envoyerDemande() {
     })
     await api(`/notes-frais/${note.id}/soumettre`, { method: 'POST', body: {} })
 
-    succes.value = `Demande ${note.reference} envoyée au DFIN pour validation `
+    succes.value = `Demande ${note.reference} envoyée à ${rolesStore.libelle('DFIN')} pour validation `
       + `(${form.nbCasiers} casier(s), soit ${nbBouteilles.value} bouteilles).`
     form.nbCasiers = null
     form.prixUnitaire = null
@@ -217,7 +218,7 @@ function fmtDate(iso: string) {
       <p class="text-caption text-medium-emphasis mb-4">
         <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
         L'entrée en stock et l'échange de consigne ne s'exécutent qu'au règlement de la note par la caisse,
-        après validation DFIN puis DA.
+        après validation {{ rolesStore.libelle('DFIN') }} puis {{ rolesStore.libelle('DA') }}.
       </p>
 
       <v-select

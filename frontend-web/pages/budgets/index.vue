@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const rolesStore = useRolesStore()
 // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
 // uniquement) mais ne voit pas les Budgets.
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
@@ -114,7 +115,7 @@ const taux = (b: Budget) => (b.totalPrevu ? Math.round((b.totalRealise / b.total
     <div class="page-head">
       <div>
         <h1 class="page-title">Budgets</h1>
-        <p class="page-sub">Prévisions élaborées par le DFIN et approuvées par le DA</p>
+        <p class="page-sub">Prévisions élaborées par {{ rolesStore.libelle('DFIN') }} et approuvées par {{ rolesStore.libelle('DA') }}</p>
       </div>
       <button v-if="isDFIN" class="bud-new-btn" @click="dialog = true">
         <v-icon icon="mdi-plus" size="18" class="mr-1" />
