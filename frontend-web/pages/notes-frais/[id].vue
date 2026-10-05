@@ -157,6 +157,9 @@ const montantFmt = computed(() =>
 )
 
 const statut = computed(() => note.value?.statut)
+const rolesStore = useRolesStore()
+const lDFIN = computed(() => rolesStore.libelle('DFIN'))
+const lDA = computed(() => rolesStore.libelle('DA'))
 const isDFIN = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
 const isDA = computed(() => auth.hasAnyRole(['DA', 'ADMIN']))
 const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER']))
@@ -193,16 +196,16 @@ const peutAnnuler      = computed(() =>
 /** Message contextuel quand aucune action n'est disponible. */
 const messageAucuneAction = computed(() => {
   const s = statut.value || ''
-  if (s === 'BROUILLON' && estEncaissement.value) return "Seul le caissier peut encaisser cette note directement (sans validation DFIN/DA)."
+  if (s === 'BROUILLON' && estEncaissement.value) return "Seul le caissier peut encaisser cette note directement (sans validation "+lDFIN.value+"/"+lDA.value+")."
   if (s === 'TRANSMISE_CAISSE') return 'Cette note est transmise à la trésorerie et attend son paiement (caisse, banque ou mobile money).'
   if (s === 'PAYEE')            return estEncaissement.value ? 'Cette note a déjà été encaissée. Aucune action requise.' : 'Cette note a déjà été payée. Aucune action requise.'
   if (s === 'ANNULEE')          return 'Cette note est annulée.'
   if (s === 'SOUMISE')
-    return 'En attente de vérification par le DFIN.'
+    return `En attente de vérification par ${lDFIN.value}.`
   if (s === 'VERIFIEE_DFIN' && !isDA.value)
-    return 'Note vérifiée par le DFIN. En attente de validation par le DA.'
+    return `Note vérifiée par ${lDFIN.value}. En attente de validation par ${lDA.value}.`
   if (s === 'VALIDEE_DA' && !isDFIN.value)
-    return 'Note validée par le DA. En attente de transmission à la trésorerie par le DFIN.'
+    return `Note validée par ${lDA.value}. En attente de transmission à la trésorerie par ${lDFIN.value}.`
   return 'Aucune action disponible pour votre rôle à ce stade.'
 })
 
@@ -913,13 +916,13 @@ const peutGererPieces = computed(() =>
             </div>
             <template v-if="!estEncaissement">
               <div class="nd-print-sign">
-                <span class="nd-print-sign__label">Vérifié DFIN</span>
+                <span class="nd-print-sign__label">Vérifié {{ lDFIN }}</span>
                 <span v-if="signataire('VERIFIEE_DFIN')" class="nd-print-sign__name">{{ signataire('VERIFIEE_DFIN') }}</span>
                 <div class="nd-print-sign__line" />
                 <span class="nd-print-sign__hint">Signature et cachet</span>
               </div>
               <div class="nd-print-sign">
-                <span class="nd-print-sign__label">Validé DA</span>
+                <span class="nd-print-sign__label">Validé {{ lDA }}</span>
                 <span v-if="signataire('VALIDEE_DA')" class="nd-print-sign__name">{{ signataire('VALIDEE_DA') }}</span>
                 <div class="nd-print-sign__line" />
                 <span class="nd-print-sign__hint">Signature et cachet</span>
@@ -987,7 +990,7 @@ const peutGererPieces = computed(() =>
               <template v-if="peutPrioriser">
                 <div class="nd-divider" />
                 <div class="nd-field">
-                  <label class="nd-label">Priorité de paiement (DA)</label>
+                  <label class="nd-label">Priorité de paiement ({{ lDA }})</label>
                   <v-select v-model="prioriteChoisie" :items="prioriteOptions" density="comfortable" hide-details />
                 </div>
                 <v-btn color="deep-purple" block rounded="lg" elevation="0"
