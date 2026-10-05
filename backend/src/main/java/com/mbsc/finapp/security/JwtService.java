@@ -60,11 +60,18 @@ public class JwtService {
     /** Valeurs du claim "type" : distingue les jetons d'accès des jetons de rafraîchissement. */
     public static final String TYPE_ACCESS = "access";
     public static final String TYPE_REFRESH = "refresh";
+    /**
+     * Version des jetons de l'utilisateur à l'émission (voir User.versionJetons) :
+     * un jeton dont la version n'est plus la courante est refusé. Absent des
+     * jetons émis avant V96 : lu comme 0.
+     */
+    static final String CLAIM_VERSION = "tv";
 
     public String generateAccessToken(UserPrincipal principal) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("uid", principal.getId());
         claims.put("type", TYPE_ACCESS);
+        claims.put(CLAIM_VERSION, principal.getVersionJetons());
         claims.put("roles", principal.getAuthorities().stream()
             .map(a -> a.getAuthority())
             .collect(Collectors.toList()));
@@ -74,6 +81,7 @@ public class JwtService {
     public String generateRefreshToken(UserPrincipal principal) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("type", TYPE_REFRESH);
+        claims.put(CLAIM_VERSION, principal.getVersionJetons());
         return buildToken(claims, principal.getUsername(), refreshExpirationMs);
     }
 
@@ -118,10 +126,23 @@ public class JwtService {
         return extractClaim(token, Claims::getSubject);
     }
 
+    /**
+     * Jeton signé, non expiré, émis pour cet utilisateur, encore actif, et de
+     * la version de jetons courante : un compte désactivé, un mot de passe
+     * changé ou une déconnexion invalident immédiatement les jetons déjà émis
+     * (audit sécurité du 05/10/2026, S-02).
+     */
     public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
             final String username = extractUsername(token);
-            return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+            if (!username.equals(userDetails.getUsername()) || isTokenExpired(token) || !userDetails.isEnabled()) {
+                return false;
+            }
+            if (userDetails instanceof UserPrincipal principal) {
+                Number version = extractClaim(token, c -> c.get(CLAIM_VERSION, Number.class));
+                return (version == null ? 0 : version.intValue()) == principal.getVersionJetons();
+            }
+            return true;
         } catch (Exception e) {
             return false;
         }

@@ -3,7 +3,6 @@ package com.mbsc.finapp.service;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.NoteFrais;
-import com.mbsc.finapp.domain.ObservationNote;
 import com.mbsc.finapp.domain.TransactionCaisse;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.SensTransaction;
@@ -11,6 +10,8 @@ import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.dto.sync.EcritureSyncDto;
 import com.mbsc.finapp.dto.sync.TransactionSyncDto;
 import com.mbsc.finapp.exception.ConflitSyncException;
+import com.mbsc.finapp.exception.ReglePrioriteException;
+import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.NoteFraisRepository;
 import com.mbsc.finapp.repository.TransactionCaisseRepository;
@@ -49,6 +50,10 @@ public class SyncTransactionProcessor {
     private final PeriodeComptableService periodeService;
     /** Resout le taux de change a la date d'operation de la transaction synchronisee. */
     private final ConversionDeviseService conversionDevise;
+    /** Paiement d'une note : même traitement qu'au guichet (voir payerNoteSynchronisee). */
+    private final CaisseService caisseService;
+    /** Contreparties admises pour une opération de caisse sans note. */
+    private final RegleTresorerieService regleTresorerie;
 
     /**
      * @return {@code true} si une nouvelle transaction a ete creee,
@@ -105,25 +110,96 @@ public class SyncTransactionProcessor {
         }
 
         NoteFrais note = rattacherNote(dto.noteReference(), transaction);
+        if (note != null) {
+            return payerNoteSynchronisee(dto, note, transaction, caissier);
+        }
         ajouterEcritures(dto, transaction);
         verifierEquilibre(dto, transaction);
+        verifierFormeOperationCaisse(dto, transaction, sens);
 
         TransactionCaisse saved = transactionRepository.save(transaction);
 
         // Chaque transaction synchronisée est adossée à une pièce comptable
         // équilibrée, comme les saisies directes (aucune écriture orpheline).
-        String libellePiece = StringUtils.hasText(dto.noteReference())
-            ? "Sync paiement note " + dto.noteReference()
-            : "Sync caisse " + saved.getReference();
-        comptabiliteService.creerPieceCaisse(libellePiece, dateEcriture, saved.getEcritures(), caissier);
-
-        if (note != null) {
-            marquerNotePayee(note, caissier, saved);
-        }
+        comptabiliteService.creerPieceCaisse("Sync caisse " + saved.getReference(), dateEcriture,
+            saved.getEcritures(), caissier);
 
         log.info("Transaction synchronisee [uuid={}, ref={}, montant={}, caissier={}]",
             uuid, transaction.getReference(), dto.montant(), caissier.getEmail());
         return true;
+    }
+
+    /**
+     * Paiement d'une note remonté du poste hors ligne. Le poste ne décide plus ni
+     * du montant ni des comptes : le montant doit être celui de la note (au taux
+     * de la date d'opération), puis le paiement suit exactement le circuit du
+     * guichet ({@link CaisseService#payerNoteDepuisSyncInterne}) — règle de
+     * priorité, ventilation, stock, consigne, écart de change. Auparavant, un
+     * poste pouvait solder une note de 5 000 $ avec 1 $ et des comptes au choix
+     * (audit sécurité du 05/10/2026, S-03). Les écritures envoyées par le poste
+     * sont ignorées.
+     */
+    private boolean payerNoteSynchronisee(TransactionSyncDto dto, NoteFrais note,
+                                          TransactionCaisse transaction, User caissier) {
+        BigDecimal taux = transaction.getTauxJournalier();
+        BigDecimal attendu = conversionDevise.enDeviseBase(note.getMontant(), note.getDevise(), taux).montantBase();
+        if (transaction.getMontant().compareTo(attendu) != 0) {
+            throw new ConflitSyncException("Transaction " + dto.uuid() + " : montant " + transaction.getMontant()
+                + " différent de celui de la note " + note.getReference() + " (" + attendu + ")");
+        }
+        try {
+            TransactionCaisse saved = caisseService.payerNoteDepuisSyncInterne(note, caissier,
+                transaction.getUuid(), transaction.getReference(), transaction.getNumeroRecu(),
+                transaction.getDateOperation(), taux);
+            log.info("Paiement de note synchronise [uuid={}, ref={}, note={}, caissier={}]",
+                dto.uuid(), saved.getReference(), note.getReference(), caissier.getEmail());
+            return true;
+        } catch (TransitionInvalideException | ReglePrioriteException | IllegalArgumentException
+                 | IllegalStateException e) {
+            // Règle métier non respectée : réessayer ne changerait rien.
+            throw new ConflitSyncException("Transaction " + dto.uuid() + " : " + e.getMessage());
+        }
+    }
+
+    /**
+     * Sans note, une opération synchronisée doit avoir la forme d'une saisie
+     * directe au guichet ({@code CaisseService.enregistrer}) : la caisse 571
+     * d'un seul côté, pour le montant exact de l'opération ; de l'autre, des
+     * contreparties admises par la règle de trésorerie ; aucun autre compte de
+     * trésorerie (banque, mobile money) — audit sécurité du 05/10/2026, S-03.
+     */
+    private void verifierFormeOperationCaisse(TransactionSyncDto dto, TransactionCaisse transaction,
+                                              SensTransaction sens) {
+        boolean encaissement = sens == SensTransaction.ENCAISSEMENT;
+        BigDecimal caisse = BigDecimal.ZERO;
+        for (EcritureGrandLivre e : transaction.getEcritures()) {
+            String numero = e.getCompte().getNumero();
+            BigDecimal coteCaisse = encaissement ? e.getDebit() : e.getCredit();
+            if (numero.startsWith("571")) {
+                if (coteCaisse.signum() <= 0) {
+                    throw new ConflitSyncException("Transaction " + dto.uuid() + " : la caisse ne peut figurer qu'au "
+                        + (encaissement ? "débit d'un encaissement" : "crédit d'un décaissement"));
+                }
+                caisse = caisse.add(coteCaisse);
+            } else if (numero.startsWith("5")) {
+                throw new ConflitSyncException("Transaction " + dto.uuid() + " : compte de trésorerie " + numero
+                    + " interdit, le poste de caisse ne mouvemente que la caisse");
+            } else {
+                if (coteCaisse.signum() > 0) {
+                    throw new ConflitSyncException("Transaction " + dto.uuid() + " : la contrepartie " + numero
+                        + " est du côté de la caisse");
+                }
+                try {
+                    regleTresorerie.validerSensContrepartie(sens, e.getCompte());
+                } catch (RuntimeException ex) {
+                    throw new ConflitSyncException("Transaction " + dto.uuid() + " : " + ex.getMessage());
+                }
+            }
+        }
+        if (caisse.compareTo(transaction.getMontant()) != 0) {
+            throw new ConflitSyncException("Transaction " + dto.uuid() + " : la caisse (" + caisse
+                + ") doit être mouvementée du montant de l'opération (" + transaction.getMontant() + ")");
+        }
     }
 
     /** Refuse toute transaction dont les écritures ne respectent pas la partie double. */
@@ -220,17 +296,6 @@ public class SyncTransactionProcessor {
                 .dateEcriture(parseDate(e.dateEcriture(), defaut))
                 .build());
         }
-    }
-
-    private void marquerNotePayee(NoteFrais note, User caissier, TransactionCaisse transaction) {
-        note.setStatut(StatutNote.PAYEE);
-        note.addObservation(ObservationNote.builder()
-            .noteFrais(note)
-            .auteur(caissier)
-            .statutAuMoment(StatutNote.PAYEE)
-            .commentaire("Paiement synchronise depuis la caisse (recu "
-                + transaction.getNumeroRecu() + ")")
-            .build());
     }
 
     /**

@@ -23,7 +23,9 @@ import java.util.Set;
 public class ParametresEntrepriseService {
 
     private static final Set<String> MIME_LOGO_AUTORISES = Set.of(
-        "image/jpeg", "image/jpg", "image/png", "image/webp", "image/svg+xml");
+        // Pas de SVG : un SVG peut porter du script, exécuté sur le domaine de
+        // l'application quand le logo est ouvert (audit sécurité du 05/10/2026, S-08).
+        "image/jpeg", "image/jpg", "image/png", "image/webp");
     private static final long TAILLE_MAX_OCTETS = 5L * 1024 * 1024;
 
     private final ParametresEntrepriseRepository repository;
@@ -79,7 +81,7 @@ public class ParametresEntrepriseService {
         }
         String type = fichier.getContentType();
         if (type == null || !MIME_LOGO_AUTORISES.contains(type.toLowerCase())) {
-            throw new IllegalArgumentException("Format non autorise. Formats acceptes : JPEG, PNG, WEBP, SVG");
+            throw new IllegalArgumentException("Format non autorise. Formats acceptes : JPEG, PNG, WEBP");
         }
 
         ParametresEntreprise p = charger();

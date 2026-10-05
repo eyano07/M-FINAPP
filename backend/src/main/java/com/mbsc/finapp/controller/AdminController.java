@@ -176,9 +176,14 @@ public class AdminController {
         MediaType type = telechargement.typeMime() != null
             ? MediaType.parseMediaType(telechargement.typeMime())
             : MediaType.APPLICATION_OCTET_STREAM;
+        // Le logo est public et servi sur le domaine de l'application : même si un
+        // ancien logo SVG était resté en base, ces en-têtes empêchent tout script
+        // qu'il contiendrait de s'exécuter (audit sécurité du 05/10/2026, S-08).
         return ResponseEntity.ok()
             .contentType(type)
             .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000, immutable")
+            .header("X-Content-Type-Options", "nosniff")
+            .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
             .body(telechargement.ressource());
     }
 

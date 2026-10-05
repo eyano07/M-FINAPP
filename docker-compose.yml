@@ -33,7 +33,8 @@ services:
       APP_JWT_SECRET: "${JWT_SECRET:?JWT_SECRET est obligatoire - generer avec openssl rand -base64 48}"
       APP_JWT_EXPIRATION: ${JWT_EXPIRATION:-3600000}
       APP_CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:3000}
-      APP_SEED_ENABLED: ${SEED_ENABLED:-true}
+      APP_SEED_ENABLED: ${SEED_ENABLED:-false}
+      APP_SEED_PASSWORD: ${SEED_PASSWORD:-}
       # Prive par defaut : cette variable etant toujours transmise, elle
       # ecrasait le durcissement du profil prod (app.swagger.public=false) et
       # laissait /v3/api-docs accessible sans authentification.

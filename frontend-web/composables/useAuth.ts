@@ -29,7 +29,24 @@ export function useAuth() {
     return res
   }
 
-  function logout() {
+  /**
+   * Ferme la session côté serveur (tous les jetons de l'utilisateur sont
+   * révoqués), puis localement. Sans réseau ou avec un jeton déjà expiré, la
+   * déconnexion locale a lieu quand même.
+   */
+  async function logout() {
+    if (auth.accessToken) {
+      try {
+        await $fetch('/auth/logout', {
+          baseURL: config.public.apiBase as string,
+          method: 'POST',
+          headers: { Authorization: `Bearer ${auth.accessToken}` },
+          timeout: 5000,
+        })
+      } catch {
+        // Déconnexion locale malgré tout.
+      }
+    }
     auth.logout()
     navigateTo('/login')
   }

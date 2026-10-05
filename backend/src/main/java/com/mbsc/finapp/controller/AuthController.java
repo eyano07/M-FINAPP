@@ -31,6 +31,15 @@ public class AuthController {
         return ResponseEntity.ok(authService.refresh(request));
     }
 
+    /** Ferme toutes les sessions de l'utilisateur connecté (jetons révoqués). */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@AuthenticationPrincipal UserPrincipal principal) {
+        if (principal != null) {
+            authService.deconnecter(principal.getId());
+        }
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> me(@AuthenticationPrincipal UserPrincipal principal) {
         var user = principal.getDomainUser();

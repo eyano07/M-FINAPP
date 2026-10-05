@@ -52,6 +52,9 @@ public class ModuleAccessFilter extends OncePerRequestFilter {
     // tout ajout futur plutot que de compter sur une convention.
     private static final List<Map.Entry<String, ModuleMetier>> PREFIXES = Stream.of(
         Map.entry("/caisse", ModuleMetier.CAISSE),
+        // Synchronisation du poste de caisse hors ligne : soumise au module
+        // CAISSE comme le guichet (audit sécurité du 05/10/2026, S-03).
+        Map.entry("/sync", ModuleMetier.CAISSE),
         Map.entry("/banque", ModuleMetier.BANQUE),
         Map.entry("/mobile-money", ModuleMetier.MOBILE_MONEY),
         Map.entry("/comptabilite", ModuleMetier.COMPTABILITE),

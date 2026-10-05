@@ -24,22 +24,29 @@ import java.util.Set;
  * (apres que les users existent) plutot que dans un script Flyway qui
  * s'execute avant le demarrage de l'application.</p>
  *
- * <p>Desactivable via {@code APP_SEED_ENABLED=false} en production.</p>
+ * <p>Desactive par defaut. Pour amorcer une base de demonstration :
+ * {@code APP_SEED_ENABLED=true} ET {@code APP_SEED_PASSWORD} (12 caracteres au
+ * moins). Aucun mot de passe n'est plus ecrit dans le code : l'ancien, publie
+ * avec le depot, doit etre considere comme compromis (audit securite du
+ * 05/10/2026, S-01).</p>
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class DataSeeder implements CommandLineRunner {
 
-    private static final String DEFAULT_PASSWORD = "Mbsc@2026";
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbc;
 
-    @Value("${app.seed.enabled:true}")
+    @Value("${app.seed.enabled:false}")
     private boolean seedEnabled;
+
+    /** Mot de passe des comptes de demonstration ; obligatoire si l'amorcage est actif. */
+    @Value("${app.seed.password:}")
+    private String seedPassword;
 
     @Override
     @Transactional
@@ -47,6 +54,11 @@ public class DataSeeder implements CommandLineRunner {
         if (!seedEnabled) {
             log.info("Seeder desactive (app.seed.enabled=false)");
             return;
+        }
+        if (seedPassword == null || seedPassword.length() < 12) {
+            throw new IllegalStateException(
+                "APP_SEED_ENABLED=true exige APP_SEED_PASSWORD (12 caracteres au moins) : "
+                + "aucun mot de passe par defaut n'est plus fourni.");
         }
         log.warn("=== Seeder actif : comptes de demonstration. Definissez APP_SEED_ENABLED=false en production. ===");
 
@@ -74,7 +86,7 @@ public class DataSeeder implements CommandLineRunner {
 
         userRepository.save(User.builder()
             .email(email)
-            .motDePasse(passwordEncoder.encode(DEFAULT_PASSWORD))
+            .motDePasse(passwordEncoder.encode(seedPassword))
             .nom(nom)
             .prenom(prenom)
             .actif(true)

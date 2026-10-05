@@ -40,15 +40,16 @@ app:
     expiration: ${APP_JWT_EXPIRATION:3600000}         # 1h en ms (le refresh token prend le relais)
     refresh-expiration: ${APP_JWT_REFRESH_EXPIRATION:604800000}  # 7j en ms
     issuer: mbsc-finapp
-    require-custom-secret: ${APP_JWT_REQUIRE_CUSTOM_SECRET:false}  # true en production
+    require-custom-secret: ${APP_JWT_REQUIRE_CUSTOM_SECRET:true}   # false seulement en developpement local
   cors:
     allowed-origins: ${APP_CORS_ORIGINS:http://localhost:3000,http://localhost:80,http://localhost}
   storage:
     location: ${APP_STORAGE_LOCATION:./data/uploads}
   seed:
-    enabled: ${APP_SEED_ENABLED:true}       # false en production
+    enabled: ${APP_SEED_ENABLED:false}      # true seulement pour une base de demonstration
+    password: ${APP_SEED_PASSWORD:}         # obligatoire si enabled (aucune valeur par defaut)
   swagger:
-    public: ${APP_SWAGGER_PUBLIC:true}      # false en production (reserve ADMIN)
+    public: ${APP_SWAGGER_PUBLIC:false}     # true seulement en developpement
   security:
     login-max-attempts: ${APP_LOGIN_MAX_ATTEMPTS:5}
     login-lock-minutes: ${APP_LOGIN_LOCK_MINUTES:15}

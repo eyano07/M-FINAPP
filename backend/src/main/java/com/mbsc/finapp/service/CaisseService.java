@@ -341,7 +341,32 @@ public class CaisseService {
         User caissier = currentUser.requireUser();
         NoteFrais note = noteRepository.findById(noteId)
             .orElseThrow(() -> RessourceIntrouvableException.of("NoteFrais", noteId));
+        TransactionCaisse saved = executerPaiementNote(note, caissier, UUID.randomUUID(),
+            referenceGenerator.pourTransaction(), referenceGenerator.pourRecu(),
+            Instant.now(), conversionDevise.tauxCourant());
+        return TransactionCaisseResponse.from(saved);
+    }
 
+    /**
+     * Paiement d'une note remonté par la synchronisation du poste de caisse hors
+     * ligne : exactement le même traitement que {@link #payerNote} — montant tiré
+     * de la note, règle de priorité, ventilation des écritures, entrée en stock,
+     * échange de consigne, écart de change. Le poste ne fournit plus ni le montant
+     * ni les comptes (audit sécurité du 05/10/2026, S-03). Le contrôle de rôle
+     * est fait à l'entrée de la synchronisation (SyncController).
+     */
+    @Transactional
+    public TransactionCaisse payerNoteDepuisSyncInterne(NoteFrais note, User caissier, UUID uuid,
+                                                        String reference, String numeroRecu,
+                                                        Instant dateOperation, BigDecimal tauxOperation) {
+        String recu = numeroRecu != null && !numeroRecu.isBlank() ? numeroRecu : referenceGenerator.pourRecu();
+        return executerPaiementNote(note, caissier, uuid, reference, recu, dateOperation, tauxOperation);
+    }
+
+    /** Paiement d'une note TRANSMISE_CAISSE, commun au guichet et à la synchronisation. */
+    private TransactionCaisse executerPaiementNote(NoteFrais note, User caissier, UUID uuid, String reference,
+                                                   String numeroRecu, Instant dateOperation,
+                                                   BigDecimal tauxOperation) {
         if (note.getStatut() != StatutNote.TRANSMISE_CAISSE) {
             throw new TransitionInvalideException(
                 "Seule une note TRANSMISE_CAISSE peut etre payee (etat actuel : " + note.getStatut() + ")");
@@ -360,7 +385,6 @@ public class CaisseService {
         // résolutions séparées pourraient encadrer un changement de taux et
         // faire diverger transactions_caisse.taux_journalier de
         // grand_livre.taux_applique pour un même mouvement.
-        BigDecimal tauxOperation = conversionDevise.tauxCourant();
         ConversionDeviseService.Conversion conversion =
             conversionDevise.enDeviseBase(note.getMontant(), note.getDevise(), tauxOperation);
 
@@ -389,15 +413,15 @@ public class CaisseService {
                     + conversion.deviseOrigine() + " @ " + conversion.tauxApplique().toPlainString() + ")"
                 : "");
         TransactionCaisse transaction = TransactionCaisse.builder()
-            .uuid(UUID.randomUUID())
-            .reference(referenceGenerator.pourTransaction())
+            .uuid(uuid)
+            .reference(reference)
             .noteFrais(note)
             .montant(conversion.montantBase())
             .sens(SensTransaction.DECAISSEMENT)
             .libelle(libellePaiement)
             .caissier(caissier)
-            .numeroRecu(referenceGenerator.pourRecu())
-            .dateOperation(Instant.now())
+            .numeroRecu(numeroRecu)
+            .dateOperation(dateOperation)
             .tauxJournalier(tauxOperation)
             .build();
 
@@ -443,7 +467,7 @@ public class CaisseService {
         }
         // Ecart de change realise : la note a ete engagee a un taux fige lors
         // de sa transmission, elle est reglee au taux du jour. La difference
-        // est reclassee en 676/776 par une piece dediee, au lieu de rester
+        // est reclassee en 656/756 par une piece dediee, au lieu de rester
         // invisible dans le compte de charge.
         ecartChange.comptabiliserEcart(note, tauxOperation,
             saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(), caissier);
@@ -469,7 +493,7 @@ public class CaisseService {
             com.mbsc.finapp.domain.enums.TypeNotification.NOTE_PAYEE,
             "Note payée", note.getReference() + " — reçu " + saved.getNumeroRecu(),
             "/notes-frais/" + note.getId(), note);
-        return TransactionCaisseResponse.from(saved);
+        return saved;
     }
 
     // ---------------------------------------------------------------------

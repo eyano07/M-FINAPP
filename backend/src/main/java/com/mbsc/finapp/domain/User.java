@@ -53,6 +53,14 @@ public class User {
     @Builder.Default
     private boolean actif = true;
 
+    /**
+     * Version des jetons JWT de l'utilisateur (claim « tv », voir JwtService) :
+     * l'augmenter rend inutilisables tous les jetons déjà émis (V96).
+     */
+    @Column(name = "version_jetons", nullable = false)
+    @Builder.Default
+    private int versionJetons = 0;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "user_roles",
@@ -71,4 +79,9 @@ public class User {
     @UpdateTimestamp
     @Column(name = "date_maj")
     private Instant dateMaj;
+
+    /** Rend inutilisables tous les jetons déjà émis pour cet utilisateur (voir {@link #versionJetons}). */
+    public void revoquerJetons() {
+        versionJetons++;
+    }
 }

@@ -92,6 +92,20 @@ public class AuthService {
         return buildResponse(principal);
     }
 
+    /**
+     * Déconnexion côté serveur : tous les jetons de l'utilisateur, sur tous
+     * ses appareils, cessent d'être acceptés (voir User.versionJetons). Sans
+     * elle, un jeton de rafraîchissement copié restait utilisable 7 jours
+     * après la déconnexion (audit sécurité du 05/10/2026, S-02).
+     */
+    @Transactional
+    public void deconnecter(Long userId) {
+        userRepository.findById(userId).ifPresent(user -> {
+            user.revoquerJetons();
+            log.info("Deconnexion : jetons revoques pour {}", user.getEmail());
+        });
+    }
+
     private AuthResponse buildResponse(UserPrincipal principal) {
         User user = principal.getDomainUser();
         String accessToken = jwtService.generateAccessToken(principal);

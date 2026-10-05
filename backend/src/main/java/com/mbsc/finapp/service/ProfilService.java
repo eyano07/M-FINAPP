@@ -58,6 +58,9 @@ public class ProfilService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mot de passe actuel incorrect.");
         }
         u.setMotDePasse(passwordEncoder.encode(req.nouveauMotDePasse()));
+        // Toutes les sessions sont fermées, celle-ci comprise : l'écran
+        // renvoie à la connexion avec le nouveau mot de passe.
+        u.revoquerJetons();
         userRepository.save(u);
     }
 

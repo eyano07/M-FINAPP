@@ -259,6 +259,9 @@ public class AdminService {
         u.setPrenom(req.prenom());
         if (req.motDePasse() != null && !req.motDePasse().isBlank()) {
             u.setMotDePasse(passwordEncoder.encode(req.motDePasse()));
+            // Mot de passe réinitialisé : les sessions ouvertes avec l'ancien
+            // (y compris par un tiers qui le connaissait) sont fermées.
+            u.revoquerJetons();
         }
         u.setTelephone(videEnNull(req.telephone()));
         u.setFonction(videEnNull(req.fonction()));
@@ -279,6 +282,11 @@ public class AdminService {
         User u = userRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur introuvable."));
         u.setActif(!u.isActif());
+        if (!u.isActif()) {
+            // Un compte désactivé perd immédiatement l'accès : ses jetons
+            // (accès et rafraîchissement) ne sont plus acceptés.
+            u.revoquerJetons();
+        }
         return UserResponse.from(userRepository.save(u));
     }
 }

@@ -127,7 +127,13 @@ async function changerMotDePasse() {
     pwd.ancien = ''
     pwd.nouveau = ''
     pwd.confirmation = ''
-    pwdSucces.value = 'Mot de passe modifié.'
+    // Le serveur ferme toutes les sessions, celle-ci comprise : on renvoie à la
+    // connexion avec le nouveau mot de passe.
+    pwdSucces.value = 'Mot de passe modifié. Reconnectez-vous avec le nouveau mot de passe…'
+    setTimeout(() => {
+      useAuthStore().logout()
+      navigateTo('/login')
+    }, 2000)
   } catch (e: any) {
     pwdErreur.value = messageErreurApi(e, 'Échec du changement de mot de passe.')
   } finally {
