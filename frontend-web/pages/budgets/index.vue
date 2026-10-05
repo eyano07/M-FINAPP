@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const rolesStore = useRolesStore()
 // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
 // uniquement) mais ne voit pas les Budgets.
 definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
@@ -61,7 +62,7 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
     <div class="page-head">
       <div>
         <h1 class="page-title">Budgets</h1>
-        <p class="page-sub">Budgets annuels ventilés par mois, élaborés par le DFIN, approuvés par le DA, suivis sur le grand livre</p>
+        <p class="page-sub">Budgets annuels ventilés par mois, élaborés par {{ rolesStore.libelle('DFIN') }}, approuvés par {{ rolesStore.libelle('DA') }}, suivis sur le grand livre</p>
       </div>
       <v-btn v-if="peutElaborer" color="primary" prepend-icon="mdi-plus" height="44" to="/budgets/nouveau">Nouveau budget</v-btn>
     </div>

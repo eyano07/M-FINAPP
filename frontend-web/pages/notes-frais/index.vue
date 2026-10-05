@@ -5,6 +5,7 @@
 // garde repetee ici pour que l'URL directe /notes-frais reste elle aussi fermee.
 definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'LOGISTIQUE'] })
 
+const rolesStore = useRolesStore()
 interface NoteFrais {
   id: number
   reference: string
@@ -403,7 +404,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
         <p class="page-sub">
           {{ activeSens === 'ENCAISSEMENT'
             ? 'Recette de caisse émise et encaissée directement par le caissier'
-            : 'Circuit de validation DFIN → DA → Caisse' }}
+            : `Circuit de validation ${rolesStore.libelle('DFIN')} → ${rolesStore.libelle('DA')} → Caisse` }}
         </p>
       </div>
       <v-btn
@@ -590,7 +591,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
             </p>
             <p class="nf-dialog__head-sub">
               {{ form.sens === 'ENCAISSEMENT'
-                ? 'Recette de caisse encaissée directement, sans validation DFIN/DA'
+                ? `Recette de caisse encaissée directement, sans validation ${rolesStore.libelle('DFIN')}/${rolesStore.libelle('DA')}`
                 : 'Une note peut regrouper plusieurs dépenses' }}
             </p>
           </div>

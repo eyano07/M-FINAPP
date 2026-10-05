@@ -130,6 +130,7 @@ public class NoteFraisService {
     private final CurrentUserProvider currentUser;
     private final StorageService storage;
     private final NotificationService notificationService;
+    private final RoleLibelleService roleLibelleService;
     /** Fige le taux d'engagement des notes en devise lors de la transmission. */
     private final ConversionDeviseService conversionDevise;
     /** Fige le taux de TVA applicable a chaque ligne soumise a la TVA, au moment de sa saisie. */
@@ -615,7 +616,7 @@ public class NoteFraisService {
         exigerNoteStandard(note, "modifier les comptes d'imputation");
 
         User auteur = currentUser.requireUser();
-        StringBuilder trace = new StringBuilder("Comptes d'imputation modifies : ");
+        StringBuilder trace = new StringBuilder("Comptes d'imputation modifies par " + libelle(RoleType.DFIN) + " : ");
         for (int i = 0; i < req.lignes().size(); i++) {
             LigneCompteRequest ligneReq = req.lignes().get(i);
             LigneNoteFrais ligne = note.getLignes().stream()
@@ -947,7 +948,7 @@ public class NoteFraisService {
         NoteFrais note = charger(id);
         if (note.getSens() == SensTransaction.ENCAISSEMENT) {
             throw new TransitionInvalideException(
-                "Une note d'encaissement ne suit pas le circuit DFIN/DA : utilisez l'action "
+                "Une note d'encaissement ne suit pas le circuit " + libelle(RoleType.DFIN) + "/" + libelle(RoleType.DA) + " : utilisez l'action "
                     + "\"encaisser\" pour l'executer directement");
         }
         if (note.getStatut() != StatutNote.BROUILLON && note.getStatut() != StatutNote.REJETEE_DA) {
@@ -958,7 +959,7 @@ public class NoteFraisService {
         exigerCreateur(note);
         ControleBudgetaireResponse controle = appliquerControleBudgetaire(note, true);
         tracerControleBudgetaire(note, controle);
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, action, "Soumission au DFIN");
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, action, "Soumission a " + libelle(RoleType.DFIN));
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
             "Note à vérifier", note.getReference() + " — " + note.getObjet(),
             "/notes-frais/" + note.getId(), note);
@@ -972,7 +973,7 @@ public class NoteFraisService {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.SOUMISE, "verifier");
         appliquerControleBudgetaire(note, false);
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VERIFIEE_DFIN, action, "Verifiee");
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VERIFIEE_DFIN, action, "Verifiee par " + libelle(RoleType.DFIN));
         notificationService.notifierRole(RoleType.DA, TypeNotification.NOTE_VERIFIEE,
             "Note à valider", note.getReference() + " — " + note.getObjet(),
             "/notes-frais/" + note.getId(), note);
@@ -987,17 +988,17 @@ public class NoteFraisService {
         exigerEtat(note, StatutNote.VERIFIEE_DFIN, "valider");
         // Controle refait a la validation : le budget a pu etre consomme par d'autres notes depuis la soumission.
         ControleBudgetaireResponse controle = appliquerControleBudgetaire(note, false);
-        String libelle = "Validee";
+        String libelle = "Validee par " + libelle(RoleType.DA);
         if (controle.justificationRequise()) {
             if (action == null || !StringUtils.hasText(action.commentaire())) {
                 throw new IllegalArgumentException("Cette note n'est pas couverte par le budget (" + resumeControle(controle)
                     + ") : motivez votre validation dans le champ Observation.");
             }
-            libelle = "Validee hors budget";
+            libelle = "Validee hors budget par " + libelle(RoleType.DA);
         }
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VALIDEE_DA, action, libelle);
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_VALIDEE,
-            "Note validée par le DA", note.getReference() + " — " + note.getObjet() + " (prête à transmettre)",
+            "Note validée par " + libelle(RoleType.DA), note.getReference() + " — " + note.getObjet() + " (prête à transmettre)",
             "/notes-frais/" + note.getId(), note);
         return reponse;
     }
@@ -1011,7 +1012,7 @@ public class NoteFraisService {
         if (!StringUtils.hasText(action.commentaire())) {
             throw new IllegalArgumentException("Un motif de rejet est obligatoire");
         }
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.REJETEE_DA, action, "Rejetee");
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.REJETEE_DA, action, "Rejetee par " + libelle(RoleType.DA));
         notificationService.notifierUtilisateur(note.getCreateur(), TypeNotification.NOTE_REJETEE,
             "Note rejetée", note.getReference() + " — " + action.commentaire(),
             "/notes-frais/" + note.getId(), note);
@@ -1326,5 +1327,10 @@ public class NoteFraisService {
             .statutAuMoment(statut)
             .commentaire(texte)
             .build();
+    }
+
+    /** Nom d'affichage du role (personnalisable par l'ADMIN) pour les textes visibles par l'utilisateur. */
+    private String libelle(RoleType role) {
+        return roleLibelleService.lister().get(role);
     }
 }

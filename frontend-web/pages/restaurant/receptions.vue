@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const rolesStore = useRolesStore()
 definePageMeta({ module: 'RESTAURANT' })
 
 /**
@@ -344,17 +345,17 @@ async function envoyerDemande() {
   fichierJoint.value = null
   cleChampFichier.value++
 
-  let etape = 'sa transmission au DFIN'
+  let etape = `sa transmission à ${rolesStore.libelle('DFIN')}`
   try {
     if (justificatif) {
       etape = "l'ajout du justificatif"
       const formData = new FormData()
       formData.append('fichier', justificatif)
       await api(`/notes-frais/${note.id}/pieces-jointes`, { method: 'POST', body: formData })
-      etape = 'sa transmission au DFIN'
+      etape = `sa transmission à ${rolesStore.libelle('DFIN')}`
     }
     await api(`/notes-frais/${note.id}/soumettre`, { method: 'POST', body: {} })
-    succes.value = `Demande ${note.reference} envoyée au DFIN pour validation (${recapitulatif}).`
+    succes.value = `Demande ${note.reference} envoyée à ${rolesStore.libelle('DFIN')} pour validation (${recapitulatif}).`
   } catch (e: any) {
     noteInachevee.value = { id: note.id, reference: note.reference, etape }
     erreur.value = messageErreurApi(e, 'Erreur inconnue.')
@@ -409,7 +410,7 @@ function fmtDate(iso: string) {
       <p class="text-caption text-medium-emphasis mb-4">
         <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
         L'entrée en stock et l'échange de consigne ne s'exécutent qu'au règlement de la note par la caisse,
-        après validation DFIN puis DA. Ajoutez autant de produits que nécessaire au panier avant d'envoyer :
+        après validation {{ rolesStore.libelle('DFIN') }} puis {{ rolesStore.libelle('DA') }}. Ajoutez autant de produits que nécessaire au panier avant d'envoyer :
         ils formeront une seule demande.
       </p>
 

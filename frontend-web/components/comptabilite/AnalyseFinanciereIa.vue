@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const rolesStore = useRolesStore()
 interface AnalyseFinanciere {
   du: string
   au: string
@@ -88,7 +89,7 @@ async function genererAnalyse() {
       </div>
 
       <div class="analyse-ia__signature">
-        <span class="analyse-ia__signature-label">Directeur Financier</span>
+        <span class="analyse-ia__signature-label">{{ rolesStore.libelle('DFIN') }}</span>
         <span class="analyse-ia__signature-name">{{ auth.fullName || '—' }}</span>
         <div class="analyse-ia__signature-line" />
         <span class="analyse-ia__signature-hint">Signature et cachet</span>

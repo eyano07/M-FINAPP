@@ -43,6 +43,7 @@ public class LoginController {
                 AuthDtos.AuthResponse auth =
                     MainApp.apiClient().login(email, pwd);
                 SessionContext.setUser(auth.user());
+                MainApp.apiClient().chargerLibellesRoles();
 
                 Platform.runLater(() -> {
                     try {

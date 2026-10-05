@@ -1,5 +1,6 @@
 package com.mbsc.desktop.controller;
 
+import com.mbsc.desktop.config.RoleLabels;
 import java.io.File;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -139,6 +140,7 @@ public class MainController {
 
     @FXML
     private void initialize() {
+        colGlCaissier.setText(RoleLabels.caissier());
         caisseService = new CaisseService(MainApp.apiClient().mapper());
         userLabel.setText(SessionContext.displayName());
 
@@ -828,7 +830,7 @@ public class MainController {
             c -> new SimpleStringProperty(nvl(c.getValue().getNumeroCompte())), 100);
         TableColumn<LocalEcriture, String> cLib = col("Libellé",
             c -> new SimpleStringProperty(nvl(c.getValue().getLibelle())), 320);
-        TableColumn<LocalEcriture, String> cCaiss = col("Caissier", c -> {
+        TableColumn<LocalEcriture, String> cCaiss = col(RoleLabels.caissier(), c -> {
             LocalTransaction t = c.getValue().getTransaction();
             if (t == null || t.getCaissierEmail() == null) return new SimpleStringProperty("");
             String e = t.getCaissierEmail(); int at = e.indexOf('@');
@@ -912,7 +914,7 @@ public class MainController {
             {"Montant",        tx.getMontant() != null ? MONTANT_FMT.format(tx.getMontant()) + " $" : "—"},
             {"Note de frais",  nvl2(tx.getNoteReference())},
             {"N° Reçu",        nvl2(tx.getNumeroRecu())},
-            {"Caissier",       nvl2(tx.getCaissierEmail())},
+            {RoleLabels.caissier(), nvl2(tx.getCaissierEmail())},
             {"Date opération", dateStr},
             {"Statut sync",    tx.isSynced() ? "✓ Synchronisé" : "⏳ En attente de synchronisation"}
         });
@@ -954,7 +956,7 @@ public class MainController {
             {"Date écriture", e.getDateEcriture() != null ? e.getDateEcriture().format(DATE_FMT) : "—"},
             {"Compte OHADA",  nvl(e.getNumeroCompte())},
             {"Libellé",       nvl(e.getLibelle())},
-            {"Caissier",      caissier},
+            {RoleLabels.caissier(), caissier},
             {"Transaction",   txRef},
             {"Débit",         isDebit  ? MONTANT_FMT.format(e.getDebit())  + " $" : "—"},
             {"Crédit",        isCredit ? MONTANT_FMT.format(e.getCredit()) + " $" : "—"}

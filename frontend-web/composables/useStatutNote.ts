@@ -88,10 +88,19 @@ const DEFAUT: StatutNoteMeta = {
  * note d'encaissement, l'état terminal PAYEE est relabellisé « Encaissée »
  * (même couleur/palette, seul le libellé change à l'affichage).
  */
+/** Les libelles d'etapes citent des roles : ils suivent les noms choisis par l'ADMIN. */
+function withRoles(meta: StatutNoteMeta | undefined, statut: string): StatutNoteMeta | undefined {
+  if (!meta) return meta
+  const roles = useRolesStore()
+  if (statut === 'VERIFIEE_DFIN') return { ...meta, label: `Vérifiée ${roles.libelle('DFIN')}` }
+  if (statut === 'VALIDEE_DA') return { ...meta, label: `Validée ${roles.libelle('DA')}` }
+  return meta
+}
+
 export function statutNoteMeta(statut?: string | null, sens?: string | null): StatutNoteMeta {
   if (!statut) return DEFAUT
-  const meta = PALETTE[statut]
-  if (!meta) return { ...DEFAUT, label: statut.replace(/_/g, ' ') }
+  const meta = withRoles(PALETTE[statut], statut)
+  if (!PALETTE[statut]) return { ...DEFAUT, label: statut.replace(/_/g, ' ') }
   if (statut === 'PAYEE' && sens === 'ENCAISSEMENT') {
     return { ...meta, label: 'Encaissée' }
   }
