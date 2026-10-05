@@ -41,6 +41,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
     if (!permissions.charge) {
       await permissions.charger()
     }
+    const rolesStore = useRolesStore()
+    if (!rolesStore.charge) {
+      await rolesStore.charger()
+    }
   }
 
   // Controle d'acces par module configurable (voir meta.module) : la

@@ -16,6 +16,7 @@ import com.mbsc.finapp.dto.parametrage.ModuleConfigResponse;
 import com.mbsc.finapp.dto.parametrage.NiveauPermissionRequest;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseRequest;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseResponse;
+import com.mbsc.finapp.dto.parametrage.RoleLibelleRequest;
 import com.mbsc.finapp.dto.parametrage.RolePermissionResponse;
 import com.mbsc.finapp.domain.enums.ModuleMetier;
 import com.mbsc.finapp.domain.enums.RoleType;
@@ -24,6 +25,7 @@ import com.mbsc.finapp.service.ModuleConfigService;
 import com.mbsc.finapp.service.ParametresEntrepriseService;
 import com.mbsc.finapp.service.ImportJournalService;
 import com.mbsc.finapp.service.PermissionService;
+import com.mbsc.finapp.service.RoleLibelleService;
 import com.mbsc.finapp.service.TauxTvaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -52,6 +54,7 @@ public class AdminController {
     private final ParametresEntrepriseService parametresService;
     private final ModuleConfigService moduleConfigService;
     private final PermissionService permissionService;
+    private final RoleLibelleService roleLibelleService;
     private final ImportJournalService importJournalService;
 
     /** Plan comptable OHADA (referentiel partage). */
@@ -207,6 +210,19 @@ public class AdminController {
             @PathVariable RoleType role, @PathVariable ModuleMetier module,
             @Valid @RequestBody NiveauPermissionRequest req) {
         return permissionService.definir(role, module, req.niveau());
+    }
+
+    /** Libelles d'affichage des roles (tout utilisateur authentifie : en-tete, listes, menus). */
+    @GetMapping("/roles/libelles")
+    public Map<RoleType, String> libellesRoles() {
+        return roleLibelleService.lister();
+    }
+
+    /** Renomme l'affichage d'un role, sans toucher a ses droits (ADMIN). Libelle vide = defaut. */
+    @PutMapping("/admin/roles/{role}/libelle")
+    public Map<RoleType, String> definirLibelleRole(
+            @PathVariable RoleType role, @Valid @RequestBody RoleLibelleRequest req) {
+        return roleLibelleService.definir(role, req.libelle());
     }
 
     /** Permissions effectives de l'utilisateur courant, par module (navigation, garde de page cote frontend). */

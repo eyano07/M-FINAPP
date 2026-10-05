@@ -10,6 +10,7 @@ const auth = useAuthStore()
 const { logout } = useAuth()
 const notif = useNotificationsStore()
 const parametresStore = useParametresStore()
+const rolesStore = useRolesStore()
 
 onMounted(() => {
   notif.charger()
@@ -144,7 +145,7 @@ async function ouvrirNotification(n: NotificationItem) {
           </div>
         </div>
         <div class="user-menu__roles">
-          <span v-for="r in auth.roles" :key="r" class="user-menu__role">{{ r }}</span>
+          <span v-for="r in auth.roles" :key="r" class="user-menu__role">{{ rolesStore.libelle(r) }}</span>
         </div>
         <div class="user-menu__divider" />
         <button class="user-menu__logout" @click="logout">

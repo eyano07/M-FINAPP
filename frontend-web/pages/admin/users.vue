@@ -16,6 +16,7 @@ interface UserRow {
   nomComplet?: string
 }
 
+const rolesStore = useRolesStore()
 const ALL_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT']
 
 const api = useApi()
@@ -198,7 +199,7 @@ const roleColor: Record<string, string> = {
             <td>
               <div class="usr-roles">
                 <span v-for="r in u.roles" :key="r" class="usr-role-chip" :style="{ background: roleColor[r] + '1a', color: roleColor[r] }">
-                  {{ r }}
+                  {{ rolesStore.libelle(r) }}
                 </span>
               </div>
             </td>
@@ -249,7 +250,7 @@ const roleColor: Record<string, string> = {
 
           <div class="usr-roles usr-card-item__roles">
             <span v-for="r in u.roles" :key="r" class="usr-role-chip" :style="{ background: roleColor[r] + '1a', color: roleColor[r] }">
-              {{ r }}
+              {{ rolesStore.libelle(r) }}
             </span>
           </div>
 
@@ -343,7 +344,7 @@ const roleColor: Record<string, string> = {
                 @click="form.roles.includes(r) ? form.roles.splice(form.roles.indexOf(r), 1) : form.roles.push(r)"
                 type="button"
               >
-                {{ r }}
+                {{ rolesStore.libelle(r) }}
               </button>
             </div>
           </div>

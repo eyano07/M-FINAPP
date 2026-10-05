@@ -8,6 +8,7 @@ interface Cellule {
 }
 
 const api = useApi()
+const rolesStore = useRolesStore()
 const loading = ref(true)
 const erreur = ref('')
 const enregistrement = ref<string | null>(null)
@@ -77,6 +78,38 @@ async function charger() {
 }
 onMounted(charger)
 
+// ── Noms affichés des rôles (cosmétique : les droits restent liés au rôle) ──
+const TOUS_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT']
+const brouillons = reactive<Record<string, string>>({})
+const enregistrementLibelle = ref<string | null>(null)
+const succesLibelle = ref('')
+
+async function chargerLibelles() {
+  await rolesStore.charger()
+  for (const r of TOUS_ROLES) brouillons[r] = rolesStore.libelle(r)
+}
+onMounted(chargerLibelles)
+
+async function enregistrerLibelle(role: string) {
+  enregistrementLibelle.value = role
+  erreur.value = ''
+  succesLibelle.value = ''
+  try {
+    await rolesStore.definir(role, (brouillons[role] || '').trim())
+    brouillons[role] = rolesStore.libelle(role)
+    succesLibelle.value = 'Nom du rôle enregistré.'
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Impossible d'enregistrer le nom du rôle.")
+  } finally {
+    enregistrementLibelle.value = null
+  }
+}
+
+async function reinitialiserLibelle(role: string) {
+  brouillons[role] = ''
+  await enregistrerLibelle(role)
+}
+
 function cellule(role: string, module: string): Cellule | undefined {
   return grille.value.find((c) => c.role === role && c.module === module)
 }
@@ -115,6 +148,34 @@ async function modifier(role: string, module: string, niveau: string) {
       Le rôle <strong>ADMIN</strong> dispose toujours d'un accès complet à tous les modules et n'apparaît pas dans cette grille (pour éviter qu'un administrateur ne se verrouille lui-même hors de l'application).
     </v-alert>
 
+    <v-card class="pa-4 mb-4" variant="outlined">
+      <h3 class="text-subtitle-1 font-weight-bold mb-1">Noms affichés des rôles</h3>
+      <p class="text-caption mb-3">
+        Change uniquement le nom montré dans l'interface (ex. « DA » → « DAF »).
+        Les droits et le fonctionnement du rôle ne changent pas. Laisser vide pour revenir au nom par défaut.
+      </p>
+      <v-alert v-if="succesLibelle" type="success" density="compact" class="mb-3" closable @click:close="succesLibelle = ''">{{ succesLibelle }}</v-alert>
+      <v-row dense>
+        <v-col v-for="r in TOUS_ROLES" :key="r" cols="12" sm="6" md="4">
+          <v-text-field
+            v-model="brouillons[r]"
+            :label="r"
+            maxlength="60"
+            density="compact"
+            variant="outlined"
+            hide-details
+            :loading="enregistrementLibelle === r"
+            @keyup.enter="enregistrerLibelle(r)"
+            @blur="enregistrerLibelle(r)"
+          >
+            <template #append-inner>
+              <v-btn icon="mdi-restore" size="x-small" variant="text" title="Nom par défaut" @click.stop="reinitialiserLibelle(r)" />
+            </template>
+          </v-text-field>
+        </v-col>
+      </v-row>
+    </v-card>
+
     <v-skeleton-loader v-if="loading" type="table" />
 
     <div v-else class="perm-scroll">
@@ -133,7 +194,7 @@ async function modifier(role: string, module: string, niveau: string) {
         </thead>
         <tbody>
           <tr v-for="r in ROLES" :key="r.role">
-            <td class="perm-grid__role">{{ r.label }}</td>
+            <td class="perm-grid__role">{{ rolesStore.libelle(r.role) }}</td>
             <td v-for="m in MODULES" :key="m.module">
               <select
                 class="perm-select"
