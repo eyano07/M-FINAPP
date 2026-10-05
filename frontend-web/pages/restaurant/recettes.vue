@@ -92,8 +92,8 @@ const margeEstimee = computed(() => {
 const deviseAffichage = ref<'CDF' | 'USD'>('CDF')
 
 /** Formate un montant tenu en USD (coût moyen des provisions, coût de revient). */
-// La devise est celle choisie sur cet écran ; le nombre de décimales, celui
-// des paramètres du restaurant (parametres.fmtDans).
+// La devise est celle choisie sur cet écran ; l'arrondi, celui du store
+// (parametres.fmtDans : francs sans décimale, dollars à 2 décimales).
 function fmtUSD(montantUSD: number): string {
   if (deviseAffichage.value === 'CDF') {
     if (tauxChange.value <= 0) return '—'

@@ -50,9 +50,7 @@ interface Salle {
 const api = useApi()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
-/** Nombre de décimales des montants affichés (paramètres du restaurant). */
-const parametresRestaurant = useRestaurantParametresStore()
-onMounted(() => { parametresStore.charger(); parametresRestaurant.charger() })
+onMounted(() => { parametresStore.charger() })
 /** Disposition du plan (position, taille, ajout/suppression de tables) : reservee a l'administrateur. */
 const canWrite = computed(() => auth.hasRole('ADMIN'))
 /** Statut occupee/libre : action du quotidien, ouverte au responsable restaurant. */
@@ -366,12 +364,11 @@ async function toggleOccupation() {
   }
 }
 
-// Montants d'une commande dans sa propre devise, au nombre de décimales choisi.
 function fmtCommande(c: Commande): string {
-  return fmtMontant(c.totalTtc, c.devise)
+  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(c.totalTtc) + ' ' + c.devise
 }
 function fmtMontant(montant: number, devise: string): string {
-  return parametresRestaurant.fmtDans(montant, devise === 'USD' ? 'USD' : 'CDF')
+  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(montant) + ' ' + devise
 }
 function toggleCommande(id: number) {
   commandeOuverteId.value = commandeOuverteId.value === id ? null : id

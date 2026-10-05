@@ -34,7 +34,7 @@ interface LigneGrandLivre {
 }
 
 const api = useApi()
-/** Nombre de décimales des montants et quantités affichés (paramètres du restaurant). */
+/** Devise d'affichage et formatage des montants et quantités (store du restaurant). */
 const parametresRestaurant = useRestaurantParametresStore()
 onMounted(() => { parametresRestaurant.charger() })
 const auth = useAuthStore()

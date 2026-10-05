@@ -37,9 +37,14 @@ public class ParametresRestaurantService {
      * {@code readOnly} ne serait de toute façon pas garanti d'être vidé en
      * base — mieux vaut répondre la valeur par défaut que dépendre d'une
      * écriture qui pourrait être silencieusement perdue.
+     *
+     * <p>Ouvert aux mêmes rôles que la lecture du module (voir
+     * {@code RestaurantService.LECTURE}), caissier compris : sans cette
+     * lecture, ses écrans ne connaissaient ni la devise d'affichage ni le
+     * taux du jour, et montraient les montants en dollars ou en tirets.</p>
      */
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN')")
     public ParametresRestaurantResponse consulter() {
         return ParametresRestaurantResponse.from(
             repository.findById(ParametresRestaurant.SINGLETON_ID).orElseGet(this::parDefaut));
@@ -57,14 +62,8 @@ public class ParametresRestaurantService {
     public ParametresRestaurantResponse enregistrer(ParametresRestaurantRequest req) {
         ParametresRestaurant p = get();
         p.setDeviseAffichage(req.deviseAffichage());
-        // null a un sens ici : l'arrondi automatique (FC sans décimale, USD à 2).
-        p.setDecimalesMontants(req.decimalesMontants());
-        if (req.decimalesQuantites() != null) {
-            p.setDecimalesQuantites(req.decimalesQuantites());
-        }
         p = repository.save(p);
-        log.info("Paramètres restaurant mis à jour [deviseAffichage={}, decimalesMontants={}, decimalesQuantites={}]",
-            p.getDeviseAffichage(), p.getDecimalesMontants(), p.getDecimalesQuantites());
+        log.info("Paramètres restaurant mis à jour [deviseAffichage={}]", p.getDeviseAffichage());
         return ParametresRestaurantResponse.from(p);
     }
 }

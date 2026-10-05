@@ -57,8 +57,6 @@ const TYPES_PERIODE: { value: TypePeriode; label: string }[] = [
 ]
 
 const api = useApi()
-/** Nombre de décimales des montants et quantités — la devise, elle, se choisit sur cet écran. */
-const parametres = useRestaurantParametresStore()
 const loading = ref(false)
 const erreur = ref('')
 const analyse = ref<AnalyseVentes | null>(null)
@@ -107,7 +105,6 @@ async function charger() {
     const [data, taux] = await Promise.all([
       api<AnalyseVentes>('/restaurant/analyses-ventes', { params: { du: periode.value.du, au: periode.value.au } }),
       api<{ taux: number }>('/admin/taux-change').catch(() => ({ taux: 0 })),
-      parametres.charger(),
     ])
     analyse.value = data
     tauxChange.value = taux.taux || 0
@@ -122,9 +119,9 @@ watch(periode, charger)
 
 const fmtUSD = (montant: number) =>
   deviseAffichage.value === 'CDF'
-    ? (tauxChange.value > 0 ? parametres.fmtDans(montant * tauxChange.value, 'CDF') : '—')
-    : parametres.fmtDans(montant, 'USD')
-const fmtNb = (n: number) => parametres.fmtQuantite(n)
+    ? (tauxChange.value > 0 ? `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(montant * tauxChange.value)} FC` : '—')
+    : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(montant)
+const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n || 0)
 const fmtPct = (n: number) => `${n >= 0 ? '' : ''}${n.toFixed(1)} %`
 
 // ── Classements ───────────────────────────────────────────────────────────
@@ -197,8 +194,9 @@ const tendanceOpts: any = {
       // ci-dessus) : on le formate directement, sans repasser par fmtUSD qui
       // attend lui un montant USD brut a convertir.
       callbacks: {
-        label: (ctx: any) => `${ctx.dataset.label}: `
-          + parametres.fmtDans(ctx.parsed.y, deviseAffichage.value === 'CDF' ? 'CDF' : 'USD'),
+        label: (ctx: any) => `${ctx.dataset.label}: ` + (deviseAffichage.value === 'CDF'
+          ? new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(ctx.parsed.y) + ' FC'
+          : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD' }).format(ctx.parsed.y)),
       },
     },
   },

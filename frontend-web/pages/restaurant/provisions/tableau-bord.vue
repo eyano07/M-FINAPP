@@ -78,7 +78,7 @@ async function charger() {
 onMounted(charger)
 watch([mois, annee], charger)
 
-/** Quantités de provisions, à l'arrondi choisi dans les paramètres du restaurant. */
+/** Quantités de provisions : 2 décimales au plus. */
 const fmtNb = (n?: number | null) => parametres.fmtQuantite(n)
 
 // ── Analyse IA (à la demande) ────────────────────────────────────────────

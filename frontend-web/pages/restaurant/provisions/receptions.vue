@@ -42,7 +42,7 @@ interface LignePanier {
 }
 
 const api = useApi()
-/** Nombre de décimales des montants affichés (paramètres du restaurant). */
+/** Formatage des montants affichés (store du restaurant). */
 const parametresRestaurant = useRestaurantParametresStore()
 onMounted(() => { parametresRestaurant.charger() })
 const auth = useAuthStore()
