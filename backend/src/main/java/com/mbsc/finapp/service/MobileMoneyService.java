@@ -204,7 +204,7 @@ public class MobileMoneyService {
         }
         // Ecart de change realise : la note a ete engagee a un taux fige lors
         // de sa transmission, elle est reglee au taux du jour. La difference
-        // est reclassee en 676/776 par une piece dediee, au lieu de rester
+        // est reclassee en 656/756 par une piece dediee, au lieu de rester
         // invisible dans le compte de charge.
         ecartChange.comptabiliserEcart(note, tauxOperation,
             saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(), operateur);

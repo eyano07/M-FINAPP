@@ -1005,7 +1005,7 @@ public class NoteFraisService {
         exigerEtat(note, StatutNote.VALIDEE_DA, "transmettre a la caisse");
         // Gel du taux d'engagement : la note part en tresorerie a la valeur du
         // jour ou l'entreprise s'engage. L'ecart avec le taux du reglement sera
-        // constate en 676/776 par EcartChangeService, au lieu d'etre absorbe
+        // constate en 656/756 par EcartChangeService, au lieu d'etre absorbe
         // silencieusement par le compte de charge.
         if (note.getDevise() != null && note.getDevise() != ConversionDeviseService.DEVISE_BASE
             && note.getTauxEngagement() == null) {

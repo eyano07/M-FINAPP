@@ -60,8 +60,9 @@ public class VenteService {
     public static final String COMPTE_CLIENTS = "4111";
     /** Compte OHADA "Caisse" : contrepartie d'une vente reglee en especes. */
     public static final String COMPTE_CAISSE = "571";
-    private static final String COMPTE_PERTE_CHANGE = "676";
-    private static final String COMPTE_GAIN_CHANGE = "776";
+    /** Ecarts de change sur creances commerciales (SYSCOHADA revise, V95) — pas 676/776, reserves aux operations financieres. */
+    private static final String COMPTE_PERTE_CHANGE = "656";
+    private static final String COMPTE_GAIN_CHANGE = "756";
 
     private static final BigDecimal CENT = BigDecimal.valueOf(100);
 
@@ -355,7 +356,7 @@ public class VenteService {
      * recalcule (aucune derive d'arrondi possible). La tresorerie est debitee
      * de la contre-valeur reellement encaissee, reconvertie au taux du jour
      * du reglement si la vente est en devise etrangere. La difference entre
-     * les deux est un ecart de change realise, porte en 676/776 — le meme
+     * les deux est un ecart de change realise, porte en 656/756 — le meme
      * principe que {@link EcartChangeService}, applique ici a une creance
      * plutot qu'a une charge.</p>
      */
@@ -455,7 +456,7 @@ public class VenteService {
         lignes.add(ligneReglement(compteTresorerie, montantEncaisse, BigDecimal.ZERO, libelle, dateReglement));
         lignes.add(ligneReglement(compteParNumero(COMPTE_CLIENTS), BigDecimal.ZERO, montantDu, libelle, dateReglement));
 
-        // Ecart de change realise : encaisse > du => gain (776), sinon perte (676).
+        // Ecart de change realise : encaisse > du => gain (756), sinon perte (656).
         BigDecimal ecart = montantEncaisse.subtract(montantDu);
         if (ecart.signum() > 0) {
             lignes.add(ligneReglement(compteParNumero(COMPTE_GAIN_CHANGE), BigDecimal.ZERO, ecart, libelle, dateReglement));

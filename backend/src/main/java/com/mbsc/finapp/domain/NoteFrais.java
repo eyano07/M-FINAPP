@@ -52,7 +52,7 @@ public class NoteFrais {
     /**
      * Taux FC/USD fige au moment de la transmission en tresorerie : c'est le
      * taux auquel la depense a ete engagee. Compare au taux du jour du
-     * reglement, il permet de constater l'ecart de change reel en 676/776
+     * reglement, il permet de constater l'ecart de change reel en 656/756
      * plutot que de le noyer dans le compte de charge
      * (voir {@code EcartChangeService}).
      *
