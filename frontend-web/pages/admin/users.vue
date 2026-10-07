@@ -17,6 +17,8 @@ interface UserRow {
   roles: string[]
   actif: boolean
   nomComplet?: string
+  /** Rôles qui n'avaient aucun droit et ont reçu ceux d'origine à cette occasion. */
+  droitsParDefaut?: string[]
 }
 
 const ALL_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT']
@@ -91,6 +93,14 @@ async function charger() {
 onMounted(charger)
 
 // ── Enregistrement ─────────────────────────────────────────────────────────
+// Les droits sont rattachés au rôle : un rôle sans aucun droit n'ouvrirait aucun module à son
+// utilisateur. Le serveur pose alors les droits d'origine ; on le dit à l'administrateur.
+function noteDroitsParDefaut(roles?: string[]): string {
+  if (!roles?.length) return ''
+  return ` Aucun droit n'était défini pour ${roles.length > 1 ? 'les rôles' : 'le rôle'} ${roles.join(', ')} : `
+    + "les droits d'origine ont été appliqués (modifiables dans Administration → Permissions)."
+}
+
 async function enregistrer() {
   if (!form.nom || !form.prenom || !form.email || form.roles.length === 0) {
     erreur.value = 'Renseignez tous les champs obligatoires et au moins un rôle.'
@@ -104,7 +114,7 @@ async function enregistrer() {
   erreur.value = ''
   try {
     if (editMode.value) {
-      await api(`/admin/users/${editId.value}`, {
+      const modifie = await api<UserRow>(`/admin/users/${editId.value}`, {
         method: 'PUT',
         body: {
           nom: form.nom, prenom: form.prenom, motDePasse: form.motDePasse || null,
@@ -113,9 +123,9 @@ async function enregistrer() {
           roles: form.roles,
         },
       })
-      succes.value = 'Utilisateur modifié avec succès.'
+      succes.value = 'Utilisateur modifié avec succès.' + noteDroitsParDefaut(modifie.droitsParDefaut)
     } else {
-      await api('/admin/users', {
+      const cree = await api<UserRow>('/admin/users', {
         method: 'POST',
         body: {
           nom: form.nom, prenom: form.prenom, email: form.email, motDePasse: form.motDePasse,
@@ -124,7 +134,7 @@ async function enregistrer() {
           roles: form.roles,
         },
       })
-      succes.value = 'Utilisateur créé avec succès.'
+      succes.value = 'Utilisateur créé avec succès.' + noteDroitsParDefaut(cree.droitsParDefaut)
     }
     dialog.value = false
     await charger()

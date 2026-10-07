@@ -61,6 +61,16 @@ body {
   margin: 4px 0 0;
 }
 
+/* ── Champs date Vuetify ───────────────────────────────────── */
+/* Le contenu natif d'un <input type="date"> (Chrome, Edge, Safari) ajoute 2 px de marge interne : le champ
+   mesure alors 50 px au lieu des 48 px d'un champ « comfortable », et se decale de ses voisins (liste, bouton
+   d'action) dans une barre de filtres. On retire cette marge pour que tous les champs aient la meme hauteur. */
+.v-field__input[type="date"]::-webkit-datetime-edit,
+.v-field__input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 /* ── Data table modern styling ─────────────────────────────── */
 .v-data-table {
   border-radius: var(--mbsc-radius);
@@ -280,6 +290,17 @@ body {
 
   .no-print,
   .v-data-table-footer { display: none !important; }
+
+  /* Tableau dense imprime (grand livre de stock, etat du stock) : lignes compactes et pas de
+     defilement interne, pour que toutes les colonnes tiennent dans la largeur de la page et que le
+     document tienne sur moins de feuilles. A poser via class="table-impression-compacte". */
+  .table-impression-compacte .v-table__wrapper { overflow: visible !important; }
+  .table-impression-compacte .v-table__wrapper > table > tbody > tr > td,
+  .table-impression-compacte .v-table__wrapper > table > thead > tr > th {
+    padding: 0 8px !important;
+    height: 30px !important;
+    font-size: 0.78rem !important;
+  }
 
   * { box-shadow: none !important; }
 

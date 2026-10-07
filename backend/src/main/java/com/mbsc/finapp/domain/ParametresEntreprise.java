@@ -65,6 +65,14 @@ public class ParametresEntreprise {
     @Builder.Default
     private String couleurPrimaire = "#16A34A";
 
+    /**
+     * Régime de TVA : {@code false} = entreprise non assujettie, aucune TVA facturée ni
+     * récupérée (le taux appliqué vaut 0 — voir TauxTvaService). Défini par l'administrateur.
+     */
+    @Column(name = "assujetti_tva", nullable = false)
+    @Builder.Default
+    private boolean assujettiTva = true;
+
     @UpdateTimestamp
     @Column(name = "date_maj")
     private Instant dateMaj;

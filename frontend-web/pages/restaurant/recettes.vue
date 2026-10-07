@@ -53,6 +53,17 @@ const modifie = ref(false)
 const recetteSelectionnee = computed(() =>
   recettes.value.find(r => r.platId === platSelectionneId.value) || null)
 
+/**
+ * Recherche dans la liste des plats : code ou libellé du plat, mais aussi code ou libellé de l'un de
+ * ses ingrédients (« oeuf » retrouve tous les plats qui en contiennent), sans accents ni casse.
+ * La fiche affichée à droite ne change pas tant qu'on n'en choisit pas une autre.
+ */
+const recherche = ref('')
+const recettesFiltrees = computed(() =>
+  recettes.value.filter(r => correspondRecherche(
+    [r.platCode, r.platLibelle, ...r.lignes.flatMap(l => [l.provisionCode, l.provisionLibelle])],
+    recherche.value)))
+
 const provisionsOptions = computed(() =>
   provisions.value.map(p => ({
     title: `${p.code} — ${p.libelle}${p.uniteMesure ? ` (${p.uniteMesure})` : ''}`,
@@ -283,9 +294,19 @@ const fmtQte = (n?: number | null) =>
     <div v-else class="fiche-layout">
       <!-- ── Liste des plats ──────────────────────────────── -->
       <v-card class="classroom-card fiche-plats">
-        <v-list density="compact" nav>
+        <div class="fiche-plats__recherche">
+          <v-text-field
+            v-model="recherche"
+            prepend-inner-icon="mdi-magnify"
+            placeholder="Plat ou ingrédient…"
+            aria-label="Rechercher une fiche technique par plat ou par ingrédient"
+            clearable hide-details
+            variant="outlined" density="compact" rounded="lg"
+          />
+        </div>
+        <v-list density="compact" nav class="fiche-plats__liste">
           <v-list-item
-            v-for="r in recettes" :key="r.platId"
+            v-for="r in recettesFiltrees" :key="r.platId"
             :active="r.platId === platSelectionneId"
             color="primary"
             @click="choisirPlat(r.platId)"
@@ -297,6 +318,9 @@ const fmtQte = (n?: number | null) =>
               <span v-else class="fiche-sans">sans fiche</span>
             </v-list-item-subtitle>
           </v-list-item>
+          <p v-if="!recettesFiltrees.length" class="text-caption text-medium-emphasis text-center pa-4 mb-0">
+            Aucune fiche ne correspond à votre recherche.
+          </p>
         </v-list>
       </v-card>
 
@@ -416,7 +440,9 @@ const fmtQte = (n?: number | null) =>
 
 <style scoped>
 .fiche-layout { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-.fiche-plats { flex: 0 0 280px; max-height: 620px; overflow-y: auto; }
+.fiche-plats { flex: 0 0 280px; max-height: 620px; display: flex; flex-direction: column; overflow: hidden; }
+.fiche-plats__recherche { flex: 0 0 auto; padding: 10px 10px 4px; }
+.fiche-plats__liste { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .fiche-detail { flex: 1 1 420px; min-width: 0; }
 .fiche-sans { color: #b45309; font-weight: 600; }
 

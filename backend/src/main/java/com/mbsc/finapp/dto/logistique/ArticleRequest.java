@@ -3,6 +3,7 @@ package com.mbsc.finapp.dto.logistique;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 
@@ -24,6 +25,8 @@ import java.math.BigDecimal;
  * @param categorie         sous-classification libre (ex. Alcool, Vin, Whisky) ;
  *                          pertinente uniquement pour une BOISSON de la carte du
  *                          restaurant, ignoree pour tout autre type.
+ * @param societe           societe du produit (brasserie, fabricant ou fournisseur) ;
+ *                          facultative, retenue uniquement pour une BOISSON.
  */
 public record ArticleRequest(
     @NotBlank String code,
@@ -31,6 +34,7 @@ public record ArticleRequest(
     String uniteMesure,
     TypeArticle type,
     String categorie,
+    @Size(max = 100) String societe,
     Long entrepotId,
     String compteStockNumero,
     String compteChargeNumero,

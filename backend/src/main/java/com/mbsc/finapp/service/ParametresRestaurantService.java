@@ -50,10 +50,15 @@ public class ParametresRestaurantService {
             repository.findById(ParametresRestaurant.SINGLETON_ID).orElseGet(this::parDefaut));
     }
 
+    /**
+     * Valeurs par défaut quand la ligne n'existe pas (base neuve, ou après une purge totale) :
+     * le franc congolais, devise du restaurant. Le choix de l'utilisateur, une fois enregistré,
+     * prime toujours.
+     */
     private ParametresRestaurant parDefaut() {
         return ParametresRestaurant.builder()
             .id(ParametresRestaurant.SINGLETON_ID)
-            .deviseAffichage(Devise.USD)
+            .deviseAffichage(Devise.CDF)
             .build();
     }
 

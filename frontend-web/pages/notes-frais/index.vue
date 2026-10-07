@@ -32,6 +32,33 @@ const filterStatut = ref<string | null>(
 const aujourdhui = () => new Date().toISOString().slice(0, 10)
 const dateDu = ref(aujourdhui())
 const dateAu = ref(aujourdhui())
+
+// Recherche textuelle, exécutée par le serveur (seul à connaître les lignes de chaque note) :
+// référence, libellé (objet) de la note, nom ou numéro d'un compte imputé sur l'une de ses lignes.
+// Elle se combine avec le statut et la période.
+const rechercheReference = ref('')
+const rechercheLibelle = ref('')
+const rechercheCompte = ref('')
+const rechercheActive = computed(() =>
+  !!(rechercheReference.value.trim() || rechercheLibelle.value.trim() || rechercheCompte.value.trim()))
+function effacerRecherche() {
+  rechercheReference.value = ''
+  rechercheLibelle.value = ''
+  rechercheCompte.value = ''
+}
+
+// Règle de visibilité propre au rôle : selon lui, certaines notes ne sont pas accessibles. Les rôles à
+// vue restreinte reçoivent une explication, pour qu'une note absente de la liste ne les inquiète pas.
+interface RegleVisibilite { restreinte: boolean, explication: string }
+const regleVisibilite = ref<RegleVisibilite | null>(null)
+async function chargerRegleVisibilite() {
+  try {
+    regleVisibilite.value = await api<RegleVisibilite>('/notes-frais/regle-visibilite')
+  } catch {
+    // Purement informatif : sans ce texte, la liste fonctionne comme avant.
+  }
+}
+
 const loading = ref(false)
 const saving = ref(false)
 const erreur = ref('')
@@ -64,7 +91,12 @@ const notesFiltrees = computed(() =>
   notes.value.filter(n => (n.sens || 'DECAISSEMENT') === activeSens.value)
 )
 
+// Une frappe plus récente peut lancer une nouvelle requête avant la réponse de la précédente :
+// seule la dernière met la liste à jour.
+let derniereRequete = 0
+
 async function charger() {
+  const numero = ++derniereRequete
   loading.value = true
   erreur.value = ''
   try {
@@ -72,11 +104,17 @@ async function charger() {
     if (filterStatut.value) query.statut = filterStatut.value
     if (dateDu.value) query.du = dateDu.value
     if (dateAu.value) query.au = dateAu.value
-    notes.value = await api<NoteFrais[]>('/notes-frais', { query: Object.keys(query).length ? query : undefined })
+    if (rechercheReference.value.trim()) query.reference = rechercheReference.value.trim()
+    if (rechercheLibelle.value.trim()) query.libelle = rechercheLibelle.value.trim()
+    if (rechercheCompte.value.trim()) query.compte = rechercheCompte.value.trim()
+    const resultat = await api<NoteFrais[]>('/notes-frais', { query: Object.keys(query).length ? query : undefined })
+    if (numero !== derniereRequete) return
+    notes.value = resultat
   } catch (e: any) {
+    if (numero !== derniereRequete) return
     erreur.value = e?.data?.message || 'Impossible de charger les notes de frais.'
   } finally {
-    loading.value = false
+    if (numero === derniereRequete) loading.value = false
   }
 }
 
@@ -90,8 +128,16 @@ function effacerPeriode() {
 }
 
 onMounted(charger)
+onMounted(chargerRegleVisibilite)
 watch(filterStatut, charger)
 watch([dateDu, dateAu], charger)
+// Recherche : une courte pause dans la frappe avant d'interroger le serveur.
+let minuterieRecherche: ReturnType<typeof setTimeout> | undefined
+watch([rechercheReference, rechercheLibelle, rechercheCompte], () => {
+  clearTimeout(minuterieRecherche)
+  minuterieRecherche = setTimeout(charger, 350)
+})
+onBeforeUnmount(() => clearTimeout(minuterieRecherche))
 // Changer d'onglet réinitialise le filtre statut : la liste de statuts
 // proposée change (l'encaissement n'a pas de circuit DFIN/DA), un filtre
 // devenu invalide laisserait sinon une grille vide sans chip actif visible.
@@ -455,6 +501,36 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
       </div>
     </div>
 
+    <!-- ── Recherche (référence, libellé, compte) ──────────── -->
+    <div class="nf-filter nf-filter--recherche">
+      <v-icon icon="mdi-magnify" size="18" color="#9ca3af" />
+      <span class="nf-periode__label">Recherche</span>
+      <div class="nf-recherche__body">
+        <input
+          v-model="rechercheReference" type="search" autocomplete="off"
+          class="nf-periode__input nf-recherche__input"
+          placeholder="Référence (ex : NF-2026-000123)" aria-label="Rechercher une note par sa référence"
+        >
+        <input
+          v-model="rechercheLibelle" type="search" autocomplete="off"
+          class="nf-periode__input nf-recherche__input"
+          placeholder="Libellé de la note" aria-label="Rechercher une note par son libellé"
+        >
+        <input
+          v-model="rechercheCompte" type="search" autocomplete="off"
+          class="nf-periode__input nf-recherche__input"
+          placeholder="Compte (nom ou numéro)" aria-label="Rechercher une note par un compte imputé sur l'une de ses lignes"
+        >
+        <button v-if="rechercheActive" class="nf-filter__chip" @click="effacerRecherche">Effacer la recherche</button>
+      </div>
+    </div>
+
+    <!-- ── Règle de visibilité (rôles qui ne voient pas toutes les notes) ── -->
+    <div v-if="regleVisibilite?.restreinte" class="nf-visibilite" role="note">
+      <v-icon icon="mdi-information-outline" size="18" />
+      <p>{{ regleVisibilite.explication }}</p>
+    </div>
+
     <!-- ── Error ───────────────────────────────────────────── -->
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
@@ -478,10 +554,15 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
         {{ activeSens === 'ENCAISSEMENT' ? "Aucune note d'encaissement" : 'Aucune note de frais' }}
       </p>
       <p class="nf-empty__sub">
-        {{ filterStatut
-          ? 'Aucune note ne correspond à ce statut.'
-          : (activeSens === 'ENCAISSEMENT' ? 'Créez votre première note d\'encaissement.' : 'Créez votre première note de frais.') }}
+        {{ rechercheActive
+          ? 'Aucune note ne correspond à votre recherche, avec le statut et la période choisis.'
+          : filterStatut
+            ? 'Aucune note ne correspond à ce statut.'
+            : (activeSens === 'ENCAISSEMENT' ? 'Créez votre première note d\'encaissement.' : 'Créez votre première note de frais.') }}
       </p>
+      <button v-if="rechercheActive && (dateDu || dateAu)" class="nf-filter__chip nf-empty__action" @click="effacerPeriode">
+        Chercher sur toute la période
+      </button>
     </div>
 
     <!-- ── Dialog nouvelle note ────────────────────────────── -->
@@ -756,6 +837,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   margin-right: 5px;
 }
 .nf-filter--periode { margin-top: -12px; }
+.nf-filter--recherche { margin-top: -12px; }
 .nf-periode__label { font-size: 0.78rem; font-weight: 600; color: #6b7280; white-space: nowrap; }
 .nf-periode__input {
   font-size: 0.8rem;
@@ -840,6 +922,27 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 }
 .nf-empty__title { font-size: 1rem; font-weight: 600; color: #374151; margin: 0; }
 .nf-empty__sub   { font-size: 0.85rem; color: #9ca3af; margin: 0; }
+.nf-empty__action { margin-top: 6px; }
+
+/* Recherche : trois champs qui se partagent la largeur et passent à la ligne sur petit écran. */
+.nf-recherche__body { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.nf-recherche__input { flex: 1 1 200px; min-width: 0; }
+
+/* Explication de la règle de visibilité : discrète, dans les tons du bandeau d'information. */
+.nf-visibilite {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.nf-visibilite .v-icon { margin-top: 1px; flex-shrink: 0; }
+.nf-visibilite p { margin: 0; }
 
 /* ── Dialog ──────────────────────────────────────────────── */
 .nf-dialog {

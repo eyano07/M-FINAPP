@@ -10,6 +10,8 @@ public record StockGrandLivreResponse(
     Long id,
     LocalDate dateEcriture,
     String articleCode,
+    /** Nom de l'article : c'est lui que les ecrans affichent, le code ne servant qu'a l'identifier. */
+    String articleLibelle,
     String entrepotCode,
     String mouvementReference,
     BigDecimal qteEntree,
@@ -35,6 +37,7 @@ public record StockGrandLivreResponse(
             s.getId(),
             s.getDateEcriture(),
             s.getArticle() == null ? null : s.getArticle().getCode(),
+            s.getArticle() == null ? null : s.getArticle().getLibelle(),
             s.getEntrepot() == null ? null : s.getEntrepot().getCode(),
             mouvement == null ? null : mouvement.getReference(),
             s.getQteEntree(),

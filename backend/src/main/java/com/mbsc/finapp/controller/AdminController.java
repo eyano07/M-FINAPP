@@ -7,6 +7,7 @@ import com.mbsc.finapp.dto.admin.CompteUpdateRequest;
 import com.mbsc.finapp.dto.admin.ImportJournalResponse;
 import com.mbsc.finapp.dto.admin.TauxChangeRequest;
 import com.mbsc.finapp.dto.admin.TauxChangeResponse;
+import com.mbsc.finapp.dto.admin.AssujettissementTvaRequest;
 import com.mbsc.finapp.dto.admin.TauxTvaRequest;
 import com.mbsc.finapp.dto.admin.TauxTvaResponse;
 import com.mbsc.finapp.dto.admin.UserCreateRequest;
@@ -142,6 +143,12 @@ public class AdminController {
     @ResponseStatus(HttpStatus.CREATED)
     public TauxTvaResponse.HistoriqueEntry enregistrerTauxTva(@Valid @RequestBody TauxTvaRequest req) {
         return tauxTvaService.enregistrer(req);
+    }
+
+    /** Régime de TVA de l'entreprise : assujettie ou non (ADMIN). */
+    @PutMapping("/admin/taux-tva/assujettissement")
+    public TauxTvaResponse definirAssujettissementTva(@Valid @RequestBody AssujettissementTvaRequest req) {
+        return tauxTvaService.definirAssujettissement(req.assujetti());
     }
 
     // ---------------------------------------------------------------------

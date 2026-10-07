@@ -13,12 +13,15 @@ export interface Parametres {
   nif?: string | null
   logoUrl?: string | null
   couleurPrimaire?: string
+  /** Régime de TVA : false = entreprise non assujettie (factures sans TVA, mention « non applicable »). */
+  assujettiTva?: boolean
 }
 
 const DEFAUT: Parametres = {
   nom: 'MBSC Finapp', nomComplet: null, slogan: null, adresse: null, telephone: null,
   email: null, rccm: null, idNat: null, nif: null, logoUrl: null,
   couleurPrimaire: '#16A34A',
+  assujettiTva: true,
 }
 
 function hexToRgbTriplet(hex: string): string | null {

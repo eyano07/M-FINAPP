@@ -110,13 +110,13 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
     <v-card class="classroom-card pa-6 mb-4 no-print">
       <v-row align="end">
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.du" type="date" label="Du" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.du" type="date" label="Du" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.au" type="date" label="Au" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.au" type="date" label="Au" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-btn color="primary" block :loading="loading" @click="charger">Actualiser</v-btn>
+          <v-btn color="primary" block height="48" :loading="loading" @click="charger">Actualiser</v-btn>
         </v-col>
       </v-row>
     </v-card>

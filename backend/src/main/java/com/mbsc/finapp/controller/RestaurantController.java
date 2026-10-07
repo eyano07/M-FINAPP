@@ -2,6 +2,7 @@ package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.logistique.ArticleRequest;
 import com.mbsc.finapp.dto.logistique.ArticleResponse;
+import com.mbsc.finapp.dto.logistique.CodeArticleSuggereResponse;
 import com.mbsc.finapp.dto.logistique.EntrepotResponse;
 import com.mbsc.finapp.dto.logistique.StockGrandLivreResponse;
 import com.mbsc.finapp.dto.logistique.StockNiveauResponse;
@@ -110,6 +111,14 @@ public class RestaurantController {
     @GetMapping("/carte")
     public List<ArticleResponse> listerCarte() {
         return service.listerCarte();
+    }
+
+    /** Code proposé pour une nouvelle boisson, d'après son libellé et sa société (voir GenerateurCodeArticle). */
+    @GetMapping("/carte/code-suggere")
+    public CodeArticleSuggereResponse suggererCodeArticle(
+            @RequestParam(required = false) String libelle,
+            @RequestParam(required = false) String societe) {
+        return service.suggererCodeArticleCarte(libelle, societe);
     }
 
     @PostMapping("/carte")

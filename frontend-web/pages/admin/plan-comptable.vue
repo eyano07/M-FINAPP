@@ -120,7 +120,7 @@ function lignesRubrique(texte: string) {
                    texte: l.replace(/^[•–-]\s*/, '') }))
 }
 
-const form = reactive({ parentNumero: '', suffixe: '', libelle: '' })
+const form = reactive({ parentNumero: '', suffixe: '', libelle: '', note: '' })
 
 // ── Compte parent sélectionné ─────────────────────────────────────────────
 const parentChoisi = computed<Compte | null>(() =>
@@ -163,6 +163,7 @@ function ouvrirDialog() {
   form.parentNumero = ''
   form.suffixe = ''
   form.libelle = ''
+  form.note = ''
   erreur.value = ''
   dialog.value = true
 }
@@ -178,11 +179,16 @@ async function ajouter() {
   try {
     const c = await api<Compte>('/comptes', {
       method: 'POST',
-      body: { parentNumero: form.parentNumero, suffixe: form.suffixe.trim(), libelle: form.libelle.trim() },
+      body: {
+        parentNumero: form.parentNumero,
+        suffixe: form.suffixe.trim(),
+        libelle: form.libelle.trim(),
+        note: form.note.trim() || null,
+      },
     })
     comptes.value.push(c)
     comptes.value.sort((a, b) => a.numero.localeCompare(b.numero))
-    succes.value = `Compte ${fmtNumero(c.numero)} — ${c.libelle} créé.`
+    succes.value = `Compte ${fmtNumero(c.numero)} — ${c.libelle} créé, avec sa fiche de documentation.`
     dialog.value = false
   } catch (e: any) {
     erreur.value = e?.data?.message || "Échec de l'ajout."
@@ -356,7 +362,7 @@ const parentOptions = computed(() =>
             </td>
             <td class="pc-libelle">
               {{ c.libelle }}
-              <span v-if="c.commente" class="pc-fiche-badge" title="Fiche du référentiel SYSCOHADA disponible">
+              <span v-if="c.commente" class="pc-fiche-badge" :title="c.manuel ? 'Fiche de documentation du compte' : 'Fiche du référentiel SYSCOHADA disponible'">
                 <v-icon icon="mdi-book-open-page-variant-outline" size="13" />
                 Fiche
               </span>
@@ -591,6 +597,22 @@ const parentOptions = computed(() =>
               hide-details="auto"
             />
           </div>
+
+          <!-- Note de documentation -->
+          <div class="pc-field">
+            <label class="pc-label">Note de documentation (facultatif)</label>
+            <v-textarea
+              v-model="form.note"
+              placeholder="Ex : carburant du groupe électrogène du site de Lubumbashi uniquement"
+              prepend-inner-icon="mdi-book-open-page-variant-outline"
+              rows="2"
+              auto-grow
+              counter="1000"
+              maxlength="1000"
+              hint="La fiche du compte est rédigée automatiquement (rôle, fonctionnement et contrôles repris du compte parent). Ajoutez ici ce qui est propre à ce compte."
+              persistent-hint
+            />
+          </div>
         </div>
 
         <div class="pc-dialog__footer">
@@ -609,7 +631,9 @@ const parentOptions = computed(() =>
       <div class="pc-fiche">
         <div class="pc-fiche__head">
           <div>
-            <p class="pc-fiche__eyebrow">Référentiel SYSCOHADA — AUDCIF 2017</p>
+            <p class="pc-fiche__eyebrow">
+              {{ fiche?.manuel ? 'Compte propre à l\'entreprise — fiche rédigée à sa création' : 'Référentiel SYSCOHADA — AUDCIF 2017' }}
+            </p>
             <p class="pc-fiche__title">
               <span class="pc-fiche__num">{{ fiche ? fmtNumero(fiche.numero) : '' }}</span>
               {{ fiche?.libelle }}

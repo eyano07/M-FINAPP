@@ -78,6 +78,12 @@ async function charger() {
 }
 onMounted(charger)
 
+// Régime de TVA de l'entreprise : non assujettie => rien de nouveau n'est collecté ni
+// récupéré ; l'écran ne sert plus qu'à solder d'éventuels montants antérieurs.
+const parametresStore = useParametresStore()
+onMounted(() => { parametresStore.charger() })
+const nonAssujettie = computed(() => parametresStore.parametres.assujettiTva === false)
+
 const lignesFiltrees = computed(() => {
   if (!situation.value) return []
   if (filtreNature.value === 'TOUS') return situation.value.lignes
@@ -117,6 +123,12 @@ function fmtDate(d: string) {
         Arrêter la TVA
       </v-btn>
     </div>
+
+    <v-alert v-if="nonAssujettie" type="info" variant="tonal" rounded="lg" class="mb-4">
+      L'entreprise est déclarée <strong>non assujettie à la TVA</strong> (Administration → Taux de TVA) :
+      aucune TVA n'est plus facturée sur les ventes ni récupérée sur les achats. Cet écran ne sert qu'à
+      arrêter d'éventuels montants enregistrés auparavant.
+    </v-alert>
 
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4">{{ erreur }}</v-alert>
     <v-alert v-if="succes" type="success" variant="tonal" class="mb-4" closable @click:close="succes = ''">
@@ -159,13 +171,13 @@ function fmtDate(d: string) {
     <v-card class="classroom-card pa-6 mb-4">
       <v-row align="end">
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.du" label="Du" type="date" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.du" label="Du" type="date" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.au" label="Au" type="date" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.au" label="Au" type="date" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-btn color="primary" block :loading="loading" @click="charger">Actualiser</v-btn>
+          <v-btn color="primary" block height="48" :loading="loading" @click="charger">Actualiser</v-btn>
         </v-col>
       </v-row>
     </v-card>

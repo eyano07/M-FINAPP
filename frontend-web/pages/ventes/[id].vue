@@ -49,6 +49,12 @@ const auth = useAuthStore()
 const route = useRoute()
 const parametresStore = useParametresStore()
 onMounted(() => { parametresStore.charger() })
+/**
+ * Facture sans TVA d'une entreprise non assujettie : ni colonne ni ligne de TVA, mais la
+ * mention « TVA non applicable ». Une vente qui porte de la TVA (enregistrée quand
+ * l'entreprise était assujettie) l'affiche toujours.
+ */
+const sansTva = computed(() => parametresStore.parametres.assujettiTva === false && !(vente.value && vente.value.totalTva > 0))
 
 const loading = ref(false)
 const busy = ref(false)
@@ -536,7 +542,11 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
               <template v-if="vente.tauxJournalier"> · {{ vente.tauxJournalier }} FC/$</template>
             </span>
           </div>
-          <div v-if="vente.tauxTvaApplique != null" class="vd-info">
+          <div v-if="sansTva" class="vd-info">
+            <span class="vd-info__label">TVA</span>
+            <span class="vd-info__value">Non applicable (entreprise non assujettie)</span>
+          </div>
+          <div v-else-if="vente.tauxTvaApplique != null" class="vd-info">
             <span class="vd-info__label">Taux de TVA</span>
             <span class="vd-info__value">{{ vente.tauxTvaApplique }} %</span>
           </div>
@@ -555,10 +565,10 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
               <th>Article</th>
               <th>Désignation</th>
               <th class="text-right">Qté</th>
-              <th class="text-right">P.U. HT</th>
-              <th class="text-right">Montant HT</th>
-              <th class="text-right">TVA</th>
-              <th class="text-right">Total TTC</th>
+              <th class="text-right">{{ sansTva ? 'P.U.' : 'P.U. HT' }}</th>
+              <th class="text-right">{{ sansTva ? 'Montant' : 'Montant HT' }}</th>
+              <th v-if="!sansTva" class="text-right">TVA</th>
+              <th v-if="!sansTva" class="text-right">Total TTC</th>
             </tr>
           </thead>
           <tbody>
@@ -571,11 +581,11 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
               <td class="text-right">{{ fmtQte(l.quantite) }}</td>
               <td class="text-right">{{ fmtUSD(l.prixUnitaire) }}</td>
               <td class="text-right">{{ fmtUSD(l.montantHt) }}</td>
-              <td class="text-right">
+              <td v-if="!sansTva" class="text-right">
                 <span v-if="l.soumisTva">{{ fmtUSD(l.montantTva) }}</span>
                 <span v-else class="text-medium-emphasis">exonéré</span>
               </td>
-              <td class="text-right font-weight-medium">{{ fmtUSD(l.montantTtc) }}</td>
+              <td v-if="!sansTva" class="text-right font-weight-medium">{{ fmtUSD(l.montantTtc) }}</td>
             </tr>
           </tbody>
         </v-table>
@@ -637,13 +647,18 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 
       <!-- ── Totaux ──────────────────────────────────────────── -->
       <div class="vd-totaux">
-        <div class="vd-total-row">
-          <span>Total HT</span><strong>{{ fmtUSD(vente.totalHt) }}</strong>
+        <div v-if="sansTva" class="vd-total-row">
+          <span>TVA non applicable — entreprise non assujettie</span>
         </div>
-        <div class="vd-total-row">
-          <span>TVA<template v-if="vente.tauxTvaApplique != null"> ({{ vente.tauxTvaApplique }} %)</template></span>
-          <strong>{{ fmtUSD(vente.totalTva) }}</strong>
-        </div>
+        <template v-else>
+          <div class="vd-total-row">
+            <span>Total HT</span><strong>{{ fmtUSD(vente.totalHt) }}</strong>
+          </div>
+          <div class="vd-total-row">
+            <span>TVA<template v-if="vente.tauxTvaApplique != null"> ({{ vente.tauxTvaApplique }} %)</template></span>
+            <strong>{{ fmtUSD(vente.totalTva) }}</strong>
+          </div>
+        </template>
         <div class="vd-total-row vd-total-row--ttc">
           <span>Net à payer</span><strong>{{ fmtUSD(vente.totalTtc) }}</strong>
         </div>
@@ -762,12 +777,15 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
           </div>
         </div>
         <div class="vd-ticket__sep" />
-        <div class="vd-ticket__total-row"><span>Total HT</span><span>{{ fmtUSD(vente.totalHt) }}</span></div>
-        <div class="vd-ticket__total-row">
-          <span>TVA<template v-if="vente.tauxTvaApplique != null"> ({{ vente.tauxTvaApplique }} %)</template></span>
-          <span>{{ fmtUSD(vente.totalTva) }}</span>
-        </div>
+        <template v-if="!sansTva">
+          <div class="vd-ticket__total-row"><span>Total HT</span><span>{{ fmtUSD(vente.totalHt) }}</span></div>
+          <div class="vd-ticket__total-row">
+            <span>TVA<template v-if="vente.tauxTvaApplique != null"> ({{ vente.tauxTvaApplique }} %)</template></span>
+            <span>{{ fmtUSD(vente.totalTva) }}</span>
+          </div>
+        </template>
         <div class="vd-ticket__total-row vd-ticket__total-row--net"><span>NET À PAYER</span><span>{{ fmtUSD(vente.totalTtc) }}</span></div>
+        <p v-if="sansTva" class="vd-ticket__contre">TVA non applicable — entreprise non assujettie</p>
         <p v-if="contreValeur" class="vd-ticket__contre">{{ contreValeur }}</p>
         <div class="vd-ticket__sep" />
         <p>Règlement : {{ reglementLabel[vente.modeReglement] }}</p>

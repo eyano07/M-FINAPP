@@ -11,10 +11,13 @@ import com.mbsc.finapp.repository.ModuleConfigRepository;
 import com.mbsc.finapp.repository.RolePermissionRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +32,7 @@ import java.util.Map;
  * puisse verrouiller un administrateur hors de l'application (y compris
  * hors de la page de configuration qui permettrait de reparer l'erreur).</p>
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PermissionService {
@@ -133,5 +137,37 @@ public class PermissionService {
         rp.setNiveau(niveau);
         rolePermissionRepository.save(rp);
         return new RolePermissionResponse(role, module, niveau);
+    }
+
+    /**
+     * Pose les droits d'origine ({@link DroitsParDefaut}) des roles donnes qui
+     * n'ont encore AUCUNE ligne dans la grille, et rend ces roles. Un role
+     * deja configure — meme si l'administrateur lui a retire tous ses acces
+     * (lignes AUCUN) — n'est jamais touche : son choix prime.
+     *
+     * <p>Les droits sont rattaches au role, pas a l'utilisateur. Sans ligne,
+     * un role n'ouvre aucun module, et la page d'accueil d'un role de module
+     * (restaurant, logistique, patrimoine, DRH) renvoyait alors a la connexion
+     * vers elle-meme, sans fin. Appele a la creation d'un utilisateur et au
+     * changement de ses roles.</p>
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public List<RoleType> appliquerDroitsParDefaut(Collection<RoleType> roles) {
+        List<RoleType> appliques = new ArrayList<>();
+        for (RoleType role : roles.stream().distinct().sorted().toList()) {
+            if (role == RoleType.ADMIN || rolePermissionRepository.existsByRole(role)) {
+                continue;
+            }
+            Map<ModuleMetier, NiveauPermission> droits = DroitsParDefaut.pour(role);
+            if (droits.isEmpty()) {
+                continue;
+            }
+            droits.forEach((module, niveau) -> rolePermissionRepository.save(
+                RolePermission.builder().role(role).module(module).niveau(niveau).build()));
+            appliques.add(role);
+            log.info("Droits d'origine poses sur le role {} ({} module(s)) : aucun droit n'etait defini", role, droits.size());
+        }
+        return appliques;
     }
 }

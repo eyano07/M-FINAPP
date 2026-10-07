@@ -16,6 +16,7 @@ interface ArticleCarte {
   uniteMesure?: string
   type: 'PLAT' | 'BOISSON'
   categorie?: string | null
+  societe?: string | null
   compteStockNumero?: string
   compteChargeNumero?: string
   compteProduitNumero?: string
@@ -45,6 +46,9 @@ function remonterEnHautDialogue() {
 const editId = ref<number | null>(null)
 const filtreType = ref<'TOUS' | 'PLAT' | 'BOISSON'>('TOUS')
 const filtreCategorie = ref<string | null>(null)
+/** Recherche libre : code, libellé, société, catégorie ou unité, sans tenir compte des accents ni de la casse. */
+const recherche = ref('')
+const page = ref(1)
 
 /** Suggestions de depart pour la categorie d'un article ; le champ reste en saisie libre. */
 const CATEGORIES_BOISSON_SUGGEREES = [
@@ -83,6 +87,7 @@ const form = reactive({
   uniteMesure: '',
   type: 'PLAT' as 'PLAT' | 'BOISSON',
   categorie: null as string | null,
+  societe: '',
   compteStockNumero: '' as string | null,
   compteChargeNumero: '' as string | null,
   compteProduitNumero: '' as string | null,
@@ -106,10 +111,18 @@ const articlesFiltres = computed(() => {
   const parType = filtreType.value === 'TOUS'
     ? articles.value
     : articles.value.filter(a => a.type === filtreType.value)
-  return filtreType.value !== 'TOUS' && filtreCategorie.value
+  const parCategorie = filtreType.value !== 'TOUS' && filtreCategorie.value
     ? parType.filter(a => a.categorie === filtreCategorie.value)
     : parType
+  return parCategorie.filter(a =>
+    correspondRecherche([a.code, a.libelle, a.societe, a.categorie, a.uniteMesure], recherche.value))
 })
+
+const filtreActif = computed(() =>
+  !!recherche.value.trim() || filtreType.value !== 'TOUS' || !!filtreCategorie.value)
+
+// Un filtre plus strict peut laisser moins de pages que celle affichée : retour à la première.
+watch([filtreType, filtreCategorie, recherche], () => { page.value = 1 })
 
 const nbPlats = computed(() => articles.value.filter(a => a.type === 'PLAT').length)
 const nbBoissons = computed(() => articles.value.filter(a => a.type === 'BOISSON').length)
@@ -171,7 +184,7 @@ function ouvrirCreation(type: 'PLAT' | 'BOISSON') {
   const d = COMPTES_DEFAUT[type]
   Object.assign(form, {
     code: '', libelle: '', uniteMesure: type === 'PLAT' ? 'portion' : 'bouteille',
-    type, categorie: null,
+    type, categorie: null, societe: '',
     compteStockNumero: d.stock, compteChargeNumero: d.charge, compteProduitNumero: d.produit,
     compteAchatNumero: d.achat,
     devisePrixVente: 'CDF', prixVenteSaisi: null, soumisTva: true, stockMin: 0, actif: true,
@@ -189,6 +202,7 @@ function ouvrirEdition(a: ArticleCarte) {
     uniteMesure: a.uniteMesure || '',
     type: a.type,
     categorie: a.categorie || null,
+    societe: a.societe || '',
     compteStockNumero: a.compteStockNumero || '',
     compteChargeNumero: a.compteChargeNumero || '',
     compteProduitNumero: a.compteProduitNumero || '',
@@ -205,9 +219,67 @@ function ouvrirEdition(a: ArticleCarte) {
   dialog.value = true
 }
 
+// ── Code d'une nouvelle boisson ───────────────────────────────────────────────────────
+// Il n'est pas saisi : le serveur le compose d'après le libellé et la société (ex. « Primus 55CL »
+// de « Bracongo » : BRAC-PRIM-55CL) et s'assure qu'il est libre. Un plat, ou une boisson déjà
+// créée, garde un code modifiable à la main.
+const codeAutomatique = computed(() => form.type === 'BOISSON' && editId.value === null)
+const codeEnCours = ref(false)
+let numeroSuggestion = 0
+let minuterieCode: ReturnType<typeof setTimeout> | undefined
+
+async function suggererCode() {
+  const numero = ++numeroSuggestion
+  if (!form.libelle.trim()) {
+    form.code = ''
+    codeEnCours.value = false
+    return
+  }
+  codeEnCours.value = true
+  try {
+    const query: Record<string, string> = { libelle: form.libelle.trim() }
+    if (form.societe.trim()) query.societe = form.societe.trim()
+    const reponse = await api<{ code: string }>('/restaurant/carte/code-suggere', { query })
+    // Une saisie plus récente a pu relancer la demande entre-temps : seule la dernière compte.
+    if (numero === numeroSuggestion) form.code = reponse.code || ''
+  } catch {
+    if (numero === numeroSuggestion) form.code = ''
+  } finally {
+    if (numero === numeroSuggestion) codeEnCours.value = false
+  }
+}
+
+// Après une courte pause dans la frappe, pour ne pas interroger le serveur à chaque lettre.
+watch([() => form.libelle, () => form.societe, () => form.type, dialog, editId], () => {
+  clearTimeout(minuterieCode)
+  if (!dialog.value || !codeAutomatique.value) return
+  if (!form.libelle.trim()) {
+    numeroSuggestion++
+    form.code = ''
+    codeEnCours.value = false
+    return
+  }
+  codeEnCours.value = true
+  minuterieCode = setTimeout(suggererCode, 300)
+})
+// Passer de « Boisson » à « Plat » en pleine création : le code généré n'a plus de sens pour un plat.
+watch(() => form.type, (type, avant) => {
+  if (dialog.value && editId.value === null && avant === 'BOISSON' && type === 'PLAT') form.code = ''
+})
+onBeforeUnmount(() => clearTimeout(minuterieCode))
+
 async function enregistrer() {
+  if (codeAutomatique.value) {
+    // Code redemandé au dernier moment : il tient compte de tout ce qui a été créé entre-temps.
+    clearTimeout(minuterieCode)
+    await suggererCode()
+  }
   if (!form.code.trim() || !form.libelle.trim()) {
-    erreur.value = 'Code et libellé sont obligatoires.'
+    erreur.value = codeAutomatique.value
+      ? (form.libelle.trim()
+        ? "Le code n'a pas pu être généré : réessayez."
+        : 'Le libellé est obligatoire : le code en est déduit.')
+      : 'Code et libellé sont obligatoires.'
     remonterEnHautDialogue()
     return
   }
@@ -221,6 +293,8 @@ async function enregistrer() {
       uniteMesure: form.uniteMesure,
       type: form.type,
       categorie: form.categorie || null,
+      // La société n'existe que pour une boisson ; vide, elle est retirée.
+      societe: form.type === 'BOISSON' ? (form.societe.trim() || null) : null,
       compteStockNumero: form.compteStockNumero,
       compteChargeNumero: form.compteChargeNumero,
       compteProduitNumero: form.compteProduitNumero,
@@ -270,6 +344,7 @@ async function toggleActif(item: ArticleCarte) {
         uniteMesure: item.uniteMesure,
         type: item.type,
         categorie: item.categorie || null,
+        societe: item.societe || null,
         compteStockNumero: item.compteStockNumero,
         compteChargeNumero: item.compteChargeNumero,
         compteProduitNumero: item.compteProduitNumero,
@@ -357,11 +432,27 @@ async function confirmerSuppression() {
       </div>
     </div>
 
-    <v-btn-toggle v-model="filtreType" mandatory density="comfortable" variant="outlined" rounded="lg" class="mb-4">
-      <v-btn value="TOUS">Tous</v-btn>
-      <v-btn value="PLAT">Plats</v-btn>
-      <v-btn value="BOISSON">Boissons</v-btn>
-    </v-btn-toggle>
+    <div class="d-flex flex-wrap align-center ga-3 mb-4">
+      <!-- Densité par défaut = 48 px, la hauteur du champ de recherche voisin. -->
+      <v-btn-toggle v-model="filtreType" mandatory variant="outlined" rounded="lg">
+        <v-btn value="TOUS">Tous</v-btn>
+        <v-btn value="PLAT">Plats</v-btn>
+        <v-btn value="BOISSON">Boissons</v-btn>
+      </v-btn-toggle>
+      <v-text-field
+        v-model="recherche"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="Rechercher : code, libellé, société, catégorie…"
+        aria-label="Rechercher un article de la carte"
+        clearable
+        hide-details
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        class="flex-grow-1"
+        style="max-width: 460px; min-width: 240px"
+      />
+    </div>
 
     <div v-if="filtreType !== 'TOUS' && categoriesUtilisees.length" class="d-flex flex-wrap ga-2 mb-4">
       <v-chip
@@ -389,6 +480,7 @@ async function confirmerSuppression() {
         :headers="[
           { title: 'Code', key: 'code' },
           { title: 'Libellé', key: 'libelle' },
+          { title: 'Société', key: 'societe' },
           { title: 'Type', key: 'type' },
           { title: 'Catégorie', key: 'categorie' },
           { title: 'Unité', key: 'uniteMesure' },
@@ -399,8 +491,11 @@ async function confirmerSuppression() {
         ]"
         :items="articlesFiltres"
         :loading="loading"
+        v-model:page="page"
         items-per-page="15"
       >
+        <!-- Un code composé (BRAC-PRIM-55CL) reste sur une ligne : coupé aux tirets, il ferait grandir chaque rangée. -->
+        <template #item.code="{ item }"><span class="text-no-wrap">{{ item.code }}</span></template>
         <template #item.type="{ item }">
           <v-chip :color="META_TYPE[item.type]?.couleur" size="small" variant="tonal">
             <v-icon :icon="META_TYPE[item.type]?.icone" size="14" class="mr-1" />
@@ -411,6 +506,14 @@ async function confirmerSuppression() {
           <v-chip v-if="item.categorie" color="indigo" variant="tonal" size="small">{{ item.categorie }}</v-chip>
           <span v-else class="text-medium-emphasis">—</span>
         </template>
+        <!-- Un nom très long (100 caractères permis) est tronqué à l'affichage pour ne pas élargir le tableau ; le nom complet apparaît au survol. -->
+        <template #item.societe="{ item }">
+          <span
+            v-if="item.societe" class="d-inline-block text-truncate align-middle"
+            style="max-width: 200px" :title="item.societe"
+          >{{ item.societe }}</span>
+          <span v-else class="text-medium-emphasis">—</span>
+        </template>
         <template #item.uniteMesure="{ item }">{{ item.uniteMesure || '—' }}</template>
         <template #item.prixVente="{ item }">{{ fmtPrixVenteFC(item.prixVente) }}</template>
         <template #item.actif="{ item }">
@@ -419,6 +522,7 @@ async function confirmerSuppression() {
           </v-chip>
         </template>
         <template #item.actions="{ item }">
+          <div class="d-flex justify-end flex-nowrap">
           <v-btn
             v-if="item.type === 'PLAT'"
             size="small" variant="text" icon="mdi-clipboard-text-outline"
@@ -440,10 +544,13 @@ async function confirmerSuppression() {
             title="Supprimer définitivement"
             @click="ouvrirConfirmationSuppression(item)"
           />
+          </div>
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
-            Aucun article sur la carte. Commencez par créer un plat ou une boisson.
+            {{ filtreActif
+              ? 'Aucun article ne correspond à votre recherche ou à vos filtres.'
+              : 'Aucun article sur la carte. Commencez par créer un plat ou une boisson.' }}
           </div>
         </template>
       </v-data-table>
@@ -452,7 +559,7 @@ async function confirmerSuppression() {
     <v-dialog v-model="dialog" max-width="560" scrollable>
       <v-card class="pa-6">
         <h2 class="text-h6 mb-4">
-          {{ editId ? 'Modifier' : 'Nouveau' }} {{ META_TYPE[form.type]?.label?.toLowerCase() }}
+          {{ editId ? 'Modifier' : (form.type === 'BOISSON' ? 'Nouvelle' : 'Nouveau') }} {{ META_TYPE[form.type]?.label?.toLowerCase() }}
         </h2>
 
         <v-card-text ref="dialogCard" class="pa-0">
@@ -487,8 +594,32 @@ async function confirmerSuppression() {
           </v-btn>
         </v-btn-toggle>
 
-        <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
-        <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
+        <!-- Nouvelle boisson : le code se déduit du libellé et de la société, il vient donc après eux. -->
+        <template v-if="codeAutomatique">
+          <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
+          <v-text-field
+            v-model="form.societe" label="Société (facultatif)" maxlength="100"
+            hint="Brasserie, fabricant ou fournisseur, ex. Bracongo" persistent-hint
+            variant="outlined" density="comfortable" class="mb-3"
+          />
+          <v-text-field
+            :model-value="form.code" label="Code" readonly :loading="codeEnCours"
+            prepend-inner-icon="mdi-auto-fix" bg-color="grey-lighten-5"
+            placeholder="Généré à partir du libellé et de la société"
+            hint="Généré automatiquement à partir du libellé et de la société" persistent-hint
+            variant="outlined" density="comfortable" class="mb-3"
+          />
+        </template>
+        <template v-else>
+          <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
+          <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
+          <v-text-field
+            v-if="form.type === 'BOISSON'"
+            v-model="form.societe" label="Société (facultatif)" maxlength="100"
+            hint="Brasserie, fabricant ou fournisseur, ex. Bracongo" persistent-hint
+            variant="outlined" density="comfortable" class="mb-3"
+          />
+        </template>
         <v-text-field v-model="form.uniteMesure" label="Unité (portion, bouteille...)" variant="outlined" density="comfortable" class="mb-3" />
         <v-combobox
           v-model="form.categorie"

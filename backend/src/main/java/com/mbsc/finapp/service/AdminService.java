@@ -51,6 +51,9 @@ public class AdminService {
     private final PasswordEncoder passwordEncoder;
     /** Auteur des modifications de taux, trace comme sur le taux de TVA. */
     private final CurrentUserProvider currentUser;
+    /** Fiche de documentation de chaque compte créé (voir ajouterCompte). */
+    private final DocumentationCompteService documentation;
+    private final PermissionService permissionService;
 
     /** Plan comptable OHADA, accessible a tout utilisateur authentifie. */
     @Transactional(readOnly = true)
@@ -93,6 +96,9 @@ public class AdminService {
             .parent(parent)
             .manuel(true)
             .build();
+        // Tout compte créé reçoit sa fiche (contenu, fonctionnement, contrôle...), comme ceux
+        // du référentiel : rôle déduit du parent, origine, note facultative de l'utilisateur.
+        documentation.documenterSaisieManuelle(c, req.note());
         return CompteResponse.from(compteRepository.save(c));
     }
 
@@ -246,7 +252,19 @@ public class AdminService {
             .actif(true)
             .roles(resoudreRoles(req.roles()))
             .build();
-        return UserResponse.from(userRepository.save(u));
+        return avecDroitsParDefaut(userRepository.save(u));
+    }
+
+    /**
+     * Les droits sont rattaches au role : un role sans aucune ligne dans la
+     * grille (base neuve, purge) ne donnerait acces a rien a ses utilisateurs
+     * et, pour un role de module, les ferait tourner en boucle a la connexion.
+     * On pose donc les droits d'origine des roles de l'utilisateur qui n'en ont
+     * aucun ; un role deja configure n'est jamais modifie.
+     */
+    private UserResponse avecDroitsParDefaut(User u) {
+        List<RoleType> noms = u.getRoles().stream().map(Role::getNom).toList();
+        return UserResponse.from(u).avecDroitsParDefaut(permissionService.appliquerDroitsParDefaut(noms));
     }
 
     /** Modifie un utilisateur existant (ADMIN). */
@@ -267,7 +285,7 @@ public class AdminService {
         u.setFonction(videEnNull(req.fonction()));
         u.setAffectation(videEnNull(req.affectation()));
         u.setRoles(resoudreRoles(req.roles()));
-        return UserResponse.from(userRepository.save(u));
+        return avecDroitsParDefaut(userRepository.save(u));
     }
 
     /** {@code null}/vide -> {@code null} (evite de stocker une chaine vide plutot qu'une absence de valeur). */

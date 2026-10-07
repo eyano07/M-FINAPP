@@ -51,6 +51,8 @@ public class EtablissementTresorerieService {
 
     private final EtablissementTresorerieRepository etablissementRepository;
     private final CompteOHADARepository compteRepository;
+    /** Fiche de documentation du compte ouvert avec l'établissement. */
+    private final DocumentationCompteService documentation;
     private final EcritureGrandLivreRepository ecritureRepository;
 
     @PersistenceContext
@@ -175,7 +177,7 @@ public class EtablissementTresorerieService {
         } while (compteRepository.existsByNumero(numero));
 
         String libelle = (estBanque ? "Banque — " : "Mobile Money — ") + nom;
-        return compteRepository.save(CompteOHADA.builder()
+        CompteOHADA compte = CompteOHADA.builder()
             .numero(numero)
             .libelle(libelle.length() > 200 ? libelle.substring(0, 200) : libelle)
             .type(TypeCompte.ACTIF)
@@ -183,6 +185,8 @@ public class EtablissementTresorerieService {
             .manuel(true)
             .imputable(true)
             .actif(true)
-            .build());
+            .build();
+        documentation.documenterEtablissement(compte, nom, estBanque);
+        return compteRepository.save(compte);
     }
 }

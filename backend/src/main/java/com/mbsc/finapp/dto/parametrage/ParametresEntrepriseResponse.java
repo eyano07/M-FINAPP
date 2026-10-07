@@ -13,7 +13,9 @@ public record ParametresEntrepriseResponse(
     String idNat,
     String nif,
     String logoUrl,
-    String couleurPrimaire
+    String couleurPrimaire,
+    /** Régime de TVA de l'entreprise (factures : mention « TVA non applicable » si non assujettie). */
+    boolean assujettiTva
 ) {
     public static ParametresEntrepriseResponse from(ParametresEntreprise p) {
         // Parametre de cache-busting (?v=...) : sans lui, le navigateur
@@ -24,6 +26,7 @@ public record ParametresEntrepriseResponse(
             : null;
         return new ParametresEntrepriseResponse(
             p.getNom(), p.getNomComplet(), p.getSlogan(), p.getAdresse(), p.getTelephone(),
-            p.getEmail(), p.getRccm(), p.getIdNat(), p.getNif(), logoUrl, p.getCouleurPrimaire());
+            p.getEmail(), p.getRccm(), p.getIdNat(), p.getNif(), logoUrl, p.getCouleurPrimaire(),
+            p.isAssujettiTva());
     }
 }

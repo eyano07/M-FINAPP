@@ -105,6 +105,8 @@ public class ImportJournalService {
     private final PieceComptableRepository pieceRepository;
     private final ComptabiliteService comptabilite;
     private final CurrentUserProvider currentUser;
+    /** Fiche de documentation des comptes créés pendant l'import. */
+    private final DocumentationCompteService documentation;
     /** Propose des corrections au lieu de se contenter de refuser le fichier. */
     private final ImportIaService assistance;
     /** Convertit un journal en devise etrangere vers la devise de base. */
@@ -919,7 +921,7 @@ public class ImportJournalService {
         if (parent == null) {
             return Optional.empty();
         }
-        CompteOHADA cree = compteRepository.save(CompteOHADA.builder()
+        CompteOHADA nouveau = CompteOHADA.builder()
             .numero(numero)
             // A defaut d'intitule propose, le compte herite de celui de son
             // parent — jamais un texte reconstruit a partir du fichier.
@@ -928,7 +930,9 @@ public class ImportJournalService {
             .classe(parent.getClasse())
             .parent(parent)
             .manuel(true)
-            .build());
+            .build();
+        documentation.documenterImport(nouveau);
+        CompteOHADA cree = compteRepository.save(nouveau);
         log.info("Compte cree automatiquement : {} ({}) sous {}",
             cree.getNumero(), cree.getLibelle(), parent.getNumero());
         return Optional.of(cree.getNumero());

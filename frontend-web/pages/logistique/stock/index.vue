@@ -20,7 +20,9 @@ interface Entrepot { id: number; code: string; nom: string; actif: boolean }
 
 const api = useApi()
 const auth = useAuthStore()
+const parametresStore = useParametresStore()
 const loading = ref(false)
+const exportEnCours = ref(false)
 const erreur = ref('')
 const niveaux = ref<Niveau[]>([])
 
@@ -37,7 +39,54 @@ async function charger() {
     loading.value = false
   }
 }
-onMounted(charger)
+// ── Impression PDF et export Excel ────────────────────────────────────────────────────────────
+// Cet écran n'a pas de filtre : les deux reprennent tout le tableau. Ils relancent d'abord le chargement,
+// pour que le document et le fichier correspondent à ce que l'écran montre à cet instant.
+
+// Le tableau paginé ne rend que la page courante dans le DOM : sans bascule vers « toutes les
+// lignes » au moment d'imprimer, seule la première page sortirait sur le PDF.
+const lignesParPage = ref(25)
+const dateImpression = ref('')
+
+function avantImpression() {
+  lignesParPage.value = -1
+  dateImpression.value = new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
+}
+function apresImpression() {
+  lignesParPage.value = 25
+}
+
+async function imprimer() {
+  await charger()
+  if (erreur.value) return
+  await nextTick()
+  window.print()
+}
+
+async function exporterExcel() {
+  exportEnCours.value = true
+  try {
+    await charger()
+    if (erreur.value) return
+    await telechargerFichier(api, '/logistique/stock/export',
+      `Etat_du_stock_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Impossible de générer le fichier Excel de l'état du stock.")
+  } finally {
+    exportEnCours.value = false
+  }
+}
+
+onMounted(() => {
+  charger()
+  parametresStore.charger()
+  window.addEventListener('beforeprint', avantImpression)
+  window.addEventListener('afterprint', apresImpression)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeprint', avantImpression)
+  window.removeEventListener('afterprint', apresImpression)
+})
 
 const valeurTotale = computed(() => niveaux.value.reduce((s, n) => s + (n.valeurTotale || 0), 0))
 const nbAlertes = computed(() => niveaux.value.filter(n => n.sousSeuil).length)
@@ -139,18 +188,46 @@ async function confirmerAjout() {
 
 <template>
   <div>
-    <div class="page-head">
+    <div class="page-head no-print">
       <div>
         <h1 class="page-title">État du stock</h1>
         <p class="page-sub">Quantités et valorisation au coût moyen pondéré (CMP)</p>
       </div>
-      <v-btn v-if="canWrite" color="primary" variant="flat" rounded="lg"
-             prepend-icon="mdi-plus-box-outline" @click="ouvrirAjout">
-        Ajouter du stock
-      </v-btn>
+      <div class="d-flex ga-2 flex-wrap">
+        <v-btn color="success" variant="flat" rounded="lg" prepend-icon="mdi-file-excel-outline"
+               :loading="exportEnCours" :disabled="loading" @click="exporterExcel">
+          Exporter en Excel
+        </v-btn>
+        <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-file-pdf-box"
+               :disabled="loading || exportEnCours" @click="imprimer">
+          Imprimer en PDF
+        </v-btn>
+        <v-btn v-if="canWrite" color="primary" variant="flat" rounded="lg"
+               prepend-icon="mdi-plus-box-outline" @click="ouvrirAjout">
+          Ajouter du stock
+        </v-btn>
+      </div>
     </div>
 
-    <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4">{{ erreur }}</v-alert>
+    <!-- En-tête d'impression (visible uniquement sur le document imprimé) -->
+    <div class="etat-print-header">
+      <div class="etat-print-header__brand">
+        <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
+          <v-icon v-else icon="mdi-finance" size="16" color="white" />
+        </div>
+        <div>
+          <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+          <span class="etat-print-header__doc">État du stock</span>
+          <span class="etat-print-header__service">Quantités et valorisation au coût moyen pondéré (CMP)</span>
+        </div>
+      </div>
+      <div class="etat-print-header__meta">
+        <span>Imprimé le : {{ dateImpression }}</span>
+      </div>
+    </div>
+
+    <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4 no-print">{{ erreur }}</v-alert>
 
     <v-row class="mb-2">
       <v-col cols="6" md="4">
@@ -180,7 +257,8 @@ async function confirmerAjout() {
         ]"
         :items="niveaux"
         :loading="loading"
-        items-per-page="25"
+        :items-per-page="lignesParPage"
+        class="table-impression-compacte"
         no-data-text="Aucun article en stock. Utilisez « Ajouter du stock » pour la première entrée."
       >
         <template #item.quantite="{ item }">{{ fmt(item.quantite) }} {{ item.uniteMesure || '' }}</template>

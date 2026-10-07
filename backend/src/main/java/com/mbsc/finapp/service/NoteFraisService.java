@@ -28,6 +28,7 @@ import com.mbsc.finapp.dto.notes.NoteFraisDetailResponse;
 import com.mbsc.finapp.dto.notes.NoteFraisRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisResponse;
 import com.mbsc.finapp.dto.notes.PrioriteRequest;
+import com.mbsc.finapp.dto.notes.RegleVisibiliteResponse;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.ArticleRepository;
@@ -43,6 +44,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -58,6 +60,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Orchestration du cycle de vie d'une note de frais.
@@ -126,20 +129,27 @@ public class NoteFraisService {
     // Lecture
     // ---------------------------------------------------------------------
 
+    /**
+     * Notes visibles par l'utilisateur, filtrees par statut, periode de
+     * creation et recherche textuelle ({@link RechercheNoteFrais} : reference,
+     * libelle, compte d'une ligne) — chaque critere est facultatif.
+     *
+     * <p>La recherche s'applique apres la regle de visibilite : elle ne peut
+     * jamais reveler une note que l'utilisateur n'a pas le droit de voir.</p>
+     */
     @Transactional(readOnly = true)
-    public List<NoteFraisResponse> lister(LocalDate du, LocalDate au) {
-        return noteRepository.findAllByOrderByDateCreationDesc().stream()
-            .filter(this::estVisiblePourUtilisateur)
+    public List<NoteFraisResponse> lister(StatutNote statut, LocalDate du, LocalDate au,
+                                          String reference, String libelle, String compte) {
+        RechercheNoteFrais recherche = RechercheNoteFrais.de(reference, libelle, compte);
+        RegleVisibiliteNote regle = regleVisibilite();
+        Long utilisateurId = currentUser.requireUserId();
+        List<NoteFrais> notes = statut == null
+            ? noteRepository.findAllByOrderByDateCreationDesc()
+            : noteRepository.findByStatut(statut);
+        return notes.stream()
+            .filter(n -> regle.voit(n, utilisateurId))
             .filter(n -> dansPeriode(n, du, au))
-            .map(NoteFraisResponse::from)
-            .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<NoteFraisResponse> listerParStatut(StatutNote statut, LocalDate du, LocalDate au) {
-        return noteRepository.findByStatut(statut).stream()
-            .filter(this::estVisiblePourUtilisateur)
-            .filter(n -> dansPeriode(n, du, au))
+            .filter(recherche::correspond)
             .map(NoteFraisResponse::from)
             .toList();
     }
@@ -162,79 +172,33 @@ public class NoteFraisService {
         return au == null || !date.isAfter(au);
     }
 
-    /** Statuts visibles par un caissier "pur" : uniquement les notes deja validees par le DA. */
-    private static final Set<StatutNote> STATUTS_VISIBLES_CAISSIER = EnumSet.of(
-        StatutNote.VALIDEE_DA, StatutNote.TRANSMISE_CAISSE, StatutNote.PAYEE);
+    /**
+     * Regle de visibilite de l'utilisateur courant : une seule regle, deduite
+     * de ses roles — voir {@link RegleVisibiliteNote}, qui detaille chaque cas.
+     */
+    private RegleVisibiliteNote regleVisibilite() {
+        return RegleVisibiliteNote.pour(autoritesCourantes());
+    }
+
+    /** Autorites Spring de l'utilisateur courant (« ROLE_ADMIN », « ROLE_DA »...). */
+    private Set<String> autoritesCourantes() {
+        return currentUser.requirePrincipal().getAuthorities().stream()
+            .map(GrantedAuthority::getAuthority)
+            .collect(Collectors.toSet());
+    }
+
+    private boolean estVisiblePourUtilisateur(NoteFrais note) {
+        return regleVisibilite().voit(note, currentUser.requireUserId());
+    }
 
     /**
-     * Regle de visibilite :
-     * <ul>
-     *   <li>le Directeur metier (DIRECTEUR, sans autre role plus large) ne
-     *       voit que les notes qu'il a lui-meme creees : il n'intervient pas
-     *       dans le circuit de validation (DFIN/DA/Caissier) et n'a donc pas
-     *       a consulter les notes des autres createurs ;</li>
-     *   <li>de meme, le responsable restaurant (RESP_RESTAURANT seul) ne voit
-     *       que ses propres notes d'achat de boissons, et la logistique
-     *       (LOGISTIQUE seul) que ses propres notes de reglement de camions
-     *       minerais — ni l'un ni l'autre n'a a consulter les depenses des
-     *       autres services, memes regles que le Directeur metier ;</li>
-     *   <li>le caissier "pur" (sans role DFIN/DA/DG/ADMIN) voit les notes
-     *       deja validees par le DA ({@link #STATUTS_VISIBLES_CAISSIER}),
-     *       quel qu'en soit le createur, plus ses propres notes a n'importe
-     *       quel stade (il reste un employe qui peut soumettre ses propres
-     *       depenses et doit pouvoir en suivre l'avancement) ;</li>
-     *   <li>le DA ne voit pas les notes encore non traitees par le DFIN
-     *       (etats {@link StatutNote#BROUILLON} et {@link StatutNote#SOUMISE}) ;</li>
-     *   <li>les autres roles (DFIN, ADMIN, DG) conservent une visibilite
-     *       complete.</li>
-     * </ul>
+     * Explique a l'utilisateur courant quelles notes il voit, et donc pourquoi
+     * une note peut lui echapper (bandeau de la liste des notes de frais).
      */
-    private boolean estVisiblePourUtilisateur(NoteFrais note) {
-        var authorities = currentUser.requirePrincipal().getAuthorities();
-        boolean estDA = authorities.stream()
-            .anyMatch(a -> "ROLE_DA".equals(a.getAuthority()));
-        boolean estCaissier = authorities.stream()
-            .anyMatch(a -> "ROLE_CAISSIER".equals(a.getAuthority()));
-        boolean estDfinOuAdmin = authorities.stream()
-            .anyMatch(a -> "ROLE_DFIN".equals(a.getAuthority())
-                        || "ROLE_ADMIN".equals(a.getAuthority()));
-        boolean estDG = authorities.stream()
-            .anyMatch(a -> "ROLE_DG".equals(a.getAuthority()));
-        boolean estDirecteurSeul = authorities.stream()
-            .anyMatch(a -> "ROLE_DIRECTEUR".equals(a.getAuthority()))
-            && authorities.stream()
-            .noneMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
-                         || "ROLE_DG".equals(a.getAuthority())
-                         || "ROLE_DA".equals(a.getAuthority())
-                         || "ROLE_DFIN".equals(a.getAuthority())
-                         || "ROLE_CAISSIER".equals(a.getAuthority()));
-        boolean estCaissierSeul = estCaissier && !estDfinOuAdmin && !estDA && !estDG;
-        // La logistique ne cree que des notes de reglement de camions
-        // minerais : meme logique que le Directeur metier, elle ne consulte
-        // pas les depenses des autres services.
-        boolean estLogistiqueSeul = authorities.stream()
-            .anyMatch(a -> "ROLE_LOGISTIQUE".equals(a.getAuthority()))
-            && authorities.stream()
-            .noneMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
-                         || "ROLE_DG".equals(a.getAuthority())
-                         || "ROLE_DA".equals(a.getAuthority())
-                         || "ROLE_DFIN".equals(a.getAuthority())
-                         || "ROLE_CAISSIER".equals(a.getAuthority()));
-
-        if (estDirecteurSeul || estRespRestaurantSeul() || estLogistiqueSeul) {
-            return note.getCreateur() != null
-                && note.getCreateur().getId().equals(currentUser.requireUserId());
-        }
-        if (estCaissierSeul) {
-            boolean estCreateur = note.getCreateur() != null
-                && note.getCreateur().getId().equals(currentUser.requireUserId());
-            return estCreateur || STATUTS_VISIBLES_CAISSIER.contains(note.getStatut());
-        }
-        if (estDA && !estDfinOuAdmin) {
-            return note.getStatut() != StatutNote.BROUILLON
-                && note.getStatut() != StatutNote.SOUMISE;
-        }
-        return true;
+    @Transactional(readOnly = true)
+    public RegleVisibiliteResponse expliquerVisibilite() {
+        RegleVisibiliteNote regle = regleVisibilite();
+        return new RegleVisibiliteResponse(regle.estRestreinte(), regle.explication());
     }
 
     @Transactional(readOnly = true)
@@ -585,16 +549,7 @@ public class NoteFraisService {
 
     /** true si l'utilisateur courant n'a QUE le role RESP_RESTAURANT (pas COMPTABLE/CAISSIER/DFIN/DA/DG/ADMIN). */
     private boolean estRespRestaurantSeul() {
-        var authorities = currentUser.requirePrincipal().getAuthorities();
-        boolean estRespRestaurant = authorities.stream()
-            .anyMatch(a -> "ROLE_RESP_RESTAURANT".equals(a.getAuthority()));
-        return estRespRestaurant && authorities.stream()
-            .noneMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
-                         || "ROLE_DG".equals(a.getAuthority())
-                         || "ROLE_DA".equals(a.getAuthority())
-                         || "ROLE_DFIN".equals(a.getAuthority())
-                         || "ROLE_CAISSIER".equals(a.getAuthority())
-                         || "ROLE_COMPTABLE".equals(a.getAuthority()));
+        return RegleVisibiliteNote.estRespRestaurantSeul(autoritesCourantes());
     }
 
     /**
@@ -709,10 +664,13 @@ public class NoteFraisService {
 
     private List<LigneNoteFrais> creerLignes(List<LigneNoteFraisRequest> lignesReq, SensTransaction sens) {
         String compteTvaDuSens = sens == SensTransaction.ENCAISSEMENT ? COMPTE_TVA_VENTES : COMPTE_TVA_ACHATS;
+        // Entreprise non assujettie : ni TVA collectée ni TVA récupérable. La TVA payée
+        // au fournisseur fait partie de la charge : le montant saisi est le montant payé.
+        boolean assujetti = tauxTvaService.estAssujetti();
         List<LigneNoteFrais> lignes = new ArrayList<>();
         int ordre = 1;
         for (LigneNoteFraisRequest l : lignesReq) {
-            boolean soumisTva = Boolean.TRUE.equals(l.soumisTva());
+            boolean soumisTva = assujetti && Boolean.TRUE.equals(l.soumisTva());
             boolean fraisApproche = Boolean.TRUE.equals(l.fraisApproche());
 
             boolean achatMarchandise = Boolean.TRUE.equals(l.achatMarchandise());

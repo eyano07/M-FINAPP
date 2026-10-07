@@ -60,6 +60,8 @@ const entrepots = ref<Entrepot[]>([])
 const salles = ref<SalleAvecTables[]>([])
 const tauxChange = ref(1)
 const tauxTva = ref(0)
+/** Régime de TVA de l'entreprise : non assujettie => ni TVA ni total HT affichés. */
+const assujettiTva = ref(true)
 
 /** Table du restaurant, plate et prefixee par sa salle — vide si le module Restaurant n'est pas actif ou sans salle configuree. */
 const tablesOptions = computed(() =>
@@ -111,7 +113,7 @@ async function charger() {
         egal au taux, ~2800x) sans que rien ne le signale. A 0, les
         convertisseurs (tous gardes par `taux > 0`) renvoient 0, valeur
         manifestement fausse plutot que plausible. */,
-      api<{ taux: number }>('/admin/taux-tva').catch(() => ({ taux: 0 })),
+      api<{ taux: number; assujetti?: boolean }>('/admin/taux-tva').catch(() => ({ taux: 0, assujetti: true })),
       // Le module Restaurant peut etre desactive pour ce compte : l'appel
       // echouerait alors en 403, sans consequence puisque tablesOptions
       // reste simplement vide (le selecteur de table ne s'affiche pas).
@@ -132,6 +134,7 @@ async function charger() {
     salles.value = sls
     tauxChange.value = taux.taux || 0
     tauxTva.value = tva.taux || 0
+    assujettiTva.value = tva.assujetti !== false
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les données.')
   } finally {
@@ -491,8 +494,9 @@ const contreValeur = computed(() => {
       <div>
         <h1 class="page-title">Nouvelle vente</h1>
         <p class="page-sub">
-          Marchandises et services · TVA
-          <span class="vn-taux">{{ tauxTva }} %</span>
+          Marchandises et services ·
+          <span v-if="assujettiTva" class="vn-taux">TVA {{ tauxTva }} %</span>
+          <span v-else class="vn-taux">TVA non applicable</span>
         </p>
       </div>
       <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/ventes">Retour</v-btn>
@@ -740,16 +744,21 @@ const contreValeur = computed(() => {
 
       <!-- ── Totaux ────────────────────────────────────────── -->
       <div class="vn-totaux">
-        <div class="vn-total-row">
-          <span>Total HT</span>
-          <strong>{{ fmtMontant(totaux.ht) }}</strong>
-        </div>
-        <div class="vn-total-row">
-          <span>TVA ({{ tauxTva }} %)</span>
-          <strong>{{ fmtMontant(totaux.tva) }}</strong>
+        <template v-if="assujettiTva">
+          <div class="vn-total-row">
+            <span>Total HT</span>
+            <strong>{{ fmtMontant(totaux.ht) }}</strong>
+          </div>
+          <div class="vn-total-row">
+            <span>TVA ({{ tauxTva }} %)</span>
+            <strong>{{ fmtMontant(totaux.tva) }}</strong>
+          </div>
+        </template>
+        <div v-else class="vn-total-row">
+          <span>TVA non applicable — entreprise non assujettie</span>
         </div>
         <div class="vn-total-row vn-total-row--ttc">
-          <span>Total TTC</span>
+          <span>{{ assujettiTva ? 'Total TTC' : 'Total' }}</span>
           <strong>{{ fmtMontant(totaux.ttc) }}</strong>
         </div>
         <div v-if="contreValeur && totaux.ttc" class="vn-contre-valeur">{{ contreValeur }}</div>

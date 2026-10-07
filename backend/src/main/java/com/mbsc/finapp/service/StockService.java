@@ -115,6 +115,8 @@ public class StockService {
         boolean categorieApplicable = (type == TypeArticle.BOISSON || type == TypeArticle.PLAT)
             && StringUtils.hasText(req.categorie());
         article.setCategorie(categorieApplicable ? req.categorie().trim() : null);
+        // La société (brasserie, fabricant, fournisseur) n'a de sens que pour une boisson de la carte.
+        article.setSociete(type == TypeArticle.BOISSON && StringUtils.hasText(req.societe()) ? req.societe().trim() : null);
         article.setPrixVente(req.prixVente());
         article.setPrixAchat(req.prixAchat());
         article.setSoumisTva(req.soumisTva() == null || req.soumisTva());

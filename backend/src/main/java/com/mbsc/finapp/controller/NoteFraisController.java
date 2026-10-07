@@ -11,6 +11,7 @@ import com.mbsc.finapp.dto.notes.ModifierObjetRequest;
 import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteRequest;
 import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteResponse;
 import com.mbsc.finapp.dto.notes.PrioriteRequest;
+import com.mbsc.finapp.dto.notes.RegleVisibiliteResponse;
 import com.mbsc.finapp.service.NoteFraisService;
 import com.mbsc.finapp.service.ParametresPrioriteNoteService;
 import jakarta.validation.Valid;
@@ -60,8 +61,22 @@ public class NoteFraisController {
     public List<NoteFraisResponse> lister(
             @RequestParam(required = false) StatutNote statut,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au) {
-        return statut == null ? service.lister(du, au) : service.listerParStatut(statut, du, au);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
+            // Recherche textuelle facultative : fragment de la reference, du libelle (objet) de la note,
+            // ou nom / debut de numero d'un compte impute sur l'une de ses lignes.
+            @RequestParam(required = false) String reference,
+            @RequestParam(required = false) String libelle,
+            @RequestParam(required = false) String compte) {
+        return service.lister(statut, du, au, reference, libelle, compte);
+    }
+
+    /**
+     * Explique a l'utilisateur courant quelles notes il voit : selon son role,
+     * certaines notes ne lui sont pas accessibles (voir {@code RegleVisibiliteNote}).
+     */
+    @GetMapping("/regle-visibilite")
+    public RegleVisibiliteResponse regleVisibilite() {
+        return service.expliquerVisibilite();
     }
 
     @GetMapping("/{id}")

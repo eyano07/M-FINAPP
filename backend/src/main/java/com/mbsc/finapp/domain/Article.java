@@ -31,6 +31,9 @@ public class Article {
     /** Sous-classification libre (ex. Alcool, Vin, Whisky pour une BOISSON) ; sans effet en dehors de la carte du restaurant. */
     @Column(length = 40)
     private String categorie;
+    /** Société du produit (brasserie, fabricant ou fournisseur : Bracongo, Brasimba...) ; facultative, réservée aux boissons de la carte. */
+    @Column(length = 100)
+    private String societe;
 
     /** MARCHANDISE (stockee) ou SERVICE (prestation, sans stock). */
     @Enumerated(EnumType.STRING)

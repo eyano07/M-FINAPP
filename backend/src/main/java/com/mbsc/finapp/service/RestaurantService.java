@@ -1,5 +1,7 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.service.DocumentationCompteService.RoleCompteArticle;
+
 import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
@@ -33,6 +35,7 @@ import com.mbsc.finapp.domain.enums.TypeMouvementEmballage;
 import com.mbsc.finapp.domain.enums.TypeMouvementStock;
 import com.mbsc.finapp.dto.logistique.ArticleRequest;
 import com.mbsc.finapp.dto.logistique.ArticleResponse;
+import com.mbsc.finapp.dto.logistique.CodeArticleSuggereResponse;
 import com.mbsc.finapp.dto.logistique.EntrepotResponse;
 import com.mbsc.finapp.dto.logistique.StockGrandLivreResponse;
 import com.mbsc.finapp.dto.logistique.StockNiveauResponse;
@@ -154,6 +157,8 @@ public class RestaurantService {
     private final ComptabiliteService comptabilite;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
+    /** Fiche de documentation des comptes propres à chaque article (voir genererCompteDedie). */
+    private final DocumentationCompteService documentation;
     /** Résout le taux du jour pour les réceptions de provisions cotées en FC. */
     private final ConversionDeviseService conversionDevise;
     /** Lots actifs (date d'achat, fournisseur) — suivi de gestion, voir LotStockService. */
@@ -217,16 +222,29 @@ public class RestaurantService {
         exigerTypeCarte(req.type());
         boolean estPlat = req.type() == TypeArticle.PLAT;
         ArticleRequest reqAvecComptes = new ArticleRequest(
-            req.code(), req.libelle(), req.uniteMesure(), req.type(), req.categorie(), req.entrepotId(),
-            genererCompteDedie(estPlat ? RACINE_COMPTE_STOCK_PLAT : RACINE_COMPTE_STOCK_BOISSON, req.libelle()).getNumero(),
-            genererCompteDedie(estPlat ? RACINE_COMPTE_CHARGE_PLAT : RACINE_COMPTE_CHARGE_BOISSON, req.libelle()).getNumero(),
-            genererCompteDedie(estPlat ? RACINE_COMPTE_PRODUIT_PLAT : RACINE_COMPTE_PRODUIT_BOISSON, req.libelle()).getNumero(),
-            genererCompteDedie(RACINE_COMPTE_ACHAT_MARCHANDISE, req.libelle()).getNumero(),
+            req.code(), req.libelle(), req.uniteMesure(), req.type(), req.categorie(), req.societe(), req.entrepotId(),
+            genererCompteDedie(estPlat ? RACINE_COMPTE_STOCK_PLAT : RACINE_COMPTE_STOCK_BOISSON, RoleCompteArticle.STOCK, req).getNumero(),
+            genererCompteDedie(estPlat ? RACINE_COMPTE_CHARGE_PLAT : RACINE_COMPTE_CHARGE_BOISSON, RoleCompteArticle.VARIATION, req).getNumero(),
+            genererCompteDedie(estPlat ? RACINE_COMPTE_PRODUIT_PLAT : RACINE_COMPTE_PRODUIT_BOISSON, RoleCompteArticle.PRODUIT, req).getNumero(),
+            genererCompteDedie(RACINE_COMPTE_ACHAT_MARCHANDISE, RoleCompteArticle.ACHAT, req).getNumero(),
             req.prixVente(), req.prixAchat(), req.minerais(), req.soumisTva(), req.stockMin(), req.actif()
         );
         ArticleResponse cree = stockService.creerArticleInterne(reqAvecComptes);
         log.info("Article de carte créé [code={}, type={}]", cree.code(), cree.type());
         return cree;
+    }
+
+    /**
+     * Code proposé pour une nouvelle boisson, déduit de son libellé et de sa société (voir
+     * {@link GenerateurCodeArticle}) et libre au moment de l'appel : l'écran de création
+     * l'affiche au fil de la saisie. Il est à nouveau demandé juste avant l'enregistrement, et
+     * l'unicité reste contrôlée à la création.
+     */
+    @PreAuthorize(ECRITURE_CARTE)
+    @Transactional(readOnly = true)
+    public CodeArticleSuggereResponse suggererCodeArticleCarte(String libelle, String societe) {
+        return new CodeArticleSuggereResponse(
+            GenerateurCodeArticle.generer(libelle, societe, articleRepository::existsByCode));
     }
 
     @PreAuthorize(ECRITURE_CARTE)
@@ -244,12 +262,12 @@ public class RestaurantService {
      * les comptes de l'article (le rendant impossible à vendre ou à
      * réceptionner), son prix d'achat indicatif et son entrepôt
      * d'affectation — ces deux derniers, les écrans de ce module ne les
-     * envoient même pas. La catégorie, elle, reste celle de la requête :
-     * la vider est un choix légitime.
+     * envoient même pas. La catégorie et la société, elles, restent celles
+     * de la requête : les vider est un choix légitime.
      */
     private static ArticleRequest completerParLExistant(Article a, ArticleRequest req) {
         return new ArticleRequest(
-            req.code(), req.libelle(), req.uniteMesure(), req.type(), req.categorie(),
+            req.code(), req.libelle(), req.uniteMesure(), req.type(), req.categorie(), req.societe(),
             req.entrepotId() != null ? req.entrepotId() : (a.getEntrepot() == null ? null : a.getEntrepot().getId()),
             numeroOuExistant(req.compteStockNumero(), a.getCompteStock()),
             numeroOuExistant(req.compteChargeNumero(), a.getCompteCharge()),
@@ -924,11 +942,11 @@ public class RestaurantService {
     public ArticleResponse creerProvision(ArticleRequest req) {
         exigerTypeProvision(req.type());
         ArticleRequest reqAvecComptes = new ArticleRequest(
-            req.code(), req.libelle(), req.uniteMesure(), req.type(), req.categorie(), req.entrepotId(),
-            genererCompteDedie(RACINE_COMPTE_STOCK_PROVISION, req.libelle()).getNumero(),
-            genererCompteDedie(RACINE_COMPTE_CHARGE_PROVISION, req.libelle()).getNumero(),
+            req.code(), req.libelle(), req.uniteMesure(), req.type(), req.categorie(), req.societe(), req.entrepotId(),
+            genererCompteDedie(RACINE_COMPTE_STOCK_PROVISION, RoleCompteArticle.STOCK, req).getNumero(),
+            genererCompteDedie(RACINE_COMPTE_CHARGE_PROVISION, RoleCompteArticle.VARIATION, req).getNumero(),
             req.compteProduitNumero(),
-            genererCompteDedie(RACINE_COMPTE_ACHAT_PROVISION, req.libelle()).getNumero(),
+            genererCompteDedie(RACINE_COMPTE_ACHAT_PROVISION, RoleCompteArticle.ACHAT, req).getNumero(),
             req.prixVente(), req.prixAchat(), req.minerais(), req.soumisTva(), req.stockMin(), req.actif()
         );
         ArticleResponse cree = stockService.creerArticleInterne(reqAvecComptes);
@@ -957,7 +975,8 @@ public class RestaurantService {
      * un compte de saisie ordinaire, indiscernable d'un compte du referentiel
      * officiel sur le reste de l'application.</p>
      */
-    private CompteOHADA genererCompteDedie(String racineNumero, String libelleArticle) {
+    private CompteOHADA genererCompteDedie(String racineNumero, RoleCompteArticle role, ArticleRequest article) {
+        String libelleArticle = article.libelle();
         CompteOHADA racine = compteRepository.findByNumero(racineNumero)
             .orElseThrow(() -> new IllegalStateException("Compte racine introuvable : " + racineNumero));
         for (int suffixe = 1; suffixe <= 99; suffixe++) {
@@ -977,6 +996,9 @@ public class RestaurantService {
                 .imputable(true)
                 .actif(true)
                 .build();
+            // Fiche du compte : son rôle pour cet article (stock, variation, ventes,
+            // achats), son fonctionnement, ses contrôles et son origine.
+            documentation.documenterCompteArticle(nouveau, racine, role, article.type(), article.code(), libelleArticle);
             return compteRepository.save(nouveau);
         }
         throw new IllegalStateException(

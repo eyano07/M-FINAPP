@@ -235,7 +235,8 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
         <p class="page-sub">Meilleures ventes, marge par article et tendance — {{ periodeLabel }}</p>
       </div>
       <div class="d-flex ga-2 flex-wrap">
-        <v-btn-toggle v-model="deviseAffichage" mandatory density="comfortable" variant="outlined" rounded="lg">
+        <!-- Densité par défaut = 48 px, la hauteur des champs voisins (« comfortable » ne donne que 40 px). -->
+        <v-btn-toggle v-model="deviseAffichage" mandatory variant="outlined" rounded="lg">
           <v-btn value="CDF" size="small">FC</v-btn>
           <v-btn value="USD" size="small">$US</v-btn>
         </v-btn-toggle>

@@ -179,7 +179,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
       <v-text-field v-model="filtreClient" label="Client" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 180px" />
       <v-text-field v-model="filtrePiece" label="Pièce" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 160px" />
       <v-text-field v-model="filtreReference" label="Référence" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 180px" />
-      <v-btn variant="text" color="primary" prepend-icon="mdi-filter-remove-outline" @click="reinitialiserFiltres">
+      <v-btn variant="text" color="primary" height="48" prepend-icon="mdi-filter-remove-outline" @click="reinitialiserFiltres">
         Réinitialiser
       </v-btn>
     </div>

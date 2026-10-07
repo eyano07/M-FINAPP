@@ -13,4 +13,7 @@ public interface RolePermissionRepository extends JpaRepository<RolePermission, 
     List<RolePermission> findByRoleIn(List<RoleType> roles);
 
     Optional<RolePermission> findByRoleAndModule(RoleType role, ModuleMetier module);
+
+    /** Vrai si le role a au moins une ligne dans la grille, quel qu'en soit le niveau (AUCUN compris). */
+    boolean existsByRole(RoleType role);
 }

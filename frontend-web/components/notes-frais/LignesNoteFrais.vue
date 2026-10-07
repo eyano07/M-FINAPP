@@ -68,17 +68,26 @@ async function chargerReferentielStock() {
 // (l'engagement comptable réel est calculé côté serveur, au taux en vigueur
 // à la date effective du paiement — cet aperçu est purement indicatif).
 const tauxTva = ref<number | null>(null)
+/**
+ * Régime de TVA de l'entreprise. Non assujettie : pas de case « Soumis à la TVA »,
+ * le montant saisi est le montant payé, TVA comprise (le serveur ignore d'ailleurs
+ * toute TVA sur la note dans ce cas).
+ */
+const assujettiTva = ref(true)
 let tauxTvaCharge = false
 async function chargerTauxTva() {
   if (tauxTvaCharge) return
   tauxTvaCharge = true
   try {
-    const res = await api<{ taux: number }>('/admin/taux-tva')
+    const res = await api<{ taux: number; assujetti?: boolean }>('/admin/taux-tva')
     tauxTva.value = res.taux || null
+    assujettiTva.value = res.assujetti !== false
   } catch {
     tauxTva.value = null
   }
 }
+// Dès l'affichage : la case « Soumis à la TVA » dépend du régime de l'entreprise.
+onMounted(chargerTauxTva)
 
 const articlesOptions = computed(() =>
   articlesDispo.value.map(a => `${a.libelle}`))
@@ -341,7 +350,11 @@ function fmt(v: number) {
           <v-icon icon="mdi-calculator-variant-outline" size="14" class="mr-1" />
           {{ fmt(ligne.montant) }} {{ deviseLabel }} × {{ ligne.quantiteMarchandise }} = HT {{ fmt(montantHtTotal(ligne)) }} {{ deviseLabel }}
         </div>
-        <div class="lignes-note__toggle-row">
+        <div v-if="!assujettiTva" class="lignes-note__compte-auto">
+          <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
+          Entreprise non assujettie à la TVA : saisissez le montant payé, TVA comprise (elle fait partie de la charge).
+        </div>
+        <div v-else class="lignes-note__toggle-row">
           <v-switch
             :model-value="ligne.soumisTva"
             label="Soumis à la TVA"

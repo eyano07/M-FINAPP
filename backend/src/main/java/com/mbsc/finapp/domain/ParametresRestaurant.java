@@ -34,5 +34,5 @@ public class ParametresRestaurant {
     @Enumerated(EnumType.STRING)
     @Column(name = "devise_affichage", nullable = false, length = 3)
     @Builder.Default
-    private Devise deviseAffichage = Devise.USD;
+    private Devise deviseAffichage = Devise.CDF;
 }

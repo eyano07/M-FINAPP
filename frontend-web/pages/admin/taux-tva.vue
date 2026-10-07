@@ -19,6 +19,53 @@ interface TauxTva {
 const historique = ref<TauxTva[]>([])
 const tauxActuel = ref<TauxTva | null>(null)
 
+// ── Régime de TVA de l'entreprise ──────────────────────────────────────────
+// Non assujettie : le serveur applique un taux de 0 partout (ventes, notes de frais,
+// achats au comptant) ; le taux légal ci-dessous reste enregistré pour le jour où
+// l'entreprise le deviendrait.
+const assujetti = ref(true)
+const dialogRegime = ref(false)
+const regimeDemande = ref<boolean | null>(null)
+const savingRegime = ref(false)
+const parametresStore = useParametresStore()
+
+interface ReponseTva { taux: number; dateEffet: string; historique?: TauxTva[]; assujetti?: boolean; tauxEnVigueur?: number }
+
+function appliquer(data: ReponseTva) {
+  assujetti.value = data.assujetti !== false
+  tauxActuel.value = { taux: data.tauxEnVigueur ?? data.taux, dateEffet: data.dateEffet }
+  historique.value = data.historique ?? []
+}
+
+function demanderRegime(valeur: boolean | null) {
+  if (valeur == null || valeur === assujetti.value) return
+  regimeDemande.value = valeur
+  dialogRegime.value = true
+}
+
+async function confirmerRegime() {
+  if (regimeDemande.value == null) return
+  savingRegime.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    appliquer(await api<ReponseTva>('/admin/taux-tva/assujettissement', {
+      method: 'PUT',
+      body: { assujetti: regimeDemande.value },
+    }))
+    // Factures et écrans de TVA lisent le régime dans ce store : à rafraîchir tout de suite.
+    await parametresStore.charger()
+    succes.value = assujetti.value
+      ? 'Entreprise déclarée assujettie à la TVA : les ventes et achats enregistrés à partir de maintenant portent la TVA.'
+      : 'Entreprise déclarée non assujettie : aucune TVA sur les ventes et achats enregistrés à partir de maintenant.'
+    dialogRegime.value = false
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Échec de l'enregistrement du régime de TVA.")
+  } finally {
+    savingRegime.value = false
+  }
+}
+
 const form = reactive({
   taux: null as number | null,
   dateEffet: new Date().toISOString().substring(0, 10),
@@ -29,9 +76,7 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const data = await api<{ taux: number; dateEffet: string; historique?: TauxTva[] }>('/admin/taux-tva')
-    tauxActuel.value = { taux: data.taux, dateEffet: data.dateEffet }
-    historique.value = data.historique ?? []
+    appliquer(await api<ReponseTva>('/admin/taux-tva'))
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger le taux de TVA.')
   } finally {
@@ -81,6 +126,40 @@ function fmtDate(d: string) {
       </div>
     </div>
 
+    <!-- ── Régime de TVA de l'entreprise ──────────────────── -->
+    <div class="tva-card tva-regime">
+      <p class="tva-card__title">
+        <v-icon icon="mdi-scale-balance" size="16" class="mr-2" />
+        Régime de TVA de l'entreprise
+      </p>
+      <v-btn-toggle
+        :model-value="assujetti"
+        mandatory
+        density="comfortable"
+        variant="outlined"
+        rounded="lg"
+        color="primary"
+        :disabled="loading || savingRegime"
+        @update:model-value="demanderRegime"
+      >
+        <v-btn :value="true" prepend-icon="mdi-check-decagram-outline">Assujettie à la TVA</v-btn>
+        <v-btn :value="false" prepend-icon="mdi-cancel">Non assujettie</v-btn>
+      </v-btn-toggle>
+      <p class="tva-regime__texte">
+        <template v-if="assujetti">
+          La TVA est facturée sur les ventes (4431) et récupérée sur les achats (4452), au taux en vigueur ci-dessous.
+        </template>
+        <template v-else>
+          Aucune TVA n'est facturée sur les ventes ni récupérée sur les achats : la TVA payée aux fournisseurs fait
+          partie de la charge, et les factures portent la mention « TVA non applicable ».
+        </template>
+      </p>
+      <v-alert v-if="assujetti && !loading && !(tauxActuel && tauxActuel.taux > 0)" type="warning" variant="tonal"
+               rounded="lg" density="compact" class="mt-3">
+        Entreprise assujettie, mais aucun taux n'est enregistré : les ventes partent sans TVA. Enregistrez le taux légal ci-dessous.
+      </v-alert>
+    </div>
+
     <!-- ── Taux en vigueur ─────────────────────────────────── -->
     <div class="tva-hero">
       <div class="tva-hero__blob tva-hero__blob--a" />
@@ -90,7 +169,7 @@ function fmtDate(d: string) {
           <v-icon icon="mdi-percent-outline" size="22" color="white" />
         </div>
         <div>
-          <p class="tva-hero__label">Taux en vigueur</p>
+          <p class="tva-hero__label">{{ assujetti ? 'Taux en vigueur' : 'Taux légal enregistré — non appliqué' }}</p>
           <p class="tva-hero__val">
             <template v-if="tauxActuel && tauxActuel.taux > 0">
               <strong>{{ fmtTaux(tauxActuel.taux) }}</strong>
@@ -208,10 +287,38 @@ function fmtDate(d: string) {
         </div>
       </div>
     </div>
+
+    <!-- ── Confirmation du changement de régime ───────────── -->
+    <v-dialog v-model="dialogRegime" max-width="540">
+      <v-card rounded="lg">
+        <v-card-title class="text-subtitle-1 pt-4">
+          {{ regimeDemande ? "Déclarer l'entreprise assujettie à la TVA ?" : "Déclarer l'entreprise non assujettie à la TVA ?" }}
+        </v-card-title>
+        <v-card-text class="text-body-2">
+          <p v-if="regimeDemande" class="mb-2">
+            À partir de maintenant, la TVA sera facturée sur les ventes et récupérée sur les achats
+            <template v-if="tauxActuel && tauxActuel.taux > 0">au taux de {{ fmtTaux(tauxActuel.taux) }}.</template>
+            <template v-else>— mais aucun taux n'est encore enregistré : enregistrez ensuite le taux légal.</template>
+          </p>
+          <p v-else class="mb-2">
+            À partir de maintenant, aucune TVA ne sera facturée sur les ventes ni récupérée sur les achats ;
+            les factures porteront la mention « TVA non applicable ».
+          </p>
+          <p class="mb-0 text-medium-emphasis">Les ventes et notes de frais déjà enregistrées ne changent pas.</p>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-spacer />
+          <v-btn variant="text" :disabled="savingRegime" @click="dialogRegime = false">Annuler</v-btn>
+          <v-btn color="primary" variant="flat" rounded="lg" :loading="savingRegime" @click="confirmerRegime">Confirmer</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <style scoped>
+.tva-regime { margin-bottom: 20px; }
+.tva-regime__texte { margin: 12px 0 0; font-size: 0.875rem; color: #6b7280; line-height: 1.5; }
 .tva-page { max-width: 960px; margin: 0 auto; padding-bottom: 48px; }
 
 /* ── Hero ────────────────────────────────────────────────── */

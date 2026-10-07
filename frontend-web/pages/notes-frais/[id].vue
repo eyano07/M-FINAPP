@@ -113,7 +113,12 @@ async function charger() {
     note.value = await api<NoteDetail>(`/notes-frais/${id.value}`)
     prioriteChoisie.value = note.value?.priorite ?? null
   } catch (e: any) {
-    erreur.value = e?.data?.message || 'Note introuvable.'
+    // 404 : note inexistante, ou que le rôle de l'utilisateur ne lui permet pas de voir — le serveur ne
+    // distingue volontairement pas les deux (une note cachée ne doit pas révéler son existence).
+    const introuvable = (e?.response?.status ?? e?.statusCode ?? e?.status) === 404
+    erreur.value = introuvable
+      ? "Cette note est introuvable, ou vous n'êtes pas autorisé à la consulter : selon votre rôle, certaines notes ne vous sont pas accessibles."
+      : (e?.data?.message || 'Note introuvable.')
   } finally {
     loading.value = false
   }
