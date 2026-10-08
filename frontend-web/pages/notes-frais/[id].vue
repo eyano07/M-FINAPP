@@ -4,6 +4,8 @@ definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', '
 
 interface Observation {
   auteurNom?: string
+  /** Fonction inscrite sur la fiche de l'auteur ; absente si elle n'est pas renseignée. */
+  auteurFonction?: string | null
   auteur?: string
   statut?: string
   statutAuMoment?: string
@@ -50,6 +52,7 @@ interface NoteDetail {
   priorite?: string | null
   description?: string
   demandeurNom?: string
+  demandeurFonction?: string | null
   demandeurEmail?: string
   lignes: LigneNoteFrais[]
   piecesJointes: PieceJointe[]
@@ -626,7 +629,10 @@ const peutGererPieces = computed(() =>
               <div class="nd-info-icon"><v-icon icon="mdi-account-outline" size="16" /></div>
               <div>
                 <span class="nd-info-label">Demandeur</span>
-                <span class="nd-info-val">{{ note.demandeurNom || '—' }}</span>
+                <span class="nd-info-val">
+                  <span v-if="note.demandeurFonction" class="nd-fonction">{{ note.demandeurFonction }}<span aria-hidden="true">&nbsp;·&nbsp;</span></span>
+                  <span>{{ note.demandeurNom || '—' }}</span>
+                </span>
               </div>
             </div>
             <div class="nd-info-row">
@@ -785,7 +791,10 @@ const peutGererPieces = computed(() =>
               <div class="nd-timeline-item__dot" />
               <div class="nd-timeline-item__content">
                 <div class="nd-timeline-item__header">
-                  <strong class="nd-timeline-item__author">{{ o.auteurNom || o.auteur }}</strong>
+                  <span class="nd-timeline-item__who">
+                    <span v-if="o.auteurFonction" class="nd-fonction">{{ o.auteurFonction }}<span aria-hidden="true">&nbsp;·&nbsp;</span></span>
+                    <strong class="nd-timeline-item__author">{{ o.auteurNom || o.auteur }}</strong>
+                  </span>
                   <span class="nd-timeline-item__date">{{ fmtDate(o.dateAction || o.date) }}</span>
                 </div>
                 <span
@@ -1311,6 +1320,10 @@ const peutGererPieces = computed(() =>
   gap: 8px;
   margin-bottom: 4px;
 }
+/* Fonction de l'utilisateur, devant son nom : « Directeur Financier · Jean Dupont ». */
+.nd-fonction { color: #6b7280; font-weight: 500; }
+.nd-timeline-item__who { min-width: 0; overflow-wrap: anywhere; }
+.nd-timeline-item__who .nd-fonction { font-size: 0.8rem; }
 .nd-timeline-item__author { font-size: 0.875rem; color: #111827; }
 .nd-timeline-item__date   { font-size: 0.72rem; color: #9ca3af; white-space: nowrap; }
 .nd-timeline-item__statut {

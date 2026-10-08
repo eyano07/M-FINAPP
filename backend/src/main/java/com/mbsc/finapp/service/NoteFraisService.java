@@ -566,7 +566,7 @@ public class NoteFraisService {
         exigerEtat(note, StatutNote.SOUMISE, "modifier les comptes d'imputation");
 
         User auteur = currentUser.requireUser();
-        StringBuilder trace = new StringBuilder("Comptes d'imputation modifies par le DFIN : ");
+        StringBuilder trace = new StringBuilder("Comptes d'imputation modifies : ");
         for (int i = 0; i < req.lignes().size(); i++) {
             LigneCompteRequest ligneReq = req.lignes().get(i);
             LigneNoteFrais ligne = note.getLignes().stream()
@@ -628,7 +628,7 @@ public class NoteFraisService {
         String nouveau = req.objet().trim();
         note.setObjet(nouveau);
         note.addObservation(observation(note, auteur, note.getStatut(),
-            "Libellé modifié par le DFIN : \"" + ancien + "\" → \"" + nouveau + "\""));
+            "Libellé modifié : \"" + ancien + "\" → \"" + nouveau + "\""));
         note = noteRepository.saveAndFlush(note);
 
         log.info("Note {} : libellé modifié par le DFIN (par {})", note.getReference(), auteur.getEmail());
@@ -919,7 +919,7 @@ public class NoteFraisService {
     public NoteFraisDetailResponse verifier(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.SOUMISE, "verifier");
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VERIFIEE_DFIN, action, "Verifiee par le DFIN");
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VERIFIEE_DFIN, action, "Verifiee");
         notificationService.notifierRole(RoleType.DA, TypeNotification.NOTE_VERIFIEE,
             "Note à valider", note.getReference() + " — " + note.getObjet(),
             "/notes-frais/" + note.getId(), note);
@@ -932,7 +932,7 @@ public class NoteFraisService {
     public NoteFraisDetailResponse valider(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.VERIFIEE_DFIN, "valider");
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VALIDEE_DA, action, "Validee par le DA");
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VALIDEE_DA, action, "Validee");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_VALIDEE,
             "Note validée par le DA", note.getReference() + " — " + note.getObjet() + " (prête à transmettre)",
             "/notes-frais/" + note.getId(), note);
@@ -948,7 +948,7 @@ public class NoteFraisService {
         if (!StringUtils.hasText(action.commentaire())) {
             throw new IllegalArgumentException("Un motif de rejet est obligatoire");
         }
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.REJETEE_DA, action, "Rejetee par le DA");
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.REJETEE_DA, action, "Rejetee");
         notificationService.notifierUtilisateur(note.getCreateur(), TypeNotification.NOTE_REJETEE,
             "Note rejetée", note.getReference() + " — " + action.commentaire(),
             "/notes-frais/" + note.getId(), note);
