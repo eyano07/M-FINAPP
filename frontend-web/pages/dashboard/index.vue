@@ -40,6 +40,8 @@ const tresorerieMobileMoney = ref(0)
 const resultatNet = ref(0)
 const resultatNetEvolution = ref<{ mois: string; valeur: number }[]>([])
 const budgetTaux = ref(0)
+// Module Budget désactivé ou non accessible au rôle : la tuile « Budget exécuté » est masquée.
+const budgetDisponible = ref(false)
 const tauxChange = ref(1) // taux FC→USD (1 USD = X FC)
 
 // Convertit le montant d'une note de frais (dans SA propre devise) en USD.
@@ -92,6 +94,7 @@ async function charger() {
     const prevu = budgets.reduce((a, b) => a + Number(b.totalPrevu || 0), 0)
     const realise = budgets.reduce((a, b) => a + Number(b.totalRealise || 0), 0)
     budgetTaux.value = prevu ? Math.round((realise / prevu) * 100) : 0
+    budgetDisponible.value = true
   } catch { /* role sans acces aux budgets */ }
 }
 
@@ -193,7 +196,9 @@ const stats = computed(() => {
     // relève du pilotage financier comme le taux d'exécution budgétaire
     // ci-dessous : masqué au caissier pur pour la même raison que lui.
     { label: 'Résultat net', value: fmtUSD(resultatNet.value), icon: resultatNet.value >= 0 ? 'mdi-trending-up' : 'mdi-trending-down', color: resultatNet.value >= 0 ? 'green' : 'orange', to: '/balance' },
-    { label: 'Budget execute', value: `${budgetTaux.value}%`, icon: 'mdi-chart-arc', color: 'purple', trend: `Exercice ${new Date().getFullYear()}`, to: '/budgets' },
+    ...(budgetDisponible.value
+      ? [{ label: 'Budget execute', value: `${budgetTaux.value}%`, icon: 'mdi-chart-arc', color: 'purple', trend: `Exercice ${new Date().getFullYear()}`, to: '/budgets' }]
+      : []),
   ]
 })
 

@@ -6,6 +6,7 @@ import com.mbsc.finapp.domain.LigneBudget;
 import com.mbsc.finapp.domain.LigneNoteFrais;
 import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.enums.Devise;
+import com.mbsc.finapp.domain.enums.ModuleMetier;
 import com.mbsc.finapp.domain.enums.SensTransaction;
 import com.mbsc.finapp.domain.enums.StatutBudget;
 import com.mbsc.finapp.domain.enums.StatutControleBudget;
@@ -41,6 +42,9 @@ import java.util.Optional;
  * de la depense - realise sur la meme periode - engagements en cours (notes approuvees non payees, la note
  * controlee exceptee). Plusieurs lignes d'une meme note sur une meme ligne budgetaire se cumulent.</p>
  *
+ * <p>Module {@code BUDGET} desactive par l'administrateur : aucune depense n'est controlee ni rattachee au
+ * budget (statut NON_CONCERNE, voir {@link #budgetDesactive}).</p>
+ *
  * <p>Ne sont pas des depenses budgetaires (statut NON_CONCERNE) : notes d'encaissement, lignes imputees a un
  * compte de tiers ou de tresorerie (reglement d'une dette fournisseur deja constatee, avance au personnel...).</p>
  */
@@ -54,6 +58,7 @@ public class ControleBudgetaireService {
     private final CompteOHADARepository compteRepository;
     private final SuiviBudgetaireService suivi;
     private final ConversionDeviseService conversion;
+    private final ModuleConfigService modules;
 
     /** Une depense a controler : compte (null = compte de repli 6588) et montant HT dans la devise de la note. */
     record Depense(String compteNumero, BigDecimal montant) {
@@ -66,6 +71,9 @@ public class ControleBudgetaireService {
         List<Depense> depenses = req.lignes().stream()
             .map(l -> new Depense(l.compteNumero(), montantHt(l.montant(), l.quantite(), l.achatMarchandise())))
             .toList();
+        if (!modules.estActif(ModuleMetier.BUDGET)) {
+            return budgetDesactive(depenses, devise, LocalDate.now());
+        }
         BigDecimal taux = devise == ConversionDeviseService.DEVISE_BASE ? null : conversion.tauxCourant();
         return controler(depenses, devise, taux, LocalDate.now(), req.noteId());
     }
@@ -80,9 +88,12 @@ public class ControleBudgetaireService {
             .map(l -> new Depense(l.getCompteImputation() == null ? null : l.getCompteImputation().getNumero(), l.montantHtTotal()))
             .toList();
         Devise devise = note.getDevise() == null ? Devise.CDF : note.getDevise();
-        BigDecimal taux = suivi.tauxDeLaNote(note);
         LocalDate date = note.getDateCreation() == null ? LocalDate.now()
             : LocalDate.ofInstant(note.getDateCreation(), java.time.ZoneId.systemDefault());
+        if (!modules.estActif(ModuleMetier.BUDGET)) {
+            return budgetDesactive(depenses, devise, date);
+        }
+        BigDecimal taux = suivi.tauxDeLaNote(note);
         return controler(depenses, devise, taux, date, note.getId());
     }
 
@@ -168,7 +179,7 @@ public class ControleBudgetaireService {
         Budget b = budgetOpt.orElse(null);
         return new ControleBudgetaireResponse(exercice, mois,
             b == null ? null : b.getId(), b == null ? null : b.getReference(), b == null ? null : b.getIntitule(),
-            global, global.exigeJustification(), devise.name(), taux, resultats, avertissements.stream().distinct().toList());
+            global, global.exigeJustification(), devise.name(), taux, resultats, avertissements.stream().distinct().toList(), true);
     }
 
     private LigneControle ligne(int index, String numero, String libelle, BigDecimal montant, BigDecimal montantBase,
@@ -188,8 +199,27 @@ public class ControleBudgetaireService {
                 StatutControleBudget.NON_CONCERNE, null, null, "Note d'encaissement : une recette n'est pas soumise au contrôle des dépenses."));
         }
         return new ControleBudgetaireResponse(date.getYear(), date.getMonthValue(), null, null, null,
-            StatutControleBudget.NON_CONCERNE, false, note.getDevise() == null ? null : note.getDevise().name(), null, lignes, List.of());
+            StatutControleBudget.NON_CONCERNE, false, note.getDevise() == null ? null : note.getDevise().name(), null, lignes,
+            List.of(), true);
     }
+
+    /**
+     * Module Budget désactivé par l'administrateur : aucune dépense n'est contrôlée ni rattachée au budget
+     * (statut NON_CONCERNE, pas de budget de référence, aucune justification exigée).
+     */
+    private ControleBudgetaireResponse budgetDesactive(List<Depense> depenses, Devise devise, LocalDate date) {
+        List<LigneControle> lignes = new ArrayList<>();
+        for (int i = 0; i < depenses.size(); i++) {
+            Depense d = depenses.get(i);
+            lignes.add(ligne(i, d.compteNumero(), null, d.montant() == null ? BigDecimal.ZERO : d.montant(), null,
+                StatutControleBudget.NON_CONCERNE, null, null, MESSAGE_DESACTIVE));
+        }
+        return new ControleBudgetaireResponse(date.getYear(), date.getMonthValue(), null, null, null,
+            StatutControleBudget.NON_CONCERNE, false, devise.name(), null, lignes, List.of(MESSAGE_DESACTIVE), false);
+    }
+
+    static final String MESSAGE_DESACTIVE =
+        "Module Budget désactivé par l'administrateur : les dépenses ne sont pas rattachées au budget.";
 
     /** Montant HT d'une ligne saisie : prix unitaire x quantite pour un achat de marchandise, montant saisi sinon. */
     static BigDecimal montantHt(BigDecimal montant, BigDecimal quantite, Boolean achatMarchandise) {

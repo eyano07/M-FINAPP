@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
 // uniquement) mais ne voit pas les Budgets.
-definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
+definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
 
 interface BudgetResume {
   id: number

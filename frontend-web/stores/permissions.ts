@@ -3,6 +3,8 @@ import { defineStore } from 'pinia'
 export type NiveauPermission = 'AUCUN' | 'LECTURE' | 'ECRITURE'
 export type ModuleMetier =
   | 'CAISSE' | 'BANQUE' | 'MOBILE_MONEY' | 'COMPTABILITE' | 'VENTES' | 'LOGISTIQUE' | 'TRANSPORT'
+  // Budgets et contrôle budgétaire des notes : sous-module de COMPTABILITE, activable par l'administrateur.
+  | 'BUDGET'
   | 'PATRIMOINE'
   // Restaurant : module plat (pas de sous-modules), comme PATRIMOINE.
   | 'RESTAURANT'

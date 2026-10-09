@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN'] })
+definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN'] })
 </script>
 
 <template>

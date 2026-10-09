@@ -34,6 +34,7 @@ const MODULES: { module: string; label: string }[] = [
   { module: 'BANQUE', label: 'Banque' },
   { module: 'MOBILE_MONEY', label: 'Mobile Money' },
   { module: 'COMPTABILITE', label: 'Comptabilité' },
+  { module: 'BUDGET', label: 'Budget' },
   { module: 'VENTES', label: 'Ventes' },
   { module: 'LOGISTIQUE', label: 'Logistique' },
   { module: 'TRANSPORT', label: 'Transport' },

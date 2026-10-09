@@ -83,7 +83,7 @@ const lignesAffichees = computed(() => (resultat.value?.lignes || []).filter((l:
 </script>
 
 <template>
-  <div v-if="actif && (resultat || chargement || erreur)" class="cb" :class="`cb--${(resultat?.statut || 'X').toLowerCase()}`">
+  <div v-if="actif && resultat?.budgetActif !== false && (resultat || chargement || erreur)" class="cb" :class="`cb--${(resultat?.statut || 'X').toLowerCase()}`">
     <div class="cb-tete">
       <v-icon icon="mdi-scale-balance" size="18" />
       <span class="cb-titre">Contrôle budgétaire</span>

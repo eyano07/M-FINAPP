@@ -21,7 +21,9 @@ public record ControleBudgetaireResponse(
     String devise,
     BigDecimal tauxChange,
     List<LigneControle> lignes,
-    List<String> avertissements
+    List<String> avertissements,
+    /** false : module Budget désactivé par l'administrateur, aucune dépense n'est contrôlée ni rattachée. */
+    boolean budgetActif
 ) {
     public record LigneControle(
         int index,

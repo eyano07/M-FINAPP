@@ -73,7 +73,7 @@ const items: NavItem[] = [
   { title: 'Balance', icon: 'mdi-scale-balance', to: '/balance', module: 'CAISSE', essentiel: true },
   // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
   // uniquement) mais ne voit pas les Budgets.
-  { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
 ]
 
 const comptabiliteItems: NavItem[] = [

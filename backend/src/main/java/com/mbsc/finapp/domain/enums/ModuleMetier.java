@@ -26,6 +26,11 @@ public enum ModuleMetier {
     BANQUE,
     MOBILE_MONEY,
     COMPTABILITE,
+    /**
+     * Budgets prévisionnels et contrôle budgétaire des notes de frais, sous-module de COMPTABILITE.
+     * Désactivé, les dépenses ne sont plus rattachées ni contrôlées par rapport au budget.
+     */
+    BUDGET,
     VENTES,
     LOGISTIQUE,
     TRANSPORT,

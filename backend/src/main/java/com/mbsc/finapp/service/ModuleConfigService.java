@@ -20,6 +20,23 @@ public class ModuleConfigService {
 
     private final ModuleConfigRepository repository;
 
+    /**
+     * Module activé pour toute l'application, indépendamment des droits de l'utilisateur courant :
+     * désactivé lui-même ou via son module parent (même cascade que {@code PermissionService}).
+     */
+    @Transactional(readOnly = true)
+    public boolean estActif(ModuleMetier module) {
+        ModuleConfig config = repository.findById(module).orElse(null);
+        if (config == null) {
+            return true;
+        }
+        if (!config.isActif()) {
+            return false;
+        }
+        return config.getParentModule() == null
+            || repository.findById(config.getParentModule()).map(ModuleConfig::isActif).orElse(true);
+    }
+
     @Transactional(readOnly = true)
     public java.util.List<ModuleConfigResponse> lister() {
         Map<ModuleMetier, ModuleConfig> existants = repository.findAll().stream()
