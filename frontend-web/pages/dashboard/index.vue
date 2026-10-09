@@ -85,9 +85,12 @@ async function charger() {
     resultatNet.value = produits - charges
   } catch { /* role sans acces a la balance */ }
   try {
-    const budgets = await api<any[]>('/budgets')
-    const prevu = budgets.reduce((a, b) => a + (b.totalPrevu || 0), 0)
-    const realise = budgets.reduce((a, b) => a + (b.totalRealise || 0), 0)
+    // Taux d'execution des depenses (charges + investissements, realise du grand livre) du budget en execution
+    // de l'annee : additionner tous les budgets (brouillons, revisions remplacees...) n'aurait aucun sens.
+    const annee = new Date().getFullYear()
+    const budgets = (await api<any[]>('/budgets')).filter(b => b.statut === 'EN_EXECUTION' && b.exercice === annee)
+    const prevu = budgets.reduce((a, b) => a + Number(b.totalPrevu || 0), 0)
+    const realise = budgets.reduce((a, b) => a + Number(b.totalRealise || 0), 0)
     budgetTaux.value = prevu ? Math.round((realise / prevu) * 100) : 0
   } catch { /* role sans acces aux budgets */ }
 }

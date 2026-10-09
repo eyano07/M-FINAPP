@@ -8,6 +8,8 @@ interface NoteFrais {
   statut: string
   sens?: string | null
   priorite?: string | null
+  /** Contrôle budgétaire relevé à la soumission (hors budget, dépassement...). */
+  statutBudget?: string | null
   createurNom?: string
   dateCreation?: string
 }
@@ -57,6 +59,14 @@ const montantFmt = computed(() =>
       <div class="nfc__chips">
         <span class="nfc__chip" :style="{ background: meta.bg, color: meta.text }">
           {{ meta.label }}
+        </span>
+        <span
+          v-if="note.statutBudget && ['DEPASSEMENT', 'HORS_BUDGET', 'SANS_BUDGET'].includes(note.statutBudget)"
+          class="nfc__chip"
+          style="background: #fee2e2; color: #b91c1c"
+          :title="'Contrôle budgétaire : ' + statutControle(note.statutBudget).label + ' (justification fournie)'"
+        >
+          <v-icon :icon="statutControle(note.statutBudget).icon" size="11" class="mr-1" />{{ statutControle(note.statutBudget).label }}
         </span>
         <span v-if="prioMeta" class="nfc__chip" :style="{ background: prioMeta.bg, color: prioMeta.color }">
           <v-icon :icon="prioMeta.icon" size="11" class="mr-1" />{{ prioMeta.label }}

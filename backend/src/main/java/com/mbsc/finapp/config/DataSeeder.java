@@ -356,9 +356,9 @@ public class DataSeeder implements CommandLineRunner {
 
         // Budgets
         jdbc.update("""
-            INSERT INTO budgets (intitule, exercice, statut, elabore_par_id, approuve_par_id,
+            INSERT INTO budgets (reference, intitule, exercice, statut, elabore_par_id, approuve_par_id,
                 observation, date_creation)
-            SELECT 'Budget Exploitation Q2 2026', 2026, 'EN_EXECUTION',
+            SELECT 'BUD-2026-' || lpad(nextval('seq_budget')::text, 6, '0'), 'Budget Exploitation Q2 2026', 2026, 'EN_EXECUTION',
                    dfin.id, da.id,
                    'Approuve en reunion du 01/04/2026. Couvre charges courantes et deplacements.',
                    NOW() - INTERVAL '30 days'
@@ -393,9 +393,9 @@ public class DataSeeder implements CommandLineRunner {
         """);
 
         jdbc.update("""
-            INSERT INTO budgets (intitule, exercice, statut, elabore_par_id, approuve_par_id,
+            INSERT INTO budgets (reference, intitule, exercice, statut, elabore_par_id, approuve_par_id,
                 observation, date_creation)
-            SELECT 'Budget Formation & Developpement 2026', 2026, 'APPROUVE',
+            SELECT 'BUD-2026-' || lpad(nextval('seq_budget')::text, 6, '0'), 'Budget Formation & Developpement 2026', 2026, 'APPROUVE',
                    dfin.id, da.id,
                    'Renforcement de capacites : formations, seminaires, abonnements outils metier.',
                    NOW() - INTERVAL '20 days'
@@ -404,7 +404,15 @@ public class DataSeeder implements CommandLineRunner {
               AND NOT EXISTS (SELECT 1 FROM budgets WHERE intitule = 'Budget Formation & Developpement 2026')
         """);
 
-        jdbc.execute("SELECT setval('seq_budget', GREATEST(nextval('seq_budget') + 1, 3))");
+        // Ventilation mensuelle (V100) : montant annuel a parts egales, centimes restants sur decembre.
+        jdbc.update("""
+            INSERT INTO lignes_budget_mois (ligne_budget_id, mois, montant)
+            SELECT l.id, m.mois,
+                   CASE WHEN m.mois < 12 THEN trunc(l.montant_prevu / 12, 2)
+                        ELSE l.montant_prevu - 11 * trunc(l.montant_prevu / 12, 2) END
+            FROM lignes_budget l CROSS JOIN generate_series(1, 12) AS m(mois)
+            WHERE NOT EXISTS (SELECT 1 FROM lignes_budget_mois x WHERE x.ligne_budget_id = l.id)
+        """);
 
         log.info("Donnees de demonstration inserees.");
     }

@@ -26,7 +26,9 @@ public record NoteFraisResponse(
     int nombreLignes,
     int nombrePiecesJointes,
     Instant dateCreation,
-    Instant dateMaj
+    Instant dateMaj,
+    /** Controle budgetaire releve a la soumission (null avant) : la liste signale les notes hors budget. */
+    com.mbsc.finapp.domain.enums.StatutControleBudget statutBudget
 ) {
     public static NoteFraisResponse from(NoteFrais n) {
         var createur = n.getCreateur();
@@ -44,7 +46,8 @@ public record NoteFraisResponse(
             n.getLignes().size(),
             n.getPiecesJointes().size(),
             n.getDateCreation(),
-            n.getDateMaj()
+            n.getDateMaj(),
+            n.getStatutBudget()
         );
     }
 

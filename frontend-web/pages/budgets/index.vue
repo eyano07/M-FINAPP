@@ -3,110 +3,56 @@
 // uniquement) mais ne voit pas les Budgets.
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
 
-interface LigneBudget {
-  compteNumero: string
-  montantPrevu: number
-  montantRealise?: number
-}
-interface Budget {
+interface BudgetResume {
   id: number
+  reference: string
   intitule: string
   exercice: number
   statut: string
+  numeroRevision: number
+  elaboreParNom?: string
+  approuveParNom?: string
+  prevuProduits: number
+  prevuCharges: number
+  prevuInvestissements: number
+  realiseProduits: number
+  realiseCharges: number
+  realiseInvestissements: number
   totalPrevu: number
   totalRealise: number
-  lignes?: LigneBudget[]
+  tauxExecution: number | null
+  nombreLignes: number
 }
 
 const api = useApi()
 const auth = useAuthStore()
 const loading = ref(false)
-const saving = ref(false)
 const erreur = ref('')
-const dialog = ref(false)
-const budgets = ref<Budget[]>([])
+const budgets = ref<BudgetResume[]>([])
+const filtreExercice = ref<number | null>(null)
 
-const isDFIN = computed(() => auth.hasAnyRole(['DFIN']))
-const isDA = computed(() => auth.hasAnyRole(['DA']))
-
-const statutMeta: Record<string, { color: string }> = {
-  BROUILLON: { color: 'grey' },
-  SOUMIS: { color: 'blue' },
-  APPROUVE: { color: 'green' },
-  REJETE: { color: 'red' },
-  EN_EXECUTION: { color: 'teal' },
-}
-
-const form = reactive({
-  intitule: '',
-  exercice: new Date().getFullYear(),
-  observation: '',
-  lignes: [{ compteNumero: '', montantPrevu: null as number | null }] as { compteNumero: string; montantPrevu: number | null }[],
-})
+// L'administrateur dispose des droits du DFIN et du DA (le serveur l'accepte aussi).
+const peutElaborer = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
 
 async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    budgets.value = await api<Budget[]>('/budgets')
-  } catch (e: any) {
-    erreur.value = e?.data?.message || 'Impossible de charger les budgets.'
+    budgets.value = await api<BudgetResume[]>('/budgets')
+  } catch (e) {
+    erreur.value = messageErreurApi(e, 'Impossible de charger les budgets.')
   } finally {
     loading.value = false
   }
 }
-
 onMounted(charger)
 
-function ajouterLigne() {
-  form.lignes.push({ compteNumero: '', montantPrevu: null })
-}
-function retirerLigne(i: number) {
-  form.lignes.splice(i, 1)
-}
-
-async function creerBudget() {
-  const lignes = form.lignes.filter((l) => l.compteNumero && l.montantPrevu != null)
-  if (!form.intitule || lignes.length === 0) {
-    erreur.value = 'Renseignez un intitule et au moins une ligne.'
-    return
-  }
-  saving.value = true
-  erreur.value = ''
-  try {
-    await api('/budgets', {
-      method: 'POST',
-      body: {
-        intitule: form.intitule,
-        exercice: form.exercice,
-        observation: form.observation || null,
-        lignes: lignes.map((l) => ({ compteNumero: l.compteNumero, montantPrevu: l.montantPrevu })),
-      },
-    })
-    dialog.value = false
-    form.intitule = ''
-    form.observation = ''
-    form.lignes = [{ compteNumero: '', montantPrevu: null }]
-    await charger()
-  } catch (e: any) {
-    erreur.value = e?.data?.message || 'Echec de la creation du budget.'
-  } finally {
-    saving.value = false
-  }
-}
-
-async function action(b: Budget, chemin: string) {
-  erreur.value = ''
-  try {
-    await api(`/budgets/${b.id}/${chemin}`, { method: 'POST', body: {} })
-    await charger()
-  } catch (e: any) {
-    erreur.value = e?.data?.message || "Echec de l'action."
-  }
-}
-
-const fmt = (v: number) => new Intl.NumberFormat('fr-FR').format(v || 0)
-const taux = (b: Budget) => (b.totalPrevu ? Math.round((b.totalRealise / b.totalPrevu) * 100) : 0)
+const exercices = computed(() => [...new Set(budgets.value.map(b => b.exercice))].sort((a, b) => b - a))
+const affiches = computed(() => budgets.value.filter(b => !filtreExercice.value || b.exercice === filtreExercice.value))
+const enExecution = computed(() => budgets.value.find(b => b.statut === 'EN_EXECUTION' && b.exercice === new Date().getFullYear()))
+const resultatPrevu = (b: BudgetResume) => centimes(b.prevuProduits - b.prevuCharges)
+// Seul un budget mis en exécution (même remplacé ou clôturé depuis) a un taux d'exécution qui a un sens.
+const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE'].includes(b.statut)
 </script>
 
 <template>
@@ -114,54 +60,73 @@ const taux = (b: Budget) => (b.totalPrevu ? Math.round((b.totalRealise / b.total
     <div class="page-head">
       <div>
         <h1 class="page-title">Budgets</h1>
-        <p class="page-sub">Prévisions élaborées par le DFIN et approuvées par le DA</p>
+        <p class="page-sub">Budgets annuels ventilés par mois, élaborés par le DFIN, approuvés par le DA, suivis sur le grand livre</p>
       </div>
-      <button v-if="isDFIN" class="bud-new-btn" @click="dialog = true">
-        <v-icon icon="mdi-plus" size="18" class="mr-1" />
-        Nouveau budget
-      </button>
+      <v-btn v-if="peutElaborer" color="primary" prepend-icon="mdi-plus" height="44" to="/budgets/nouveau">Nouveau budget</v-btn>
     </div>
 
-    <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4" closable @click:close="erreur = ''">
-      {{ erreur }}
+    <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4" closable @click:close="erreur = ''">{{ erreur }}</v-alert>
+
+    <v-alert v-if="!loading && !enExecution" type="warning" variant="tonal" class="mb-4" icon="mdi-calendar-alert">
+      Aucun budget n’est en exécution pour {{ new Date().getFullYear() }} : toute note de frais de l’exercice devra
+      justifier sa dépense « hors budget ».
+      <span v-if="peutElaborer">Créez un budget (ou faites-le proposer par l’IA), faites-le approuver par le DA, puis démarrez-le.</span>
     </v-alert>
+
+    <div v-if="exercices.length > 1" class="d-flex align-center ga-2 mb-3">
+      <v-chip-group v-model="filtreExercice" selected-class="text-primary" column>
+        <v-chip :value="null" variant="outlined">Tous</v-chip>
+        <v-chip v-for="e in exercices" :key="e" :value="e" variant="outlined">{{ e }}</v-chip>
+      </v-chip-group>
+    </div>
 
     <v-skeleton-loader v-if="loading" type="card, card, card" />
 
     <v-row v-else>
-      <v-col v-for="b in budgets" :key="b.id" cols="12" md="6" lg="4">
-        <v-card class="classroom-card pa-4" height="100%">
-          <div class="d-flex align-center mb-2">
-            <v-icon icon="mdi-chart-box-outline" color="primary" class="mr-2" />
-            <span class="text-subtitle-1 font-weight-medium">{{ b.intitule }}</span>
-            <v-spacer />
-            <v-chip :color="statutMeta[b.statut]?.color" size="small" variant="tonal">
-              {{ b.statut }}
+      <v-col v-for="b in affiches" :key="b.id" cols="12" md="6" lg="4">
+        <v-card class="classroom-card pa-4 bud-carte" height="100%" :to="`/budgets/${b.id}`">
+          <div class="d-flex align-start mb-1">
+            <div class="flex-grow-1" style="min-width: 0">
+              <div class="text-caption text-medium-emphasis">
+                {{ b.reference }}<span v-if="b.numeroRevision"> · révision n° {{ b.numeroRevision }}</span>
+              </div>
+              <div class="text-subtitle-1 font-weight-bold text-truncate" :title="b.intitule">{{ b.intitule }}</div>
+            </div>
+            <v-chip :color="statutBudget(b.statut).color" size="small" variant="tonal" :prepend-icon="statutBudget(b.statut).icon">
+              {{ statutBudget(b.statut).label }}
             </v-chip>
           </div>
+          <div class="text-caption text-medium-emphasis mb-3">Exercice {{ b.exercice }} · {{ b.nombreLignes }} ligne(s)</div>
 
-          <div class="text-caption text-medium-emphasis mb-1">
-            Exercice {{ b.exercice }} - Realise : {{ fmt(b.totalRealise) }} / {{ fmt(b.totalPrevu) }} F
+          <div class="bud-chiffres">
+            <div>
+              <span>Produits prévus</span>
+              <strong>{{ fmtEntier(b.prevuProduits) }}</strong>
+            </div>
+            <div>
+              <span>Charges prévues</span>
+              <strong>{{ fmtEntier(b.prevuCharges) }}</strong>
+            </div>
+            <div>
+              <span>Résultat prévu</span>
+              <strong :class="resultatPrevu(b) >= 0 ? 'text-success' : 'text-error'">{{ fmtEntier(resultatPrevu(b)) }}</strong>
+            </div>
           </div>
-          <v-progress-linear
-            :model-value="taux(b)"
-            color="primary"
-            height="10"
-            rounded
-            class="mb-2"
-          />
-          <div class="text-end text-caption font-weight-medium">{{ taux(b) }}%</div>
 
-          <v-divider class="my-2" />
-          <div class="d-flex flex-wrap ga-2">
-            <v-btn v-if="isDFIN && b.statut === 'BROUILLON'" size="small" variant="tonal" color="blue"
-              @click="action(b, 'soumettre')">Soumettre</v-btn>
-            <v-btn v-if="isDA && b.statut === 'SOUMIS'" size="small" variant="tonal" color="success"
-              @click="action(b, 'approuver')">Approuver</v-btn>
-            <v-btn v-if="isDA && b.statut === 'SOUMIS'" size="small" variant="tonal" color="error"
-              @click="action(b, 'rejeter')">Rejeter</v-btn>
-            <v-btn v-if="isDFIN && b.statut === 'APPROUVE'" size="small" variant="tonal" color="teal"
-              @click="action(b, 'demarrer')">Demarrer</v-btn>
+          <template v-if="aEteExecute(b)">
+            <div class="d-flex justify-space-between text-caption mt-3 mb-1">
+              <span>Dépenses réalisées : {{ fmtEntier(b.totalRealise) }} / {{ fmtEntier(b.totalPrevu) }} USD</span>
+              <strong>{{ fmtTaux(b.tauxExecution) }}</strong>
+            </div>
+            <v-progress-linear
+              :model-value="Math.min(100, Number(b.tauxExecution || 0))"
+              :color="Number(b.tauxExecution || 0) > 100 ? 'error' : 'primary'"
+              height="8"
+              rounded
+            />
+          </template>
+          <div v-else class="text-caption text-medium-emphasis mt-3">
+            Dépenses prévues : {{ fmtEntier(b.totalPrevu) }} USD — pas encore en exécution
           </div>
         </v-card>
       </v-col>
@@ -171,271 +136,16 @@ const taux = (b: Budget) => (b.totalPrevu ? Math.round((b.totalRealise / b.total
       v-if="!loading && budgets.length === 0"
       icon="mdi-chart-box-outline"
       title="Aucun budget"
-      text="Aucun budget previsionnel n'a encore ete cree."
+      text="Aucun budget prévisionnel n'a encore été créé."
     />
-
-    <!-- Dialog creation -->
-    <v-dialog v-model="dialog" max-width="640">
-      <div class="bud-dialog">
-        <!-- En-tête dégradé -->
-        <div class="bud-dialog__head">
-          <div class="bud-dialog__head-blob bud-dialog__head-blob--a" />
-          <div class="bud-dialog__head-blob bud-dialog__head-blob--b" />
-          <div class="bud-dialog__head-icon">
-            <v-icon icon="mdi-chart-box-plus-outline" size="22" color="white" />
-          </div>
-          <div class="bud-dialog__head-text">
-            <p class="bud-dialog__head-title">Nouveau budget prévisionnel</p>
-            <p class="bud-dialog__head-sub">Renseignez les informations du budget</p>
-          </div>
-          <button class="bud-dialog__close" @click="dialog = false">
-            <v-icon icon="mdi-close" size="18" color="rgba(255,255,255,0.75)" />
-          </button>
-        </div>
-
-        <!-- Corps -->
-        <div class="bud-dialog__body">
-          <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" density="compact" class="mb-4" closable @click:close="erreur = ''">
-            {{ erreur }}
-          </v-alert>
-
-          <div class="bud-field">
-            <label class="bud-label">Intitulé *</label>
-            <v-text-field v-model="form.intitule" placeholder="Ex: Budget 2026 – Exploitation" hide-details="auto" />
-          </div>
-
-          <div class="bud-row">
-            <div class="bud-field">
-              <label class="bud-label">Exercice *</label>
-              <v-text-field v-model.number="form.exercice" type="number" hide-details="auto" />
-            </div>
-          </div>
-
-          <div class="bud-field">
-            <label class="bud-label">Observation</label>
-            <v-textarea v-model="form.observation" placeholder="Remarques ou contexte budgétaire…" rows="2" hide-details />
-          </div>
-
-          <div class="bud-section-label">
-            <v-icon icon="mdi-format-list-bulleted" size="14" class="mr-1" />
-            Lignes budgétaires
-          </div>
-
-          <div v-for="(l, i) in form.lignes" :key="i" class="bud-ligne">
-            <v-text-field v-model="l.compteNumero" placeholder="N° Compte OHADA" density="compact" hide-details />
-            <v-text-field v-model.number="l.montantPrevu" placeholder="Montant prévu" type="number" density="compact" hide-details />
-            <button class="bud-del-btn" :disabled="form.lignes.length === 1" @click="retirerLigne(i)">
-              <v-icon icon="mdi-delete-outline" size="18" />
-            </button>
-          </div>
-
-          <button class="bud-add-ligne" @click="ajouterLigne">
-            <v-icon icon="mdi-plus" size="15" class="mr-1" />
-            Ajouter une ligne
-          </button>
-        </div>
-
-        <!-- Pied -->
-        <div class="bud-dialog__footer">
-          <button class="bud-cancel-btn" :disabled="saving" @click="dialog = false">Annuler</button>
-          <button class="bud-submit-btn" :disabled="saving" @click="creerBudget">
-            <v-progress-circular v-if="saving" indeterminate size="16" width="2" color="white" class="mr-2" />
-            <v-icon v-else icon="mdi-check" size="17" class="mr-1" />
-            Créer le budget
-          </button>
-        </div>
-      </div>
-    </v-dialog>
   </div>
 </template>
 
 <style scoped>
-/* ── Bouton header ───────────────────────────────────────── */
-.bud-new-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 20px;
-  height: 42px;
-  border-radius: 12px;
-  background: var(--color-primary);
-  color: #fff;
-  font-size: 0.875rem;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
-  flex-shrink: 0;
-}
-.bud-new-btn:hover { background: var(--color-primary-dark); box-shadow: 0 4px 14px color-mix(in srgb, var(--color-primary) 35%, transparent); }
-
-/* ── Dialog wrapper ──────────────────────────────────────── */
-.bud-dialog {
-  background: #fff;
-  border-radius: 20px;
-  overflow: hidden;
-}
-
-/* ── En-tête dégradé ─────────────────────────────────────── */
-.bud-dialog__head {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 22px 22px 22px 22px;
-  background: linear-gradient(140deg, var(--color-primary-mid) 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%);
-}
-.bud-dialog__head-blob {
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.10);
-  pointer-events: none;
-}
-.bud-dialog__head-blob--a { width: 160px; height: 160px; top: -50px; right: -40px; }
-.bud-dialog__head-blob--b { width: 80px;  height: 80px;  bottom: -20px; left: 60px; }
-
-.bud-dialog__head-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 46px; height: 46px;
-  border-radius: 13px;
-  background: rgba(255,255,255,0.18);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(255,255,255,0.22);
-  flex-shrink: 0;
-  position: relative; z-index: 1;
-}
-.bud-dialog__head-text { flex: 1; position: relative; z-index: 1; }
-.bud-dialog__head-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #fff;
-  margin: 0 0 3px;
-}
-.bud-dialog__head-sub {
-  font-size: 0.78rem;
-  color: rgba(255,255,255,0.72);
-  margin: 0;
-}
-.bud-dialog__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.12);
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s;
-  position: relative; z-index: 1;
-}
-.bud-dialog__close:hover { background: rgba(255,255,255,0.22); }
-
-/* ── Corps ───────────────────────────────────────────────── */
-.bud-dialog__body {
-  padding: 22px 22px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-.bud-row { display: grid; grid-template-columns: 1fr; gap: 14px; }
-.bud-field { display: flex; flex-direction: column; gap: 6px; }
-.bud-label {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #374151;
-}
-.bud-section-label {
-  display: flex;
-  align-items: center;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: #9ca3af;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #f3f4f6;
-  margin-top: 4px;
-}
-.bud-ligne {
-  display: grid;
-  grid-template-columns: 1fr 1fr 36px;
-  gap: 8px;
-  align-items: center;
-}
-.bud-del-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px; height: 34px;
-  border-radius: 9px;
-  background: #fef2f2;
-  color: #ef4444;
-  border: 1px solid #fecaca;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.bud-del-btn:hover:not(:disabled) { background: #fee2e2; }
-.bud-del-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-
-.bud-add-ligne {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--color-primary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 0;
-  transition: opacity 0.15s;
-}
-.bud-add-ligne:hover { opacity: 0.75; }
-
-/* ── Pied ────────────────────────────────────────────────── */
-.bud-dialog__footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 22px;
-  border-top: 1px solid #f3f4f6;
-}
-.bud-cancel-btn {
-  padding: 0 18px;
-  height: 40px;
-  border-radius: 10px;
-  background: #f3f4f6;
-  color: #374151;
-  font-size: 0.875rem;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.bud-cancel-btn:hover:not(:disabled) { background: #e5e7eb; }
-.bud-cancel-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.bud-submit-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 22px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--color-primary);
-  color: #fff;
-  font-size: 0.875rem;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
-}
-.bud-submit-btn:hover:not(:disabled) { background: var(--color-primary-dark); }
-.bud-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.bud-carte { transition: box-shadow 0.15s; }
+.bud-carte:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); }
+.bud-chiffres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bud-chiffres div { background: #f8fafc; border-radius: 8px; padding: 8px; }
+.bud-chiffres span { display: block; font-size: 0.68rem; color: #6b7280; }
+.bud-chiffres strong { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
 </style>

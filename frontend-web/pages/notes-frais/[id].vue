@@ -54,6 +54,10 @@ interface NoteDetail {
   demandeurNom?: string
   demandeurFonction?: string | null
   demandeurEmail?: string
+  /** Contrôle budgétaire relevé à la soumission, justification fournie par le créateur, budget de référence. */
+  statutBudget?: string | null
+  justificationBudget?: string | null
+  budgetReference?: string | null
   lignes: LigneNoteFrais[]
   piecesJointes: PieceJointe[]
   observations: Observation[]
@@ -215,9 +219,41 @@ async function allerNoteSuivante(statutFile: string, noteActuelleId: string) {
   }
 }
 
+// ── Contrôle budgétaire ──────────────────────────────────────────────
+// Contrôle à jour (composant BudgetControleBudgetaire) : une note non couverte par le budget doit être
+// justifiée avant la soumission, et le DA doit motiver sa validation.
+const controleNote = ref<any | null>(null)
+const rafraichirControle = ref(0)
+const justificationSaisie = ref('')
+const enregistrementJustification = ref(false)
+const horsBudget = computed(() => !!controleNote.value?.justificationRequise)
+const peutJustifier = computed(() =>
+  isCreateur.value && !estEncaissement.value && ['BROUILLON', 'REJETEE_DA'].includes(statut.value || ''))
+watch(() => note.value?.justificationBudget, (v) => { justificationSaisie.value = v || '' }, { immediate: true })
+
+async function enregistrerJustification() {
+  enregistrementJustification.value = true
+  erreur.value = ''
+  try {
+    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/justification-budget`, {
+      method: 'PUT', body: { justification: justificationSaisie.value.trim() || null },
+    })
+  } catch (e: any) {
+    erreur.value = e?.data?.message || "La justification n'a pas pu être enregistrée."
+  } finally {
+    enregistrementJustification.value = false
+  }
+}
+
 async function action(chemin: string, requiertCommentaire = false, statutFileSuivante?: string) {
   if (requiertCommentaire && !observation.value.trim()) {
-    erreur.value = 'Un motif est obligatoire pour cette action.'
+    erreur.value = chemin === 'valider'
+      ? "Cette note n'est pas couverte par le budget : motivez votre validation dans le champ Observation."
+      : 'Un motif est obligatoire pour cette action.'
+    return
+  }
+  if (chemin === 'soumettre' && horsBudget.value && !(note.value?.justificationBudget || '').trim()) {
+    erreur.value = "Cette dépense n'est pas couverte par le budget : enregistrez d'abord la justification budgétaire (encadré « Contrôle budgétaire »)."
     return
   }
   busy.value = true
@@ -230,6 +266,7 @@ async function action(chemin: string, requiertCommentaire = false, statutFileSui
     })
     observation.value = ''
     prioriteChoisie.value = note.value?.priorite ?? null
+    rafraichirControle.value++
     if (statutFileSuivante) {
       await allerNoteSuivante(statutFileSuivante, noteActuelleId)
     }
@@ -724,6 +761,32 @@ const peutGererPieces = computed(() =>
           </div>
         </div>
 
+        <!-- Contrôle budgétaire : chaque dépense doit être couverte par le budget en exécution, sinon justifiée. -->
+        <div v-if="!estEncaissement" class="nd-card nd-card--budget">
+          <div class="nd-card__body">
+            <BudgetControleBudgetaire :note-id="note.id" :sens="note.sens" :rafraichir="rafraichirControle" @resultat="(r: any) => controleNote = r" />
+            <div v-if="peutJustifier && (horsBudget || note.justificationBudget)" class="nd-justif">
+              <label class="nd-label">Justification budgétaire {{ horsBudget ? '*' : '' }}</label>
+              <v-textarea
+                v-model="justificationSaisie"
+                rows="2"
+                auto-grow
+                hide-details
+                placeholder="Pourquoi cette dépense n'est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...)"
+              />
+              <v-btn class="mt-2" size="small" color="primary" variant="tonal" prepend-icon="mdi-content-save-outline"
+                :loading="enregistrementJustification" :disabled="justificationSaisie === (note.justificationBudget || '')"
+                @click="enregistrerJustification">
+                Enregistrer la justification
+              </v-btn>
+            </div>
+            <div v-else-if="note.justificationBudget" class="nd-justif nd-justif--lecture">
+              <span class="nd-label">Justification budgétaire du demandeur</span>
+              <p>{{ note.justificationBudget }}</p>
+            </div>
+          </div>
+        </div>
+
         <!-- Pièces jointes : masquée à l'impression si vide, la carte vide
              (icône + texte) n'apportant rien sur un document imprimé. -->
         <div class="nd-card" :class="{ 'nd-print-hide-if-empty': note.piecesJointes.length === 0 }">
@@ -886,9 +949,12 @@ const peutGererPieces = computed(() =>
               </v-btn>
 
               <template v-if="peutValiderRejeter">
+                <p v-if="horsBudget" class="nd-hint-budget">
+                  Note non couverte par le budget : motivez votre validation dans le champ Observation.
+                </p>
                 <v-btn color="success" block rounded="lg" elevation="0"
-                  prepend-icon="mdi-check" :loading="busy" @click="action('valider')">
-                  Valider (DA)
+                  prepend-icon="mdi-check" :loading="busy" @click="action('valider', horsBudget)">
+                  {{ horsBudget ? 'Valider hors budget (DA)' : 'Valider (DA)' }}
                 </v-btn>
                 <v-btn color="error" block rounded="lg" variant="tonal"
                   prepend-icon="mdi-close" :loading="busy" @click="action('rejeter', true, 'VERIFIEE_DFIN')">
@@ -1643,4 +1709,10 @@ const peutGererPieces = computed(() =>
     margin-top: 3px;
   }
 }
+
+/* ── Contrôle budgétaire ───────────────────────────────────── */
+.nd-card--budget .nd-card__body { padding: 4px 20px 14px; }
+.nd-justif { margin-top: 6px; }
+.nd-justif--lecture p { margin: 4px 0 0; font-size: 0.85rem; color: #374151; white-space: pre-line; }
+.nd-hint-budget { font-size: 0.78rem; color: #b45309; margin: 0 0 6px; font-weight: 600; }
 </style>

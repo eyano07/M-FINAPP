@@ -1,7 +1,10 @@
 package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.domain.enums.StatutNote;
+import com.mbsc.finapp.dto.budget.ControleBudgetaireRequest;
+import com.mbsc.finapp.dto.budget.ControleBudgetaireResponse;
 import com.mbsc.finapp.dto.notes.ActionWorkflowRequest;
+import com.mbsc.finapp.dto.notes.JustificationBudgetRequest;
 import com.mbsc.finapp.dto.notes.CreerNoteReglementCamionsRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisDetailResponse;
 import com.mbsc.finapp.dto.notes.NoteFraisRequest;
@@ -77,6 +80,24 @@ public class NoteFraisController {
     @GetMapping("/regle-visibilite")
     public RegleVisibiliteResponse regleVisibilite() {
         return service.expliquerVisibilite();
+    }
+
+    /** Controle budgetaire d'une note en cours de saisie : statut de chaque ligne, justification requise ou non. */
+    @PostMapping("/controle-budgetaire")
+    public ControleBudgetaireResponse controleBudgetaire(@Valid @RequestBody ControleBudgetaireRequest req) {
+        return service.controleBudgetaire(req);
+    }
+
+    /** Justification budgetaire d'une note pas encore soumise (depense hors budget ou en depassement). */
+    @PutMapping("/{id}/justification-budget")
+    public NoteFraisDetailResponse justificationBudget(@PathVariable Long id, @Valid @RequestBody JustificationBudgetRequest req) {
+        return service.definirJustificationBudget(id, req.justification());
+    }
+
+    /** Controle budgetaire a jour d'une note enregistree. */
+    @GetMapping("/{id}/controle-budgetaire")
+    public ControleBudgetaireResponse controleBudgetaireNote(@PathVariable Long id) {
+        return service.controleBudgetaireNote(id);
     }
 
     @GetMapping("/{id}")

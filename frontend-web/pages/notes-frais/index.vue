@@ -153,7 +153,11 @@ const lignesVides = () => [{
 const form = reactive({
   objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: 'DECAISSEMENT' as 'DECAISSEMENT' | 'ENCAISSEMENT',
   lignes: lignesVides(),
+  justificationBudget: '',
 })
+// Résultat du contrôle budgétaire des lignes en cours de saisie (composant BudgetControleBudgetaire) : une
+// dépense non couverte par le budget en exécution exige une justification avant la soumission.
+const controleCreation = ref<any | null>(null)
 const devises = ['CDF', 'USD']
 
 function ouvrirDialog() {
@@ -297,7 +301,8 @@ function utiliserPhoto() {
 }
 
 function resetForm() {
-  Object.assign(form, { objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: activeSens.value, lignes: lignesVides() })
+  Object.assign(form, { objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: activeSens.value, lignes: lignesVides(), justificationBudget: '' })
+  controleCreation.value = null
   fichiersAJoindre.value = []
 }
 
@@ -306,6 +311,10 @@ const soumission = ref(false)
 async function creerNote(executerEnsuite: boolean) {
   if (!peutCreer.value) {
     erreur.value = 'Renseignez un objet, le bénéficiaire et au moins une ligne avec un montant.'
+    return
+  }
+  if (executerEnsuite && form.sens === 'DECAISSEMENT' && controleCreation.value?.justificationRequise && !form.justificationBudget.trim()) {
+    erreur.value = 'Cette dépense n’est pas couverte par le budget : précisez la justification budgétaire avant de soumettre la note.'
     return
   }
   if (executerEnsuite) soumission.value = true
@@ -320,6 +329,7 @@ async function creerNote(executerEnsuite: boolean) {
         devise: form.devise,
         description: form.description || null,
         sens: form.sens,
+        justificationBudget: form.sens === 'DECAISSEMENT' && form.justificationBudget.trim() ? form.justificationBudget.trim() : null,
         lignes: lignesValides.value.map(l => ({
           montant: l.montant,
           compteImputation: l.compteImputation || null,
@@ -614,6 +624,19 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
           </div>
 
           <NotesFraisLignesNoteFrais v-model="form.lignes" :devise="form.devise" :sens="form.sens" />
+
+          <BudgetControleBudgetaire :lignes="form.lignes" :devise="form.devise" :sens="form.sens" @resultat="(r: any) => controleCreation = r" />
+          <div v-if="form.sens === 'DECAISSEMENT' && controleCreation?.justificationRequise" class="nf-field">
+            <label class="nf-label">Justification budgétaire *</label>
+            <v-textarea
+              v-model="form.justificationBudget"
+              rows="2"
+              auto-grow
+              placeholder="Pourquoi cette dépense n’est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...)"
+              hint="Obligatoire pour soumettre la note ; le DA devra aussi motiver sa validation."
+              persistent-hint
+            />
+          </div>
 
           <div class="nf-field">
             <div class="nf-pieces__head">

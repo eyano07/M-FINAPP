@@ -3,6 +3,7 @@ package com.mbsc.finapp.domain;
 import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
 import com.mbsc.finapp.domain.enums.SensTransaction;
+import com.mbsc.finapp.domain.enums.StatutControleBudget;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import jakarta.persistence.*;
 import lombok.*;
@@ -82,6 +83,24 @@ public class NoteFrais {
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private PrioriteNote priorite;
+
+    /**
+     * Resultat du controle budgetaire releve a la soumission (le plus defavorable de ses lignes) ; null tant
+     * que la note n'a pas ete soumise. Le controle a jour se consulte par GET /notes-frais/{id}/controle-budgetaire.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "statut_budget", length = 20)
+    private StatutControleBudget statutBudget;
+
+    /** Justification exigee quand une depense n'est pas couverte par le budget (hors budget, depassement, aucun budget). */
+    @Column(name = "justification_budget", length = 1000)
+    private String justificationBudget;
+
+    /** Budget en execution contre lequel la note a ete controlee a sa soumission. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "budget_id")
+    @ToString.Exclude
+    private Budget budget;
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "createur_id")

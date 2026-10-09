@@ -32,7 +32,11 @@ public record NoteFraisDetailResponse(
     List<PieceJointeResponse> piecesJointes,
     Instant dateCreation,
     Instant dateMaj,
-    List<ObservationResponse> observations
+    List<ObservationResponse> observations,
+    /** Controle budgetaire releve a la soumission (null avant) ; le controle a jour : GET /notes-frais/{id}/controle-budgetaire. */
+    com.mbsc.finapp.domain.enums.StatutControleBudget statutBudget,
+    String justificationBudget,
+    String budgetReference
 ) {
     public static NoteFraisDetailResponse from(NoteFrais n) {
         var createur = n.getCreateur();
@@ -68,7 +72,10 @@ public record NoteFraisDetailResponse(
             pieces,
             n.getDateCreation(),
             n.getDateMaj(),
-            timeline
+            timeline,
+            n.getStatutBudget(),
+            n.getJustificationBudget(),
+            n.getBudget() == null ? null : n.getBudget().getReference()
         );
     }
 }

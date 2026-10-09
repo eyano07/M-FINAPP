@@ -18,6 +18,8 @@ import com.mbsc.finapp.domain.enums.StatutCamionMinerai;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeNotification;
+import com.mbsc.finapp.dto.budget.ControleBudgetaireRequest;
+import com.mbsc.finapp.dto.budget.ControleBudgetaireResponse;
 import com.mbsc.finapp.dto.notes.ActionWorkflowRequest;
 import com.mbsc.finapp.dto.notes.CreerNoteReglementCamionsRequest;
 import com.mbsc.finapp.dto.notes.LigneCompteRequest;
@@ -32,6 +34,7 @@ import com.mbsc.finapp.dto.notes.RegleVisibiliteResponse;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.ArticleRepository;
+import com.mbsc.finapp.repository.BudgetRepository;
 import com.mbsc.finapp.repository.CamionMineraiRepository;
 import com.mbsc.finapp.repository.ChargeCamionMineraiRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
@@ -109,6 +112,8 @@ public class NoteFraisService {
     private static final long TAILLE_MAX_OCTETS = 20L * 1024 * 1024;
 
     private final NoteFraisRepository noteRepository;
+    private final BudgetRepository budgetRepository;
+    private final ControleBudgetaireService controleBudgetaire;
     private final CompteOHADARepository compteRepository;
     private final ArticleRepository articleRepository;
     private final EntrepotRepository entrepotRepository;
@@ -240,6 +245,7 @@ public class NoteFraisService {
             .statut(StatutNote.BROUILLON)
             .sens(sens)
             .createur(auteur)
+            .justificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null)
             .build();
 
         construireLignes(note, req.lignes());
@@ -265,6 +271,7 @@ public class NoteFraisService {
         note.setBeneficiaire(req.beneficiaire());
         note.setDescription(req.description());
         note.setDevise(req.devise() == null ? Devise.CDF : req.devise());
+        note.setJustificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null);
 
         List<LigneNoteFrais> nouvelles = creerLignes(req.lignes(), note.getSens());
         note.remplacerLignes(nouvelles);
@@ -469,6 +476,8 @@ public class NoteFraisService {
     }
 
     private NoteFraisDetailResponse notifierEtRepondre(NoteFrais note) {
+        // Reglement d'une dette fournisseur (4011) : pas une depense budgetaire, le statut est releve pour memoire.
+        appliquerControleBudgetaire(note, false);
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, null, "Soumission au DFIN");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
             "Note à vérifier", note.getReference() + " — " + note.getObjet(),
@@ -602,6 +611,7 @@ public class NoteFraisService {
             trace.append("ligne ").append(ligne.getId()).append(" : ").append(ancien).append(" -> ").append(nouveau);
         }
         note.addObservation(observation(note, auteur, note.getStatut(), trace.toString()));
+        appliquerControleBudgetaire(note, false);
         note = noteRepository.saveAndFlush(note);
 
         log.info("Note {} : comptes d'imputation modifies par le DFIN (par {})",
@@ -906,6 +916,8 @@ public class NoteFraisService {
                     + note.getStatut() + ")");
         }
         exigerCreateur(note);
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note, true);
+        tracerControleBudgetaire(note, controle);
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, action, "Soumission au DFIN");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
             "Note à vérifier", note.getReference() + " — " + note.getObjet(),
@@ -919,6 +931,7 @@ public class NoteFraisService {
     public NoteFraisDetailResponse verifier(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.SOUMISE, "verifier");
+        appliquerControleBudgetaire(note, false);
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VERIFIEE_DFIN, action, "Verifiee");
         notificationService.notifierRole(RoleType.DA, TypeNotification.NOTE_VERIFIEE,
             "Note à valider", note.getReference() + " — " + note.getObjet(),
@@ -932,7 +945,17 @@ public class NoteFraisService {
     public NoteFraisDetailResponse valider(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.VERIFIEE_DFIN, "valider");
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VALIDEE_DA, action, "Validee");
+        // Controle refait a la validation : le budget a pu etre consomme par d'autres notes depuis la soumission.
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note, false);
+        String libelle = "Validee";
+        if (controle.justificationRequise()) {
+            if (action == null || !StringUtils.hasText(action.commentaire())) {
+                throw new IllegalArgumentException("Cette note n'est pas couverte par le budget (" + resumeControle(controle)
+                    + ") : motivez votre validation dans le champ Observation.");
+            }
+            libelle = "Validee hors budget";
+        }
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VALIDEE_DA, action, libelle);
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_VALIDEE,
             "Note validée par le DA", note.getReference() + " — " + note.getObjet() + " (prête à transmettre)",
             "/notes-frais/" + note.getId(), note);
@@ -1069,6 +1092,83 @@ public class NoteFraisService {
                 "/notes-frais/" + note.getId(), note);
         }
         return reponse;
+    }
+
+    // ---------------------------------------------------------------------
+    // Controle budgetaire
+    // ---------------------------------------------------------------------
+
+    /** Le createur precise (ou corrige) la justification budgetaire d'une note pas encore soumise. */
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'ADMIN')")
+    @Transactional
+    public NoteFraisDetailResponse definirJustificationBudget(Long id, String justification) {
+        NoteFrais note = charger(id);
+        if (note.getStatut() != StatutNote.BROUILLON && note.getStatut() != StatutNote.REJETEE_DA) {
+            throw new TransitionInvalideException(
+                "La justification budgetaire se modifie avant la soumission (note en brouillon ou rejetee).");
+        }
+        exigerCreateur(note);
+        note.setJustificationBudget(StringUtils.hasText(justification) ? justification.trim() : null);
+        return NoteFraisDetailResponse.from(noteRepository.saveAndFlush(note));
+    }
+
+    /** Controle d'une note en cours de saisie (ecran de creation / modification). */
+    @Transactional(readOnly = true)
+    public ControleBudgetaireResponse controleBudgetaire(ControleBudgetaireRequest req) {
+        return controleBudgetaire.controler(req);
+    }
+
+    /** Controle a jour d'une note enregistree (meme regle de visibilite que sa consultation). */
+    @Transactional(readOnly = true)
+    public ControleBudgetaireResponse controleBudgetaireNote(Long id) {
+        NoteFrais note = noteRepository.findWithDetailsById(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("NoteFrais", id));
+        if (!estVisiblePourUtilisateur(note)) {
+            throw RessourceIntrouvableException.of("NoteFrais", id);
+        }
+        return controleBudgetaire.controlerNote(note);
+    }
+
+    /**
+     * Releve le controle budgetaire de la note (statut, budget de reference). A la soumission, une depense non
+     * couverte par le budget (hors budget, depassement, aucun budget en execution) doit etre justifiee dans la note.
+     */
+    private ControleBudgetaireResponse appliquerControleBudgetaire(NoteFrais note, boolean exigerJustification) {
+        ControleBudgetaireResponse controle = controleBudgetaire.controlerNote(note);
+        note.setStatutBudget(controle.statut());
+        note.setBudget(controle.budgetId() == null ? null : budgetRepository.getReferenceById(controle.budgetId()));
+        if (exigerJustification && controle.justificationRequise() && !StringUtils.hasText(note.getJustificationBudget())) {
+            throw new IllegalArgumentException("Contrôle budgétaire : " + resumeControle(controle) + ". Toute dépense doit être "
+                + "couverte par le budget : précisez dans la note (justification budgétaire) pourquoi celle-ci ne l'est pas.");
+        }
+        return controle;
+    }
+
+    /** Trace dans l'historique une soumission hors budget, avec sa justification. */
+    private void tracerControleBudgetaire(NoteFrais note, ControleBudgetaireResponse controle) {
+        if (!controle.justificationRequise()) {
+            return;
+        }
+        note.addObservation(observation(note, currentUser.requireUser(), note.getStatut(),
+            "Contrôle budgétaire : " + resumeControle(controle) + " — justification : " + note.getJustificationBudget()));
+    }
+
+    /** « ligne 1 (6042) : dépassement ; ligne 2 (6328) : hors budget » — lignes non conformes seulement. */
+    static String resumeControle(ControleBudgetaireResponse controle) {
+        List<String> parties = new java.util.ArrayList<>();
+        for (ControleBudgetaireResponse.LigneControle l : controle.lignes()) {
+            if (!l.statut().exigeJustification()) {
+                continue;
+            }
+            String motif = switch (l.statut()) {
+                case DEPASSEMENT -> "dépasse le disponible";
+                case HORS_BUDGET -> "hors budget";
+                case SANS_BUDGET -> "aucun budget en exécution pour " + controle.exercice();
+                default -> l.statut().name();
+            };
+            parties.add("ligne " + (l.index() + 1) + " (" + l.compteNumero() + ") : " + motif);
+        }
+        return String.join(" ; ", parties);
     }
 
     // ---------------------------------------------------------------------

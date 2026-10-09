@@ -18,4 +18,10 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
     Optional<Budget> findWithLignesById(Long id);
 
     List<Budget> findAllByOrderByExerciceDescDateCreationDesc();
+
+    /** Budget en execution d'un exercice (un seul : regle du service et index unique partiel, V100). */
+    @EntityGraph(attributePaths = {"lignes", "lignes.compte"})
+    Optional<Budget> findFirstByExerciceAndStatut(Integer exercice, StatutBudget statut);
+
+    boolean existsByRevisionDeId(Long budgetId);
 }

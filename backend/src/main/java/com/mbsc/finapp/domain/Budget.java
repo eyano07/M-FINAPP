@@ -22,6 +22,10 @@ public class Budget {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** BUD-AAAA-NNNNNN (voir ReferenceGenerator#pourBudget). */
+    @Column(nullable = false, unique = true, length = 30)
+    private String reference;
+
     @Column(nullable = false, length = 200)
     private String intitule;
 
@@ -48,6 +52,34 @@ public class Budget {
 
     @Column(length = 1000)
     private String observation;
+
+    /** Motif du dernier rejet par le DA (conserve meme apres reprise, pour la tracabilite). */
+    @Column(name = "motif_rejet", length = 1000)
+    private String motifRejet;
+
+    /** Budget dont celui-ci est une revision (budget rectificatif) ; null pour la version initiale. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "revision_de_id")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Budget revisionDe;
+
+    /** 0 pour la version initiale, puis 1, 2... a chaque revision. */
+    @Column(name = "numero_revision", nullable = false)
+    @Builder.Default
+    private int numeroRevision = 0;
+
+    @Column(name = "date_soumission")
+    private Instant dateSoumission;
+
+    @Column(name = "date_approbation")
+    private Instant dateApprobation;
+
+    @Column(name = "date_execution")
+    private Instant dateExecution;
+
+    @Column(name = "date_cloture")
+    private Instant dateCloture;
 
     @CreationTimestamp
     @Column(name = "date_creation", updatable = false)
