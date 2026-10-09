@@ -50,6 +50,7 @@ public class EtablissementTresorerieService {
     private static final String SEQ_MOBILE_MONEY = "seq_compte_mobile_money";
 
     private final EtablissementTresorerieRepository etablissementRepository;
+    private final com.mbsc.finapp.repository.ReleveBancaireRepository releveRepository;
     private final CompteOHADARepository compteRepository;
     /** Fiche de documentation du compte ouvert avec l'établissement. */
     private final DocumentationCompteService documentation;
@@ -116,11 +117,33 @@ public class EtablissementTresorerieService {
                 .type(req.type())
                 .compte(compte)
                 .actif(true)
+                .devise(req.devise() == null ? com.mbsc.finapp.domain.enums.Devise.USD : req.devise())
                 .build());
 
         log.info("Etablissement de tresorerie cree [nom={}, type={}, compte={}]",
             nom, req.type(), compte.getNumero());
         return EtablissementResponse.from(etablissement, BigDecimal.ZERO);
+    }
+
+    /**
+     * Change la devise de tenue d'un compte (celle de ses relevés). Refusé dès qu'un relevé a été rapproché :
+     * les montants déjà pointés sont exprimés dans l'ancienne devise.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public EtablissementResponse changerDevise(Long id, com.mbsc.finapp.domain.enums.Devise devise) {
+        EtablissementTresorerie e = etablissementRepository.findById(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("EtablissementTresorerie", id));
+        if (devise == null) {
+            throw new IllegalArgumentException("Indiquez la devise du compte.");
+        }
+        if (releveRepository.existsByEtablissementId(id)) {
+            throw new TransitionInvalideException("Des relevés de " + e.getNom() + " sont déjà rapprochés : "
+                + "la devise du compte ne peut plus changer.");
+        }
+        e.setDevise(devise);
+        log.info("Devise de l'etablissement {} : {}", e.getNom(), devise);
+        return EtablissementResponse.from(e, null);
     }
 
     /**

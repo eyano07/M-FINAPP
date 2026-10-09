@@ -10,6 +10,8 @@ interface Etablissement {
   actif: boolean
   solde: number
   supprimable: boolean
+  /** Devise de tenue du compte et de ses relevés (rapprochement bancaire). */
+  devise: 'USD' | 'CDF'
 }
 
 const api = useApi()
@@ -26,6 +28,7 @@ const erreurEnvoi = ref('')
 const form = reactive({
   nom: '',
   type: 'BANQUE' as 'BANQUE' | 'MOBILE_MONEY',
+  devise: 'USD' as 'USD' | 'CDF',
 })
 const rules = {
   nom: [(v: any) => !!v?.trim() || 'Nom obligatoire'],
@@ -56,6 +59,7 @@ const operateurs = computed(() => etablissements.value.filter((e) => e.type === 
 function ouvrirDialog(type: 'BANQUE' | 'MOBILE_MONEY') {
   form.nom = ''
   form.type = type
+  form.devise = 'USD'
   erreurEnvoi.value = ''
   dialogOuvert.value = true
 }
@@ -68,7 +72,7 @@ async function creer() {
   try {
     await api('/etablissements', {
       method: 'POST',
-      body: { nom: form.nom.trim(), type: form.type },
+      body: { nom: form.nom.trim(), type: form.type, devise: form.devise },
     })
     dialogOuvert.value = false
     await charger()
@@ -162,6 +166,7 @@ const fmtUSD = (usd: number) =>
               <div class="etab__main">
                 <p class="etab__nom">{{ e.nom }}</p>
                 <code class="etab__compte">{{ e.compteNumero }}</code>
+                <span class="etab__devise">{{ e.devise }}</span>
               </div>
               <div class="etab__solde" :class="e.solde === 0 ? 'etab__solde--nul' : ''">
                 {{ fmtUSD(e.solde) }}
@@ -224,6 +229,7 @@ const fmtUSD = (usd: number) =>
               <div class="etab__main">
                 <p class="etab__nom">{{ e.nom }}</p>
                 <code class="etab__compte etab__compte--mm">{{ e.compteNumero }}</code>
+                <span class="etab__devise">{{ e.devise }}</span>
               </div>
               <div class="etab__solde" :class="e.solde === 0 ? 'etab__solde--nul' : ''">
                 {{ fmtUSD(e.solde) }}
@@ -289,6 +295,11 @@ const fmtUSD = (usd: number) =>
               rounded="lg"
               :rules="rules.nom"
             />
+            <v-btn-toggle v-model="form.devise" mandatory density="comfortable" variant="outlined" color="primary" class="mt-1">
+              <v-btn value="USD">Compte en USD</v-btn>
+              <v-btn value="CDF">Compte en CDF</v-btn>
+            </v-btn-toggle>
+            <p class="text-caption text-medium-emphasis mt-2 mb-0">Devise de tenue du compte : celle de ses relevés, utilisée pour le rapprochement bancaire.</p>
           </v-form>
         </v-card-text>
 
@@ -336,6 +347,7 @@ const fmtUSD = (usd: number) =>
 </template>
 
 <style scoped>
+.etab__devise { display: inline-block; margin-left: 6px; font-size: 0.7rem; font-weight: 700; color: #4b5563; background: #f3f4f6; border-radius: 4px; padding: 1px 5px; }
 .page-head {
   display: flex;
   align-items: flex-start;

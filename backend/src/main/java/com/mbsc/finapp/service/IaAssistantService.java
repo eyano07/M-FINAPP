@@ -74,7 +74,7 @@ public class IaAssistantService {
     // -----------------------------------------------------------------
 
     /** Suggestion pour un decaissement (motif de depense -> compte de charge), usage historique. */
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'CAISSIER', 'DFIN', 'DA', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'ADMIN')")
     public SuggestionCompteResponse suggererCompte(String description) {
         return suggererCompte(description, SensTransaction.DECAISSEMENT);
     }
@@ -85,7 +85,7 @@ public class IaAssistantService {
      * depense), ENCAISSEMENT -> compte de produit/passif (motif de recette,
      * ex. "Vente de minerais").
      */
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'CAISSIER', 'DFIN', 'DA', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'ADMIN')")
     public SuggestionCompteResponse suggererCompte(String description, SensTransaction sens) {
         boolean estEncaissement = sens == SensTransaction.ENCAISSEMENT;
         String compteParDefaut = estEncaissement ? COMPTE_PRODUITS_DIVERS : COMPTE_CHARGES_DIVERSES;

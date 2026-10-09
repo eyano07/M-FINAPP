@@ -127,6 +127,62 @@ public class ChatGptClient {
         return premierTexte(client.chat().completions().create(params, options(timeoutAnalyse)));
     }
 
+    /**
+     * Comme {@link #json}, avec un document joint au message : PDF (lu par le modèle, texte et images) ou
+     * image (photo ou scan). Utilisé pour extraire les opérations d'un relevé bancaire.
+     *
+     * @param typeMime {@code application/pdf} ou {@code image/...}
+     */
+    public String jsonAvecDocument(String systeme, String consigne, String nomFichier, String typeMime, byte[] contenu,
+                                   int maxTokens, Map<String, Object> schemaJson) {
+        if (client == null) return null;
+        String donnees = "data:" + typeMime + ";base64," + java.util.Base64.getEncoder().encodeToString(contenu);
+        com.openai.models.chat.completions.ChatCompletionContentPart document = typeMime.startsWith("image/")
+            ? com.openai.models.chat.completions.ChatCompletionContentPart.ofImageUrl(
+                com.openai.models.chat.completions.ChatCompletionContentPartImage.builder()
+                    .imageUrl(com.openai.models.chat.completions.ChatCompletionContentPartImage.ImageUrl.builder()
+                        .url(donnees)
+                        .detail(com.openai.models.chat.completions.ChatCompletionContentPartImage.ImageUrl.Detail.HIGH)
+                        .build())
+                    .build())
+            : com.openai.models.chat.completions.ChatCompletionContentPart.ofFile(
+                com.openai.models.chat.completions.ChatCompletionContentPart.File.builder()
+                    .file(com.openai.models.chat.completions.ChatCompletionContentPart.File.FileObject.builder()
+                        .fileData(donnees)
+                        .filename(nomFichier == null ? "document.pdf" : nomFichier)
+                        .build())
+                    .build());
+        com.openai.models.chat.completions.ChatCompletionContentPart texte =
+            com.openai.models.chat.completions.ChatCompletionContentPart.ofText(
+                com.openai.models.chat.completions.ChatCompletionContentPartText.builder().text(consigne).build());
+
+        ChatCompletionCreateParams.Builder builder = ChatCompletionCreateParams.builder()
+            .model(modele)
+            .maxCompletionTokens(maxTokens);
+        if (supporteRaisonnement(modele)) {
+            builder.reasoningEffort(ReasoningEffort.LOW);
+        }
+        ChatCompletionCreateParams params = builder
+            .addSystemMessage(systeme)
+            .addUserMessageOfArrayOfContentParts(java.util.List.of(texte, document))
+            .responseFormat(ResponseFormatJsonSchema.builder().jsonSchema(schema(schemaJson)).build())
+            .build();
+        // Un relevé de plusieurs pages demande plus de temps qu'une analyse ordinaire.
+        Duration delai = timeoutAnalyse.compareTo(Duration.ofMinutes(3)) > 0 ? timeoutAnalyse : Duration.ofMinutes(3);
+        return premierTexte(client.chat().completions().create(params, options(delai)));
+    }
+
+    private static ResponseFormatJsonSchema.JsonSchema schema(Map<String, Object> schemaJson) {
+        ResponseFormatJsonSchema.JsonSchema.Schema.Builder schemaImbrique =
+            ResponseFormatJsonSchema.JsonSchema.Schema.builder();
+        schemaJson.forEach((cle, valeur) -> schemaImbrique.putAdditionalProperty(cle, JsonValue.from(valeur)));
+        return ResponseFormatJsonSchema.JsonSchema.builder()
+            .name("reponse")
+            .strict(true)
+            .schema(schemaImbrique.build())
+            .build();
+    }
+
     private ChatCompletionCreateParams.Builder requete(String systeme, String utilisateur, int maxTokens) {
         ChatCompletionCreateParams.Builder builder = ChatCompletionCreateParams.builder()
             .model(modele)

@@ -20,7 +20,9 @@ public record EtablissementResponse(
     String compteLibelle,
     boolean actif,
     BigDecimal solde,
-    boolean supprimable
+    boolean supprimable,
+    /** Devise de tenue du compte et de ses relevés bancaires. */
+    String devise
 ) {
     public static EtablissementResponse from(EtablissementTresorerie e, BigDecimal solde) {
         BigDecimal montant = solde == null ? BigDecimal.ZERO : solde;
@@ -32,7 +34,8 @@ public record EtablissementResponse(
             e.getCompte().getLibelle(),
             e.isActif(),
             montant,
-            montant.signum() == 0
+            montant.signum() == 0,
+            e.getDevise() == null ? "USD" : e.getDevise().name()
         );
     }
 }

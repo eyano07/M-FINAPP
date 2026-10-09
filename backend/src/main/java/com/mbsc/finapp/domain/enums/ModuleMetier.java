@@ -31,6 +31,8 @@ public enum ModuleMetier {
      * Désactivé, les dépenses ne sont plus rattachées ni contrôlées par rapport au budget.
      */
     BUDGET,
+    /** Rapprochement bancaire (relevés des banques et du mobile money), sous-module de COMPTABILITE. */
+    RAPPROCHEMENT,
     VENTES,
     LOGISTIQUE,
     TRANSPORT,

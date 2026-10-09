@@ -45,6 +45,12 @@ public class EtablissementTresorerie {
     @Builder.Default
     private boolean actif = true;
 
+    /** Devise de tenue du compte, celle de ses relevés (rapprochement bancaire). */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 3)
+    @Builder.Default
+    private com.mbsc.finapp.domain.enums.Devise devise = com.mbsc.finapp.domain.enums.Devise.USD;
+
     @CreationTimestamp
     @Column(name = "date_creation", updatable = false)
     private Instant dateCreation;

@@ -38,20 +38,21 @@ public final class DroitsParDefaut {
 
     static {
         definir(RoleType.CAISSIER,
-            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, RESTAURANT),
+            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, RESTAURANT, ModuleMetier.RAPPROCHEMENT),
             modules(ModuleMetier.LOGISTIQUE));
         definir(RoleType.DFIN,
-            modules(COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.LOGISTIQUE),
+            modules(COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT, ModuleMetier.LOGISTIQUE),
             modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, TRANSPORT, PATRIMOINE, DRH_PAIE, RESTAURANT));
         definir(RoleType.DA,
             modules(COMPTABILITE, ModuleMetier.BUDGET),
-            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, ModuleMetier.LOGISTIQUE, TRANSPORT, PATRIMOINE, RESTAURANT));
+            modules(CAISSE, BANQUE, MOBILE_MONEY, ModuleMetier.RAPPROCHEMENT, VENTES, ModuleMetier.LOGISTIQUE, TRANSPORT, PATRIMOINE, RESTAURANT));
         definir(RoleType.DG,
             modules(),
-            modules(CAISSE, BANQUE, MOBILE_MONEY, COMPTABILITE, ModuleMetier.BUDGET, VENTES, ModuleMetier.LOGISTIQUE,
+            modules(CAISSE, BANQUE, MOBILE_MONEY, COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT, VENTES,
+                ModuleMetier.LOGISTIQUE,
                 TRANSPORT, PATRIMOINE, RESTAURANT));
         definir(RoleType.COMPTABLE,
-            modules(),
+            modules(ModuleMetier.RAPPROCHEMENT),
             modules(CAISSE, COMPTABILITE, ModuleMetier.BUDGET, VENTES, ModuleMetier.LOGISTIQUE, PATRIMOINE, RESTAURANT));
         definir(RoleType.LOGISTIQUE,
             modules(ModuleMetier.LOGISTIQUE, TRANSPORT),

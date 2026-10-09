@@ -59,6 +59,7 @@ public class ModuleAccessFilter extends OncePerRequestFilter {
         Map.entry("/mobile-money", ModuleMetier.MOBILE_MONEY),
         Map.entry("/comptabilite", ModuleMetier.COMPTABILITE),
         Map.entry("/budgets", ModuleMetier.BUDGET),
+        Map.entry("/rapprochements", ModuleMetier.RAPPROCHEMENT),
         Map.entry("/ventes", ModuleMetier.VENTES),
         Map.entry("/clients", ModuleMetier.VENTES),
         Map.entry("/logistique", ModuleMetier.LOGISTIQUE),

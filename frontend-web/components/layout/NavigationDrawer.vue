@@ -90,6 +90,7 @@ const comptabiliteItems: NavItem[] = [
   { title: "Solde d'ouverture", icon: 'mdi-flag-outline', to: '/comptabilite/solde-ouverture', module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['DFIN'] },
   { title: 'GL par compte', icon: 'mdi-book-account-outline', to: '/comptabilite/grand-livre', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   { title: 'Balance de vérification', icon: 'mdi-table-check', to: '/comptabilite/balance-verification', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
+  { title: 'Rapprochement bancaire', icon: 'mdi-bank-check', to: '/comptabilite/rapprochement', module: 'RAPPROCHEMENT', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] },
   { title: 'Livre-journal', icon: 'mdi-notebook-outline', to: '/comptabilite/livre-journal', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   { title: 'Compte de résultat', icon: 'mdi-finance', to: '/comptabilite/compte-resultat', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   // DA exclu explicitement de la consultation du Bilan.

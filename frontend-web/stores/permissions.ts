@@ -5,6 +5,8 @@ export type ModuleMetier =
   | 'CAISSE' | 'BANQUE' | 'MOBILE_MONEY' | 'COMPTABILITE' | 'VENTES' | 'LOGISTIQUE' | 'TRANSPORT'
   // Budgets et contrôle budgétaire des notes : sous-module de COMPTABILITE, activable par l'administrateur.
   | 'BUDGET'
+  // Rapprochement bancaire (relevés banque / mobile money), sous-module de COMPTABILITE.
+  | 'RAPPROCHEMENT'
   | 'PATRIMOINE'
   // Restaurant : module plat (pas de sous-modules), comme PATRIMOINE.
   | 'RESTAURANT'

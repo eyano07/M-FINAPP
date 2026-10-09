@@ -25,6 +25,32 @@ import java.util.List;
  */
 public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGrandLivre, Long> {
 
+    /**
+     * Rapprochement bancaire : écritures d'un compte (hors brouillons, même convention que {@link #soldePourCompte}) jusqu'à une date, encore à pointer ou
+     * pointées sur le relevé donné (les écritures pointées sur un autre relevé sont exclues).
+     */
+    @Query("""
+        select e from EcritureGrandLivre e
+        left join fetch e.piece p
+        left join fetch e.pointage pt
+        where e.compte.id = :compteId and e.dateEcriture <= :jusquAu
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+          and (pt is null or pt.releve.id = :releveId)
+        order by e.dateEcriture, e.id
+        """)
+    List<EcritureGrandLivre> pourRapprochement(@Param("compteId") Long compteId, @Param("jusquAu") LocalDate jusquAu,
+                                               @Param("releveId") Long releveId);
+
+    /** Toutes les écritures d'un compte jusqu'à une date, hors brouillons (solde comptable du rapprochement). */
+    @Query("""
+        select e from EcritureGrandLivre e left join e.piece p
+        where e.compte.id = :compteId and e.dateEcriture <= :jusquAu
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+        """)
+    List<EcritureGrandLivre> duCompteJusquAu(@Param("compteId") Long compteId, @Param("jusquAu") LocalDate jusquAu);
+
+    List<EcritureGrandLivre> findByPointageId(Long pointageId);
+
     /** true si le compte a déjà été mouvementé (interdit alors sa suppression). */
     boolean existsByCompteId(Long compteId);
 

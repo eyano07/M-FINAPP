@@ -66,15 +66,15 @@ class DroitsParDefautTest {
 
     /**
      * Total de la grille livree par les migrations V28 a V104 : 49 lignes une fois V29, V30 et V40 appliquees,
-     * plus les 4 droits du module BUDGET (V104 : DFIN, DA, DG, COMPTABLE).
+     * plus les 4 droits du module BUDGET (V104 : DFIN, DA, DG, COMPTABLE) et les 5 du module RAPPROCHEMENT (V105).
      */
     @Test
-    void la_grille_d_origine_reprend_les_53_droits_des_migrations() {
+    void la_grille_d_origine_reprend_les_58_droits_des_migrations() {
         int total = 0;
         for (RoleType role : RoleType.values()) {
             total += DroitsParDefaut.pour(role).size();
         }
-        assertThat(total).isEqualTo(53);
+        assertThat(total).isEqualTo(58);
     }
 
     // ---------------------------------------------------------------------

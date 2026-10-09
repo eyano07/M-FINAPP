@@ -52,6 +52,7 @@ public class ComptabiliteService {
     private final CurrentUserProvider currentUser;
     private final PeriodeComptableService periodeService;
     private final ConversionDeviseService conversionDevise;
+    private final com.mbsc.finapp.repository.ReleveBancaireRepository releveRepository;
 
     // ---------------------------------------------------------------------
     // Pièces comptables
@@ -258,6 +259,7 @@ public class ComptabiliteService {
                 ligne.setTauxApplique(tauxDuJour);
             }
         }
+        verifierNonRapproche(piece.getLignes(), piece.getDatePiece());
         piece.setStatut(StatutPiece.COMPTABILISEE);
         log.info("Pièce comptabilisée [ref={}]", piece.getReference());
         return PieceResponse.from(piece);
@@ -416,6 +418,7 @@ public class ComptabiliteService {
                 + ", libelle=" + libelle + ", débit=" + totalDebit + ", crédit=" + totalCredit + "]");
         }
         periodeService.verifierDateOuverte(datePiece);
+        verifierNonRapproche(lignes, datePiece);
 
         PieceComptable piece = PieceComptable.builder()
             .reference(referenceGenerator.pourPiece())
@@ -722,6 +725,29 @@ public class ComptabiliteService {
     // ---------------------------------------------------------------------
 
     /** Refuse toute imputation sur un compte de regroupement ou désactivé. */
+    /**
+     * Verrou du rapprochement bancaire : refuse une écriture sur un compte de banque ou de mobile money datée
+     * d'un mois déjà rapproché et validé (voir {@code RapprochementService}).
+     */
+    private void verifierNonRapproche(List<EcritureGrandLivre> lignes, LocalDate date) {
+        if (date == null) return;
+        java.util.Set<Long> vus = new java.util.HashSet<>();
+        for (EcritureGrandLivre l : lignes) {
+            CompteOHADA c = l.getCompte();
+            if (c == null || c.getId() == null || c.getNumero() == null || !c.getNumero().startsWith("5") || !vus.add(c.getId())) {
+                continue;
+            }
+            releveRepository.validesDuCompte(c.getId()).stream().findFirst().ifPresent(dernier -> {
+                LocalDate fin = java.time.YearMonth.of(dernier.getAnnee(), dernier.getMois()).atEndOfMonth();
+                if (!date.isAfter(fin)) {
+                    throw new TransitionInvalideException("Le compte " + c.getNumero() + " est rapproché et validé jusqu'au "
+                        + fin + " : aucune écriture ne peut y être datée du " + date + ". Datez l'opération après cette "
+                        + "date ou faites dé-valider le rapprochement bancaire.");
+                }
+            });
+        }
+    }
+
     private void exigerCompteImputable(CompteOHADA compte) {
         if (!compte.isActif()) {
             throw new IllegalArgumentException(

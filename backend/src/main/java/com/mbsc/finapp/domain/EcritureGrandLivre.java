@@ -73,4 +73,10 @@ public class EcritureGrandLivre {
     /** Taux de conversion appliqué à la comptabilisation (FC pour 1 unité de devise). */
     @Column(name = "taux_applique", precision = 15, scale = 6)
     private BigDecimal tauxApplique;
+
+    /** Rapprochement bancaire : pointage avec une ou plusieurs lignes de relevé (comptes 521x / 552x). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pointage_id")
+    @ToString.Exclude
+    private PointageRapprochement pointage;
 }
