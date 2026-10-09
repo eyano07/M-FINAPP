@@ -60,10 +60,10 @@ public class ParametresEntreprise {
     @Column(name = "logo_type_mime", length = 100)
     private String logoTypeMime;
 
-    /** Couleur de marque (hex, ex. "#16A34A") appliquee au theme Vuetify et aux accents du frontend. */
+    /** Couleur de marque (hex, ex. "#15803D") appliquee au theme Vuetify et aux accents du frontend. */
     @Column(name = "couleur_primaire", nullable = false, length = 7)
     @Builder.Default
-    private String couleurPrimaire = "#16A34A";
+    private String couleurPrimaire = "#15803D";
 
     /**
      * Régime de TVA : {@code false} = entreprise non assujettie, aucune TVA facturée ni

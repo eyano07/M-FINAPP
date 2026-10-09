@@ -12,7 +12,7 @@
      stores/parametres.ts n'applique la couleur réellement configurée.
      Les teintes derivees se recalculent automatiquement via color-mix() a
      chaque changement de --color-primary : aucune ne se redefinit en JS. */
-  --color-primary: #16a34a;
+  --color-primary: #15803d;
   --color-primary-dark: color-mix(in srgb, var(--color-primary) 85%, black);
   --color-primary-darker: color-mix(in srgb, var(--color-primary) 65%, black);
   --color-primary-darkest: color-mix(in srgb, var(--color-primary) 45%, black);

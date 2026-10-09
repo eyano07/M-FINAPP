@@ -448,7 +448,7 @@ function lignes(g: NavGroup): LigneMenu[] {
   font-weight: 700;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: #d1d5db;
+  color: #6b7280;
   padding: 6px 10px 6px;
 }
 
@@ -476,7 +476,7 @@ function lignes(g: NavGroup): LigneMenu[] {
   font-weight: 700;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: #4b5563;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
@@ -485,11 +485,11 @@ function lignes(g: NavGroup): LigneMenu[] {
   color: #374151;
 }
 .modern-drawer__group-toggle .v-icon {
-  color: #d1d5db;
+  color: #6b7280;
   transition: color 0.15s;
 }
 .modern-drawer__group-toggle:hover .v-icon {
-  color: #9ca3af;
+  color: #374151;
 }
 
 .modern-drawer__nav {
@@ -582,11 +582,11 @@ function lignes(g: NavGroup): LigneMenu[] {
   cursor: pointer;
 }
 .modern-drawer__subgroup-chevron {
-  color: #d1d5db;
+  color: #6b7280;
   transition: color 0.15s;
 }
 .modern-drawer__subgroup-toggle:hover .modern-drawer__subgroup-chevron {
-  color: #9ca3af;
+  color: #374151;
 }
 .modern-drawer__item--imbrique {
   margin-left: 16px;
@@ -598,7 +598,7 @@ function lignes(g: NavGroup): LigneMenu[] {
 .modern-drawer__footer {
   padding: 16px 12px;
   font-size: 0.72rem;
-  color: #d1d5db;
+  color: #6b7280;
   border-top: 1px solid #f3f4f6;
   margin: 0 -10px;
 }

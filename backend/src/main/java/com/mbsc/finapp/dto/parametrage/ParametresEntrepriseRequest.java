@@ -15,6 +15,6 @@ public record ParametresEntrepriseRequest(
     @Size(max = 80) String rccm,
     @Size(max = 80) String idNat,
     @Size(max = 40) String nif,
-    @NotBlank @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "La couleur doit etre un code hexadecimal (ex. #16A34A)")
+    @NotBlank @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "La couleur doit etre un code hexadecimal (ex. #15803D)")
     String couleurPrimaire
 ) {}

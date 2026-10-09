@@ -256,7 +256,7 @@ const cb: any = {
 // reactive du store n'a pas ce probleme : le graphique se met a jour de
 // lui-meme des que la couleur arrive, quel que soit l'ordre de chargement.
 const identite = useParametresStore()
-const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#16A34A')
+const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#15803D')
 function hexToRgba(hex: string, alpha: number): string {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
   if (!m) return hex
@@ -550,7 +550,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 }
 .dash__eyebrow {
   font-size: 0.8125rem;
-  color: #9ca3af;
+  color: #6b7280;
   font-weight: 500;
   margin: 0 0 4px;
 }
@@ -574,7 +574,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 /* ── Stats grid ──────────────────────────────────────────── */
 .dash__stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
   gap: 16px;
   margin-bottom: 40px;
 }
@@ -596,14 +596,14 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 }
 .dash__section-sub {
   font-size: 0.8rem;
-  color: #9ca3af;
+  color: #6b7280;
   margin: 0;
 }
 
 /* ── Notes grid ──────────────────────────────────────────── */
 .dash__notes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -628,16 +628,16 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 }
 .dash__empty-sub {
   font-size: 0.85rem;
-  color: #9ca3af;
+  color: #6b7280;
   margin: 0;
 }
 
 /* ── Charts ──────────────────────────────────────────────── */
 .cg-full { margin-bottom: 16px; }
-.cg-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.cg-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 @media (max-width: 680px) { .cg-grid2 { grid-template-columns: 1fr; } }
-.cg-card { background: #fff; border: 1px solid #f0f0f0; border-radius: 18px; padding: 20px 22px; }
+.cg-card { min-width: 0; background: #fff; border: 1px solid #f0f0f0; border-radius: 18px; padding: 20px 22px; }
 .cg-title { font-size: 0.875rem; font-weight: 700; color: #111827; margin: 0 0 4px; display: flex; align-items: center; }
-.cg-sub { font-size: 0.75rem; color: #9ca3af; margin: 0 0 16px; }
+.cg-sub { font-size: 0.75rem; color: #6b7280; margin: 0 0 16px; }
 .cg-canvas { height: 260px; position: relative; }
 </style>

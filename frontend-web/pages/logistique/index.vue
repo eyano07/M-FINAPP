@@ -110,7 +110,7 @@ const cb: any = {
 // reactive du store n'a pas ce probleme : le graphique se met a jour de
 // lui-meme des que la couleur arrive, quel que soit l'ordre de chargement.
 const identite = useParametresStore()
-const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#16A34A')
+const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#15803D')
 function hexToRgba(hex: string, alpha: number): string {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
   if (!m) return hex

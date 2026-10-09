@@ -21,7 +21,7 @@ const form = reactive({
   rccm: '',
   idNat: '',
   nif: '',
-  couleurPrimaire: '#16A34A',
+  couleurPrimaire: '#15803D',
 })
 
 async function charger() {
@@ -38,7 +38,7 @@ async function charger() {
     form.rccm = parametresStore.parametres.rccm || ''
     form.idNat = parametresStore.parametres.idNat || ''
     form.nif = parametresStore.parametres.nif || ''
-    form.couleurPrimaire = parametresStore.parametres.couleurPrimaire || '#16A34A'
+    form.couleurPrimaire = parametresStore.parametres.couleurPrimaire || '#15803D'
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les paramètres.')
   } finally {
@@ -53,7 +53,7 @@ async function enregistrer() {
     return
   }
   if (!estHexValide(form.couleurPrimaire)) {
-    erreur.value = 'La couleur doit être un code hexadécimal valide (ex. #16A34A).'
+    erreur.value = 'La couleur doit être un code hexadécimal valide (ex. #15803D).'
     return
   }
   saving.value = true
@@ -82,7 +82,7 @@ async function enregistrer() {
 // Palette de depart proposee en raccourci ; l'utilisateur reste libre de
 // saisir n'importe quel hex via le champ texte ou le selecteur natif.
 const COULEURS_PREDEFINIES = [
-  '#16A34A', '#2563EB', '#4F46E5', '#7C3AED', '#DB2777',
+  '#15803D', '#2563EB', '#4F46E5', '#7C3AED', '#DB2777',
   '#DC2626', '#EA580C', '#D97706', '#0891B2', '#0D9488',
 ]
 
@@ -102,7 +102,7 @@ watch(() => form.couleurPrimaire, (c) => {
 // enregistree (no-op si l'enregistrement a reussi, puisque le store porte
 // alors deja la meme valeur).
 onBeforeUnmount(() => {
-  parametresStore.previsualiserCouleur(parametresStore.parametres.couleurPrimaire || '#16A34A')
+  parametresStore.previsualiserCouleur(parametresStore.parametres.couleurPrimaire || '#15803D')
 })
 
 // ── Logo ────────────────────────────────────────────────────────────────
@@ -310,7 +310,7 @@ async function onLogoChoisi(e: Event) {
           </label>
           <v-text-field
             v-model="form.couleurPrimaire"
-            placeholder="#16A34A"
+            placeholder="#15803D"
             hide-details="auto"
             maxlength="7"
           />
