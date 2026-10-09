@@ -28,6 +28,9 @@ rien ne réglait la paie ni les impôts. Désormais :
      | **6413** ONEM + INPP (taxes sur salaires) | |
 
    - **Règlement** : débit 4221.1, crédit trésorerie (571, 521x ou 552x).
+   - **Mois de paie clôturé en comptabilité** : le paiement reste accepté. La constatation est alors
+     datée du jour du paiement (ou du lendemain de la date de clôture si elle est postérieure) et son
+     libellé porte la mention « période du mois de paie clôturée ».
 4. **Notes fiscales** (une par organisme et par mois, possibles une fois la paie payée) : IPR (débit
    4472, DGI), CNSS (431.1), INPP (4478.2), ONEM (4478.1), crédit trésorerie.
 

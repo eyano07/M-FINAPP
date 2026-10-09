@@ -43,8 +43,9 @@ class PaieNoteServiceTest {
     private final NoteFraisService noteFraisService = mock(NoteFraisService.class);
     private final CompteOHADARepository comptes = mock(CompteOHADARepository.class);
     private final ComptabiliteService comptabilite = mock(ComptabiliteService.class);
+    private final PeriodeComptableService periodes = mock(PeriodeComptableService.class);
     private final PaieNoteService service = new PaieNoteService(
-        bulletins, notes, noteFraisService, new PaieComptabilisationService(comptes), comptabilite);
+        bulletins, notes, noteFraisService, new PaieComptabilisationService(comptes), comptabilite, periodes);
 
     PaieNoteServiceTest() {
         when(comptes.findByNumero(anyString()))
@@ -123,6 +124,33 @@ class PaieNoteServiceTest {
         service.apresPaiementInterne(n, new User());
 
         assertThat(lies).allMatch(b -> b.getPieceComptable() == piece);
+    }
+
+    @Test
+    void periodeDuMoisDePaieClotureeConstatationAuJourDuPaiement() {
+        when(periodes.dateCloture()).thenReturn(LocalDate.of(2026, 9, 30));
+        NoteFrais n = note(CategorieNote.PAIE, StatutNote.TRANSMISE_CAISSE, "500");
+        when(bulletins.findByNoteFraisPaieId(7L)).thenReturn(List.of(bulletin(StatutBulletin.VALIDE, true, "500")));
+        when(comptabilite.creerPieceInterne(any(), anyString(), any(), anyList(), any()))
+            .thenReturn(PieceComptable.builder().reference("PC-2").build());
+
+        service.apresPaiementInterne(n, new User());
+
+        verify(comptabilite).creerPieceInterne(eq(JournalComptable.OPERATIONS_DIVERSES),
+            org.mockito.ArgumentMatchers.contains("clôturée"), eq(LocalDate.now()), anyList(), any());
+    }
+
+    @Test
+    void clotureFutureDateConstatationAuLendemainDeLaCloture() {
+        LocalDate cloture = LocalDate.now().plusDays(10);
+        when(periodes.dateCloture()).thenReturn(cloture);
+        assertThat(service.dateConstatation(9, 2026)).isEqualTo(cloture.plusDays(1));
+    }
+
+    @Test
+    void periodeOuverteConstatationEnFinDeMois() {
+        when(periodes.dateCloture()).thenReturn(LocalDate.of(2026, 8, 31));
+        assertThat(service.dateConstatation(9, 2026)).isEqualTo(LocalDate.of(2026, 9, 30));
     }
 
     @Test

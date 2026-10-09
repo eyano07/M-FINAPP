@@ -63,6 +63,7 @@ public class PaieNoteService {
     private final NoteFraisService noteFraisService;
     private final PaieComptabilisationService comptabilisation;
     private final ComptabiliteService comptabilite;
+    private final PeriodeComptableService periodeComptable;
 
     // ---------------------------------------------------------------------
     // État du mois
@@ -221,22 +222,40 @@ public class PaieNoteService {
             throw new IllegalStateException("Note de paie " + note.getReference() + " : son montant ("
                 + note.getMontant() + ") ne correspond plus au total des salaires nets (" + nets + ").");
         }
+        LocalDate datePiece = dateConstatation(note.getPaieMois(), note.getPaieAnnee());
         String libelle = "Constatation de la paie " + periode(note.getPaieMois(), note.getPaieAnnee())
-            + " — note " + note.getReference();
-        LocalDate finDeMois = YearMonth.of(note.getPaieAnnee(), note.getPaieMois()).atEndOfMonth();
+            + " — note " + note.getReference()
+            + (datePiece.equals(YearMonth.of(note.getPaieAnnee(), note.getPaieMois()).atEndOfMonth())
+                ? "" : " (période du mois de paie clôturée)");
         List<EcritureGrandLivre> lignes = comptabilisation.construireLignesGroupees(bulletins, libelle);
         PieceComptable piece;
         try {
-            piece = comptabilite.creerPieceInterne(JournalComptable.OPERATIONS_DIVERSES, libelle, finDeMois, lignes, operateur);
+            piece = comptabilite.creerPieceInterne(JournalComptable.OPERATIONS_DIVERSES, libelle, datePiece, lignes, operateur);
         } catch (RuntimeException e) {
             throw new TransitionInvalideException("La constatation de la paie de "
                 + periode(note.getPaieMois(), note.getPaieAnnee()) + " ne peut pas être écrite au "
-                + finDeMois + " : " + e.getMessage());
+                + datePiece + " : " + e.getMessage());
         }
         bulletins.forEach(b -> b.setPieceComptable(piece));
         bulletinRepository.saveAll(bulletins);
         log.info("Paie {} constatee [piece={}, bulletins={}, note={}]",
             periode(note.getPaieMois(), note.getPaieAnnee()), piece.getReference(), bulletins.size(), note.getReference());
+    }
+
+    /**
+     * Date de la pièce de constatation : le dernier jour du mois de paie (rattachement des charges au mois
+     * qu'elles concernent). Si la période comptable de ce mois est déjà clôturée, le paiement reste
+     * accepté : la constatation est alors datée du jour du paiement, ou du lendemain de la date de
+     * clôture si celle-ci est postérieure, et son libellé le signale.
+     */
+    LocalDate dateConstatation(int mois, int annee) {
+        LocalDate finDeMois = YearMonth.of(annee, mois).atEndOfMonth();
+        LocalDate cloture = periodeComptable.dateCloture();
+        if (cloture == null || finDeMois.isAfter(cloture)) {
+            return finDeMois;
+        }
+        LocalDate aujourdhui = LocalDate.now();
+        return aujourdhui.isAfter(cloture) ? aujourdhui : cloture.plusDays(1);
     }
 
     // ---------------------------------------------------------------------
