@@ -1,0 +1,40 @@
+# Option HTTPS (nom de domaine requis), a ajouter au fichier de production :
+#   COMPOSE_FILE=docker-compose.prod.yml:docker-compose.tls.yml        (dans le .env)
+#   HTTP_PORT=80                  le port 80 sert au certificat Let's Encrypt et a la redirection
+#   HTTPS_PORT=443                (ou un autre port public pour le HTTPS)
+# La configuration nginx a utiliser (nginx/nginx.prod.conf) est celle du depot : y remplacer
+# « votre-domaine.cd » par le vrai nom de domaine, puis obtenir le premier certificat (le
+# serveur nginx ne demarre pas sans certificat). Voir deploiement/LISEZ-MOI.md, rubrique HTTPS.
+x-journaux: &journaux
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  nginx:
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      # Meme chemin dans le conteneur que dans le fichier de base : cette ligne le remplace.
+      - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    # Recharge la configuration toutes les 6 h : un certificat renouvele par certbot est pris
+    # en compte sans intervention (audit securite du 05/10/2026, S-04). Un rechargement nginx
+    # ne coupe aucune connexion.
+    command: /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g 'daemon off;'"
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: ${CONTENEURS:-mbsc}-certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    # Renouvelle en boucle toutes les 12h (certbot ne renouvelle reellement qu'a moins de 30
+    # jours de l'expiration : cette boucle ne fait rien la plupart du temps).
+    entrypoint: >
+      /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done"
+    networks: [mbsc-net]
+    logging: *journaux

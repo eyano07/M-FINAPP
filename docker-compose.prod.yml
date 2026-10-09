@@ -1,39 +1,67 @@
+# Production (VPS). Avec COMPOSE_FILE=docker-compose.prod.yml dans le .env (cas de la livraison
+# preparee par deploiement/preparer-livraison.sh), toutes les commandes « docker compose »
+# utilisent ce fichier sans qu'il faille le nommer.
+#
+# Acces : nginx est publie sur le port 9090 du serveur (HTTP_PORT pour en changer) :
+# http://ADRESSE-DU-SERVEUR:9090. Le trafic n'est PAS chiffre : voir docker-compose.tls.yml
+# pour le HTTPS, des qu'un nom de domaine est disponible.
+
+# Plusieurs instances sur un meme serveur : chacune a son nom de projet (COMPOSE_PROJECT_NAME : volumes et
+# reseau) et son prefixe de conteneurs (CONTENEURS), sans quoi la seconde entrerait en conflit avec la premiere.
+
+# Journaux des conteneurs : tournent au lieu de grossir sans fin jusqu'a remplir le disque du serveur.
+x-journaux: &journaux
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
     image: postgres:16-alpine
-    container_name: mbsc-db
+    container_name: ${CONTENEURS:-mbsc}-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mbsc}
       POSTGRES_USER: ${POSTGRES_USER:-mbsc}
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est obligatoire}"
+      # Compte PostgreSQL de l'application, sans privilege de super-utilisateur (audit
+      # securite du 05/10/2026, S-05) : cree par db/init a la creation du volume de donnees.
+      DB_APP_USER: ${DB_APP_USER:-mbsc_app}
+      DB_APP_PASSWORD: "${DB_APP_PASSWORD:?DB_APP_PASSWORD est obligatoire - generer avec openssl rand -base64 32}"
     volumes:
       - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     networks: [mbsc-net]
+    logging: *journaux
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mbsc}"]
+      # -h 127.0.0.1 : par TCP, comme l'application. Sans cela, la sonde repond « pret » pendant la premiere
+      # initialisation du volume (serveur temporaire, socket seulement), avant que la base soit reellement disponible.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-mbsc} -d ${POSTGRES_DB:-mbsc}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   backend:
-    image: eyano3535/finapp:backend
-    container_name: mbsc-backend
+    # Images de la livraison (docker load) ou, a defaut, celles du registre.
+    image: ${BACKEND_IMAGE:-eyano3535/finapp:backend}
+    container_name: ${CONTENEURS:-mbsc}-backend
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-mbsc}
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-mbsc}
-      SPRING_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est obligatoire}"
+      SPRING_DATASOURCE_USERNAME: ${DB_APP_USER:-mbsc_app}
+      SPRING_DATASOURCE_PASSWORD: "${DB_APP_PASSWORD:?DB_APP_PASSWORD est obligatoire - generer avec openssl rand -base64 32}"
       APP_JWT_SECRET: "${JWT_SECRET:?JWT_SECRET est obligatoire - generer avec openssl rand -base64 48}"
       APP_JWT_EXPIRATION: ${JWT_EXPIRATION:-3600000}
       APP_CORS_ORIGINS: "${CORS_ORIGINS:?CORS_ORIGINS est obligatoire - ex: https://votre-domaine.cd}"
-      # Production : pas de comptes de demo, pas de Swagger public.
-      APP_SEED_ENABLED: ${SEED_ENABLED:-false}
-      APP_SWAGGER_PUBLIC: ${SWAGGER_PUBLIC:-false}
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      # Production : ni comptes de demo, ni Swagger public, profil prod. Valeurs fixes (et non
+      # lues dans le .env) : une erreur dans le .env ne peut pas rouvrir ces portes.
+      APP_SEED_ENABLED: "false"
+      APP_SWAGGER_PUBLIC: "false"
+      SPRING_PROFILES_ACTIVE: prod
       APP_IA_ENABLED: ${IA_ENABLED:-true}
       APP_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       APP_OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5}
@@ -41,16 +69,19 @@ services:
       - backend_uploads:/app/data/uploads
     expose: ["8080"]
     networks: [mbsc-net]
+    logging: *journaux
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      # Spring Boot + Hibernate + migrations : plus de 2 minutes sur un petit serveur. Pendant cette periode un
+      # echec de la sonde n'est pas compte : le demarrage n'est declare « unhealthy » qu'au-dela.
+      start_period: 300s
 
   frontend:
-    image: eyano3535/finapp:frontend
-    container_name: mbsc-frontend
+    image: ${FRONTEND_IMAGE:-eyano3535/finapp:frontend}
+    container_name: ${CONTENEURS:-mbsc}-frontend
     restart: unless-stopped
     depends_on:
       backend:
@@ -59,39 +90,20 @@ services:
       NUXT_PUBLIC_API_BASE: /api
     expose: ["3000"]
     networks: [mbsc-net]
+    logging: *journaux
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: mbsc-nginx
+    container_name: ${CONTENEURS:-mbsc}-nginx
     restart: unless-stopped
     depends_on: [backend, frontend]
     ports:
-      - "80:80"
-      - "443:443"
+      # Port public 9090 -> port 80 dans le conteneur (le port du conteneur ne change pas).
+      - "${HTTP_PORT:-9090}:80"
     volumes:
-      - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./certbot/www:/var/www/certbot:ro
-      - ./certbot/conf:/etc/letsencrypt:ro
-    # Recharge la configuration toutes les 6 h : un certificat renouvele par
-    # certbot est pris en compte sans intervention (audit securite du
-    # 05/10/2026, S-04). Un rechargement nginx ne coupe aucune connexion.
-    command: /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g 'daemon off;'"
+      - ${NGINX_CONF:-./nginx/nginx.conf}:/etc/nginx/conf.d/default.conf:ro
     networks: [mbsc-net]
-
-  certbot:
-    image: certbot/certbot:latest
-    container_name: mbsc-certbot
-    restart: unless-stopped
-    volumes:
-      - ./certbot/www:/var/www/certbot
-      - ./certbot/conf:/etc/letsencrypt
-    # Renouvelle en boucle toutes les 12h (certbot ne renouvelle reellement
-    # qu'a moins de 30 jours de l'expiration : cette boucle ne fait rien la
-    # plupart du temps). Nginx ne recharge pas seul un certificat renouvele :
-    # "docker compose restart nginx" reste necessaire apres un renouvellement
-    # (ou un cron externe qui fait les deux).
-    entrypoint: >
-      /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done"
+    logging: *journaux
 
 volumes:
   db_data:

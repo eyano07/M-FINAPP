@@ -60,3 +60,8 @@ EVOLUTION CAISSE *.xlsx
 ### OS ###
 .DS_Store
 Thumbs.db
+
+### Livraison pour le serveur (images, base, .env : donnees reelles et secrets) ###
+livraison/
+livraison-maj/
+*.tar.gz
