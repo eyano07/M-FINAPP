@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { useTheme } from 'vuetify'
+import type { ModeleEntete } from '~/composables/useModeleEntete'
 
 export interface Parametres {
   nom: string
@@ -13,6 +14,8 @@ export interface Parametres {
   nif?: string | null
   logoUrl?: string | null
   couleurPrimaire?: string
+  /** Modèle de papier à en-tête des documents imprimés et PDF (voir composables/useModeleEntete.ts). */
+  modeleEntete?: ModeleEntete
   /** Régime de TVA : false = entreprise non assujettie (factures sans TVA, mention « non applicable »). */
   assujettiTva?: boolean
 }
@@ -21,6 +24,7 @@ const DEFAUT: Parametres = {
   nom: 'MBSC Finapp', nomComplet: null, slogan: null, adresse: null, telephone: null,
   email: null, rccm: null, idNat: null, nif: null, logoUrl: null,
   couleurPrimaire: '#15803D',
+  modeleEntete: 'CLASSIQUE',
   assujettiTva: true,
 }
 
@@ -86,6 +90,12 @@ function appliquerCouleurPrimaire(couleur: string) {
   }
 }
 
+/** Modele de papier a en-tete des impressions : lu par les regles html[data-entete] de classroom.scss. */
+function appliquerModeleEntete(modele: string) {
+  if (!import.meta.client) return
+  document.documentElement.dataset.entete = modele || 'CLASSIQUE'
+}
+
 /**
  * Identite visuelle de l'entreprise. Chargee via $fetch brut (pas useApi()) :
  * l'endpoint est public et doit rester lisible depuis /login, avant toute
@@ -112,6 +122,7 @@ export const useParametresStore = defineStore('parametres', {
           logoUrl: data.logoUrl ? `${apiBase}${data.logoUrl}` : null,
         }
         appliquerCouleurPrimaire(this.parametres.couleurPrimaire || DEFAUT.couleurPrimaire!)
+        appliquerModeleEntete(this.parametres.modeleEntete || DEFAUT.modeleEntete!)
       } catch {
         // Best-effort : conserve les valeurs par defaut si l'appel echoue
         // (ex. backend indisponible au tout premier chargement).
@@ -123,6 +134,11 @@ export const useParametresStore = defineStore('parametres', {
     /** Aperçu immediat depuis la page d'admin, avant meme d'enregistrer. */
     previsualiserCouleur(couleur: string) {
       appliquerCouleurPrimaire(couleur)
+    },
+
+    /** Aperçu du modele de papier a en-tete (impressions) depuis la page d'admin, avant d'enregistrer. */
+    previsualiserModeleEntete(modele: string) {
+      appliquerModeleEntete(modele)
     },
   },
 })

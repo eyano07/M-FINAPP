@@ -2,12 +2,12 @@ package com.mbsc.finapp.service;
 
 import com.mbsc.finapp.domain.ParametresEntreprise;
 import com.mbsc.finapp.domain.User;
+import com.mbsc.finapp.domain.enums.ModeleEntete;
 import com.mbsc.finapp.domain.enums.OrientationPapier;
 import com.mbsc.finapp.domain.enums.TypePapierEntete;
 import com.mbsc.finapp.security.CurrentUserProvider;
+import com.mbsc.finapp.service.ThemeDocumentService.ThemeDocument;
 import lombok.RequiredArgsConstructor;
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBoolean;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -29,7 +29,6 @@ import org.springframework.util.StringUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.time.Year;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,86 +36,60 @@ import java.util.Locale;
 
 /**
  * Génération du papier à en-tête vierge (aucun corps), imprimable par tout
- * utilisateur authentifié depuis sa propre page — deux types visuellement
- * distincts, deux orientations, et un nombre de pages au choix (pages
- * identiques répétées dans un seul PDF).
+ * utilisateur authentifié depuis sa propre page — deux types, deux
+ * orientations, et un nombre de pages au choix (pages identiques répétées
+ * dans un seul PDF).
  *
- * <p><b>Type général</b> : l'identité légale de l'entreprise (logo, bandeau
- * RCCM/ID.Nat/NIF, adresse/téléphone/email de la société), sur le modèle du
- * papier utilisé pour les ordres de mission. En portrait, la 1re page
- * réutilise directement le papier à en-tête statique existant
- * ({@code /pdf/entete_mbsc.pdf}, le même que {@link OrdreMissionPdfService})
- * et sa technique de recouvrement — dupliquée ici plutôt que partagée, pour
- * ne pas risquer de régression sur les ordres de mission déjà en production.
- * Le paysage n'a pas d'équivalent statique : sa 1re page est reconstruite de
- * toutes pièces (logo, bandeau en parallélogramme dégradé, accents
- * décoratifs — coordonnées relevées par balayage de pixels sur un rendu
- * haute résolution du papier statique, voir {@link #buildPaysageHeader}). À
- * partir de la 2e page, l'en-tête complet cède la place à un en-tête réduit
- * ({@link #buildPageReduite}) : logo + nom de l'entreprise sur une ligne,
- * sans bandeau — une page de continuation n'a pas besoin de répéter
- * l'identité légale complète.</p>
+ * <p><b>Type général</b> : l'identité légale de l'entreprise (logo, RCCM/ID.Nat/NIF,
+ * adresse/téléphone/email) dessinée selon le modèle et la couleur choisis par
+ * l'administrateur (voir {@link EnteteDocumentRendu}, {@link ModeleEntete}) — le
+ * même habillage que les autres PDF de l'application. À partir de la 2e page,
+ * l'en-tête complet cède la place à un en-tête réduit.</p>
  *
  * <p><b>Type individuel</b> : un papier à en-tête personnel/départemental
  * (logo + nom de l'entreprise à gauche, affectation/nom/fonction de
  * l'utilisateur courant à droite, une ligne de référence avec ses initiales
  * — pas de bandeau RCCM/ID.Nat/NIF), reproduit sur le modèle fourni par
  * l'utilisateur (papier à en-tête réel de la Direction Financière) — voir
- * {@link #buildIndividuelHeader}/{@link #buildIndividuelFooter}. Identique
- * dans les deux orientations. À partir de la 2e page, même logique de
- * réduction que le type général — voir {@link #buildIndividuelHeaderReduit}
- * — mais la ligne de référence, elle, ne doit apparaître qu'une fois : sur
- * la 1re page.</p>
+ * {@link #buildIndividuelHeader}/{@link #buildIndividuelFooter}. Sa mise en page
+ * est fixe, mais il prend la couleur et le logo du thème. À partir de la 2e
+ * page, l'en-tête se réduit — voir {@link #buildIndividuelHeaderReduit} — et la
+ * ligne de référence n'apparaît que sur la 1re page.</p>
  */
 @Service
 @RequiredArgsConstructor
 public class PapierEnteteService {
 
-    private final ParametresEntrepriseService parametresEntrepriseService;
+    private final ThemeDocumentService themeService;
     private final CurrentUserProvider currentUser;
 
     private static final int MAX_PAGES = 50;
     private static final float MARGIN = 55f;
 
     private static final float[] NOIR = { 0.1f, 0.1f, 0.1f };
-    private static final float[] DARK = { 10f / 255, 74f / 255, 66f / 255 };
     private static final float[] GRAY_TEXT = { 107f / 255, 114f / 255, 128f / 255 };
-    private static final float[] FOOTER_TEXT = { 64f / 255, 64f / 255, 64f / 255 };
-    private static final float[] FOOTER_BG = { 244f / 255, 249f / 255, 247f / 255 };
     private static final float[] WHITE = { 1f, 1f, 1f };
     private static final float[] LIGNE_SEPARATRICE = { 0.88f, 0.88f, 0.88f };
-
-    // Degrade du bandeau RCCM/ID.Nat/NIF et de ses accents decoratifs (type
-    // general) ainsi que des barres du type individuel : memes teintes que
-    // le papier statique (extraites de son flux de contenu et par
-    // echantillonnage pixel — voir OrdreMissionPdfService).
-    private static final float[] RIBBON_CLAIR = { 0.0706f, 0.6275f, 0.4549f };
-    private static final float[] RIBBON_FONCE = { 0.0392f, 0.4f, 0.3137f };
-
-    // Axe du degrade du bandeau STATIQUE (papier portrait existant, type
-    // general) : copie volontaire des memes constantes que
-    // OrdreMissionPdfService (deja en repere page PDFBox) — le bandeau
-    // paysage, reconstruit de toutes pieces sur un parallelogramme
-    // different, calcule son propre axe (voir buildPaysageHeader).
-    private static final float[] RIBBON_AXE_DEBUT_PORTRAIT = { 416.64f, 838.70f };
-    private static final float[] RIBBON_AXE_FIN_PORTRAIT = { 538.67f, 756.40f };
 
     private static final float PAYSAGE_W = PDRectangle.A4.getHeight();
     private static final float PAYSAGE_H = PDRectangle.A4.getWidth();
 
     public byte[] genererPdf(TypePapierEntete type, OrientationPapier orientation, int nombrePages) {
+        return genererPdf(type, orientation, nombrePages, null, null);
+    }
+
+    /** {@code modele}/{@code couleur} : aperçu d'un thème non encore enregistré (null = thème des paramètres). */
+    public byte[] genererPdf(TypePapierEntete type, OrientationPapier orientation, int nombrePages,
+                             ModeleEntete modele, String couleur) {
         int n = Math.max(1, Math.min(nombrePages, MAX_PAGES));
-        ParametresEntreprise entreprise = parametresEntrepriseService.obtenirEntite();
+        ThemeDocument theme = themeService.theme(modele, couleur);
+        float pageW = orientation == OrientationPapier.PORTRAIT ? PDRectangle.A4.getWidth() : PAYSAGE_W;
+        float pageH = orientation == OrientationPapier.PORTRAIT ? PDRectangle.A4.getHeight() : PAYSAGE_H;
         try (PDDocument doc = new PDDocument()) {
             if (type == TypePapierEntete.INDIVIDUEL) {
-                User utilisateur = currentUser.requireUser();
-                float pageW = orientation == OrientationPapier.PORTRAIT ? PDRectangle.A4.getWidth() : PAYSAGE_W;
-                float pageH = orientation == OrientationPapier.PORTRAIT ? PDRectangle.A4.getHeight() : PAYSAGE_H;
-                genererIndividuel(doc, pageW, pageH, entreprise, utilisateur, n);
-            } else if (orientation == OrientationPapier.PORTRAIT) {
-                genererPortraitGeneral(doc, entreprise, n);
+                genererIndividuel(doc, pageW, pageH, theme, currentUser.requireUser(), n);
             } else {
-                genererPaysageGeneral(doc, entreprise, n);
+                genererGeneral(doc, new PDRectangle(pageW, pageH), theme, n);
             }
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             doc.save(bos);
@@ -128,278 +101,21 @@ public class PapierEnteteService {
 
     // ══════════════════════════ Type général ══════════════════════════════
 
-    // ── Portrait : page 1 = papier statique, pages suivantes = en-tête réduit ─
-
-    private void genererPortraitGeneral(PDDocument doc, ParametresEntreprise entreprise, int n) throws IOException {
-        byte[] letterhead;
-        try (InputStream is = getClass().getResourceAsStream("/pdf/entete_mbsc.pdf")) {
-            if (is == null) {
-                throw new IllegalStateException("Papier entête introuvable (/pdf/entete_mbsc.pdf).");
+    private void genererGeneral(PDDocument doc, PDRectangle format, ThemeDocument theme, int n) throws IOException {
+        EnteteDocumentRendu rendu = new EnteteDocumentRendu(doc, theme, MARGIN);
+        for (int i = 0; i < n; i++) {
+            PDPage page = new PDPage(format);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                rendu.entete(cs, format, i == 0);
+                float pied = rendu.pied(cs, format);
+                rendu.pagination(cs, format, pied, i + 1, n);
             }
-            letterhead = is.readAllBytes();
-        }
-        Icones icones = n > 1 ? chargerIcones(doc) : null;
-
-        // Une copie fraiche du modele statique chargee PAR PAGE, fusionnee avec
-        // PDFMergerUtility, plutot qu'un doc.importPage() du meme PDPage reutilise
-        // pour chaque page : importPage() ne recopie pas correctement la police
-        // integree (LiberationSans) du papier statique d'une page vers une autre
-        // (PDF illisible pour des lecteurs stricts — endstream/police introuvable
-        // a la relecture, constate a l'implementation). PDFMergerUtility fusionne
-        // des documents complets et autonomes, chacun construit avec la meme
-        // technique deja fiable qu'OrdreMissionPdfService (chargement + surcharge
-        // en place, sans jamais copier un PDPage entre documents).
-        PDFMergerUtility merger = new PDFMergerUtility();
-        try (PDDocument page1 = Loader.loadPDF(letterhead)) {
-            try (PDPageContentStream cs = new PDPageContentStream(
-                    page1, page1.getPage(0), PDPageContentStream.AppendMode.APPEND, true, true)) {
-                Canvas c = new Canvas(cs, PDRectangle.A4.getHeight());
-                overlayRegistrePortrait(c, entreprise);
-                dessinerNumeroPage(c, PDRectangle.A4.getWidth(), 791f, 1, n);
-            }
-            merger.appendDocument(doc, page1);
-        }
-        for (int i = 1; i < n; i++) {
-            buildPageReduite(doc, PDRectangle.A4.getWidth(), PDRectangle.A4.getHeight(), entreprise, icones, i + 1, n);
-        }
-    }
-
-    /** Reproduit le recouvrement du papier statique fait par {@code OrdreMissionPdfService.overlayRegistre}
-     * (mêmes coordonnées, voir sa javadoc) avec les valeurs courantes de l'entreprise. */
-    private void overlayRegistrePortrait(Canvas c, ParametresEntreprise pe) {
-        if (StringUtils.hasText(pe.getRccm())) {
-            c.coverHtmlGradient(452.9f, 44.5f, 578f, 53.5f, RIBBON_AXE_DEBUT_PORTRAIT, RIBBON_AXE_FIN_PORTRAIT, RIBBON_CLAIR, RIBBON_FONCE);
-            c.drawAtHtmlBaseline(pe.getRccm(), Canvas.REGULAR, 9, 452.9f, 53.4f, WHITE);
-        }
-        if (StringUtils.hasText(pe.getIdNat())) {
-            c.coverHtmlGradient(454.6f, 55.7f, 578f, 64.7f, RIBBON_AXE_DEBUT_PORTRAIT, RIBBON_AXE_FIN_PORTRAIT, RIBBON_CLAIR, RIBBON_FONCE);
-            c.drawAtHtmlBaseline(pe.getIdNat(), Canvas.REGULAR, 9, 454.6f, 64.7f, WHITE);
-        }
-        if (StringUtils.hasText(pe.getNif())) {
-            c.coverHtmlGradient(441.2f, 67f, 578f, 76f, RIBBON_AXE_DEBUT_PORTRAIT, RIBBON_AXE_FIN_PORTRAIT, RIBBON_CLAIR, RIBBON_FONCE);
-            c.drawAtHtmlBaseline(pe.getNif(), Canvas.REGULAR, 9, 441.2f, 75.9f, WHITE);
-        }
-        if (StringUtils.hasText(pe.getAdresse())) {
-            c.coverHtml(64f, 801f, 250f, 823f, FOOTER_BG);
-            c.drawWrappedAtHtmlBaseline(pe.getAdresse(), Canvas.REGULAR, 7.5f, 66.9f, 810.9f, 10.5f, 2, 180f, FOOTER_TEXT);
-        }
-        if (StringUtils.hasText(pe.getTelephone())) {
-            c.coverHtml(278f, 801f, 370f, 823f, FOOTER_BG);
-            c.drawAtHtmlBaseline(pe.getTelephone(), Canvas.REGULAR, 7.5f, 280.3f, 810.9f, FOOTER_TEXT);
-        }
-        if (StringUtils.hasText(pe.getEmail())) {
-            c.coverHtml(428f, 801f, 582f, 823f, FOOTER_BG);
-            String[] parts = pe.getEmail().split("[·;,]");
-            if (parts.length > 0 && StringUtils.hasText(parts[0])) {
-                c.drawAtHtmlBaseline(parts[0].trim(), Canvas.REGULAR, 7.5f, 430.9f, 810.9f, FOOTER_TEXT);
-            }
-            if (parts.length > 1 && StringUtils.hasText(parts[1])) {
-                c.drawAtHtmlBaseline(parts[1].trim(), Canvas.REGULAR, 7.5f, 430.9f, 821.4f, FOOTER_TEXT);
-            }
-        }
-    }
-
-    // ── Paysage : page 1 = reconstitution fidele du portrait, pages suivantes = en-tête réduit ─
-
-    private void genererPaysageGeneral(PDDocument doc, ParametresEntreprise entreprise, int n) throws IOException {
-        Icones icones = chargerIcones(doc);
-
-        PDPage page1 = new PDPage(new PDRectangle(PAYSAGE_W, PAYSAGE_H));
-        doc.addPage(page1);
-        try (PDPageContentStream cs = new PDPageContentStream(doc, page1)) {
-            Canvas c = new Canvas(cs, PAYSAGE_H);
-            buildPaysageHeader(c, entreprise, icones.logo());
-            buildPiedDePage(c, PAYSAGE_W, PAYSAGE_H, entreprise, icones, 1, n);
-        }
-
-        for (int i = 1; i < n; i++) {
-            buildPageReduite(doc, PAYSAGE_W, PAYSAGE_H, entreprise, icones, i + 1, n);
-        }
-    }
-
-    private record Icones(PDImageXObject logo, PDImageXObject pin, PDImageXObject phone, PDImageXObject email) {}
-
-    private Icones chargerIcones(PDDocument doc) throws IOException {
-        return new Icones(
-            loadImage(doc, "/pdf/papier_entete_logo.png"),
-            loadImage(doc, "/pdf/papier_entete_icon_pin.png"),
-            loadImage(doc, "/pdf/papier_entete_icon_phone.png"),
-            loadImage(doc, "/pdf/papier_entete_icon_email.png")
-        );
-    }
-
-    private PDImageXObject loadImage(PDDocument doc, String resourcePath) throws IOException {
-        try (InputStream is = getClass().getResourceAsStream(resourcePath)) {
-            if (is == null) {
-                throw new IllegalStateException("Ressource introuvable : " + resourcePath);
-            }
-            return PDImageXObject.createFromByteArray(doc, is.readAllBytes(), resourcePath);
-        }
-    }
-
-    /**
-     * En-tête complet de la 1re page en paysage (type général), reconstruit pour
-     * reproduire fidèlement celui du papier portrait statique : logo, nom de
-     * l'entreprise sur 1-2 lignes suivi du sigle (dérivé de
-     * {@code ParametresEntreprise.nom}, ex. "MBSC Sarlu" -> "Sarlu" — pas de
-     * champ dédié pour ce sigle), bandeau RCCM/ID.Nat/NIF en parallélogramme
-     * dégradé avec sa fine ligne d'accent au-dessus, et le petit accent
-     * décoratif à gauche du logo. Toutes les coordonnées ci-dessous ont été
-     * relevées par balayage de pixels sur un rendu haute résolution du
-     * papier statique (même méthode que pour les icônes du pied de page).
-     */
-    private void buildPaysageHeader(Canvas c, ParametresEntreprise pe, PDImageXObject logo) {
-        // Accent decoratif a gauche du logo : petit parallelogramme colle au bord
-        // gauche de la page, degrade vertical clair (haut) -> fonce (bas).
-        c.coverPolygonGradient(
-            new float[][] { { 0, 44 }, { 31.4f, 44 }, { 25.4f, 69 }, { 0, 69 } },
-            new float[] { 15, 44 }, new float[] { 15, 69 }, RIBBON_CLAIR, RIBBON_FONCE);
-
-        float logoH = 56f;
-        float logoW = logoH * logo.getWidth() / (float) logo.getHeight();
-        c.drawImageHtml(logo, MARGIN, 26f, logoW, logoH);
-
-        // Bandeau RCCM/ID.Nat/NIF : parallelogramme plein bord (bord droit = bord de
-        // page, comme le papier statique), bord gauche incline de SLANT sur la hauteur.
-        float rXMax = PAYSAGE_W;
-        float rWidth = 227f;
-        float rYMin = 22f;
-        float rYMax = 75.5f;
-        float slant = 13f;
-        float rXMinHaut = rXMax - rWidth + slant;
-        float rXMinBas = rXMax - rWidth;
-        c.coverPolygonGradient(
-            new float[][] { { rXMinHaut, rYMin }, { rXMax, rYMin }, { rXMax, rYMax }, { rXMinBas, rYMax } },
-            new float[] { rXMinHaut + 20, rYMin }, new float[] { rXMinBas + 60, rYMax }, RIBBON_CLAIR, RIBBON_FONCE);
-        // Fine ligne d'accent juste au-dessus du bandeau, meme couleur foncee, plein bord.
-        c.coverHtml(rXMinHaut + 19, rYMin - 8.2f, PAYSAGE_W, rYMin - 4f, RIBBON_FONCE);
-
-        String nom = StringUtils.hasText(pe.getNomComplet()) ? pe.getNomComplet() : pe.getNom();
-        float xNom = MARGIN + logoW + 16f;
-        float largeurDispo = rXMinBas - xNom - 14f;
-        List<String> lignes = c.wrap(nom.toUpperCase(Locale.FRENCH), Canvas.BOLD, 15f, largeurDispo);
-        float y = 48f;
-        for (int i = 0; i < lignes.size(); i++) {
-            String ligne = lignes.get(i);
-            c.drawAtHtmlBaseline(ligne, Canvas.BOLD, 15f, xNom, y, DARK);
-            // Sigle (ex. "Sarlu" dans "MBSC Sarlu") accolé à la dernière ligne du nom,
-            // comme sur le papier statique — derive de `nom`, pas d'un champ dedie.
-            if (i == lignes.size() - 1) {
-                String sigle = sigleEntreprise(pe);
-                if (sigle != null) {
-                    float largeurLigne = c.widthOf(ligne, Canvas.BOLD, 15f);
-                    c.drawAtHtmlBaseline(sigle.toUpperCase(Locale.FRENCH), Canvas.REGULAR, 13f, xNom + largeurLigne + 8f, y, GRAY_TEXT);
-                }
-            }
-            y += 19f;
-        }
-
-        float ry = 42f;
-        ry = drawLabelValue(c, "RCCM", pe.getRccm(), rXMinHaut + 12f, ry);
-        ry = drawLabelValue(c, "ID. Nat", pe.getIdNat(), rXMinHaut + 12f, ry);
-        drawLabelValue(c, "NIF", pe.getNif(), rXMinHaut + 12f, ry);
-
-        // Filet fin sous l'entete, comme sur le papier portrait statique.
-        c.coverHtml(MARGIN, 95f, PAYSAGE_W - MARGIN, 95.6f, LIGNE_SEPARATRICE);
-    }
-
-    /** 2e mot et suivants de {@code nom} (ex. "MBSC Sarlu" -> "Sarlu"), {@code null} si un seul mot. */
-    private String sigleEntreprise(ParametresEntreprise pe) {
-        if (!StringUtils.hasText(pe.getNom())) return null;
-        String[] mots = pe.getNom().trim().split("\\s+", 2);
-        return mots.length > 1 ? mots[1] : null;
-    }
-
-    /** "{label} : {value}" (label en gras, blanc) — ignore silencieusement si value est vide (comme le
-     * papier portrait statique). Retourne la ligne de base suivante (+14pt), que value soit vide ou non,
-     * pour garder les 3 lignes du bandeau a position fixe. */
-    private float drawLabelValue(Canvas c, String label, String value, float x, float baselineY) {
-        if (StringUtils.hasText(value)) {
-            String prefixe = label + " : ";
-            c.drawAtHtmlBaseline(prefixe, Canvas.BOLD, 9f, x, baselineY, WHITE);
-            float largeurPrefixe = c.widthOf(prefixe, Canvas.BOLD, 9f);
-            c.drawAtHtmlBaseline(value, Canvas.REGULAR, 9f, x + largeurPrefixe, baselineY, WHITE);
-        }
-        return baselineY + 14f;
-    }
-
-    /**
-     * Pied de page (icônes + adresse/téléphone/e-mail de l'entreprise, type général
-     * uniquement) : utilisé pour la page 1 en paysage et pour toutes les pages
-     * réduites. Hauteur volontairement compacte (44pt, contre 74pt dans une 1re
-     * version jugée trop imposante) avec le même petit accent décoratif que le
-     * pied de page statique. Numéro de page juste au-dessus (voir {@link
-     * #dessinerNumeroPage}), omis si {@code totalPages <= 1}.
-     */
-    private void buildPiedDePage(Canvas c, float pageWidth, float pageHeight, ParametresEntreprise pe, Icones icones,
-                                  int numeroPage, int totalPages) {
-        float bandBottom = pageHeight - 6f;
-        float bandTop = bandBottom - 44f;
-        dessinerNumeroPage(c, pageWidth, bandTop - 8f, numeroPage, totalPages);
-        c.coverHtml(0f, bandTop, pageWidth, bandBottom, FOOTER_BG);
-        // Accent decoratif a gauche, meme esprit que celui de l'entete (degrade vertical).
-        float accentH = 20f;
-        float accentY = bandTop + (44f - accentH) / 2f;
-        c.coverPolygonGradient(
-            new float[][] { { 0, accentY }, { 24.5f, accentY }, { 19.9f, accentY + accentH }, { 0, accentY + accentH } },
-            new float[] { 12, accentY }, new float[] { 12, accentY + accentH }, RIBBON_CLAIR, RIBBON_FONCE);
-
-        float iconSize = 16f;
-        float iconY = bandTop + (44f - iconSize) / 2f;
-        float usable = pageWidth - 2 * MARGIN;
-        float colW = usable / 3f;
-        float col1 = MARGIN;
-        float col2 = MARGIN + colW;
-        float col3 = MARGIN + 2 * colW;
-
-        if (StringUtils.hasText(pe.getAdresse())) {
-            c.drawImageHtml(icones.pin(), col1, iconY, iconSize, iconSize);
-            c.drawWrappedAtHtmlBaseline(pe.getAdresse(), Canvas.REGULAR, 7f, col1 + iconSize + 8f,
-                iconY + 3f, 9.5f, 2, colW - iconSize - 16f, FOOTER_TEXT);
-        }
-        if (StringUtils.hasText(pe.getTelephone())) {
-            c.drawImageHtml(icones.phone(), col2, iconY, iconSize, iconSize);
-            c.drawAtHtmlBaseline(pe.getTelephone(), Canvas.REGULAR, 7.5f, col2 + iconSize + 8f, iconY + 10f, FOOTER_TEXT);
-        }
-        if (StringUtils.hasText(pe.getEmail())) {
-            c.drawImageHtml(icones.email(), col3, iconY, iconSize, iconSize);
-            String[] parts = pe.getEmail().split("[·;,]");
-            float ey = iconY + 3f;
-            for (int i = 0; i < parts.length && i < 2; i++) {
-                if (StringUtils.hasText(parts[i])) {
-                    c.drawAtHtmlBaseline(parts[i].trim(), Canvas.REGULAR, 7f, col3 + iconSize + 8f, ey, FOOTER_TEXT);
-                }
-                ey += 9.5f;
-            }
-        }
-    }
-
-    /**
-     * Page "de continuation" du type général (2e page et suivantes en mode
-     * plusieurs pages) : en-tête réduit à un simple logo + nom de l'entreprise
-     * sur une ligne (pas de bandeau RCCM/ID.Nat/NIF, pas d'accent décoratif —
-     * inutile de répéter l'identité légale complète sur chaque page), même
-     * pied de page que la 1re page.
-     */
-    private void buildPageReduite(PDDocument doc, float pageWidth, float pageHeight, ParametresEntreprise entreprise,
-                                   Icones icones, int numeroPage, int totalPages) throws IOException {
-        PDPage page = new PDPage(new PDRectangle(pageWidth, pageHeight));
-        doc.addPage(page);
-        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
-            Canvas c = new Canvas(cs, pageHeight);
-
-            float logoH = 22f;
-            float logoW = logoH * icones.logo().getWidth() / (float) icones.logo().getHeight();
-            c.drawImageHtml(icones.logo(), MARGIN, 14f, logoW, logoH);
-            String nom = StringUtils.hasText(entreprise.getNomComplet()) ? entreprise.getNomComplet() : entreprise.getNom();
-            c.drawAtHtmlBaseline(nom.toUpperCase(Locale.FRENCH), Canvas.BOLD, 10.5f, MARGIN + logoW + 10f, 30f, DARK);
-            c.coverHtml(MARGIN, 42f, pageWidth - MARGIN, 42.6f, LIGNE_SEPARATRICE);
-
-            buildPiedDePage(c, pageWidth, pageHeight, entreprise, icones, numeroPage, totalPages);
         }
     }
 
     // ══════════════════════════ Type individuel ═══════════════════════════
+
 
     /**
      * Papier à en-tête individuel : la 1re page a l'en-tête complet (avec la
@@ -410,14 +126,16 @@ public class PapierEnteteService {
      * pied de page sur toutes les pages. Identique en portrait et en
      * paysage (seules les dimensions de page changent).
      */
-    private void genererIndividuel(PDDocument doc, float pageWidth, float pageHeight, ParametresEntreprise entreprise,
+    private void genererIndividuel(PDDocument doc, float pageWidth, float pageHeight, ThemeDocument theme,
                                     User utilisateur, int n) throws IOException {
-        PDImageXObject logo = loadImage(doc, "/pdf/papier_entete_logo.png");
+        ParametresEntreprise entreprise = theme.entreprise();
+        float[] accent = theme.fonce();
+        PDImageXObject logo = theme.logo() == null ? null : PDImageXObject.createFromByteArray(doc, theme.logo(), "logo");
         for (int i = 0; i < n; i++) {
             PDPage page = new PDPage(new PDRectangle(pageWidth, pageHeight));
             doc.addPage(page);
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
-                Canvas c = new Canvas(cs, pageHeight);
+                Canvas c = new Canvas(cs, pageHeight, accent);
                 if (i == 0) {
                     buildIndividuelHeader(c, pageWidth, entreprise, utilisateur, logo);
                 } else {
@@ -442,8 +160,8 @@ public class PapierEnteteService {
      */
     private void buildIndividuelHeader(Canvas c, float pageWidth, ParametresEntreprise pe, User u, PDImageXObject logo) {
         float logoH = 42f;
-        float logoW = logoH * logo.getWidth() / (float) logo.getHeight();
-        c.drawImageHtml(logo, MARGIN, 18f, logoW, logoH);
+        float logoW = logo == null ? -14f : logoH * logo.getWidth() / (float) logo.getHeight();
+        if (logo != null) c.drawImageHtml(logo, MARGIN, 18f, logoW, logoH);
 
         float xNom = MARGIN + logoW + 14f;
         String[] motsNom = StringUtils.hasText(pe.getNom()) ? pe.getNom().trim().split("\\s+", 2) : new String[0];
@@ -451,7 +169,7 @@ public class PapierEnteteService {
         c.drawAtHtmlBaseline(court, Canvas.BOLD, 19f, xNom, 40f, NOIR);
         if (motsNom.length > 1) {
             float largeurCourt = c.widthOf(court, Canvas.BOLD, 19f);
-            c.drawAtHtmlBaseline(motsNom[1].toUpperCase(Locale.FRENCH), Canvas.BOLD, 14f, xNom + largeurCourt + 8f, 40f, RIBBON_FONCE);
+            c.drawAtHtmlBaseline(motsNom[1].toUpperCase(Locale.FRENCH), Canvas.BOLD, 14f, xNom + largeurCourt + 8f, 40f, c.accent);
         }
         if (StringUtils.hasText(pe.getNomComplet())) {
             c.drawAtHtmlBaseline(pe.getNomComplet().toUpperCase(Locale.FRENCH), Canvas.REGULAR, 8f, xNom, 55f, GRAY_TEXT);
@@ -462,7 +180,7 @@ public class PapierEnteteService {
         float xDroite = pageWidth - MARGIN;
         float y = 32f;
         if (StringUtils.hasText(u.getAffectation())) {
-            c.drawRightAlignedHtml(u.getAffectation().toUpperCase(Locale.FRENCH), Canvas.BOLD, 11f, xDroite, y, RIBBON_FONCE);
+            c.drawRightAlignedHtml(u.getAffectation().toUpperCase(Locale.FRENCH), Canvas.BOLD, 11f, xDroite, y, c.accent);
             y += 18f;
         }
         String prenom = u.getPrenom() != null ? u.getPrenom().trim() : "";
@@ -478,7 +196,7 @@ public class PapierEnteteService {
         float largeurUtile = pageWidth - 2 * MARGIN;
         c.coverHtmlGradient(MARGIN, barY, pageWidth - MARGIN, barY + 3f,
             new float[] { MARGIN, pageHeightAxis(c, barY) }, new float[] { MARGIN + largeurUtile * 0.42f, pageHeightAxis(c, barY) },
-            RIBBON_FONCE, WHITE);
+            c.accent, WHITE);
 
         // Ligne de reference : numero libre (a completer a la main) + initiales de
         // l'agent + sigle de la societe + initiales de l'affectation + annee en cours.
@@ -500,12 +218,12 @@ public class PapierEnteteService {
      */
     private void buildIndividuelHeaderReduit(Canvas c, float pageWidth, ParametresEntreprise pe, User u, PDImageXObject logo) {
         float logoH = 22f;
-        float logoW = logoH * logo.getWidth() / (float) logo.getHeight();
-        c.drawImageHtml(logo, MARGIN, 14f, logoW, logoH);
+        float logoW = logo == null ? -10f : logoH * logo.getWidth() / (float) logo.getHeight();
+        if (logo != null) c.drawImageHtml(logo, MARGIN, 14f, logoW, logoH);
         String nom = StringUtils.hasText(pe.getNomComplet()) ? pe.getNomComplet() : pe.getNom();
-        c.drawAtHtmlBaseline(nom.toUpperCase(Locale.FRENCH), Canvas.BOLD, 10.5f, MARGIN + logoW + 10f, 30f, DARK);
+        c.drawAtHtmlBaseline(nom.toUpperCase(Locale.FRENCH), Canvas.BOLD, 10.5f, MARGIN + logoW + 10f, 30f, c.accent);
         if (StringUtils.hasText(u.getAffectation())) {
-            c.drawRightAlignedHtml(u.getAffectation().toUpperCase(Locale.FRENCH), Canvas.BOLD, 9.5f, pageWidth - MARGIN, 30f, RIBBON_FONCE);
+            c.drawRightAlignedHtml(u.getAffectation().toUpperCase(Locale.FRENCH), Canvas.BOLD, 9.5f, pageWidth - MARGIN, 30f, c.accent);
         }
         c.coverHtml(MARGIN, 42f, pageWidth - MARGIN, 42.6f, LIGNE_SEPARATRICE);
     }
@@ -527,7 +245,7 @@ public class PapierEnteteService {
         float largeurUtile = pageWidth - 2 * MARGIN;
         c.coverHtmlGradient(MARGIN, barY, pageWidth - MARGIN, barY + 3f,
             new float[] { MARGIN + largeurUtile * 0.58f, pageHeightAxis(c, barY) }, new float[] { pageWidth - MARGIN, pageHeightAxis(c, barY) },
-            WHITE, RIBBON_FONCE);
+            WHITE, c.accent);
 
         StringBuilder gauche = new StringBuilder();
         if (StringUtils.hasText(pe.getNom())) gauche.append(pe.getNom());
@@ -535,7 +253,7 @@ public class PapierEnteteService {
             if (!gauche.isEmpty()) gauche.append(" — ");
             gauche.append(pe.getNomComplet());
         }
-        c.drawAtHtmlBaseline(gauche.toString(), Canvas.BOLD, 9.5f, MARGIN, pageHeight - 50f, RIBBON_FONCE);
+        c.drawAtHtmlBaseline(gauche.toString(), Canvas.BOLD, 9.5f, MARGIN, pageHeight - 50f, c.accent);
         if (StringUtils.hasText(pe.getAdresse())) {
             c.drawAtHtmlBaseline(pe.getAdresse(), Canvas.REGULAR, 8f, MARGIN, pageHeight - 38f, GRAY_TEXT);
         }
@@ -594,10 +312,13 @@ public class PapierEnteteService {
 
         private final PDPageContentStream cs;
         private final float pageHeight;
+        /** Couleur d'accent : variante foncée de la couleur du thème. */
+        final float[] accent;
 
-        Canvas(PDPageContentStream cs, float pageHeight) {
+        Canvas(PDPageContentStream cs, float pageHeight, float[] accent) {
             this.cs = cs;
             this.pageHeight = pageHeight;
+            this.accent = accent;
         }
 
         void coverHtml(float xMinHtml, float yMinHtml, float xMaxHtml, float yMaxHtml, float[] rgb) {

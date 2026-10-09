@@ -125,19 +125,19 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 
     <template v-else-if="bilan && resultat && balance">
       <!-- En-tete d'impression, une seule fois en tete de liasse -->
-      <div class="etat-print-header">
-        <div class="etat-print-header__brand">
-          <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+      <div class="etat-print-header print-entete">
+        <div class="etat-print-header__brand print-entete__marque">
+          <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
             <v-icon v-else icon="mdi-finance" size="16" color="white" />
           </div>
           <div>
-            <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+            <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
             <span class="etat-print-header__service">Direction Financière</span>
             <span class="etat-print-header__doc">États financiers</span>
           </div>
         </div>
-        <div class="etat-print-header__meta">
+        <div class="etat-print-header__meta print-entete__meta">
           <span>Exercice : <strong>{{ fmtDate(filtres.du) }} au {{ fmtDate(filtres.au) }}</strong></span>
           <span>Imprimé le : {{ dateImpression }}</span>
         </div>

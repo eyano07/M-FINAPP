@@ -1,5 +1,6 @@
 package com.mbsc.finapp.controller;
 
+import com.mbsc.finapp.domain.enums.ModeleEntete;
 import com.mbsc.finapp.domain.enums.OrientationPapier;
 import com.mbsc.finapp.domain.enums.TypePapierEntete;
 import com.mbsc.finapp.service.PapierEnteteService;
@@ -28,9 +29,12 @@ public class PapierEnteteController {
     public ResponseEntity<byte[]> pdf(
         @RequestParam TypePapierEntete type,
         @RequestParam OrientationPapier orientation,
-        @RequestParam(defaultValue = "1") int nombrePages
+        @RequestParam(defaultValue = "1") int nombrePages,
+        // Aperçu d'un thème pas encore enregistré (écran Paramètres) ; sans effet sur les paramètres.
+        @RequestParam(required = false) ModeleEntete modele,
+        @RequestParam(required = false) String couleur
     ) {
-        byte[] pdf = service.genererPdf(type, orientation, nombrePages);
+        byte[] pdf = service.genererPdf(type, orientation, nombrePages, modele, couleur);
         String nomFichier = "papier-entete-" + type.name().toLowerCase(java.util.Locale.FRENCH)
             + "-" + orientation.name().toLowerCase(java.util.Locale.FRENCH) + ".pdf";
         return ResponseEntity.ok()

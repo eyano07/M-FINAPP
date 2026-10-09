@@ -494,19 +494,19 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       </div>
     </div>
 
-    <div class="etat-print-header">
-      <div class="etat-print-header__brand">
-        <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+    <div class="etat-print-header print-entete">
+      <div class="etat-print-header__brand print-entete__marque">
+        <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
           <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
           <v-icon v-else icon="mdi-finance" size="16" color="white" />
         </div>
         <div>
-          <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+          <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
           <span class="etat-print-header__doc">Camions de minerais</span>
           <span class="etat-print-header__service">{{ resumeFiltres }}</span>
         </div>
       </div>
-      <div class="etat-print-header__meta"><span>Imprimé le : {{ dateImpression }}</span></div>
+      <div class="etat-print-header__meta print-entete__meta"><span>Imprimé le : {{ dateImpression }}</span></div>
     </div>
 
     <v-alert v-if="succes" type="success" variant="tonal" class="mb-4 no-print" closable @click:close="succes = ''">{{ succes }}</v-alert>

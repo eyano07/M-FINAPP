@@ -147,18 +147,18 @@ function fmtDate(d: string) {
 
     <template v-if="balance">
       <!-- En-tete d'impression (visible uniquement sur le document imprime) -->
-      <div class="etat-print-header">
-        <div class="etat-print-header__brand">
-          <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+      <div class="etat-print-header print-entete">
+        <div class="etat-print-header__brand print-entete__marque">
+          <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
             <v-icon v-else icon="mdi-finance" size="16" color="white" />
           </div>
           <div>
-            <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+            <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
             <span class="etat-print-header__doc">Balance de vérification</span>
           </div>
         </div>
-        <div class="etat-print-header__meta">
+        <div class="etat-print-header__meta print-entete__meta">
           <span>Période : <strong>{{ fmtDate(balance.du) }} au {{ fmtDate(balance.au) }}</strong></span>
           <span>Imprimé le : {{ dateImpression }}</span>
         </div>

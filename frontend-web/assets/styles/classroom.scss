@@ -354,3 +354,71 @@ body {
   }
   .etat-print-header__meta strong { color: #111827; }
 }
+
+/* ============================================================
+   Modele de papier a en-tete choisi par l'administrateur (Parametres) :
+   habille l'en-tete de toutes les impressions (classe print-entete posee
+   sur l'en-tete imprime de chaque page). Le modele est porte par
+   <html data-entete="..."> (stores/parametres.ts), la couleur par
+   --color-primary. CLASSIQUE = style propre a chaque page (filet epais).
+   Memes modeles que les PDF du serveur (EnteteDocumentRendu).
+   ============================================================ */
+@media print {
+  html[data-entete] .print-entete {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Bandeau : aplat de couleur, textes en blanc */
+  html[data-entete="BANDEAU"] .print-entete {
+    background: var(--color-primary) !important;
+    border-bottom: 3px solid var(--color-primary-darker) !important;
+    padding: 12px 16px !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete [class*="__"],
+  html[data-entete="BANDEAU"] .print-entete strong,
+  html[data-entete="BANDEAU"] .print-entete__meta,
+  html[data-entete="BANDEAU"] .print-entete__meta * { color: #fff !important; }
+  html[data-entete="BANDEAU"] .print-entete__logo { background: #fff !important; }
+  html[data-entete="BANDEAU"] .print-entete__logo .v-icon { color: var(--color-primary) !important; }
+
+  /* Epure : simple filet fin, nom en couleur */
+  html[data-entete="EPURE"] .print-entete { border-bottom: 1px solid var(--color-primary) !important; }
+  html[data-entete="EPURE"] .print-entete__nom { color: var(--color-primary) !important; }
+
+  /* Institutionnel : tout centre, double filet */
+  html[data-entete="CENTRE"] .print-entete {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 6px !important;
+    border-bottom: 4px double var(--color-primary) !important;
+  }
+  html[data-entete="CENTRE"] .print-entete__marque { flex-direction: column !important; text-align: center; gap: 4px !important; }
+  html[data-entete="CENTRE"] .print-entete__meta {
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 4px 14px !important;
+  }
+  html[data-entete="CENTRE"] .print-entete__nom { color: var(--color-primary-darker) !important; }
+
+  /* Lateral : barre de couleur a gauche */
+  html[data-entete="LATERAL"] .print-entete {
+    border-left: 8px solid var(--color-primary) !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    padding-left: 14px !important;
+  }
+  html[data-entete="LATERAL"] .print-entete__nom { color: var(--color-primary) !important; }
+
+  /* Encadre : cartouche teinte borde de couleur */
+  html[data-entete="ENCADRE"] .print-entete {
+    border: 1.5px solid var(--color-primary) !important;
+    background: var(--color-primary-lighter) !important;
+    border-radius: 8px;
+    padding: 10px 14px !important;
+  }
+  html[data-entete="ENCADRE"] .print-entete__nom { color: var(--color-primary-darker) !important; }
+}

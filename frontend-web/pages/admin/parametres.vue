@@ -2,6 +2,7 @@
 definePageMeta({ roles: ['ADMIN'] })
 
 import { useParametresStore } from '~/stores/parametres'
+import { MODELES_ENTETE, MODELE_ENTETE_DEFAUT, type ModeleEntete } from '~/composables/useModeleEntete'
 
 const api = useApi()
 const parametresStore = useParametresStore()
@@ -22,6 +23,7 @@ const form = reactive({
   idNat: '',
   nif: '',
   couleurPrimaire: '#15803D',
+  modeleEntete: MODELE_ENTETE_DEFAUT as ModeleEntete,
 })
 
 async function charger() {
@@ -39,6 +41,7 @@ async function charger() {
     form.idNat = parametresStore.parametres.idNat || ''
     form.nif = parametresStore.parametres.nif || ''
     form.couleurPrimaire = parametresStore.parametres.couleurPrimaire || '#15803D'
+    form.modeleEntete = parametresStore.parametres.modeleEntete || MODELE_ENTETE_DEFAUT
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les paramètres.')
   } finally {
@@ -67,6 +70,7 @@ async function enregistrer() {
         adresse: form.adresse || null, telephone: form.telephone || null,
         email: form.email || null, rccm: form.rccm || null, idNat: form.idNat || null, nif: form.nif || null,
         couleurPrimaire: form.couleurPrimaire,
+        modeleEntete: form.modeleEntete,
       },
     })
     await parametresStore.charger()
@@ -103,7 +107,34 @@ watch(() => form.couleurPrimaire, (c) => {
 // alors deja la meme valeur).
 onBeforeUnmount(() => {
   parametresStore.previsualiserCouleur(parametresStore.parametres.couleurPrimaire || '#15803D')
+  parametresStore.previsualiserModeleEntete(parametresStore.parametres.modeleEntete || MODELE_ENTETE_DEFAUT)
 })
+
+// ── Papier a en-tete des documents ─────────────────────────────────────
+// Le modele choisi s'applique aux impressions des que l'on clique (apercu,
+// comme la couleur) et aux PDF du serveur une fois enregistre.
+watch(() => form.modeleEntete, m => parametresStore.previsualiserModeleEntete(m))
+
+const apercuPdfEnCours = ref(false)
+/** Papier a en-tete genere par le serveur avec le modele et la couleur affiches, meme non enregistres. */
+async function apercuPdf() {
+  const onglet = window.open('', '_blank')
+  apercuPdfEnCours.value = true
+  erreur.value = ''
+  try {
+    const params = new URLSearchParams({ type: 'GENERAL', orientation: 'PORTRAIT', nombrePages: '1', modele: form.modeleEntete })
+    if (estHexValide(form.couleurPrimaire)) params.set('couleur', form.couleurPrimaire)
+    const reponse = await api.raw<Blob>(`/papier-entete/pdf?${params}`, { responseType: 'blob' })
+    const url = URL.createObjectURL(reponse._data as Blob)
+    if (onglet) onglet.location.href = url
+    else window.open(url, '_blank')
+  } catch (e: any) {
+    onglet?.close()
+    erreur.value = messageErreurApi(e, "L'aperçu PDF n'a pas pu être généré.")
+  } finally {
+    apercuPdfEnCours.value = false
+  }
+}
 
 // ── Logo ────────────────────────────────────────────────────────────────
 const TYPES_AUTORISES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml']
@@ -256,7 +287,7 @@ async function onLogoChoisi(e: Event) {
           </div>
         </div>
         <p class="param-registre-hint">
-          Affichés sur le papier à en-tête des documents officiels (ordres de mission…).
+          Affichés sur le papier à en-tête des documents (PDF et impressions).
         </p>
       </div>
 
@@ -330,8 +361,56 @@ async function onLogoChoisi(e: Event) {
         </div>
 
         <p class="param-logo-hint">
-          S'applique aux boutons, liens et accents dans toute l'application.
+          S'applique aux boutons, liens et accents dans toute l'application, ainsi qu'à tous les documents imprimés et PDF.
         </p>
+      </div>
+
+      <!-- ── Papier a en-tete ──────────────────────────────────── -->
+      <div class="param-card param-card--large">
+        <div class="param-entete-tete">
+          <p class="param-card__title mb-0">
+            <v-icon icon="mdi-file-document-outline" size="16" class="mr-2" />
+            Papier à en-tête des documents
+          </p>
+          <v-btn
+            variant="tonal"
+            color="primary"
+            rounded="lg"
+            prepend-icon="mdi-file-pdf-box"
+            :loading="apercuPdfEnCours"
+            @click="apercuPdf"
+          >
+            Aperçu PDF
+          </v-btn>
+        </div>
+        <p class="param-entete-intro">
+          Le modèle choisi et la couleur ci-dessus habillent tous les documents : PDF (papier à en-tête, ordres de mission,
+          budgets) et impressions depuis le navigateur (états financiers, notes de frais, factures…).
+        </p>
+        <div class="param-entete-grille" role="radiogroup" aria-label="Modèle de papier à en-tête">
+          <button
+            v-for="m in MODELES_ENTETE"
+            :key="m.value"
+            type="button"
+            role="radio"
+            class="param-entete-choix"
+            :class="{ 'is-active': form.modeleEntete === m.value }"
+            :aria-checked="form.modeleEntete === m.value"
+            @click="form.modeleEntete = m.value"
+          >
+            <ParametresApercuEntete
+              :modele="m.value"
+              :couleur="estHexValide(form.couleurPrimaire) ? form.couleurPrimaire : '#15803D'"
+              :nom="form.nom"
+              :logo-url="parametresStore.parametres.logoUrl"
+            />
+            <span class="param-entete-choix__titre">
+              <v-icon v-if="form.modeleEntete === m.value" icon="mdi-check-circle" size="16" color="primary" />
+              {{ m.titre }}
+            </span>
+            <span class="param-entete-choix__desc">{{ m.description }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -458,5 +537,18 @@ async function onLogoChoisi(e: Event) {
   transition: transform 0.12s ease, outline-color 0.12s ease;
 }
 .param-color-preset:hover { transform: scale(1.12); }
+.param-card--large { grid-column: 1 / -1; }
+.param-entete-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.param-entete-intro { font-size: 0.8125rem; color: #4b5563; margin: 0 0 16px; }
+.param-entete-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr)); gap: 14px; }
+.param-entete-choix {
+  display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 10px; border-radius: 12px;
+  border: 2px solid #e5e7eb; background: #f9fafb; cursor: pointer; font: inherit; transition: border-color 0.15s, background 0.15s;
+}
+.param-entete-choix:hover { border-color: #9ca3af; }
+.param-entete-choix:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.param-entete-choix.is-active { border-color: var(--color-primary); background: var(--color-primary-lighter); }
+.param-entete-choix__titre { display: flex; align-items: center; gap: 4px; font-size: 0.875rem; font-weight: 700; color: #111827; margin-top: 4px; }
+.param-entete-choix__desc { font-size: 0.75rem; color: #4b5563; line-height: 1.35; }
 .param-color-preset.is-active { outline: 2px solid #111827; outline-offset: 1px; }
 </style>

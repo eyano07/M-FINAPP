@@ -66,6 +66,9 @@ public class ParametresEntrepriseService {
         p.setIdNat(req.idNat());
         p.setNif(req.nif());
         p.setCouleurPrimaire(req.couleurPrimaire());
+        if (req.modeleEntete() != null) {
+            p.setModeleEntete(req.modeleEntete());
+        }
         p = repository.save(p);
         return ParametresEntrepriseResponse.from(p);
     }

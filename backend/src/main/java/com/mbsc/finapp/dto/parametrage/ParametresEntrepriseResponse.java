@@ -1,6 +1,7 @@
 package com.mbsc.finapp.dto.parametrage;
 
 import com.mbsc.finapp.domain.ParametresEntreprise;
+import com.mbsc.finapp.domain.enums.ModeleEntete;
 
 public record ParametresEntrepriseResponse(
     String nom,
@@ -14,6 +15,8 @@ public record ParametresEntrepriseResponse(
     String nif,
     String logoUrl,
     String couleurPrimaire,
+    /** Modèle de papier à en-tête des documents imprimés et PDF. */
+    ModeleEntete modeleEntete,
     /** Régime de TVA de l'entreprise (factures : mention « TVA non applicable » si non assujettie). */
     boolean assujettiTva
 ) {
@@ -26,7 +29,7 @@ public record ParametresEntrepriseResponse(
             : null;
         return new ParametresEntrepriseResponse(
             p.getNom(), p.getNomComplet(), p.getSlogan(), p.getAdresse(), p.getTelephone(),
-            p.getEmail(), p.getRccm(), p.getIdNat(), p.getNif(), logoUrl, p.getCouleurPrimaire(),
+            p.getEmail(), p.getRccm(), p.getIdNat(), p.getNif(), logoUrl, p.getCouleurPrimaire(), p.getModeleEntete(),
             p.isAssujettiTva());
     }
 }

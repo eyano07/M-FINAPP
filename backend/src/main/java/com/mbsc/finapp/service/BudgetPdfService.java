@@ -1,7 +1,7 @@
 package com.mbsc.finapp.service;
 
-import com.mbsc.finapp.domain.ParametresEntreprise;
 import com.mbsc.finapp.dto.budget.BudgetResponse;
+import com.mbsc.finapp.service.ThemeDocumentService.ThemeDocument;
 import com.mbsc.finapp.dto.budget.SuiviBudgetResponse;
 import com.mbsc.finapp.dto.budget.SuiviBudgetResponse.LigneSuivi;
 import com.mbsc.finapp.dto.budget.SuiviBudgetResponse.TotalSuivi;
@@ -13,16 +13,12 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
-import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -44,16 +40,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class BudgetPdfService {
 
-    private static final Logger log = LoggerFactory.getLogger(BudgetPdfService.class);
-
     private static final PDFont REG = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
     private static final PDFont BOLD = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
     private static final PDFont ITAL = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
     private static final PDRectangle PAGE = new PDRectangle(PDRectangle.A4.getHeight(), PDRectangle.A4.getWidth());
     private static final float MARGE = 28f;
     private static final float LARGEUR = PAGE.getWidth() - 2 * MARGE;
-    private static final float HAUT_CONTENU = PAGE.getHeight() - 92f;
-    private static final float BAS_CONTENU = 40f;
     private static final DateTimeFormatter JOUR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final String[] MOIS = {"Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."};
     private static final float[] GRIS_CLAIR = {0.95f, 0.96f, 0.97f};
@@ -62,18 +54,16 @@ public class BudgetPdfService {
     private static final float[] GRIS = {0.42f, 0.45f, 0.5f};
 
     private final BudgetService budgetService;
-    private final ParametresEntrepriseService parametresService;
-    private final StorageService storage;
+    private final ThemeDocumentService themeService;
 
     @PreAuthorize(BudgetService.LECTURE)
     @Transactional
     public byte[] genererPdf(Long budgetId) {
         BudgetResponse budget = budgetService.consulter(budgetId);
         SuiviBudgetResponse suivi = budgetService.suivi(budgetId);
-        ParametresEntreprise entreprise = parametresService.obtenirEntite();
-        byte[] logo = logo(entreprise);
+        ThemeDocument theme = themeService.theme();
         try (PDDocument doc = new PDDocument()) {
-            Rendu r = new Rendu(doc, entreprise, budget, logo);
+            Rendu r = new Rendu(doc, theme, budget);
             r.nouvellePage();
             r.informations(budget);
             r.synthese(suivi);
@@ -91,43 +81,28 @@ public class BudgetPdfService {
         }
     }
 
-    /**
-     * Logo lu directement dans le stockage : passer par {@code telechargerLogo()} (transactionnel, qui leve une
-     * exception sans logo) marquerait la transaction du PDF « rollback-only » et ferait echouer sa generation.
-     */
-    private byte[] logo(ParametresEntreprise entreprise) {
-        String type = entreprise.getLogoTypeMime() == null ? "" : entreprise.getLogoTypeMime();
-        if (entreprise.getLogoCheminStockage() == null
-                || (!type.contains("png") && !type.contains("jpeg") && !type.contains("jpg"))) {
-            return null;
-        }
-        try (InputStream in = storage.charger(entreprise.getLogoCheminStockage()).getInputStream()) {
-            return in.readAllBytes();
-        } catch (Exception e) {
-            log.warn("Logo illisible, PDF du budget sans logo : {}", e.getMessage());
-            return null;
-        }
-    }
-
     // =====================================================================
 
     /** Rendu sequentiel avec pagination automatique (repere PDFBox : origine en bas a gauche). */
     private static final class Rendu {
         private final PDDocument doc;
-        private final ParametresEntreprise entreprise;
         private final BudgetResponse budget;
-        private final byte[] logo;
+        private final EnteteDocumentRendu papier;
         private final float[] couleur;
+        /** Haut de la zone de contenu de la page en cours (sous l'en-tête et le titre du document). */
+        private float hautContenu;
+        /** Bas de la zone de contenu (au-dessus du pied de page). */
+        private float basContenu = 40f;
+        private float hauteurPied;
         private final Map<Character, Boolean> glyphes = new HashMap<>();
         private PDPageContentStream cs;
         private float y;
 
-        Rendu(PDDocument doc, ParametresEntreprise entreprise, BudgetResponse budget, byte[] logo) {
+        Rendu(PDDocument doc, ThemeDocument theme, BudgetResponse budget) {
             this.doc = doc;
-            this.entreprise = entreprise;
             this.budget = budget;
-            this.logo = logo;
-            this.couleur = couleur(entreprise.getCouleurPrimaire());
+            this.papier = new EnteteDocumentRendu(doc, theme, MARGE);
+            this.couleur = theme.couleur();
         }
 
         // ---------------- pages ----------------
@@ -139,43 +114,25 @@ public class BudgetPdfService {
             PDPage page = new PDPage(PAGE);
             doc.addPage(page);
             cs = new PDPageContentStream(doc, page);
-            entete();
-            y = HAUT_CONTENU;
+            entete(doc.getNumberOfPages() == 1);
+            y = hautContenu;
         }
 
-        private void entete() throws IOException {
-            float haut = PAGE.getHeight() - MARGE;
-            float x = MARGE;
-            if (logo != null) {
-                try {
-                    PDImageXObject img = PDImageXObject.createFromByteArray(doc, logo, "logo");
-                    float h = 38f;
-                    float w = img.getWidth() * h / img.getHeight();
-                    cs.drawImage(img, MARGE, haut - h, Math.min(w, 110f), h);
-                    x = MARGE + Math.min(w, 110f) + 10f;
-                } catch (Exception e) {
-                    log.debug("Logo illisible dans le PDF du budget : {}", e.getMessage());
-                }
-            }
-            String nom = entreprise.getNomComplet() != null && !entreprise.getNomComplet().isBlank()
-                ? entreprise.getNomComplet() : entreprise.getNom();
-            texte(nom, BOLD, 12, x, haut - 12, null);
-            List<String> ids = new ArrayList<>();
-            if (present(entreprise.getRccm())) ids.add("RCCM : " + entreprise.getRccm());
-            if (present(entreprise.getIdNat())) ids.add("Id.Nat : " + entreprise.getIdNat());
-            if (present(entreprise.getNif())) ids.add("NIF : " + entreprise.getNif());
-            texte(String.join("   ", ids), REG, 7.5f, x, haut - 24, GRIS);
-            if (present(entreprise.getAdresse())) {
-                texte(entreprise.getAdresse(), REG, 7.5f, x, haut - 34, GRIS);
-            }
+        /** Papier à en-tête du thème, puis le titre du document (budget, référence, statut) sous l'en-tête. */
+        private void entete(boolean premierePage) throws IOException {
+            float hauteurEntete = papier.entete(cs, PAGE, premierePage);
+            hauteurPied = papier.pied(cs, PAGE);
+            basContenu = hauteurPied + 22f;
+            float haut = PAGE.getHeight() - hauteurEntete - 6;
             String titre = "BUDGET PRÉVISIONNEL " + budget.exercice();
-            texteDroite(titre, BOLD, 13, PAGE.getWidth() - MARGE, haut - 12, couleur);
+            texte(titre, BOLD, 12, MARGE, haut - 12, couleur);
             texteDroite(budget.reference() + (budget.numeroRevision() > 0 ? "  -  révision n° " + budget.numeroRevision() : "")
-                + "  -  " + statut(budget.statut().name()), REG, 8, PAGE.getWidth() - MARGE, haut - 24, GRIS);
-            texteDroite(budget.intitule(), ITAL, 8, PAGE.getWidth() - MARGE, haut - 34, GRIS);
+                + "  -  " + statut(budget.statut().name()), REG, 8, PAGE.getWidth() - MARGE, haut - 6, GRIS);
+            texteDroite(budget.intitule(), ITAL, 8, PAGE.getWidth() - MARGE, haut - 16, GRIS);
             cs.setNonStrokingColor(couleur[0], couleur[1], couleur[2]);
-            cs.addRect(MARGE, haut - 44, LARGEUR, 1.6f);
+            cs.addRect(MARGE, haut - 22, LARGEUR, 1.2f);
             cs.fill();
+            hautContenu = haut - 38;
         }
 
         void piedsDePage() throws IOException {
@@ -189,16 +146,17 @@ public class BudgetPdfService {
                 try (PDPageContentStream p = new PDPageContentStream(doc, doc.getPage(i), PDPageContentStream.AppendMode.APPEND, true)) {
                     PDPageContentStream ancien = cs;
                     cs = p;
-                    texte(budget.reference() + "  -  " + budget.intitule(), REG, 7, MARGE, 20, GRIS);
-                    texte(edite, REG, 7, MARGE + 300, 20, GRIS);
-                    texteDroite("Page " + (i + 1) + " / " + total, REG, 7, PAGE.getWidth() - MARGE, 20, GRIS);
+                    float base = hauteurPied + 8;
+                    texte(budget.reference() + "  -  " + budget.intitule(), REG, 7, MARGE, base, GRIS);
+                    texte(edite, REG, 7, MARGE + 300, base, GRIS);
+                    texteDroite("Page " + (i + 1) + " / " + total, REG, 7, PAGE.getWidth() - MARGE, base, GRIS);
                     cs = ancien;
                 }
             }
         }
 
         private void place(float hauteur) throws IOException {
-            if (y - hauteur < BAS_CONTENU) {
+            if (y - hauteur < basContenu) {
                 nouvellePage();
             }
         }
@@ -491,7 +449,7 @@ public class BudgetPdfService {
                 for (Object[] l : lignes) {
                     boolean titre = (Boolean) l[4];
                     // Un titre de section garde au moins sa premiere ligne sur la meme page.
-                    if (y - h * (titre ? 2 : 1) < BAS_CONTENU) {
+                    if (y - h * (titre ? 2 : 1) < basContenu) {
                         nouvellePage();
                         enteteTableau(h);
                     }
@@ -572,7 +530,7 @@ public class BudgetPdfService {
         // ---------------- texte ----------------
 
         private void titreSection(String titre) throws IOException {
-            if (y < HAUT_CONTENU) {
+            if (y < hautContenu) {
                 y -= 8;   // respiration entre deux sections (sauf en haut de page)
             }
             place(28);
@@ -758,18 +716,5 @@ public class BudgetPdfService {
             case "SANS_BUDGET" -> "Sans budget";
             default -> nvl(s);
         };
-    }
-
-    private static float[] couleur(String hex) {
-        try {
-            String h = hex == null ? "" : hex.replace("#", "");
-            if (h.length() == 6) {
-                return new float[] {Integer.parseInt(h.substring(0, 2), 16) / 255f,
-                    Integer.parseInt(h.substring(2, 4), 16) / 255f, Integer.parseInt(h.substring(4, 6), 16) / 255f};
-            }
-        } catch (NumberFormatException ignored) {
-            // couleur invalide : bleu par defaut
-        }
-        return new float[] {0.15f, 0.39f, 0.92f};
     }
 }

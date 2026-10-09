@@ -218,18 +218,18 @@ function libellePeriode(du: string, au: string) {
     </v-card>
 
     <!-- En-tête d'impression (visible uniquement sur le document imprimé) -->
-    <div class="etat-print-header">
-      <div class="etat-print-header__brand">
-        <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+    <div class="etat-print-header print-entete">
+      <div class="etat-print-header__brand print-entete__marque">
+        <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
           <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
           <v-icon v-else icon="mdi-finance" size="16" color="white" />
         </div>
         <div>
-          <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+          <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
           <span class="etat-print-header__doc">Grand livre de stock</span>
         </div>
       </div>
-      <div class="etat-print-header__meta">
+      <div class="etat-print-header__meta print-entete__meta">
         <span>Période : <strong>{{ libellePeriode(appliques.du, appliques.au) }}</strong></span>
         <span>Article : <strong>{{ appliques.article }}</strong></span>
         <span>Entrepôt : <strong>{{ appliques.entrepot }}</strong></span>

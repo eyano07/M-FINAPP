@@ -167,19 +167,19 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
          tout en bas de la page plutot que de la laisser suivre directement le tableau — meme technique que
          le bulletin de paie (bp-print-page). -->
     <div class="rot-print-page">
-    <div class="etat-print-header">
-      <div class="etat-print-header__brand">
-        <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+    <div class="etat-print-header print-entete">
+      <div class="etat-print-header__brand print-entete__marque">
+        <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
           <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
           <v-icon v-else icon="mdi-finance" size="16" color="white" />
         </div>
         <div>
-          <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+          <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
           <span class="etat-print-header__service">Direction des Ressources Humaines</span>
           <span class="etat-print-header__doc">Planning des superviseurs — {{ MOIS[mois - 1] }} {{ annee }}</span>
         </div>
       </div>
-      <div class="etat-print-header__meta">
+      <div class="etat-print-header__meta print-entete__meta">
         <span>Imprimé le : {{ dateImpression }}</span>
       </div>
     </div>

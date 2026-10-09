@@ -1,5 +1,6 @@
 package com.mbsc.finapp.domain;
 
+import com.mbsc.finapp.domain.enums.ModeleEntete;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -64,6 +65,12 @@ public class ParametresEntreprise {
     @Column(name = "couleur_primaire", nullable = false, length = 7)
     @Builder.Default
     private String couleurPrimaire = "#15803D";
+
+    /** Modèle de papier à en-tête de tous les documents (PDF et impressions). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "modele_entete", nullable = false, length = 20)
+    @Builder.Default
+    private ModeleEntete modeleEntete = ModeleEntete.CLASSIQUE;
 
     /**
      * Régime de TVA : {@code false} = entreprise non assujettie, aucune TVA facturée ni

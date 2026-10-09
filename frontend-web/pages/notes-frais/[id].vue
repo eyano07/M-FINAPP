@@ -577,18 +577,18 @@ const peutGererPieces = computed(() =>
     <div v-else-if="note" class="nd-layout">
 
       <!-- Entête d'impression (visible uniquement sur le document imprimé) -->
-      <div class="nd-print-header">
-        <div class="nd-print-header__brand">
-          <div class="nd-print-header__logo" :class="{ 'nd-print-header__logo--image': parametresStore.parametres.logoUrl }">
+      <div class="nd-print-header print-entete">
+        <div class="nd-print-header__brand print-entete__marque">
+          <div class="nd-print-header__logo print-entete__logo" :class="{ 'nd-print-header__logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
             <v-icon v-else icon="mdi-finance" size="16" color="white" />
           </div>
           <div>
-            <span class="nd-print-header__company">{{ parametresStore.parametres.nom }}</span>
+            <span class="nd-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
             <span class="nd-print-header__doc">{{ estEncaissement ? "Note d'encaissement" : 'Note de frais' }}</span>
           </div>
         </div>
-        <div class="nd-print-header__meta">
+        <div class="nd-print-header__meta print-entete__meta">
           <span class="nd-print-header__ref">{{ note.reference }}</span>
           <span class="nd-print-status-pill" :style="{ background: statutMeta.bg, color: statutMeta.text }">
             {{ statutMeta.label }}

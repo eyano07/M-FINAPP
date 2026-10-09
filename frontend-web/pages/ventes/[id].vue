@@ -496,18 +496,18 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
       <template v-if="modeImpression === 'FACTURE'">
       <!-- ── En-tête de facture (impression uniquement) ──────── -->
       <div class="vd-print-header">
-        <div class="vd-print-header__top">
-          <div class="vd-print-header__brand">
-            <div class="vd-print-header__logo" :class="{ 'vd-print-header__logo--image': parametresStore.parametres.logoUrl }">
+        <div class="vd-print-header__top print-entete">
+          <div class="vd-print-header__brand print-entete__marque">
+            <div class="vd-print-header__logo print-entete__logo" :class="{ 'vd-print-header__logo--image': parametresStore.parametres.logoUrl }">
               <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
               <v-icon v-else icon="mdi-finance" size="16" color="white" />
             </div>
             <div>
-              <p class="vd-print-header__marque">{{ parametresStore.parametres.nom }}</p>
+              <p class="vd-print-header__marque print-entete__nom">{{ parametresStore.parametres.nom }}</p>
               <p class="vd-print-header__doc">Facture de vente</p>
             </div>
           </div>
-          <div class="vd-print-header__meta">
+          <div class="vd-print-header__meta print-entete__meta">
             <p><strong>{{ vente.reference }}</strong></p>
             <p>{{ fmtDate(vente.dateVente) }}</p>
             <p v-if="dateImpression">Imprimé le {{ dateImpression }}</p>
