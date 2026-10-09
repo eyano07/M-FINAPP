@@ -36,7 +36,12 @@ public record NoteFraisDetailResponse(
     /** Controle budgetaire releve a la soumission (null avant) ; le controle a jour : GET /notes-frais/{id}/controle-budgetaire. */
     com.mbsc.finapp.domain.enums.StatutControleBudget statutBudget,
     String justificationBudget,
-    String budgetReference
+    String budgetReference,
+    /** STANDARD, PAIE ou IMPOT_PAIE (notes du module DRH, comptes imposés). */
+    com.mbsc.finapp.domain.enums.CategorieNote categorie,
+    Integer paieMois,
+    Integer paieAnnee,
+    com.mbsc.finapp.domain.enums.OrganismePaie organismePaie
 ) {
     public static NoteFraisDetailResponse from(NoteFrais n) {
         var createur = n.getCreateur();
@@ -75,7 +80,11 @@ public record NoteFraisDetailResponse(
             timeline,
             n.getStatutBudget(),
             n.getJustificationBudget(),
-            n.getBudget() == null ? null : n.getBudget().getReference()
+            n.getBudget() == null ? null : n.getBudget().getReference(),
+            n.getCategorie(),
+            n.getPaieMois(),
+            n.getPaieAnnee(),
+            n.getOrganismePaie()
         );
     }
 }

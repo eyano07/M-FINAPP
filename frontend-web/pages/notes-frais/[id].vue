@@ -58,6 +58,11 @@ interface NoteDetail {
   statutBudget?: string | null
   justificationBudget?: string | null
   budgetReference?: string | null
+  /** Notes du module DRH : PAIE ou IMPOT_PAIE (comptes imposés), avec leur mois de paie. */
+  categorie?: string | null
+  paieMois?: number | null
+  paieAnnee?: number | null
+  organismePaie?: string | null
   lignes: LigneNoteFrais[]
   piecesJointes: PieceJointe[]
   observations: Observation[]
@@ -170,7 +175,9 @@ const peutVerifier     = computed(() => isDFIN.value && statut.value === 'SOUMIS
 // NoteFraisService.modifierComptesLignes côté backend.
 // Une note faite uniquement d'achats de marchandise n'a aucun compte a
 // reimputer : le compte de chaque ligne decoule de son article.
-const peutModifierComptes = computed(() => isDFIN.value && statut.value === 'SOUMISE'
+// Notes de paie et notes fiscales (module DRH) : comptes imposés par le système, jamais réimputés.
+const categorieDrh = computed(() => libelleCategorieNote(note.value))
+const peutModifierComptes = computed(() => isDFIN.value && statut.value === 'SOUMISE' && !categorieDrh.value
   && (note.value?.lignes || []).some(l => !l.achatMarchandise))
 // Meme fenetre que peutModifierComptes : le DFIN corrige une saisie
 // maladroite de l'employe pendant sa verification, sans renvoyer la note
@@ -571,6 +578,17 @@ const peutGererPieces = computed(() =>
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
     </v-alert>
+    <v-alert v-if="note && categorieDrh" type="info" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-account-cash-outline">
+      <template v-if="note.categorie === 'PAIE'">
+        Note de paie générée depuis les bulletins de paie : ses comptes et montants découlent des bulletins et ne se
+        modifient pas. Son paiement écrit aussi la constatation de la paie du mois (charges de personnel, IPR, CNSS,
+        INPP, ONEM) selon le SYSCOHADA.
+      </template>
+      <template v-else>
+        Note de versement fiscal générée depuis la paie : elle solde la dette constatée au paiement de la note de paie.
+        Ses comptes et montants ne se modifient pas.
+      </template>
+    </v-alert>
 
     <v-skeleton-loader v-if="loading" type="card, article" class="mt-4" />
 
@@ -621,6 +639,10 @@ const peutGererPieces = computed(() =>
               <span v-if="estEncaissement" class="nd-badge nd-badge--redondant-impression"
                 :style="{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1px solid rgba(255,255,255,0.22)' }">
                 <v-icon icon="mdi-cash-plus" size="12" class="mr-1" />Encaissement
+              </span>
+              <span v-if="categorieDrh" class="nd-badge"
+                :style="{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1px solid rgba(255,255,255,0.22)' }">
+                <v-icon icon="mdi-account-cash-outline" size="12" class="mr-1" />{{ categorieDrh }}
               </span>
               <span v-if="note.priorite" class="nd-badge"
                 :style="{ background: prioMeta[note.priorite]?.bg, color: prioMeta[note.priorite]?.color }">

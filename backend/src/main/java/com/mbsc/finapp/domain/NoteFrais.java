@@ -1,6 +1,8 @@
 package com.mbsc.finapp.domain;
 
+import com.mbsc.finapp.domain.enums.CategorieNote;
 import com.mbsc.finapp.domain.enums.Devise;
+import com.mbsc.finapp.domain.enums.OrganismePaie;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
 import com.mbsc.finapp.domain.enums.SensTransaction;
 import com.mbsc.finapp.domain.enums.StatutControleBudget;
@@ -83,6 +85,24 @@ public class NoteFrais {
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private PrioriteNote priorite;
+
+    /** PAIE / IMPOT_PAIE : note créée par le module DRH, comptes imposés (voir {@code PaieNoteService}). */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private CategorieNote categorie = CategorieNote.STANDARD;
+
+    /** Mois et année de paie réglés (notes PAIE et IMPOT_PAIE uniquement). */
+    @Column(name = "paie_mois")
+    private Integer paieMois;
+
+    @Column(name = "paie_annee")
+    private Integer paieAnnee;
+
+    /** Impôt ou cotisation réglé (notes IMPOT_PAIE uniquement). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "organisme_paie", length = 10)
+    private OrganismePaie organismePaie;
 
     /**
      * Resultat du controle budgetaire releve a la soumission (le plus defavorable de ses lignes) ; null tant

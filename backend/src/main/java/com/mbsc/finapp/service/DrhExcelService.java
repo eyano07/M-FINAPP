@@ -146,10 +146,14 @@ public class DrhExcelService {
             if (r > 1) {
                 Row total = sheet.createRow(r);
                 Cell label = total.createCell(0);
-                label.setCellValue("TOTAL");
+                label.setCellValue("TOTAL (bulletins validés)");
                 label.setCellStyle(s.totalLabel);
-                montant(total, 23, sommeColonne(bulletins, BulletinPaie::getSalaireNet), s.totalMontant);
-                montant(total, 25, sommeColonne(bulletins, BulletinPaie::getNetFc), s.totalMontant);
+                // Seuls les bulletins validés sont dus : les brouillons et les annulés restent listés
+                // (avec leur statut en dernière colonne) mais n'entrent pas dans le total.
+                List<BulletinPaie> dus = bulletins.stream()
+                    .filter(b -> b.getStatut() == com.mbsc.finapp.domain.enums.StatutBulletin.VALIDE).toList();
+                montant(total, 23, sommeColonne(dus, BulletinPaie::getSalaireNet), s.totalMontant);
+                montant(total, 25, sommeColonne(dus, BulletinPaie::getNetFc), s.totalMontant);
             }
 
             for (int c = 0; c < entetes.length; c++) {

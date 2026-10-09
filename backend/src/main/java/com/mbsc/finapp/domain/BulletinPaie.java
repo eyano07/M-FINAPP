@@ -165,16 +165,27 @@ public class BulletinPaie {
     private StatutBulletin statut = StatutBulletin.BROUILLON;
 
     /**
-     * Renseignée à la clôture, que la paie soit comptabilisée ou non (voir
-     * {@code ParametresPaie.comptabiliserPaie}) ; l'état "comptabilisé" se lit
-     * lui sur {@code pieceComptable}/{@code pieceComptable.statut}. C'est ce
-     * champ, et non plus la seule présence de {@code pieceComptable}, qui
-     * verrouille le bulletin — voir {@code BulletinPaieService.exigerModifiable}.
+     * Renseignée à la clôture du mois : verrouille le bulletin (voir
+     * {@code BulletinPaieService.exigerModifiable}). Remise à null par la
+     * réouverture du mois, tant qu'aucune note de paie active ne le couvre.
      */
     @Column(name = "date_cloture")
     private Instant dateCloture;
 
-    /** Renseignée à la clôture uniquement si la paie est comptabilisée ; null sinon. */
+    /**
+     * Note de frais de paie qui règle ce bulletin (voir {@code PaieNoteService}) ; null tant qu'aucune
+     * note active ne le couvre (libérée si la note est annulée).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "note_frais_paie_id")
+    @ToString.Exclude
+    private NoteFrais noteFraisPaie;
+
+    /**
+     * Pièce de constatation de la paie : la pièce groupée du mois, écrite au paiement de la note de paie
+     * (voir {@code PaieNoteService.apresPaiementInterne}) ; une pièce par bulletin pour les mois clôturés
+     * avant ce circuit ; null tant que la paie n'est pas comptabilisée.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "piece_comptable_id")
     @ToString.Exclude

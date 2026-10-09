@@ -1,5 +1,8 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.BulletinPaie;
+import com.mbsc.finapp.domain.enums.CategorieNote;
+import com.mbsc.finapp.domain.enums.OrganismePaie;
 import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CamionMinerai;
 import com.mbsc.finapp.domain.ChargeCamionMinerai;
@@ -36,6 +39,7 @@ import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.ArticleRepository;
 import com.mbsc.finapp.repository.BudgetRepository;
 import com.mbsc.finapp.repository.CamionMineraiRepository;
+import com.mbsc.finapp.repository.BulletinPaieRepository;
 import com.mbsc.finapp.repository.ChargeCamionMineraiRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EmballageBoissonRepository;
@@ -121,6 +125,7 @@ public class NoteFraisService {
     /** Camions et frais accessoires rattaches a une note de reglement de minerais — voir creerReglementCamionsMinerai. */
     private final CamionMineraiRepository camionRepository;
     private final ChargeCamionMineraiRepository chargeRepository;
+    private final BulletinPaieRepository bulletinPaieRepository;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     private final StorageService storage;
@@ -266,6 +271,7 @@ public class NoteFraisService {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.BROUILLON, "modifier");
         exigerCreateur(note);
+        exigerNoteStandard(note, "modifier la note");
 
         note.setObjet(req.objet());
         note.setBeneficiaire(req.beneficiaire());
@@ -453,6 +459,39 @@ public class NoteFraisService {
         return notifierEtRepondre(note);
     }
 
+    /**
+     * Crée et soumet au DFIN une note de paie ou une note fiscale sur salaires (module DRH) : mêmes
+     * mécanismes que les notes de règlement minerai (lignes sur des comptes de dette, devise de base,
+     * contrôle budgétaire relevé pour mémoire — une dette de classe 4 n'est pas une dépense budgétaire).
+     * Appelée uniquement par {@code PaieNoteService}, qui porte le contrôle de rôle et les vérifications
+     * propres à la paie.
+     */
+    @Transactional
+    public NoteFrais creerEtSoumettreNotePaieInterne(CategorieNote categorie, int mois, int annee,
+            OrganismePaie organisme, String objet, String beneficiaire, String description,
+            List<LigneNoteFraisRequest> lignesReq) {
+        User auteur = currentUser.requireUser();
+        NoteFrais note = creerEtSoumettreNoteReglement(objet, beneficiaire, description, lignesReq, auteur);
+        note.setCategorie(categorie);
+        note.setPaieMois(mois);
+        note.setPaieAnnee(annee);
+        note.setOrganismePaie(organisme);
+        notifierEtRepondre(note);
+        log.info("Note de paie creee et soumise [ref={}, categorie={}, organisme={}, periode={}/{}, montant={}, par={}]",
+            note.getReference(), categorie, organisme, mois, annee, note.getMontant(), auteur.getEmail());
+        return note;
+    }
+
+    /** Les comptes et lignes des notes de paie sont fixés par le système (voir {@link CategorieNote}). */
+    private static void exigerNoteStandard(NoteFrais note, String action) {
+        if (note.getCategorie() != null && note.getCategorie() != CategorieNote.STANDARD) {
+            throw new TransitionInvalideException("Impossible de " + action + " : cette note de "
+                + (note.getCategorie() == CategorieNote.PAIE ? "paie" : "versement fiscal")
+                + " est générée par le module DRH, ses comptes et montants découlent des bulletins. "
+                + "Pour la corriger, annulez-la puis recréez-la depuis l'écran des bulletins de paie.");
+        }
+    }
+
     private NoteFrais creerEtSoumettreNoteReglement(String objet, String beneficiaire, String description,
             List<LigneNoteFraisRequest> lignesReq, User auteur) {
         NoteFrais note = NoteFrais.builder()
@@ -573,6 +612,7 @@ public class NoteFraisService {
     public NoteFraisDetailResponse modifierComptesLignes(Long id, ModifierComptesRequest req) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.SOUMISE, "modifier les comptes d'imputation");
+        exigerNoteStandard(note, "modifier les comptes d'imputation");
 
         User auteur = currentUser.requireUser();
         StringBuilder trace = new StringBuilder("Comptes d'imputation modifies : ");
@@ -1050,7 +1090,7 @@ public class NoteFraisService {
     }
 
     /** Annulation par le createur ou le DFIN (etats non terminaux -> ANNULEE). */
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'RESP_RESTAURANT', 'LOGISTIQUE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'RESP_RESTAURANT', 'LOGISTIQUE', 'RESP_DRH', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse annuler(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -1081,6 +1121,13 @@ public class NoteFraisService {
         if (!chargesLiees.isEmpty()) {
             chargesLiees.forEach(c -> c.setNoteFraisReglement(null));
             chargeRepository.saveAll(chargesLiees);
+        }
+        // Note de paie : les bulletins redeviennent disponibles pour une nouvelle note (ou une
+        // réouverture du mois) — voir PaieNoteService.
+        if (note.getCategorie() == CategorieNote.PAIE) {
+            List<BulletinPaie> bulletins = bulletinPaieRepository.findByNoteFraisPaieId(note.getId());
+            bulletins.forEach(b -> b.setNoteFraisPaie(null));
+            bulletinPaieRepository.saveAll(bulletins);
         }
         // Pas d'auto-notification : si le createur annule lui-meme sa note,
         // il n'a pas besoin d'etre informe de sa propre action.

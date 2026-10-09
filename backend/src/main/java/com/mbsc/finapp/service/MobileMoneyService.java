@@ -61,6 +61,7 @@ public class MobileMoneyService {
     private final EtablissementTresorerieService etablissements;
     /** Constate l'ecart de change realise entre engagement et reglement. */
     private final EcartChangeService ecartChange;
+    private final PaieNoteService paieNoteService;
 
     // ---------------------------------------------------------------------
     // Saisie directe
@@ -209,6 +210,9 @@ public class MobileMoneyService {
         ecartChange.comptabiliserEcart(note, tauxOperation,
             saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(), operateur);
 
+        // Note de paie (module DRH) : écrit la constatation de la paie du mois dans la même transaction
+        // que son règlement — sans effet sur toute autre note (voir PaieNoteService).
+        paieNoteService.apresPaiementInterne(note, operateur);
         note.setStatut(StatutNote.PAYEE);
         note.addObservation(com.mbsc.finapp.domain.ObservationNote.builder()
             .noteFrais(note)

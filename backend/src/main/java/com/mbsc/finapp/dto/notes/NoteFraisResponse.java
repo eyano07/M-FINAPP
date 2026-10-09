@@ -28,7 +28,12 @@ public record NoteFraisResponse(
     Instant dateCreation,
     Instant dateMaj,
     /** Controle budgetaire releve a la soumission (null avant) : la liste signale les notes hors budget. */
-    com.mbsc.finapp.domain.enums.StatutControleBudget statutBudget
+    com.mbsc.finapp.domain.enums.StatutControleBudget statutBudget,
+    /** STANDARD, PAIE ou IMPOT_PAIE (notes du module DRH, comptes imposés). */
+    com.mbsc.finapp.domain.enums.CategorieNote categorie,
+    Integer paieMois,
+    Integer paieAnnee,
+    com.mbsc.finapp.domain.enums.OrganismePaie organismePaie
 ) {
     public static NoteFraisResponse from(NoteFrais n) {
         var createur = n.getCreateur();
@@ -47,7 +52,11 @@ public record NoteFraisResponse(
             n.getPiecesJointes().size(),
             n.getDateCreation(),
             n.getDateMaj(),
-            n.getStatutBudget()
+            n.getStatutBudget(),
+            n.getCategorie(),
+            n.getPaieMois(),
+            n.getPaieAnnee(),
+            n.getOrganismePaie()
         );
     }
 

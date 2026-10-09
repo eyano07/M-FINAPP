@@ -101,3 +101,14 @@ export function statutNoteMeta(statut?: string | null, sens?: string | null): St
 export function useStatutNote() {
   return { statutNoteMeta, PALETTE }
 }
+
+/**
+ * Libellé des notes générées par le module DRH (catégorie PAIE ou IMPOT_PAIE) : « Paie 09/2026 »,
+ * « IPR 09/2026 »… ; null pour une note ordinaire. Ces notes ont des comptes imposés par le système.
+ */
+export function libelleCategorieNote(n?: { categorie?: string | null, paieMois?: number | null,
+  paieAnnee?: number | null, organismePaie?: string | null } | null): string | null {
+  if (!n?.categorie || n.categorie === 'STANDARD') return null
+  const periode = n.paieMois && n.paieAnnee ? ` ${String(n.paieMois).padStart(2, '0')}/${n.paieAnnee}` : ''
+  return (n.categorie === 'PAIE' ? 'Paie' : (n.organismePaie || 'Impôt')) + periode
+}

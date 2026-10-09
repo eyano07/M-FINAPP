@@ -12,6 +12,11 @@ interface NoteFrais {
   statutBudget?: string | null
   createurNom?: string
   dateCreation?: string
+  /** Notes du module DRH : PAIE ou IMPOT_PAIE (comptes imposés), avec leur mois de paie. */
+  categorie?: string | null
+  paieMois?: number | null
+  paieAnnee?: number | null
+  organismePaie?: string | null
 }
 
 const props = defineProps<{ note: NoteFrais }>()
@@ -57,6 +62,9 @@ const montantFmt = computed(() =>
     <div class="nfc__body">
       <!-- Chips statut + priorité -->
       <div class="nfc__chips">
+        <span v-if="libelleCategorieNote(note)" class="nfc__chip nfc__chip--paie">
+          <v-icon icon="mdi-account-cash-outline" size="12" class="mr-1" />{{ libelleCategorieNote(note) }}
+        </span>
         <span class="nfc__chip" :style="{ background: meta.bg, color: meta.text }">
           {{ meta.label }}
         </span>
@@ -130,6 +138,7 @@ const montantFmt = computed(() =>
   right: -30px;
   pointer-events: none;
 }
+.nfc__chip--paie { background: #e0f2fe; color: #075985; }
 .nfc__banner-ref {
   font-size: 0.68rem;
   font-weight: 700;

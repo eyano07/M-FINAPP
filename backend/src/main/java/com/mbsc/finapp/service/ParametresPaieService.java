@@ -9,7 +9,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 
@@ -27,11 +30,25 @@ public class ParametresPaieService {
     private static final Logger log = LoggerFactory.getLogger(ParametresPaieService.class);
 
     private final ParametresPaieRepository repository;
+    private final PlatformTransactionManager transactionManager;
 
+    /**
+     * Paramètres de paie, créés avec leurs valeurs par défaut au tout premier accès. Cette création se fait
+     * dans sa propre transaction : l'appelant est souvent en lecture seule (simulation, consultation), où
+     * PostgreSQL refuserait l'INSERT.
+     */
     @Transactional
     public ParametresPaie get() {
-        return repository.findById(ParametresPaie.SINGLETON_ID)
-            .orElseGet(this::creerParDefaut);
+        return repository.findById(ParametresPaie.SINGLETON_ID).orElseGet(() -> {
+            TransactionTemplate creation = new TransactionTemplate(transactionManager);
+            creation.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            creation.executeWithoutResult(t -> {
+                if (repository.findById(ParametresPaie.SINGLETON_ID).isEmpty()) {
+                    creerParDefaut();
+                }
+            });
+            return repository.findById(ParametresPaie.SINGLETON_ID).orElseThrow();
+        });
     }
 
     @Transactional(readOnly = true)

@@ -231,10 +231,9 @@ async function cloturer() {
   erreur.value = ''
   try {
     const res = await api<Bulletin[]>('/drh/bulletins/cloturer', { method: 'POST', params: { mois: mois.value, annee: annee.value } })
-    succes.value = res[0]?.pieceReference
-      ? `${res.length} bulletin(s) clôturé(s) — pièces BROUILLON générées, à comptabiliser dans Pièces comptables.`
-      : `${res.length} bulletin(s) clôturé(s) — comptabilisation désactivée (Paramètres de paie), aucune écriture générée.`
+    succes.value = `${res.length} bulletin(s) clôturé(s). Créez maintenant la note de paie du mois (Règlement de la paie).`
     await charger()
+    await reglement.value?.charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Échec de la clôture.')
   } finally {
@@ -264,6 +263,8 @@ const statutMeta: Record<string, { label: string; bg: string; color: string }> =
 const fmtUsd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v || 0)
 const fmtFc = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v || 0) + ' FC'
 
+const reglement = ref<{ charger: () => Promise<void> } | null>(null)
+
 const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALIDE' && !b.cloture).length)
 </script>
 
@@ -272,7 +273,7 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
     <div class="page-head">
       <div>
         <h1 class="page-title">Bulletins de paie</h1>
-        <p class="page-sub">Calcul du salaire net, cotisations et IPR — la clôture verrouille la période et génère une pièce comptable par employé si activé dans Paramètres de paie</p>
+        <p class="page-sub">Calcul du salaire net, cotisations et IPR — la clôture verrouille le mois, puis la note de paie et les notes fiscales règlent la paie et la comptabilisent (SYSCOHADA)</p>
       </div>
       <div class="d-flex ga-2">
         <v-btn color="success" variant="tonal" rounded="lg" prepend-icon="mdi-file-excel-outline"
@@ -302,6 +303,8 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
       <v-text-field v-model.number="annee" type="number" label="Année" variant="outlined" density="comfortable"
         rounded="lg" hide-details style="max-width: 140px" />
     </div>
+
+    <DrhReglementPaie ref="reglement" :mois="mois" :annee="annee" :can-write="canWrite" @change="charger" />
 
     <v-card class="classroom-card">
       <v-data-table

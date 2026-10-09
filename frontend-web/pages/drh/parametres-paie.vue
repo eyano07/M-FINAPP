@@ -143,18 +143,11 @@ async function enregistrer() {
     <template v-else>
       <v-card class="classroom-card pa-5 mb-4">
         <div class="section-title">Comptabilisation de la paie</div>
-        <v-switch
-          v-model="form.comptabiliserPaie"
-          color="primary"
-          :disabled="!canWrite"
-          hide-details
-          class="mb-2"
-          label="Comptabiliser la paie à la clôture de période"
-        />
-        <p class="text-caption text-medium-emphasis mb-0">
-          Activé : clôturer une période poste automatiquement une pièce comptable BROUILLON par employé (salaire net
-          à payer et charges patronales — CNSS, ONEM, INPP) dans Pièces comptables. Désactivé : la clôture verrouille
-          simplement les bulletins de la période, sans générer aucune écriture comptable.
+        <p class="text-body-2 mb-0">
+          La paie est comptabilisée automatiquement, conformément au SYSCOHADA, au paiement de la note de paie du
+          mois (écran Bulletins de paie, « Règlement de la paie ») : constatation des charges de personnel, de
+          l'IPR, de la CNSS, de l'INPP et de l'ONEM, puis règlement des salaires nets. Chaque impôt ou cotisation
+          est ensuite versé par sa propre note.
         </p>
       </v-card>
 

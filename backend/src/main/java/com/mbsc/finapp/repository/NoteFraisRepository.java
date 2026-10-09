@@ -21,6 +21,16 @@ public interface NoteFraisRepository extends JpaRepository<NoteFrais, Long> {
 
     Optional<NoteFrais> findByReference(String reference);
 
+    /** Notes de paie et notes fiscales d'un mois (module DRH), toutes catégories et statuts confondus. */
+    @Query("""
+        select n from NoteFrais n
+        where n.categorie in (com.mbsc.finapp.domain.enums.CategorieNote.PAIE,
+                              com.mbsc.finapp.domain.enums.CategorieNote.IMPOT_PAIE)
+          and n.paieMois = :mois and n.paieAnnee = :annee
+        order by n.dateCreation
+        """)
+    List<NoteFrais> findNotesPaie(@Param("mois") Integer mois, @Param("annee") Integer annee);
+
     /**
      * Charge la note avec ses observations et auteurs pour la vue detaillee.
      * Les lignes et pieces jointes (autres collections @OneToMany) sont

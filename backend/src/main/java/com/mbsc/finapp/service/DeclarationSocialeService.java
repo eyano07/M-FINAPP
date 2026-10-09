@@ -36,7 +36,7 @@ public class DeclarationSocialeService {
 
     private final BulletinPaieRepository repository;
 
-    @PreAuthorize("hasAnyRole('RESP_DRH', 'DFIN', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('RESP_DRH', 'DFIN', 'ADMIN')")
     @Transactional(readOnly = true)
     public DeclarationSocialeResponse etablir(int mois, int annee) {
         List<BulletinPaie> bulletins = repository.findByPeriode(mois, annee).stream()

@@ -26,6 +26,9 @@ public interface BulletinPaieRepository extends JpaRepository<BulletinPaie, Long
         """)
     List<BulletinPaie> findByPeriodeAndStatut(Integer mois, Integer annee, StatutBulletin statut);
 
+    @Query("SELECT b FROM BulletinPaie b JOIN FETCH b.employe WHERE b.noteFraisPaie.id = :noteId ORDER BY b.employe.nomComplet")
+    List<BulletinPaie> findByNoteFraisPaieId(Long noteId);
+
     @Query("SELECT b FROM BulletinPaie b JOIN FETCH b.employe WHERE b.employe.id = :employeId ORDER BY b.annee DESC, b.mois DESC")
     List<BulletinPaie> findByEmploye(Long employeId);
 }
