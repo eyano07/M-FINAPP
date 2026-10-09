@@ -35,6 +35,10 @@ server:
     context-path: /api
 
 app:
+  secrets:
+    # Cle de chiffrement (32 octets en base64 : openssl rand -base64 32) des secrets stockes en base, dont les
+    # cles d'API de l'IA. Absente : derivee du secret JWT (a eviter en production).
+    key: ${APP_SECRETS_KEY:}
   jwt:
     secret: ${APP_JWT_SECRET:Y2hhbmdlLW1lLXdpdGgtYS1sb25nLXJhbmRvbS1iYXNlNjQta2V5LWZvci1tYnNjLWZpbmFwcC0yMDI2}
     expiration: ${APP_JWT_EXPIRATION:3600000}         # 1h en ms (le refresh token prend le relais)
@@ -58,10 +62,14 @@ app:
     # caisse). Sans cle API, le systeme applique automatiquement un mode
     # degrade (heuristique locale) : la fonctionnalite reste operationnelle.
     enabled: ${APP_IA_ENABLED:true}
+    # Secours d'une installation existante : les cles et modeles se saisissent desormais dans
+    # Administration > Intelligence artificielle (la valeur saisie l'emporte). Modele par defaut : o4-mini.
     openai-api-key: ${APP_OPENAI_API_KEY:}
-    openai-model: ${APP_OPENAI_MODEL:gpt-5}
+    openai-model: ${APP_OPENAI_MODEL:}
     # Vide = api.openai.com (a renseigner uniquement derriere un proxy).
     openai-base-url: ${APP_OPENAI_BASE_URL:}
+    # Vide = api.anthropic.com (tests ou proxy uniquement).
+    anthropic-base-url: ${APP_ANTHROPIC_BASE_URL:}
     # Appels courts et interactifs (suggestion de compte, libelle).
     timeout-ms: ${APP_IA_TIMEOUT_MS:8000}
     # Analyse des etats financiers : reponse longue, budget plus large.

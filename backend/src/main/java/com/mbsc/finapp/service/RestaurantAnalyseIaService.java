@@ -72,7 +72,7 @@ public class RestaurantAnalyseIaService {
         if (chatGptClient.disponible()) {
             try {
                 String prompt = construirePrompt(tb);
-                String contenu = chatGptClient.json(SYSTEME, prompt, 3000, SCHEMA_REPONSE);
+                String contenu = chatGptClient.jsonAnalyse(SYSTEME, prompt, 3000, SCHEMA_REPONSE);
                 AnalyseIaJson json = objectMapper.readValue(nettoyerJson(contenu), AnalyseIaJson.class);
                 if (StringUtils.hasText(json.synthese())) {
                     return new RestaurantAnalyseIaResponse(debut, fin, json.synthese(),
@@ -99,7 +99,7 @@ public class RestaurantAnalyseIaService {
         if (chatGptClient.disponible()) {
             try {
                 String prompt = construirePromptProvisions(tb);
-                String contenu = chatGptClient.json(SYSTEME_PROVISIONS, prompt, 3000, SCHEMA_REPONSE);
+                String contenu = chatGptClient.jsonAnalyse(SYSTEME_PROVISIONS, prompt, 3000, SCHEMA_REPONSE);
                 AnalyseIaJson json = objectMapper.readValue(nettoyerJson(contenu), AnalyseIaJson.class);
                 if (StringUtils.hasText(json.synthese())) {
                     return new RestaurantAnalyseIaResponse(debut, fin, json.synthese(),

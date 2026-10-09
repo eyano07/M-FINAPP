@@ -12,5 +12,7 @@ public enum TypeNotification {
     NOTE_TRANSMISE,
     NOTE_PAYEE,
     NOTE_ANNULEE,
-    ENCAISSEMENT_CAISSE
+    ENCAISSEMENT_CAISSE,
+    /** Crédit Anthropic épuisé : les analyses passent sur OpenAI (administrateurs). */
+    IA_CREDIT_EPUISE
 }

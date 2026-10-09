@@ -22,6 +22,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <mapstruct.version>1.6.2</mapstruct.version>
         <openai.version>4.52.0</openai.version>
+        <anthropic.version>2.34.0</anthropic.version>
     </properties>
 
     <dependencies>
@@ -110,6 +111,12 @@
             <groupId>com.openai</groupId>
             <artifactId>openai-java</artifactId>
             <version>${openai.version}</version>
+        </dependency>
+        <!-- IA : SDK officiel Anthropic (Claude), utilisé pour les analyses ; voir service/ia/AnthropicFournisseur -->
+        <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
+            <version>${anthropic.version}</version>
         </dependency>
 
         <!-- Export des etats financiers en Excel -->

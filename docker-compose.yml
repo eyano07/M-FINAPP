@@ -43,7 +43,9 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
       APP_IA_ENABLED: ${IA_ENABLED:-true}
       APP_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      APP_OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5}
+      APP_OPENAI_MODEL: ${OPENAI_MODEL:-}
+      # Chiffrement des cles d'API de l'IA saisies dans l'application (openssl rand -base64 32).
+      APP_SECRETS_KEY: ${SECRETS_KEY:-}
     volumes:
       - backend_uploads:/app/data/uploads
     expose: ["8080"]

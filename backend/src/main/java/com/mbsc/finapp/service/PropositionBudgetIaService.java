@@ -251,7 +251,7 @@ public class PropositionBudgetIaService {
                     .collect(Collectors.joining(" ")))
                 .append('\n');
         }
-        String contenu = chatGptClient.json(SYSTEME, sb.toString(), 6000, SCHEMA);
+        String contenu = chatGptClient.jsonAnalyse(SYSTEME, sb.toString(), 6000, SCHEMA);
         if (contenu == null) {
             return null;
         }
