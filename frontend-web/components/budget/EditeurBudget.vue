@@ -29,9 +29,33 @@ const enregistrement = ref(false)
 const erreur = ref('')
 const avertissementRepartition = ref('')
 
+const erreurEnregistrement = ref('')
+const zoneErreur = ref<HTMLElement | null>(null)
+
 const entete = reactive({ intitule: '', exercice: new Date().getFullYear() + (new Date().getMonth() >= 9 ? 1 : 0), observation: '' })
 const lignes = ref<LigneEdition[]>([])
 let compteur = 0
+
+// Détection des modifications non enregistrées (avertissement avant de quitter la page).
+const instantane = ref('')
+const etatCourant = () => JSON.stringify([entete, lignes.value.map(l => [l.compteNumero, l.mensuel, l.commentaire])])
+const modifie = computed(() => instantane.value !== '' && instantane.value !== etatCourant())
+const memoriserEtat = () => { instantane.value = etatCourant() }
+
+// Boîte de confirmation commune aux actions destructrices.
+const confirmation = reactive({ ouverte: false, titre: '', texte: '', bouton: 'Confirmer', action: (() => {}) as () => void, refus: (() => {}) as () => void })
+function demanderConfirmation(titre: string, texte: string, bouton: string, action: () => void, refus: () => void = () => {}) {
+  Object.assign(confirmation, { ouverte: true, titre, texte, bouton, action, refus })
+}
+function validerConfirmation() { confirmation.ouverte = false; confirmation.action() }
+function refuserConfirmation() { confirmation.ouverte = false; confirmation.refus() }
+
+const avantFermeture = (e: BeforeUnloadEvent) => { if (modifie.value) { e.preventDefault(); e.returnValue = '' } }
+onMounted(() => window.addEventListener('beforeunload', avantFermeture))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', avantFermeture))
+onBeforeRouteLeave(() => {
+  if (modifie.value && !window.confirm('Des modifications ne sont pas enregistrées. Quitter quand même ?')) return false
+})
 
 function nouvelleLigne(section = 'CHARGES'): LigneEdition {
   return { cle: ++compteur, compteNumero: null, compteLibelle: '', section, annuel: null, mensuel: Array(12).fill(0), mode: 'UNIFORME', commentaire: '', ouverte: false }
@@ -43,6 +67,7 @@ function nouvelleLigne(section = 'CHARGES'): LigneEdition {
 async function charger() {
   if (!props.budgetId) {
     lignes.value = [nouvelleLigne('PRODUITS'), nouvelleLigne('CHARGES')]
+    memoriserEtat()
     return
   }
   chargement.value = true
@@ -67,6 +92,7 @@ async function charger() {
     erreur.value = messageErreurApi(e, 'Impossible de charger le budget.')
   } finally {
     chargement.value = false
+    memoriserEtat()
   }
 }
 onMounted(charger)
@@ -142,7 +168,19 @@ async function appliquerMode(l: LigneEdition) {
 }
 
 function changerAnnuel(l: LigneEdition) {
-  if (l.mode === 'MANUEL') l.mode = 'UNIFORME'
+  const annuel = Number(l.annuel) || 0
+  if (l.mode === 'MANUEL') {
+    const ancien = total(l.mensuel)
+    if (annuel === ancien) return
+    demanderConfirmation(
+      'Remplacer la ventilation mensuelle ?',
+      `Les montants saisis mois par mois (total ${fmtMontant(ancien)} USD) seront remplacés par une répartition en parts égales de ${fmtMontant(annuel)} USD.`,
+      'Remplacer',
+      () => { l.mode = 'UNIFORME'; appliquerMode(l) },
+      () => { l.annuel = ancien },
+    )
+    return
+  }
   appliquerMode(l)
 }
 
@@ -213,6 +251,20 @@ async function proposer() {
 
 function utiliserProposition() {
   if (!proposition.value) return
+  const saisies = lignes.value.filter(l => l.compteNumero || Number(l.annuel))
+  if (saisies.length) {
+    demanderConfirmation(
+      'Remplacer les lignes actuelles ?',
+      `Les ${saisies.length} ligne(s) déjà saisie(s) seront remplacées par la proposition (${proposition.value.lignes.length} ligne(s)).`,
+      'Remplacer',
+      appliquerProposition,
+    )
+    return
+  }
+  appliquerProposition()
+}
+
+function appliquerProposition() {
   lignes.value = proposition.value.lignes.map((l: any) => {
     memoriserCompte({ numero: l.compteNumero, libelle: l.compteLibelle, section: l.section })
     return {
@@ -241,10 +293,17 @@ function utiliserProposition() {
 // ---------------------------------------------------------------------------------------------
 async function enregistrer() {
   erreur.value = ''
+  erreurEnregistrement.value = ''
+  const echec = (m: string) => {
+    erreurEnregistrement.value = m
+    nextTick(() => zoneErreur.value?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+  }
   const valides = lignes.value.filter(l => l.compteNumero)
-  if (!entete.intitule.trim()) { erreur.value = 'Indiquez l’intitulé du budget.'; return }
-  if (!valides.length) { erreur.value = 'Ajoutez au moins une ligne avec un compte.'; return }
-  if (chevauchements.value.length) { erreur.value = `Lignes en recouvrement : ${chevauchements.value.join(', ')}.`; return }
+  const sansCompte = lignes.value.filter(l => !l.compteNumero && (Number(l.annuel) || total(l.mensuel)))
+  if (!entete.intitule.trim()) return echec('Indiquez l’intitulé du budget.')
+  if (sansCompte.length) return echec(`${sansCompte.length} ligne(s) ont un montant mais aucun compte : choisissez un compte ou retirez la ligne.`)
+  if (!valides.length) return echec('Ajoutez au moins une ligne avec un compte.')
+  if (chevauchements.value.length) return echec(`Lignes en recouvrement : ${chevauchements.value.join(', ')}.`)
   enregistrement.value = true
   try {
     const corps = {
@@ -256,9 +315,10 @@ async function enregistrer() {
     const b = props.budgetId
       ? await api<any>(`/budgets/${props.budgetId}`, { method: 'PUT', body: corps })
       : await api<any>('/budgets', { method: 'POST', body: corps })
+    memoriserEtat()
     emit('enregistre', b.id)
   } catch (e) {
-    erreur.value = messageErreurApi(e, 'L’enregistrement a échoué.')
+    echec(messageErreurApi(e, 'L’enregistrement a échoué.'))
   } finally {
     enregistrement.value = false
   }
@@ -308,7 +368,7 @@ async function enregistrer() {
             <thead>
               <tr>
                 <th class="eb-col-compte">Compte SYSCOHADA</th>
-                <th class="eb-col-num">Montant annuel</th>
+                <th class="eb-col-num eb-col-annuel">Montant annuel (USD)</th>
                 <th class="eb-col-mode">Répartition</th>
                 <th v-for="t in ['T1', 'T2', 'T3', 'T4']" :key="t" class="eb-col-num">{{ t }}</th>
                 <th class="eb-col-act" />
@@ -319,6 +379,7 @@ async function enregistrer() {
                 <tr>
                   <td class="eb-col-compte">
                     <v-autocomplete
+                      aria-label="Compte SYSCOHADA"
                       :model-value="l.compteNumero"
                       :items="itemsPour(l)"
                       item-value="numero"
@@ -335,11 +396,11 @@ async function enregistrer() {
                       <v-icon icon="mdi-robot-outline" size="12" /> {{ l.justificationIa }}
                     </div>
                   </td>
-                  <td class="eb-col-num">
-                    <v-text-field v-model.number="l.annuel" type="number" min="0" density="compact" hide-details suffix="USD" @change="changerAnnuel(l)" />
+                  <td class="eb-col-num eb-col-annuel">
+                    <v-text-field v-model.number="l.annuel" type="number" min="0" density="compact" hide-details aria-label="Montant annuel en USD" class="eb-annuel" @change="changerAnnuel(l)" />
                   </td>
                   <td class="eb-col-mode">
-                    <v-select v-model="l.mode" :items="MODES" density="compact" hide-details @update:model-value="appliquerMode(l)" />
+                    <v-select v-model="l.mode" :items="MODES" density="compact" hide-details aria-label="Mode de répartition" @update:model-value="appliquerMode(l)" />
                   </td>
                   <td v-for="(v, i) in regrouper(l.mensuel, 'TRIMESTRIEL')" :key="i" class="eb-col-num eb-montant">{{ fmtMontant(v) }}</td>
                   <td class="eb-col-act">
@@ -396,12 +457,28 @@ async function enregistrer() {
           <span class="eb-resultat__label">Investissements prévus</span>
           <span class="eb-resultat__valeur">{{ fmtMontant(totalSection('INVESTISSEMENTS')) }} USD</span>
         </div>
+        <div v-if="erreurEnregistrement" ref="zoneErreur" class="eb-resultat__erreur">
+          <v-alert type="error" variant="tonal" density="compact" closable @click:close="erreurEnregistrement = ''">{{ erreurEnregistrement }}</v-alert>
+        </div>
         <div class="eb-resultat__actions">
           <v-btn variant="text" @click="emit('annule')">Annuler</v-btn>
           <v-btn color="primary" :loading="enregistrement" prepend-icon="mdi-content-save-outline" @click="enregistrer">Enregistrer le brouillon</v-btn>
         </div>
       </v-card>
     </template>
+
+    <!-- Confirmation -->
+    <v-dialog v-model="confirmation.ouverte" max-width="460" @click:outside="refuserConfirmation">
+      <v-card>
+        <v-card-title>{{ confirmation.titre }}</v-card-title>
+        <v-card-text>{{ confirmation.texte }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="refuserConfirmation">Annuler</v-btn>
+          <v-btn color="primary" variant="flat" @click="validerConfirmation">{{ confirmation.bouton }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Dialogue IA -->
     <v-dialog v-model="dialogueIa" max-width="860" scrollable>
@@ -465,13 +542,16 @@ async function enregistrer() {
 .eb-section-tete__sens { font-size: 0.78rem; color: #6b7280; }
 .eb-section-tete__total { font-weight: 700; font-size: 1.05rem; white-space: nowrap; }
 .eb-table-wrap { overflow-x: auto; }
-.eb-table { width: 100%; border-collapse: collapse; min-width: 900px; }
+.eb-table { width: 100%; border-collapse: collapse; min-width: 1080px; }
 .eb-table th { font-size: 0.72rem; text-transform: uppercase; color: #6b7280; font-weight: 600; text-align: left; padding: 8px 10px; background: #fafbfc; }
+.eb-table th.eb-col-num { text-align: right; }
 .eb-table td { padding: 6px 10px; border-top: 1px solid #f1f2f4; vertical-align: top; }
 .eb-table tfoot td { font-weight: 700; background: #fafbfc; }
-.eb-col-compte { min-width: 300px; }
+.eb-col-compte { min-width: 360px; }
 .eb-col-num { text-align: right; white-space: nowrap; width: 110px; }
-.eb-col-mode { width: 170px; }
+.eb-col-mode { min-width: 190px; width: 190px; }
+.eb-col-annuel { min-width: 150px; width: 150px; }
+.eb-annuel :deep(input) { text-align: right; font-variant-numeric: tabular-nums; }
 .eb-col-act { width: 92px; white-space: nowrap; text-align: right; }
 .eb-montant { font-variant-numeric: tabular-nums; padding-top: 14px !important; }
 .eb-vide { color: #9ca3af; font-size: 0.85rem; text-align: center; padding: 14px !important; }
@@ -485,6 +565,7 @@ async function enregistrer() {
 .eb-resultat { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
 .eb-resultat__label { display: block; font-size: 0.75rem; color: #6b7280; }
 .eb-resultat__valeur { font-size: 1.15rem; font-weight: 700; }
+.eb-resultat__erreur { flex: 1 1 100%; order: 3; }
 .eb-resultat__actions { margin-left: auto; display: flex; gap: 8px; }
 @media (max-width: 900px) {
   .eb-mois { grid-template-columns: repeat(4, minmax(70px, 1fr)); }

@@ -42,7 +42,9 @@ export default defineNuxtConfig({
 
   app: {
     head: {
+      htmlAttrs: { lang: 'fr' },
       title: 'MBSC Finapp',
+      titleTemplate: (t?: string) => (t && t !== 'MBSC Finapp' ? `${t} — MBSC Finapp` : 'MBSC Finapp'),
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },

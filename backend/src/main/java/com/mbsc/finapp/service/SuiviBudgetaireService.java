@@ -233,13 +233,17 @@ public class SuiviBudgetaireService {
                 n.getStatutBudget().name(), n.getJustificationBudget(), nom(n), n.getDateCreation()))
             .toList();
 
-        if (mouvements.isEmpty()) {
+        // Un exercice futur n'a pas encore d'écritures : l'avertissement n'aurait aucun sens.
+        if (mouvements.isEmpty() && exercice <= LocalDate.now().getYear()) {
             avertissements.add("Aucune écriture comptable sur les classes 2, 6, 7 et 8 pour l'exercice " + exercice
                 + " : le réalisé est nul.");
         }
         if (!horsBudget.isEmpty()) {
-            avertissements.add(horsBudget.size() + " compte(s) mouvementé(s) en " + exercice
-                + " ne sont couverts par aucune ligne du budget (voir « Dépenses et recettes hors budget »).");
+            avertissements.add(horsBudget.size() == 1
+                ? "1 compte mouvementé en " + exercice
+                    + " n'est couvert par aucune ligne du budget (voir « Dépenses et recettes hors budget »)."
+                : horsBudget.size() + " comptes mouvementés en " + exercice
+                    + " ne sont couverts par aucune ligne du budget (voir « Dépenses et recettes hors budget »).");
         }
 
         return new SuiviBudgetResponse(budget.getId(), budget.getReference(), budget.getIntitule(), exercice,

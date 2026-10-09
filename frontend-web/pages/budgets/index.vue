@@ -24,6 +24,7 @@ interface BudgetResume {
   nombreLignes: number
 }
 
+useHead({ title: 'Budgets' })
 const api = useApi()
 const auth = useAuthStore()
 const loading = ref(false)
@@ -85,14 +86,14 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
     <v-row v-else>
       <v-col v-for="b in affiches" :key="b.id" cols="12" md="6" lg="4">
         <v-card class="classroom-card pa-4 bud-carte" height="100%" :to="`/budgets/${b.id}`">
-          <div class="d-flex align-start mb-1">
-            <div class="flex-grow-1" style="min-width: 0">
+          <div class="d-flex align-start flex-wrap ga-2 mb-1">
+            <div class="flex-grow-1" style="min-width: 0; flex-basis: 60%">
               <div class="text-caption text-medium-emphasis">
                 {{ b.reference }}<span v-if="b.numeroRevision"> · révision n° {{ b.numeroRevision }}</span>
               </div>
-              <div class="text-subtitle-1 font-weight-bold text-truncate" :title="b.intitule">{{ b.intitule }}</div>
+              <div class="text-subtitle-1 font-weight-bold bud-titre" :title="b.intitule">{{ b.intitule }}</div>
             </div>
-            <v-chip :color="statutBudget(b.statut).color" size="small" variant="tonal" :prepend-icon="statutBudget(b.statut).icon">
+            <v-chip :color="statutBudget(b.statut).color" size="small" variant="tonal" class="bud-statut" :prepend-icon="statutBudget(b.statut).icon">
               {{ statutBudget(b.statut).label }}
             </v-chip>
           </div>
@@ -116,7 +117,7 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
           <template v-if="aEteExecute(b)">
             <div class="d-flex justify-space-between text-caption mt-3 mb-1">
               <span>Dépenses réalisées : {{ fmtEntier(b.totalRealise) }} / {{ fmtEntier(b.totalPrevu) }} USD</span>
-              <strong>{{ fmtTaux(b.tauxExecution) }}</strong>
+              <strong :class="Number(b.tauxExecution || 0) > 100 ? 'text-error' : ''">{{ fmtTaux(b.tauxExecution) }}</strong>
             </div>
             <v-progress-linear
               :model-value="Math.min(100, Number(b.tauxExecution || 0))"
@@ -142,6 +143,9 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
 </template>
 
 <style scoped>
+.bud-titre { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bud-statut { flex-shrink: 0; max-width: none; }
+.bud-statut :deep(.v-chip__content) { overflow: visible; text-overflow: clip; }
 .bud-carte { transition: box-shadow 0.15s; }
 .bud-carte:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); }
 .bud-chiffres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

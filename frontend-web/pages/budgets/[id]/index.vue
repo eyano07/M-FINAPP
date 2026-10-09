@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import { Bar, Line, Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS } from 'chart.js'
 
@@ -16,6 +17,9 @@ const loading = ref(false)
 const action = ref('')
 const erreur = ref('')
 const succes = ref('')
+
+const { xs, smAndDown } = useDisplay()
+useHead({ title: computed(() => (budget.value ? `Budget ${budget.value.reference} — ${budget.value.intitule}` : 'Budget')) })
 
 const estDfin = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
 const estDa = computed(() => auth.hasAnyRole(['DA', 'ADMIN']))
@@ -57,6 +61,19 @@ onUnmounted(() => {
 // ---------------------------------------------------------------------------------------------
 // Circuit
 // ---------------------------------------------------------------------------------------------
+// Actions lourdes de conséquences : confirmation préalable.
+const CONFIRMATIONS: Record<string, { titre: string, texte: string, bouton: string, couleur: string }> = {
+  soumettre: { titre: 'Soumettre au DA ?', texte: 'Le budget ne sera plus modifiable tant que le DA ne l’aura pas approuvé ou rejeté.', bouton: 'Soumettre', couleur: 'blue' },
+  demarrer: { titre: 'Mettre ce budget en exécution ?', texte: 'Il contrôlera désormais toutes les notes de frais de l’exercice : toute dépense non budgétée ou en dépassement devra être justifiée.', bouton: 'Mettre en exécution', couleur: 'teal' },
+  cloturer: { titre: 'Clôturer ce budget ?', texte: 'Il ne contrôlera plus les notes de frais et restera consultable.', bouton: 'Clôturer', couleur: 'brown' },
+}
+const actionAConfirmer = ref('')
+function confirmerAction() {
+  const chemin = actionAConfirmer.value
+  actionAConfirmer.value = ''
+  if (chemin) transition(chemin)
+}
+
 const dialogueMotif = ref<'' | 'rejeter' | 'approuver'>('')
 const motif = ref('')
 
@@ -209,6 +226,7 @@ const optsEcarts = { responsive: true, maintainAspectRatio: false, indexAxis: 'y
 // Tableau détaillé
 // ---------------------------------------------------------------------------------------------
 const periode = ref<Periode>('TRIMESTRIEL')
+onMounted(() => { if (window.innerWidth < 960) periode.value = 'ANNUEL' })
 const vue = ref<'prevu' | 'realise' | 'ecart'>('prevu')
 const VUES = [
   { value: 'prevu', title: 'Prévu' },
@@ -236,6 +254,7 @@ const blocs = computed(() => {
 })
 
 const disponible = (x: any) => centimes(Number(x.prevuAnnuel) - Number(x.realiseAnnuel) - Number(x.engageAnnuel || 0))
+const classeTaux = (section: string, t: unknown) => (t !== null && t !== undefined && Number(t) > 100 && section !== 'PRODUITS' ? 'bs-defavorable' : '')
 const classeEcart = (section: string, v: number) => {
   const f = ecartFavorable(section, v)
   return f === null ? '' : f ? 'bs-favorable' : 'bs-defavorable'
@@ -287,13 +306,13 @@ const classeEcart = (section: string, v: number) => {
 
       <v-card class="classroom-card pa-3 mb-4 no-print bs-actions">
         <v-btn v-if="estDfin && budget.statut === 'BROUILLON'" color="primary" variant="tonal" prepend-icon="mdi-pencil" :to="`/budgets/${id}/modifier`">Modifier</v-btn>
-        <v-btn v-if="estDfin && budget.statut === 'BROUILLON'" color="blue" prepend-icon="mdi-send" :loading="action === 'soumettre'" @click="transition('soumettre')">Soumettre au DA</v-btn>
+        <v-btn v-if="estDfin && budget.statut === 'BROUILLON'" color="blue" prepend-icon="mdi-send" :loading="action === 'soumettre'" @click="actionAConfirmer = 'soumettre'">Soumettre au DA</v-btn>
         <v-btn v-if="estDa && budget.statut === 'SOUMIS'" color="success" prepend-icon="mdi-check-decagram" @click="dialogueMotif = 'approuver'">Approuver</v-btn>
         <v-btn v-if="estDa && budget.statut === 'SOUMIS'" color="error" variant="tonal" prepend-icon="mdi-close-octagon" @click="dialogueMotif = 'rejeter'">Rejeter</v-btn>
         <v-btn v-if="estDfin && budget.statut === 'REJETE'" color="primary" variant="tonal" prepend-icon="mdi-undo" :loading="action === 'reprendre'" @click="transition('reprendre')">Reprendre en brouillon</v-btn>
-        <v-btn v-if="estDfin && budget.statut === 'APPROUVE'" color="teal" prepend-icon="mdi-play" :loading="action === 'demarrer'" @click="transition('demarrer')">Mettre en exécution</v-btn>
+        <v-btn v-if="estDfin && budget.statut === 'APPROUVE'" color="teal" prepend-icon="mdi-play" :loading="action === 'demarrer'" @click="actionAConfirmer = 'demarrer'">Mettre en exécution</v-btn>
         <v-btn v-if="estDfin && budget.statut === 'EN_EXECUTION'" color="indigo" variant="tonal" prepend-icon="mdi-file-replace-outline" :loading="action === 'reviser'" @click="transition('reviser')">Réviser</v-btn>
-        <v-btn v-if="estDfin && budget.statut === 'EN_EXECUTION' && budget.exercice < new Date().getFullYear()" color="brown" variant="tonal" prepend-icon="mdi-archive" :loading="action === 'cloturer'" @click="transition('cloturer')">Clôturer</v-btn>
+        <v-btn v-if="estDfin && budget.statut === 'EN_EXECUTION' && budget.exercice < new Date().getFullYear()" color="brown" variant="tonal" prepend-icon="mdi-archive" :loading="action === 'cloturer'" @click="actionAConfirmer = 'cloturer'">Clôturer</v-btn>
         <v-btn v-if="estDfin && (budget.statut === 'BROUILLON' || budget.statut === 'REJETE')" color="error" variant="text" prepend-icon="mdi-delete-outline" @click="confirmationSuppression = true">Supprimer</v-btn>
         <v-spacer />
         <v-btn variant="tonal" prepend-icon="mdi-printer" @click="imprimer">Imprimer</v-btn>
@@ -323,7 +342,7 @@ const classeEcart = (section: string, v: number) => {
           <div class="bs-kpi__ligne"><span>Prévu</span><strong>{{ fmtEntier(k.prevu) }}</strong></div>
           <div class="bs-kpi__ligne"><span>Réalisé</span><strong>{{ fmtEntier(k.realise) }}</strong></div>
           <div v-if="k.engage !== undefined" class="bs-kpi__ligne"><span>Engagé</span><strong>{{ fmtEntier(k.engage) }}</strong></div>
-          <div v-if="k.taux !== undefined" class="bs-kpi__ligne"><span>Exécution</span><strong>{{ fmtTaux(k.taux) }}</strong></div>
+          <div v-if="k.taux !== undefined" class="bs-kpi__ligne"><span>Exécution</span><strong :class="Number(k.taux || 0) > 100 && k.titre !== 'Produits' ? 'bs-defavorable' : ''">{{ fmtTaux(k.taux) }}</strong></div>
           <v-progress-linear v-if="k.taux !== undefined" :model-value="Math.min(100, Number(k.taux || 0))" :color="Number(k.taux || 0) > 100 ? 'error' : 'primary'" height="6" rounded class="mt-2" />
         </div>
         <div class="bs-kpi" style="border-top-color: #f59e0b">
@@ -345,19 +364,19 @@ const classeEcart = (section: string, v: number) => {
         <div class="bs-graphes">
           <div class="bs-graphe">
             <p class="bs-graphe__titre">Prévu, réalisé et engagé par mois</p>
-            <div class="bs-graphe__zone"><Bar :data="dataMensuel" :options="optsBarres" /></div>
+            <div class="bs-graphe__zone" role="img" :aria-label="`Histogramme du prévu, du réalisé et de l’engagé par mois, section ${libelleSection(sectionGraphique)}`"><Bar :data="dataMensuel" :options="optsBarres" /></div>
           </div>
           <div class="bs-graphe">
             <p class="bs-graphe__titre">Exécution cumulée depuis janvier</p>
-            <div class="bs-graphe__zone"><Line :data="dataCumul" :options="optsCourbe" /></div>
+            <div class="bs-graphe__zone" role="img" :aria-label="`Courbes du prévu et du réalisé cumulés depuis janvier, section ${libelleSection(sectionGraphique)}`"><Line :data="dataCumul" :options="optsCourbe" /></div>
           </div>
           <div class="bs-graphe">
             <p class="bs-graphe__titre">Répartition du prévu par nature SYSCOHADA</p>
-            <div class="bs-graphe__zone"><Doughnut v-if="dataNatures.labels.length" :data="dataNatures" :options="optsAnneau" /><p v-else class="bs-vide">Rien de prévu dans cette section.</p></div>
+            <div class="bs-graphe__zone" role="img" :aria-label="`Répartition du prévu par nature SYSCOHADA, section ${libelleSection(sectionGraphique)}`"><Doughnut v-if="dataNatures.labels.length" :data="dataNatures" :options="optsAnneau" /><p v-else class="bs-vide">Rien de prévu dans cette section.</p></div>
           </div>
           <div class="bs-graphe">
             <p class="bs-graphe__titre">Principaux écarts à date (réalisé − prévu)</p>
-            <div class="bs-graphe__zone"><Bar v-if="dataEcarts.labels.length" :data="dataEcarts" :options="optsEcarts" /><p v-else class="bs-vide">Aucun écart à date.</p></div>
+            <div class="bs-graphe__zone" role="img" :aria-label="`Principaux écarts à date entre réalisé et prévu, section ${libelleSection(sectionGraphique)}`"><Bar v-if="dataEcarts.labels.length" :data="dataEcarts" :options="optsEcarts" /><p v-else class="bs-vide">Aucun écart à date.</p></div>
           </div>
         </div>
       </v-card>
@@ -376,7 +395,32 @@ const classeEcart = (section: string, v: number) => {
             Découpage {{ PERIODES.find(p => p.value === periode)?.title.toLowerCase() }} · {{ VUES.find(v => v.value === vue)?.title }}
           </span>
         </div>
-        <div class="bs-table-wrap">
+        <div v-if="xs" class="bs-cartes">
+          <template v-for="b in blocs" :key="b.section.code">
+            <div class="bs-cartes__section" :style="{ borderLeftColor: SECTIONS[b.section.code]?.color }">{{ b.section.libelle }}</div>
+            <div v-for="l in b.natures.flatMap((n: any) => n.lignes)" :key="l.id" class="bs-carte">
+              <div class="bs-carte__tete"><span class="mono">{{ l.compteNumero }}</span> {{ l.compteLibelle }}</div>
+              <div v-if="l.commentaire" class="bs-commentaire">{{ l.commentaire }}</div>
+              <dl class="bs-carte__grille">
+                <div><dt>Prévu année</dt><dd>{{ fmtMontant(l.prevuAnnuel) }}</dd></div>
+                <div><dt>Réalisé</dt><dd>{{ fmtMontant(l.realiseAnnuel) }}</dd></div>
+                <div><dt>Engagé</dt><dd>{{ fmtMontant(l.engageAnnuel) }}</dd></div>
+                <div><dt>Disponible</dt><dd :class="Number(l.disponibleAnnuel) < 0 && l.section !== 'PRODUITS' ? 'bs-defavorable' : ''">{{ fmtMontant(l.disponibleAnnuel) }}</dd></div>
+                <div><dt>Taux</dt><dd :class="classeTaux(l.section, l.tauxExecution)">{{ fmtTaux(l.tauxExecution) }}</dd></div>
+              </dl>
+            </div>
+            <div class="bs-carte bs-carte--total">
+              <div class="bs-carte__tete">Total {{ b.section.libelle.toLowerCase() }}</div>
+              <dl class="bs-carte__grille">
+                <div><dt>Prévu année</dt><dd>{{ fmtMontant(b.section.prevuAnnuel) }}</dd></div>
+                <div><dt>Réalisé</dt><dd>{{ fmtMontant(b.section.realiseAnnuel) }}</dd></div>
+                <div><dt>Disponible</dt><dd>{{ fmtMontant(disponible(b.section)) }}</dd></div>
+                <div><dt>Taux</dt><dd :class="classeTaux(b.section.code, b.section.tauxExecution)">{{ fmtTaux(b.section.tauxExecution) }}</dd></div>
+              </dl>
+            </div>
+          </template>
+        </div>
+        <div v-else class="bs-table-wrap">
           <table class="bs-table">
             <thead>
               <tr>
@@ -407,7 +451,7 @@ const classeEcart = (section: string, v: number) => {
                     <td class="num">{{ fmtMontant(l.realiseAnnuel) }}</td>
                     <td class="num">{{ fmtMontant(l.engageAnnuel) }}</td>
                     <td class="num" :class="Number(l.disponibleAnnuel) < 0 && l.section !== 'PRODUITS' ? 'bs-defavorable' : ''">{{ fmtMontant(l.disponibleAnnuel) }}</td>
-                    <td class="num">{{ fmtTaux(l.tauxExecution) }}</td>
+                    <td class="num" :class="classeTaux(l.section, l.tauxExecution)">{{ fmtTaux(l.tauxExecution) }}</td>
                   </tr>
                   <tr class="bs-sous-total">
                     <td class="mono">{{ n.nature.code }}</td>
@@ -417,7 +461,7 @@ const classeEcart = (section: string, v: number) => {
                     <td class="num">{{ fmtMontant(n.nature.realiseAnnuel) }}</td>
                     <td class="num">{{ fmtMontant(n.nature.engageAnnuel) }}</td>
                     <td class="num">{{ fmtMontant(disponible(n.nature)) }}</td>
-                    <td class="num">{{ fmtTaux(n.nature.tauxExecution) }}</td>
+                    <td class="num" :class="classeTaux(n.nature.section, n.nature.tauxExecution)">{{ fmtTaux(n.nature.tauxExecution) }}</td>
                   </tr>
                 </template>
                 <tr class="bs-total">
@@ -428,7 +472,7 @@ const classeEcart = (section: string, v: number) => {
                   <td class="num">{{ fmtMontant(b.section.realiseAnnuel) }}</td>
                   <td class="num">{{ fmtMontant(b.section.engageAnnuel) }}</td>
                   <td class="num">{{ fmtMontant(disponible(b.section)) }}</td>
-                  <td class="num">{{ fmtTaux(b.section.tauxExecution) }}</td>
+                  <td class="num" :class="classeTaux(b.section.code, b.section.tauxExecution)">{{ fmtTaux(b.section.tauxExecution) }}</td>
                 </tr>
               </template>
               <tr class="bs-resultat">
@@ -457,10 +501,10 @@ const classeEcart = (section: string, v: number) => {
           <thead><tr><th>Compte</th><th>Libellé</th><th>Section</th><th class="text-end">Réalisé (USD)</th></tr></thead>
           <tbody>
             <tr v-for="h in suivi.horsBudget" :key="h.compteNumero">
-              <td class="mono">{{ h.compteNumero }}</td>
+              <td class="mono text-no-wrap">{{ h.compteNumero }}</td>
               <td>{{ h.compteLibelle }}</td>
               <td>{{ libelleSection(h.section) }}</td>
-              <td class="text-end">{{ fmtMontant(h.realiseAnnuel) }}</td>
+              <td class="text-end text-no-wrap">{{ fmtMontant(h.realiseAnnuel) }}</td>
             </tr>
           </tbody>
         </v-table>
@@ -472,9 +516,9 @@ const classeEcart = (section: string, v: number) => {
           <thead><tr><th>Note</th><th>Objet</th><th class="text-end">Montant</th><th>Contrôle</th><th>Justification</th><th>Statut</th></tr></thead>
           <tbody>
             <tr v-for="n in suivi.notesHorsBudget" :key="n.id">
-              <td><NuxtLink :to="`/notes-frais/${n.id}`">{{ n.reference }}</NuxtLink></td>
+              <td class="text-no-wrap"><NuxtLink :to="`/notes-frais/${n.id}`">{{ n.reference }}</NuxtLink></td>
               <td>{{ n.objet }}</td>
-              <td class="text-end">{{ fmtMontant(n.montant) }} {{ n.devise }}</td>
+              <td class="text-end text-no-wrap">{{ fmtMontant(n.montant) }} {{ n.devise }}</td>
               <td><v-chip size="x-small" :color="statutControle(n.statutBudget).color" variant="tonal">{{ statutControle(n.statutBudget).label }}</v-chip></td>
               <td class="text-caption">{{ n.justification }}</td>
               <td class="text-caption">{{ statutNoteMeta(n.statut).label }}</td>
@@ -529,6 +573,18 @@ const classeEcart = (section: string, v: number) => {
       </v-card>
     </v-dialog>
 
+    <v-dialog :model-value="!!actionAConfirmer" max-width="480" @update:model-value="(v: boolean) => { if (!v) actionAConfirmer = '' }">
+      <v-card v-if="CONFIRMATIONS[actionAConfirmer]">
+        <v-card-title>{{ CONFIRMATIONS[actionAConfirmer].titre }}</v-card-title>
+        <v-card-text>{{ CONFIRMATIONS[actionAConfirmer].texte }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="actionAConfirmer = ''">Annuler</v-btn>
+          <v-btn :color="CONFIRMATIONS[actionAConfirmer].couleur" variant="flat" @click="confirmerAction">{{ CONFIRMATIONS[actionAConfirmer].bouton }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="confirmationSuppression" max-width="460">
       <v-card>
         <v-card-title>Supprimer ce budget ?</v-card-title>
@@ -576,6 +632,15 @@ const classeEcart = (section: string, v: number) => {
 .bs-favorable { color: #15803d; }
 .bs-defavorable { color: #b91c1c; font-weight: 600; }
 .bs-legende { font-size: 0.74rem; color: #6b7280; padding: 10px 16px 14px; margin: 0; }
+.bs-cartes { padding: 0 12px 12px; }
+.bs-cartes__section { background: #eef2ff; border-left: 4px solid; font-weight: 800; text-transform: uppercase; font-size: 0.74rem; letter-spacing: 0.04em; padding: 8px 10px; margin-top: 10px; border-radius: 4px; }
+.bs-carte { border: 1px solid #eef0f3; border-radius: 10px; padding: 10px; margin-top: 8px; }
+.bs-carte--total { background: #f1f5f9; font-weight: 700; }
+.bs-carte__tete { font-weight: 600; font-size: 0.86rem; }
+.bs-carte .mono { font-family: ui-monospace, monospace; font-size: 0.78rem; color: #4b5563; }
+.bs-carte__grille { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; margin: 8px 0 0; }
+.bs-carte__grille dt { font-size: 0.68rem; color: #6b7280; font-weight: 400; }
+.bs-carte__grille dd { margin: 0; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
 .bs-signatures { display: none; }
 .bs-print-seul { display: none; }
 
