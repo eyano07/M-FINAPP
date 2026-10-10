@@ -48,6 +48,8 @@ class AuditLecteurServiceTest {
         assertEquals(tel, tout.get(1).agent());
         assertEquals("Ordinateur", tout.get(2).terminal());       // a@x.cd
         assertEquals("Windows", tout.get(2).systeme());
+        assertEquals("Création d'une vente", tout.get(2).libelle());      // POST /ventes : déduit à la lecture
+        assertEquals("Création d'un client", tout.get(1).libelle());      // POST /clients
 
         assertEquals(1, s.lire(new Filtre(d10, d10, null, null, null, null, null, null, "Mobile", null)).evenements().size());
         assertEquals(1, s.lire(new Filtre(d10, d10, null, null, null, null, null, null, null, "windows")).evenements().size());   // casse indifférente
@@ -63,7 +65,7 @@ class AuditLecteurServiceTest {
         assertEquals(1, syn.parTerminal().stream().filter(c -> c.cle().equals("Mobile")).findFirst().orElseThrow().total());
 
         String csv = s.exporterCsv(new Filtre(d10, d10, null, null, null, null, null, null));
-        assertTrue(csv.contains("IP;Terminal;Systeme;Module"));
+        assertTrue(csv.contains("IP;Terminal;Systeme;Action;Module"));
         assertTrue(csv.contains("\"Mobile\";\"Android\""));
         assertTrue(csv.contains("\"Ordinateur\";\"Windows\""));
     }

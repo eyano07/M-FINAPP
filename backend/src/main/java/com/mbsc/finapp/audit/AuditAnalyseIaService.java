@@ -42,14 +42,22 @@ public class AuditAnalyseIaService {
         banque, ventes, RH/paie, budgets). Tu analyses le journal d'audit des actions des utilisateurs.
         Règles : réponds en français, simplement, sans jargon technique, avec des chiffres précis tirés UNIQUEMENT des données \
         fournies. N'invente rien : si une information n'est pas dans les données, dis-le. Nomme les utilisateurs par leur e-mail. \
-        Les « opérations » décrivent l'action (CREER, MODIFIER, SUPPRIMER, VALIDER, PAYER...) et le « module » la zone de \
-        l'application. Un échec (statut 4xx/5xx) peut être une tentative refusée par manque de droits ou une erreur de saisie : \
+        Chaque événement porte une ACTION EN CLAIR (« Création d'une vente », « Import d'un journal comptable — remplace toutes \
+        les écritures existantes »...) : c'est elle que tu cites pour dire ce que l'utilisateur a fait. N'emploie jamais les codes \
+        techniques (CREER, MODIFIER, admin/import...) ni les chemins dans ta réponse, sauf si on te les demande. Quand plusieurs \
+        événements se suivent (analyse puis import, deux appels à quelques secondes d'écart), regroupe-les en une seule phrase \
+        (« a analysé puis importé... »). Le module et l'opération techniques sont donnés entre parenthèses, pour information. \
+        Un échec (statut 4xx/5xx) peut être une tentative refusée par manque de droits ou une erreur de saisie : \
         ne conclus à un comportement suspect que si les données le montrent (répétition, horaires inhabituels, droits refusés, \
         échecs de connexion), et présente-le comme un point à vérifier, jamais comme une accusation. \
         Le journal n'indique pas les valeurs modifiées, seulement qui a fait quoi, quand et sur quelle ressource : signale cette limite si la question la touche. \
         Le terminal (Ordinateur, Mobile, Tablette, Application) et le système (Windows, Android, iOS, macOS, Linux...) sont déduits de l'en-tête du \
         navigateur : ils sont indicatifs, l'utilisateur peut les modifier, et ils valent « Inconnu » quand l'information manque (notamment pour les \
-        connexions enregistrées avant l'introduction de cette donnée).""";
+        connexions enregistrées avant l'introduction de cette donnée). \
+        Mise en forme : « reponse » est une synthèse courte (3 à 6 phrases, ou quelques puces commençant par « - »), sans titres \
+        ni tableaux ; mets les chiffres clés en gras avec **…**. Les chiffres déjà affichés par l'écran (totaux, échecs, \
+        utilisateurs actifs) ne sont à répéter que s'ils répondent à la question. Détaille les constats un par un dans \
+        « pointsCles » (une phrase chacun) et place les points à vérifier dans « alertes » (liste vide s'il n'y en a pas).""";
 
     private static final Map<String, Object> SCHEMA = Map.of(
         "type", "object",
@@ -93,6 +101,7 @@ public class AuditAnalyseIaService {
             .append(", connexions refusées : ").append(synthese.connexionsRefusees())
             .append(", utilisateurs actifs : ").append(synthese.utilisateursActifs()).append('\n');
         sb.append("- par utilisateur (actions/échecs) : ").append(liste(synthese.parUtilisateur(), 25)).append('\n');
+        sb.append("- par action (actions/échecs) : ").append(liste(parAction(tout.evenements()), 30)).append('\n');
         sb.append("- par module : ").append(liste(synthese.parModule(), 20)).append('\n');
         sb.append("- par opération : ").append(liste(synthese.parOperation(), 20)).append('\n');
         sb.append("- par terminal : ").append(liste(synthese.parTerminal(), 10)).append('\n');
@@ -100,13 +109,14 @@ public class AuditAnalyseIaService {
         sb.append("- par jour : ").append(synthese.parJour().stream().limit(62)
             .map(j -> j.jour() + "=" + j.total() + "/" + j.echecs()).collect(Collectors.joining(", "))).append("\n\n");
         sb.append("ÉVÉNEMENTS").append(echantillon ? " (échantillon pertinent de " + pertinents.size() + " sur " + tout.evenements().size() + ")" : "")
-            .append(" — format : date heure | utilisateur | rôles | module opération #ressource | méthode chemin | statut | IP | terminal système | détail :\n");
+            .append(" — format : date heure | utilisateur | rôles | ACTION EN CLAIR #ressource (module opération) | statut | IP | terminal système | détail :\n");
         ZoneId zone = ZoneId.systemDefault();
         int transmis = 0;
         for (Evenement e : pertinents) {
             String l = e.horodatage().atZone(zone).format(HEURE) + " | " + nn(e.email()) + " | " + (e.roles() == null ? "" : String.join(",", e.roles()))
-                + " | " + nn(e.module()) + " " + nn(e.operation()) + (e.ressourceId() != null ? " #" + e.ressourceId() : "")
-                + " | " + nn(e.methode()) + " " + nn(e.chemin()) + " | " + (e.statut() == null ? "-" : e.statut()) + " | " + nn(e.ip())
+                + " | " + nn(e.libelle()) + (e.ressourceId() != null ? " #" + e.ressourceId() : "")
+                + " (" + (e.module() == null ? "authentification" : e.module()) + " " + nn(e.operation()) + ")"
+                + " | " + (e.statut() == null ? "-" : e.statut()) + " | " + nn(e.ip())
                 + " | " + nn(e.terminal()) + " " + nn(e.systeme())
                 + (e.detail() != null ? " | " + e.detail() : "") + '\n';
             if (sb.length() + l.length() > MAX_CARACTERES_EVENEMENTS + 6000) break;
@@ -167,6 +177,18 @@ public class AuditAnalyseIaService {
             .filter(c -> Pattern.compile("(?<![\\p{L}\\p{N}])" + Pattern.quote(c.toLowerCase(Locale.ROOT)) + "s?(?![\\p{L}\\p{N}])")
                 .matcher(question).find())
             .collect(Collectors.toSet());
+    }
+
+    /** Nombre d'actions et d'échecs par action en clair, de la plus fréquente à la moins fréquente. */
+    static List<Compte> parAction(List<Evenement> evenements) {
+        Map<String, long[]> m = new java.util.LinkedHashMap<>();
+        for (Evenement e : evenements) {
+            long[] t = m.computeIfAbsent(StringUtils.hasText(e.libelle()) ? e.libelle() : "?", k -> new long[2]);
+            t[0]++;
+            if (!e.reussi()) t[1]++;
+        }
+        return m.entrySet().stream().map(x -> new Compte(x.getKey(), x.getValue()[0], x.getValue()[1]))
+            .sorted(java.util.Comparator.comparingLong(Compte::total).reversed().thenComparing(Compte::cle)).collect(Collectors.toList());
     }
 
     private static List<Evenement> limiter(List<Evenement> l, int max) {

@@ -10,7 +10,7 @@ interface Evenement {
   horodatage: string, type: string, utilisateurId: number | null, email: string | null, roles: string[] | null, ip: string | null,
   module: string | null, operation: string | null, ressourceId: string | null, methode: string | null, chemin: string | null,
   requete: string | null, statut: number | null, reussi: boolean, dureeMs: number | null, detail: string | null,
-  agent: string | null, terminal: string, systeme: string
+  agent: string | null, terminal: string, systeme: string, libelle: string
 }
 interface Compte { cle: string, total: number, echecs: number }
 interface Jour { jour: string, total: number, echecs: number }
@@ -241,14 +241,19 @@ async function demander(q?: string) {
       <div v-else-if="resultat" class="au-table-wrap">
         <v-table density="compact" hover>
           <thead>
-            <tr><th>Date</th><th>Utilisateur</th><th>Module</th><th>Opération</th><th>Ressource</th><th>Résultat</th><th>Terminal</th><th>IP</th></tr>
+            <tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Ressource</th><th>Résultat</th><th>Terminal</th><th>IP</th></tr>
           </thead>
           <tbody>
             <tr v-for="(e, i) in resultat.evenements" :key="i" class="au-ligne" @click="detail = e">
               <td class="text-no-wrap">{{ fmtDate(e.horodatage) }}</td>
               <td>{{ e.email || '—' }}<small v-if="e.roles?.length" class="au-roles"> {{ e.roles.join(', ') }}</small></td>
-              <td>{{ e.module || 'authentification' }}</td>
-              <td><v-chip size="x-small" variant="tonal" :color="couleurOperation(e.operation)">{{ e.operation }}</v-chip></td>
+              <td class="au-cell-action">
+                <div class="au-action">{{ e.libelle }}</div>
+                <div class="au-tech">
+                  <v-chip size="x-small" variant="tonal" :color="couleurOperation(e.operation)">{{ e.operation }}</v-chip>
+                  {{ e.module || 'authentification' }}
+                </div>
+              </td>
               <td>{{ e.ressourceId ? '#' + e.ressourceId : '' }}</td>
               <td><v-chip size="x-small" :color="e.reussi ? 'success' : 'error'" variant="tonal">{{ e.reussi ? 'OK' : 'Échec' }}{{ e.statut ? ' ' + e.statut : '' }}</v-chip></td>
               <td class="text-no-wrap" :class="{ 'text-medium-emphasis': e.terminal === 'Inconnu' }" :title="e.agent || 'En-tête du navigateur non enregistré'">
@@ -256,7 +261,7 @@ async function demander(q?: string) {
               </td>
               <td>{{ e.ip }}</td>
             </tr>
-            <tr v-if="!resultat.evenements.length"><td colspan="8" class="text-center text-medium-emphasis py-6">Aucune action sur cette période avec ces filtres.</td></tr>
+            <tr v-if="!resultat.evenements.length"><td colspan="7" class="text-center text-medium-emphasis py-6">Aucune action sur cette période avec ces filtres.</td></tr>
           </tbody>
         </v-table>
         <div class="au-pagination">
@@ -272,7 +277,7 @@ async function demander(q?: string) {
     <!-- Détail d'un événement -->
     <v-dialog :model-value="!!detail" max-width="560" @update:model-value="v => { if (!v) detail = null }">
       <v-card v-if="detail" class="pa-5">
-        <h2 class="au-titre">{{ detail.module || 'authentification' }} · {{ detail.operation }}</h2>
+        <h2 class="au-titre">{{ detail.libelle }}</h2>
         <dl class="au-detail">
           <div><dt>Date</dt><dd>{{ fmtDate(detail.horodatage) }}</dd></div>
           <div><dt>Utilisateur</dt><dd>{{ detail.email || '—' }} {{ detail.roles?.join(', ') }}</dd></div>
@@ -282,6 +287,7 @@ async function demander(q?: string) {
             <dd><v-icon :icon="iconeTerminal(detail.terminal)" size="16" class="mr-1" />{{ detail.terminal }}<template v-if="systemeConnu(detail)"> · {{ detail.systeme }}</template></dd>
           </div>
           <div v-if="detail.agent"><dt>Client</dt><dd>{{ detail.agent }}</dd></div>
+          <div><dt>Zone</dt><dd>{{ detail.module || 'authentification' }} · {{ detail.operation }}</dd></div>
           <div><dt>Requête</dt><dd>{{ detail.methode }} {{ detail.chemin }}<template v-if="detail.requete">?{{ detail.requete }}</template></dd></div>
           <div><dt>Ressource</dt><dd>{{ detail.ressourceId ? '#' + detail.ressourceId : '—' }}</dd></div>
           <div><dt>Résultat</dt><dd>{{ detail.reussi ? 'Réussi' : 'Échec' }} {{ detail.statut ?? '' }} <template v-if="detail.dureeMs != null">({{ detail.dureeMs }} ms)</template></dd></div>
@@ -300,7 +306,7 @@ async function demander(q?: string) {
             Posez une question en français ; l'agent répond à partir des actions de la période
             <strong>{{ new Date(filtre.du).toLocaleDateString('fr-FR') }} → {{ new Date(filtre.au).toLocaleDateString('fr-FR') }}</strong>
             (modifiez-la dans les filtres). Citez un utilisateur ou un module pour cibler la réponse.
-            Seules des données du journal (e-mails, opérations, adresses IP, type de terminal et système) sont transmises au fournisseur d'IA, jamais le contenu des saisies.
+            Seules des données du journal (e-mails, description des actions, adresses IP, type de terminal et système) sont transmises au fournisseur d'IA, jamais le contenu des saisies.
           </p>
           <div class="au-suggestions">
             <v-chip v-for="s in SUGGESTIONS" :key="s" size="small" variant="outlined" @click="demander(s)">{{ s }}</v-chip>
@@ -311,15 +317,15 @@ async function demander(q?: string) {
 
           <v-alert v-if="iaErreur" type="error" variant="tonal" class="mt-4">{{ iaErreur }}</v-alert>
           <div v-if="iaReponse" class="au-reponse mt-4">
-            <p class="au-reponse__texte">{{ iaReponse.reponse }}</p>
+            <CommunTexteMarkdown :texte="iaReponse.reponse" class="au-reponse__texte" />
             <template v-if="iaReponse.pointsCles.length">
               <h3 class="au-titre mt-3">Points clés</h3>
-              <ul><li v-for="(p, i) in iaReponse.pointsCles" :key="i">{{ p }}</li></ul>
+              <ul><li v-for="(p, i) in iaReponse.pointsCles" :key="i"><CommunTexteMarkdown enligne :texte="p" /></li></ul>
             </template>
             <v-alert v-if="iaReponse.alertes.length" type="warning" variant="tonal" density="compact" class="mt-3" title="À vérifier">
-              <ul class="au-liste"><li v-for="(a, i) in iaReponse.alertes" :key="i">{{ a }}</li></ul>
+              <ul class="au-liste"><li v-for="(a, i) in iaReponse.alertes" :key="i"><CommunTexteMarkdown enligne :texte="a" /></li></ul>
             </v-alert>
-            <p v-if="iaReponse.limites" class="au-aide mt-3"><v-icon icon="mdi-information-outline" size="14" /> {{ iaReponse.limites }}</p>
+            <p v-if="iaReponse.limites" class="au-aide mt-3"><v-icon icon="mdi-information-outline" size="14" /> <CommunTexteMarkdown enligne :texte="iaReponse.limites" /></p>
             <p class="au-aide">
               Réponse fondée sur {{ iaReponse.evenementsTransmis }} action(s)<template v-if="iaReponse.echantillon"> (échantillon pertinent)</template>
               sur {{ iaReponse.evenementsPeriode }} de la période. L'IA peut se tromper : vérifiez dans le tableau avant toute décision.
@@ -357,6 +363,9 @@ async function demander(q?: string) {
 .au-table-wrap { overflow-x: auto; }
 .au-ligne { cursor: pointer; }
 .au-roles { color: #6b7280; margin-left: 4px; }
+.au-cell-action { min-width: 260px; }
+.au-action { font-weight: 500; line-height: 1.3; }
+.au-tech { font-size: 0.72rem; color: #6b7280; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
 .au-pagination { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 0.82rem; }
 .au-detail { margin: 0; display: grid; gap: 8px; font-size: 0.86rem; }
 .au-detail div { display: flex; gap: 10px; }
@@ -365,6 +374,6 @@ async function demander(q?: string) {
 .au-aide { font-size: 0.78rem; color: #4b5563; margin: 0 0 10px; }
 .au-suggestions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .au-reponse { background: #f6f8f7; border-radius: 10px; padding: 14px 16px; }
-.au-reponse__texte { white-space: pre-wrap; margin: 0; line-height: 1.55; }
+.au-reponse__texte { margin: 0; }
 .au-liste { margin: 0; padding-left: 18px; }
 </style>

@@ -135,11 +135,11 @@ public class AuditLecteurService {
     public String exporterCsv(Filtre f) {
         Resultat r = lire(f);
         StringBuilder sb = new StringBuilder("﻿");
-        sb.append("Horodatage;Type;Utilisateur;Roles;IP;Terminal;Systeme;Module;Operation;Ressource;Methode;Chemin;Statut;Resultat;Duree ms;Detail;Agent\n");
+        sb.append("Horodatage;Type;Utilisateur;Roles;IP;Terminal;Systeme;Action;Module;Operation;Ressource;Methode;Chemin;Statut;Resultat;Duree ms;Detail;Agent\n");
         for (Evenement e : r.evenements()) {
             sb.append(String.join(";",
                 cell(e.horodatage().toString()), cell(e.type()), cell(e.email()), cell(e.roles() == null ? "" : String.join(",", e.roles())),
-                cell(e.ip()), cell(e.terminal()), cell(e.systeme()), cell(e.module()), cell(e.operation()), cell(e.ressourceId()),
+                cell(e.ip()), cell(e.terminal()), cell(e.systeme()), cell(e.libelle()), cell(e.module()), cell(e.operation()), cell(e.ressourceId()),
                 cell(e.methode()), cell(e.chemin()),
                 cell(e.statut() == null ? "" : e.statut().toString()), cell(e.reussi() ? "OK" : "ECHEC"),
                 cell(e.dureeMs() == null ? "" : e.dureeMs().toString()), cell(e.detail()), cell(e.agent()))).append('\n');
@@ -189,13 +189,19 @@ public class AuditLecteurService {
             if (n.has("roles") && n.get("roles").isArray()) n.get("roles").forEach(x -> roles.add(x.asText()));
             String agent = txt(n, "agent");
             AgentUtilisateur.Terminal terminal = AgentUtilisateur.analyser(agent);
+            String type = txt(n, "type"), operation = txt(n, "operation"), module = txt(n, "module");
+            String methode = txt(n, "methode"), chemin = txt(n, "chemin"), requete = txt(n, "requete"), detail = txt(n, "detail");
+            boolean reussi = n.path("reussi").asBoolean(true);
+            String libelle = "AUTHENTIFICATION".equals(type) ? AuditLibelles.authentification(operation, reussi, detail)
+                : (methode != null && chemin != null ? AuditLibelles.decrire(methode, chemin, requete)
+                : ((module == null ? "" : module + " ") + (operation == null ? "" : operation)).strip());
             return new Evenement(
                 n.hasNonNull("horodatage") ? Instant.parse(n.get("horodatage").asText()) : null,
-                txt(n, "type"), n.hasNonNull("utilisateurId") ? n.get("utilisateurId").asLong() : null, txt(n, "email"), roles,
-                txt(n, "ip"), txt(n, "module"), txt(n, "operation"), txt(n, "ressourceId"), txt(n, "methode"), txt(n, "chemin"),
-                txt(n, "requete"), n.hasNonNull("statut") ? n.get("statut").asInt() : null, n.path("reussi").asBoolean(true),
-                n.hasNonNull("dureeMs") ? n.get("dureeMs").asLong() : null, txt(n, "detail"),
-                agent, terminal.type(), terminal.systeme());
+                type, n.hasNonNull("utilisateurId") ? n.get("utilisateurId").asLong() : null, txt(n, "email"), roles,
+                txt(n, "ip"), module, operation, txt(n, "ressourceId"), methode, chemin,
+                requete, n.hasNonNull("statut") ? n.get("statut").asInt() : null, reussi,
+                n.hasNonNull("dureeMs") ? n.get("dureeMs").asLong() : null, detail,
+                agent, terminal.type(), terminal.systeme(), libelle);
         } catch (Exception e) {
             return null;
         }
@@ -217,7 +223,7 @@ public class AuditLecteurService {
         if (StringUtils.hasText(f.q())) {
             String q = f.q().trim().toLowerCase(Locale.ROOT);
             String hay = String.join(" ", nn(e.email()), nn(e.chemin()), nn(e.module()), nn(e.operation()), nn(e.ressourceId()), nn(e.ip()), nn(e.detail()), nn(e.requete()),
-                nn(e.terminal()), nn(e.systeme()))
+                nn(e.terminal()), nn(e.systeme()), nn(e.libelle()))
                 .toLowerCase(Locale.ROOT);
             if (!hay.contains(q)) return false;
         }

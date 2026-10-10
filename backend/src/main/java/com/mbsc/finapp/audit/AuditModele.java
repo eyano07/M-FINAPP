@@ -23,11 +23,13 @@ public final class AuditModele {
      * Événement lu dans audit.log. {@code agent} est l'en-tête User-Agent brut ; {@code terminal} (Ordinateur, Mobile,
      * Tablette, Application) et {@code systeme} (Windows, Android, iOS...) en sont déduits à la lecture, jamais nuls :
      * « Inconnu » quand l'en-tête est absent (connexions antérieures à son enregistrement) ou non reconnu.
+     * {@code libelle} décrit l'action en clair (« Création d'une vente », « Import d'un journal comptable — remplace
+     * toutes les écritures existantes »), déduit à la lecture : il vaut aussi pour les lignes déjà écrites.
      */
     public record Evenement(Instant horodatage, String type, Long utilisateurId, String email, List<String> roles,
                             String ip, String module, String operation, String ressourceId, String methode,
                             String chemin, String requete, Integer statut, boolean reussi, Long dureeMs, String detail,
-                            String agent, String terminal, String systeme) {}
+                            String agent, String terminal, String systeme, String libelle) {}
 
     public record Compte(String cle, long total, long echecs) {}
 
