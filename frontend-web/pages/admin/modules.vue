@@ -20,6 +20,7 @@ const META: Record<string, { label: string; description: string; icon: string; c
   COMPTABILITE: { label: 'Comptabilité', description: 'Pièces comptables, grand livre par compte, bilan, compte de résultat, clôture.', icon: 'mdi-calculator-variant-outline', color: '#0891b2' },
   RAPPROCHEMENT: { label: 'Rapprochement bancaire', description: 'Relevés des banques et du mobile money lus par l\'IA, pointés contre la comptabilité, état de rapprochement validé par le DFIN.', icon: 'mdi-bank-check', color: '#0891b2' },
   BUDGET: { label: 'Budget', description: 'Budgets prévisionnels et contrôle budgétaire des notes de frais. Désactivé : les dépenses ne sont plus rattachées au budget ni contrôlées.', icon: 'mdi-chart-box-outline', color: '#0891b2' },
+  FACTURATION_NORMALISEE: { label: 'Facture normalisée (DGI)', description: 'Chaque vente validée est transmise au dispositif e-MCF de la DGI (UID, signature, code QR sur la facture). Désactivé : plus aucune transmission. Réglages du dispositif : Administration › Facture normalisée.', icon: 'mdi-receipt-text-check-outline', color: '#ea580c' },
   VENTES: { label: 'Ventes', description: 'Ventes et clients.', icon: 'mdi-cart-outline', color: '#ea580c' },
   LOGISTIQUE: { label: 'Logistique', description: 'Articles, entrepôts, mouvements et stock.', icon: 'mdi-package-variant-closed', color: '#b45309' },
   TRANSPORT: { label: 'Transport', description: 'Véhicules, trajets et dépenses de transport.', icon: 'mdi-truck-outline', color: '#dc2626' },

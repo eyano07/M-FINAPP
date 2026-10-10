@@ -11,7 +11,7 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 RUN addgroup -S mbsc && adduser -S mbsc -G mbsc
 COPY --from=build /app/target/finapp-1.0.0.jar app.jar
-RUN mkdir -p /app/data/uploads && chown -R mbsc:mbsc /app
+RUN mkdir -p /app/data/uploads /app/data/logs && chown -R mbsc:mbsc /app
 USER mbsc
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

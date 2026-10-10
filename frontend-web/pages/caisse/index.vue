@@ -558,9 +558,6 @@ const fmtTaux = computed(() =>
         <v-btn variant="outlined" color="primary" prepend-icon="mdi-notebook-outline" rounded="lg" to="/caisse/journal">
           Journal de caisse
         </v-btn>
-        <v-btn variant="tonal" color="teal" prepend-icon="mdi-cart-outline" rounded="lg" @click="ouvrirDialogAchat">
-          Achat
-        </v-btn>
         <v-btn
           v-if="permissions.peutVoir('RESTAURANT')"
           variant="tonal"
@@ -661,6 +658,7 @@ const fmtTaux = computed(() =>
             {{ new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n.montant) }} {{ n.devise || 'FC' }}
           </div>
           <v-btn
+            v-if="auth.hasRole('CAISSIER')"
             color="primary"
             variant="flat"
             rounded="lg"

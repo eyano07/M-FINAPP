@@ -3,6 +3,7 @@ package com.mbsc.finapp.config;
 import com.mbsc.finapp.security.AppUserDetailsService;
 import com.mbsc.finapp.security.JwtAuthEntryPoint;
 import com.mbsc.finapp.security.JwtAuthenticationFilter;
+import com.mbsc.finapp.audit.AuditFilter;
 import com.mbsc.finapp.security.ModuleAccessFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +36,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ModuleAccessFilter moduleAccessFilter;
+    private final com.mbsc.finapp.audit.AuditFilter auditFilter;
     private final JwtAuthEntryPoint jwtAuthEntryPoint;
     private final AppUserDetailsService userDetailsService;
 
@@ -83,7 +85,8 @@ public class SecurityConfig {
             })
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterAfter(moduleAccessFilter, JwtAuthenticationFilter.class);
+            .addFilterAfter(auditFilter, JwtAuthenticationFilter.class)
+            .addFilterAfter(moduleAccessFilter, AuditFilter.class);
 
         return http.build();
     }

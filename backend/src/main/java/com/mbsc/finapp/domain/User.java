@@ -37,6 +37,10 @@ public class User {
     @Column(length = 30)
     private String telephone;
 
+    /** Adresse recevant une copie e-mail de chaque notification (facultatif). */
+    @Column(name = "email_notification", length = 150)
+    private String emailNotification;
+
     @Column(length = 100)
     private String fonction;
 

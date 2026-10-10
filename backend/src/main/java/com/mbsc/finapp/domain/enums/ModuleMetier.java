@@ -34,6 +34,12 @@ public enum ModuleMetier {
     /** Rapprochement bancaire (relevés des banques et du mobile money), sous-module de COMPTABILITE. */
     RAPPROCHEMENT,
     VENTES,
+    /**
+     * Facture normalisee DGI (e-MCF), sous-module de VENTES : interrupteur unique de la fonction. Desactive, les
+     * ventes validees ne sont plus transmises a la DGI (les avoirs des factures deja certifiees restent emis).
+     * Ne garde aucune URL : ses ecrans relevent des modules VENTES et de l'administration.
+     */
+    FACTURATION_NORMALISEE,
     LOGISTIQUE,
     TRANSPORT,
     /** Biens immobilises et consommables (registre, amortissements). */

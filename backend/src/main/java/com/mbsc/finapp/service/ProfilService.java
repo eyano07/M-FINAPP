@@ -48,6 +48,7 @@ public class ProfilService {
         u.setNom(req.nom().trim());
         u.setPrenom(req.prenom().trim());
         u.setTelephone(videEnNull(req.telephone()));
+        u.setEmailNotification(videEnNull(req.emailNotification() == null ? null : req.emailNotification().trim().toLowerCase()));
         return ProfilResponse.from(userRepository.save(u));
     }
 

@@ -51,6 +51,8 @@ public class ClientService {
             .telephone(req.telephone())
             .email(req.email())
             .adresse(req.adresse())
+            .nif(req.nif() == null || req.nif().isBlank() ? null : req.nif().strip().toUpperCase())
+            .typeClient(req.typeClient() == null ? "PARTICULIER" : req.typeClient())
             .actif(req.actif() == null || req.actif())
             .build());
 
@@ -74,6 +76,8 @@ public class ClientService {
         client.setTelephone(req.telephone());
         client.setEmail(req.email());
         client.setAdresse(req.adresse());
+        client.setNif(req.nif() == null || req.nif().isBlank() ? null : req.nif().strip().toUpperCase());
+        client.setTypeClient(req.typeClient() == null ? "PARTICULIER" : req.typeClient());
         if (req.actif() != null) {
             client.setActif(req.actif());
         }

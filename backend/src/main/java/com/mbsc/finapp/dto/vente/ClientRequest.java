@@ -24,6 +24,9 @@ public record ClientRequest(
 
     @Size(max = 255)
     String adresse,
-
+    @Size(max = 40)
+    String nif,
+    @jakarta.validation.constraints.Pattern(regexp = "PARTICULIER|ENTREPRISE|ADMINISTRATION", message = "Type de client invalide")
+    String typeClient,
     Boolean actif
 ) {}

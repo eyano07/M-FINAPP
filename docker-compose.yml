@@ -44,10 +44,20 @@ services:
       APP_IA_ENABLED: ${IA_ENABLED:-true}
       APP_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       APP_OPENAI_MODEL: ${OPENAI_MODEL:-}
+      # Copie e-mail des notifications (secours : l'administrateur saisit normalement ces valeurs dans l'application).
+      APP_PUBLIC_URL: ${PUBLIC_URL:-}
+      APP_MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      APP_MAIL_HOST: ${MAIL_HOST:-}
+      APP_MAIL_PORT: ${MAIL_PORT:-587}
+      APP_MAIL_USERNAME: ${MAIL_USERNAME:-}
+      APP_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      APP_MAIL_FROM: ${MAIL_FROM:-}
+      APP_AUDIT_DIR: /app/data/logs
       # Chiffrement des cles d'API de l'IA saisies dans l'application (openssl rand -base64 32).
       APP_SECRETS_KEY: ${SECRETS_KEY:-}
     volumes:
       - backend_uploads:/app/data/uploads
+      - backend_logs:/app/data/logs   # journal d'audit (audit.log) : a sauvegarder et a conserver
     expose: ["8080"]
     networks: [mbsc-net]
     healthcheck:
@@ -85,6 +95,7 @@ services:
 volumes:
   db_data:
   backend_uploads:
+  backend_logs:
 
 networks:
   mbsc-net:

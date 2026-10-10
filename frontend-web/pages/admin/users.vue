@@ -12,6 +12,7 @@ interface UserRow {
   prenom: string
   email: string
   telephone: string | null
+  emailNotification?: string | null
   fonction: string | null
   affectation: string | null
   roles: string[]
@@ -42,6 +43,7 @@ const form = reactive({
   email: '',
   motDePasse: '',
   telephone: '',
+  emailNotification: '',
   fonction: '',
   affectation: '',
   roles: [] as string[],
@@ -55,6 +57,7 @@ function ouvrirAjouter() {
   form.email = ''
   form.motDePasse = ''
   form.telephone = ''
+  form.emailNotification = ''
   form.fonction = ''
   form.affectation = ''
   form.roles = []
@@ -70,6 +73,7 @@ function ouvrirModifier(u: UserRow) {
   form.email = u.email
   form.motDePasse = ''
   form.telephone = u.telephone ?? ''
+  form.emailNotification = u.emailNotification ?? ''
   form.fonction = u.fonction ?? ''
   form.affectation = u.affectation ?? ''
   form.roles = [...u.roles]
@@ -120,6 +124,7 @@ async function enregistrer() {
         body: {
           nom: form.nom, prenom: form.prenom, motDePasse: form.motDePasse || null,
           telephone: form.telephone.trim() || null,
+          emailNotification: form.emailNotification.trim() || null,
           fonction: form.fonction.trim() || null, affectation: form.affectation.trim() || null,
           roles: form.roles,
         },
@@ -131,6 +136,7 @@ async function enregistrer() {
         body: {
           nom: form.nom, prenom: form.prenom, email: form.email, motDePasse: form.motDePasse,
           telephone: form.telephone.trim() || null,
+          emailNotification: form.emailNotification.trim() || null,
           fonction: form.fonction.trim() || null, affectation: form.affectation.trim() || null,
           roles: form.roles,
         },
@@ -360,6 +366,18 @@ const roleColor: Record<string, string> = {
               placeholder="Ex: +243 999 123 456"
               prepend-inner-icon="mdi-phone-outline"
               hide-details="auto"
+            />
+          </div>
+
+          <div class="usr-field">
+            <label class="usr-label">Mail de notification</label>
+            <v-text-field
+              v-model="form.emailNotification"
+              type="email"
+              placeholder="Ex: prenom.nom@exemple.cd"
+              prepend-inner-icon="mdi-email-fast-outline"
+              hint="Les notifications de cet utilisateur lui seront aussi envoyées à cette adresse."
+              persistent-hint
             />
           </div>
 

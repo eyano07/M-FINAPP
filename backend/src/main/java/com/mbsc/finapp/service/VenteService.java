@@ -77,6 +77,7 @@ public class VenteService {
     // bouteilles vides. Dependance a sens unique (RestaurantService ne connait
     // pas VenteService), donc aucun cycle.
     private final RestaurantService restaurantService;
+    private final com.mbsc.finapp.service.emcf.FactureNormaliseeService factureNormalisee;
     /** Suivi camion par camion des minerais : identite du chargement et statut de vente. */
     private final MineraiService mineraiService;
     private final TauxTvaService tauxTvaService;
@@ -308,6 +309,8 @@ public class VenteService {
             auteur));
 
         vente.setStatut(StatutVente.VALIDEE);
+        // Facture normalisee DGI : enregistree ici, transmise au dispositif apres le commit (sans jamais bloquer la vente).
+        factureNormalisee.surVenteValidee(vente);
         log.info("Vente validee [ref={}, TTC={}, TVA={}, mode={}]",
             vente.getReference(), vente.getTotalTtc(), vente.getTotalTva(), vente.getModeReglement());
         return VenteResponse.from(vente);
@@ -342,6 +345,8 @@ public class VenteService {
         restaurantService.annulerVidesSurVenteInterne(vente, auteur);
 
         vente.setStatut(StatutVente.ANNULEE);
+        // Facture deja certifiee : compensee par un avoir certifie (aucune facture normalisee ne s'efface).
+        factureNormalisee.surVenteAnnulee(vente);
         log.info("Vente annulee [ref={}]", vente.getReference());
         return VenteResponse.from(vente);
     }
@@ -685,6 +690,7 @@ public class VenteService {
             .quantite(quantite)
             .prixUnitaire(prixUnitaireReq.setScale(2, RoundingMode.HALF_UP))
             .soumisTva(article.isSoumisTva())
+            .groupeTaxe(article.getGroupeTaxe())
             .ordre(ordre)
             .build();
     }

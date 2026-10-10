@@ -87,6 +87,10 @@ public class Article {
     @Column(name = "prix_achat", precision = 15, scale = 2)
     private BigDecimal prixAchat;
 
+    /** Groupe de taxation DGI (A, B...) ; null = deduit de soumisTva (B si taxable, A sinon). */
+    @Column(name = "groupe_taxe", length = 5)
+    private String groupeTaxe;
+
     /** false = article exonere de TVA. */
     @Column(name = "soumis_tva", nullable = false)
     @Builder.Default

@@ -50,6 +50,10 @@ public class LigneVente {
     @Column(name = "prix_unitaire", nullable = false, precision = 15, scale = 2)
     private BigDecimal prixUnitaire;
 
+    /** Groupe de taxation DGI fige a la vente ; null = deduit de soumisTva. */
+    @Column(name = "groupe_taxe", length = 5)
+    private String groupeTaxe;
+
     @Column(name = "soumis_tva", nullable = false)
     @Builder.Default
     private boolean soumisTva = true;

@@ -55,6 +55,7 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final CurrentUserProvider currentUser;
+    private final MailNotificationService mail;
 
     /** Emetteurs SSE actifs par utilisateur (plusieurs onglets = plusieurs emetteurs). */
     private final Map<Long, List<SseEmitter>> emetteurs = new ConcurrentHashMap<>();
@@ -132,6 +133,7 @@ public class NotificationService {
         notif = notificationRepository.save(notif);
 
         pousser(destinataire.getId(), NotificationResponse.from(notif));
+        mail.envoyerApresCommit(notif);
     }
 
     // ---------------------------------------------------------------------

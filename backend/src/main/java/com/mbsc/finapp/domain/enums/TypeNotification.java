@@ -14,5 +14,7 @@ public enum TypeNotification {
     NOTE_ANNULEE,
     ENCAISSEMENT_CAISSE,
     /** Crédit Anthropic épuisé : les analyses passent sur OpenAI (administrateurs). */
-    IA_CREDIT_EPUISE
+    IA_CREDIT_EPUISE,
+    /** Facture normalisée non certifiée (échecs répétés ou refus du dispositif DGI) : administrateurs. */
+    FACTURE_NORMALISEE_ECHEC
 }
