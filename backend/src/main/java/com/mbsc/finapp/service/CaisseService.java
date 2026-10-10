@@ -336,7 +336,7 @@ public class CaisseService {
     // Paiement d'une note de frais (TRANSMISE_CAISSE -> PAYEE)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse payerNote(Long noteId) {
         User caissier = currentUser.requireUser();
@@ -511,7 +511,7 @@ public class CaisseService {
      * peut néanmoins être enregistrée en brouillon d'abord, le temps de
      * composer ses lignes, puis encaissée séparément).
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse encaisserNote(Long noteId) {
         User caissier = currentUser.requireUser();

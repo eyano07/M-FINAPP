@@ -62,11 +62,6 @@ interface RecuData {
 const api = useApi()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
-// Le bouton "Vente" (vers /ventes/nouvelle, deja pre-configuree en reglement
-// Caisse) n'a de sens que si le module RESTAURANT est actif pour ce role —
-// sans plats/boissons a vendre, ce serait un raccourci mort.
-const permissions = usePermissionsStore()
-onMounted(() => { if (!permissions.charge) permissions.charger() })
 onMounted(() => { parametresStore.charger() })
 
 const loading = ref(false)
@@ -561,16 +556,6 @@ const fmtTaux = computed(() =>
         <v-btn variant="tonal" color="teal" prepend-icon="mdi-cart-outline" rounded="lg" @click="ouvrirDialogAchat">
           Achat
         </v-btn>
-        <v-btn
-          v-if="permissions.peutVoir('RESTAURANT')"
-          variant="tonal"
-          color="deep-orange"
-          prepend-icon="mdi-silverware-fork-knife"
-          rounded="lg"
-          to="/ventes/nouvelle"
-        >
-          Vente
-        </v-btn>
         <v-btn color="primary" prepend-icon="mdi-cash-plus" rounded="lg" @click="ouvrirDialog">
           Encaissement
         </v-btn>
@@ -661,6 +646,7 @@ const fmtTaux = computed(() =>
             {{ new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n.montant) }} {{ n.devise || 'FC' }}
           </div>
           <v-btn
+            v-if="auth.hasRole('CAISSIER')"
             color="primary"
             variant="flat"
             rounded="lg"

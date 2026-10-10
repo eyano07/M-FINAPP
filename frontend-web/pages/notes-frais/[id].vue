@@ -160,8 +160,8 @@ const statut = computed(() => note.value?.statut)
 const rolesStore = useRolesStore()
 const lDFIN = computed(() => rolesStore.libelle('DFIN'))
 const lDA = computed(() => rolesStore.libelle('DA'))
-const isDFIN = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
-const isDA = computed(() => auth.hasAnyRole(['DA', 'ADMIN']))
+const isDFIN = computed(() => auth.hasRole('DFIN'))
+const isDA = computed(() => auth.hasRole('DA'))
 const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER']))
 
 // Une note d'encaissement ne suit pas le circuit DFIN/DA : "Soumettre" ne
@@ -171,7 +171,7 @@ const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER']))
 const peutSoumettre    = computed(() =>
   isCreateur.value && !estEncaissement.value && ['BROUILLON','REJETEE_DA'].includes(statut.value || ''))
 const peutEncaisser    = computed(() =>
-  auth.hasAnyRole(['CAISSIER', 'ADMIN']) && estEncaissement.value && statut.value === 'BROUILLON')
+  auth.hasRole('CAISSIER') && estEncaissement.value && statut.value === 'BROUILLON')
 const peutVerifier     = computed(() => isDFIN.value && statut.value === 'SOUMISE')
 // Le DFIN peut corriger le compte d'imputation des lignes pendant sa
 // vérification (note SOUMISE), qu'il en soit ou non le créateur — voir

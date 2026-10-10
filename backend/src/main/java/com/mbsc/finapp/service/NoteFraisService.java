@@ -608,7 +608,7 @@ public class NoteFraisService {
      * au DA, sans renvoyer la note a l'employe pour un nouveau cycle de
      * soumission. N'altere ni le montant des lignes ni l'etat du workflow.
      */
-    @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public NoteFraisDetailResponse modifierComptesLignes(Long id, ModifierComptesRequest req) {
         NoteFrais note = charger(id);
@@ -668,7 +668,7 @@ public class NoteFraisService {
      * {@link #modifierComptesLignes} : trace dans les observations, n'altere
      * ni le montant ni l'etat du workflow.
      */
-    @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public NoteFraisDetailResponse modifierObjet(Long id, ModifierObjetRequest req) {
         NoteFrais note = charger(id);
@@ -967,7 +967,7 @@ public class NoteFraisService {
     }
 
     /** Le DFIN verifie la conformite (SOUMISE -> VERIFIEE_DFIN). */
-    @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public NoteFraisDetailResponse verifier(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -981,7 +981,7 @@ public class NoteFraisService {
     }
 
     /** Le DA valide la note (VERIFIEE_DFIN -> VALIDEE_DA). */
-    @PreAuthorize("hasAnyRole('DA', 'ADMIN')")
+    @PreAuthorize("hasRole('DA')")
     @Transactional
     public NoteFraisDetailResponse valider(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -1004,7 +1004,7 @@ public class NoteFraisService {
     }
 
     /** Le DA rejette la note ; un motif est obligatoire (VERIFIEE_DFIN -> REJETEE_DA). */
-    @PreAuthorize("hasAnyRole('DA', 'ADMIN')")
+    @PreAuthorize("hasRole('DA')")
     @Transactional
     public NoteFraisDetailResponse rejeter(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -1020,7 +1020,7 @@ public class NoteFraisService {
     }
 
     /** Le DFIN transmet la note validee a la caisse (VALIDEE_DA -> TRANSMISE_CAISSE). */
-    @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public NoteFraisDetailResponse transmettre(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -1045,7 +1045,7 @@ public class NoteFraisService {
      * ou deja transmise a la caisse (reajustement en cours de traitement).
      * N'altere pas l'etat du workflow.
      */
-    @PreAuthorize("hasAnyRole('DA', 'ADMIN')")
+    @PreAuthorize("hasRole('DA')")
     @Transactional
     public NoteFraisDetailResponse definirPriorite(Long id, PrioriteRequest req) {
         NoteFrais note = charger(id);
@@ -1074,7 +1074,7 @@ public class NoteFraisService {
      * Le DA ajoute une observation libre sur une note validee, sans changer d'etat.
      * Permet de completer le dossier apres avoir defini la priorite.
      */
-    @PreAuthorize("hasAnyRole('DA', 'ADMIN')")
+    @PreAuthorize("hasRole('DA')")
     @Transactional
     public NoteFraisDetailResponse ajouterObservation(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
