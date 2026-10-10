@@ -134,6 +134,12 @@
         <!-- Generation de l'ordre de mission DRH sur papier entete (Apache-2.0,
              prefere a iText qui est AGPL/commercial pour cet usage) -->
         <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
             <version>3.0.3</version>

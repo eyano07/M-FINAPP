@@ -77,6 +77,53 @@ watch(() => vente.value?.reference, async (reference) => {
   }
 }, { immediate: true })
 
+// ── Facture normalisée DGI (e-MCF) ────────────────────────────────────────
+interface FactureNormalisee {
+  id: number; type: 'VENTE' | 'AVOIR'; statut: 'EN_ATTENTE' | 'CERTIFIEE' | 'REJETEE' | 'ANNULEE'
+  mode?: string | null; simulation: boolean; uid?: string | null; signature?: string | null; numeroDef?: string | null
+  dateFiscale?: string | null; codeQr?: string | null; tentatives: number; derniereErreur?: string | null
+}
+const factures = ref<FactureNormalisee[]>([])
+const factureVente = computed(() => factures.value.find(f => f.type === 'VENTE') ?? null)
+const factureAvoir = computed(() => factures.value.find(f => f.type === 'AVOIR') ?? null)
+const fiscalQrUrl = ref('')
+const retransmission = ref(false)
+watch(() => factureVente.value?.codeQr, async (code) => {
+  if (!code) { fiscalQrUrl.value = ''; return }
+  try { fiscalQrUrl.value = await QRCode.toDataURL(code, { margin: 1, width: 240 }) } catch { fiscalQrUrl.value = '' }
+}, { immediate: true })
+const STATUT_FISCAL = {
+  CERTIFIEE: { label: 'Certifiée DGI', color: 'success', icon: 'mdi-check-decagram' },
+  EN_ATTENTE: { label: 'Certification en attente', color: 'warning', icon: 'mdi-clock-alert-outline' },
+  REJETEE: { label: 'Refusée par la DGI', color: 'error', icon: 'mdi-close-octagon-outline' },
+  ANNULEE: { label: 'Annulée (jamais certifiée)', color: 'grey', icon: 'mdi-cancel' },
+} as const
+async function chargerFactures() {
+  if (!vente.value || vente.value.statut === 'BROUILLON') { factures.value = []; return }
+  try {
+    factures.value = await api<FactureNormalisee[]>(`/ventes/${vente.value.id}/facture-normalisee`)
+  } catch { factures.value = [] }
+}
+async function retransmettre() {
+  if (!vente.value) return
+  retransmission.value = true
+  try {
+    factures.value = await api<FactureNormalisee[]>(`/ventes/${vente.value.id}/facture-normalisee/retransmettre`, { method: 'POST' })
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Retransmission impossible.')
+  } finally { retransmission.value = false }
+}
+async function ouvrirPdf(type: 'VENTE' | 'AVOIR') {
+  if (!vente.value) return
+  try {
+    await telechargerFichier(api, `/ventes/${vente.value.id}/pdf?type=${type}`,
+      `${type === 'AVOIR' ? 'avoir' : 'facture'}-${vente.value.reference}.pdf`)
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Impossible de générer le PDF de la facture.')
+  }
+}
+const fmtHeure = (d?: string | null) => (d ? new Date(d).toLocaleString('fr-FR') : '')
+
 const canWrite = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
 const peutValider = computed(() => canWrite.value && vente.value?.statut === 'BROUILLON')
 // Annuler defait une vente deja comptabilisee : reserve a l'administrateur.
@@ -242,6 +289,7 @@ async function charger() {
         manifestement fausse plutot que plausible. */,
     ])
     vente.value = data
+    await chargerFactures()
     tauxChange.value = taux.taux || 0
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger la vente.')
@@ -487,6 +535,34 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
           Créance client ouverte : le montant est porté au compte 4111 et reste dû.
           Encaissez-la pour solder la créance.
         </v-alert>
+        <v-card v-if="factureVente || factureAvoir" variant="outlined" class="mb-4 no-print pa-4 vd-fiscal">
+          <div class="d-flex flex-wrap align-center ga-3">
+            <v-icon :icon="STATUT_FISCAL[(factureAvoir ?? factureVente)!.statut].icon" :color="STATUT_FISCAL[(factureAvoir ?? factureVente)!.statut].color" />
+            <div>
+              <strong>Facture normalisée DGI</strong>
+              <v-chip v-for="f in factures" :key="f.id" size="small" variant="tonal" class="ml-2"
+                :color="STATUT_FISCAL[f.statut].color">
+                {{ f.type === 'AVOIR' ? 'Avoir' : 'Facture' }} : {{ STATUT_FISCAL[f.statut].label }}
+              </v-chip>
+              <v-chip v-if="factureVente?.simulation" size="small" color="error" variant="flat" class="ml-2">Simulation, sans valeur fiscale</v-chip>
+            </div>
+            <v-spacer />
+            <v-btn v-if="factureVente && factureVente.statut !== 'ANNULEE'" size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" @click="ouvrirPdf('VENTE')">PDF de la facture</v-btn>
+            <v-btn v-if="factureAvoir" size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" @click="ouvrirPdf('AVOIR')">PDF de l'avoir</v-btn>
+            <v-btn v-if="canWrite && factures.some(f => f.statut === 'EN_ATTENTE' || f.statut === 'REJETEE')" size="small" color="warning" variant="flat"
+              prepend-icon="mdi-send-clock-outline" :loading="retransmission" @click="retransmettre">Retransmettre</v-btn>
+          </div>
+          <dl v-if="factureVente?.statut === 'CERTIFIEE'" class="vd-fiscal__liste mt-3">
+            <div><dt>UID</dt><dd>{{ factureVente.uid }}</dd></div>
+            <div><dt>Signature</dt><dd>{{ factureVente.signature }}</dd></div>
+            <div><dt>Dispositif (DEF)</dt><dd>{{ factureVente.numeroDef || '-' }}</dd></div>
+            <div><dt>Date fiscale</dt><dd>{{ fmtHeure(factureVente.dateFiscale) }}</dd></div>
+          </dl>
+          <v-alert v-for="f in factures.filter(x => x.derniereErreur && x.statut !== 'CERTIFIEE')" :key="f.id" type="warning" variant="tonal" density="compact" class="mt-3">
+            {{ f.type === 'AVOIR' ? 'Avoir' : 'Facture' }} non certifié(e) ({{ f.tentatives }} tentative{{ f.tentatives > 1 ? 's' : '' }}) : {{ f.derniereErreur }}
+            <template v-if="f.statut === 'EN_ATTENTE'"> La transmission est relancée automatiquement.</template>
+          </v-alert>
+        </v-card>
         <v-alert v-if="vente.reglee && vente.dateReglement"
                  type="success" variant="tonal" class="mb-4 no-print" density="comfortable">
           Créance encaissée le {{ fmtDate(vente.dateReglement) }} — le compte client est soldé.
@@ -754,6 +830,20 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
           <span>Le client</span>
         </div>
       </div>
+
+      <div v-if="factureVente" class="vd-print-fiscal">
+        <div class="vd-print-fiscal__texte">
+          <strong>FACTURE NORMALISÉE<template v-if="factureVente.statut !== 'CERTIFIEE'"> — NON CERTIFIÉE</template></strong>
+          <template v-if="factureVente.statut === 'CERTIFIEE'">
+            <span v-if="factureVente.simulation" class="vd-print-fiscal__alerte">SIMULATION — SANS VALEUR FISCALE</span>
+            <span>UID : {{ factureVente.uid }}</span>
+            <span>Signature : {{ factureVente.signature }}</span>
+            <span>Dispositif : {{ factureVente.numeroDef || '-' }} · {{ fmtHeure(factureVente.dateFiscale) }}</span>
+          </template>
+          <span v-else class="vd-print-fiscal__alerte">Ne vaut pas facture normalisée tant que la DGI ne l'a pas certifiée.</span>
+        </div>
+        <img v-if="fiscalQrUrl" :src="fiscalQrUrl" alt="QR DGI" class="vd-print-fiscal__qr">
+      </div>
       </template>
 
       <!-- ── Ticket imprimante thermique (impression uniquement) ─── -->
@@ -791,7 +881,14 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
         <p>Règlement : {{ reglementLabel[vente.modeReglement] }}</p>
         <p v-if="vente.entrepotNom">Entrepôt : {{ vente.entrepotNom }}</p>
         <div class="vd-ticket__sep" />
-        <div v-if="qrDataUrl" class="vd-ticket__qr">
+        <template v-if="factureVente">
+          <p class="vd-ticket__contre">
+            <template v-if="factureVente.statut === 'CERTIFIEE'">{{ factureVente.simulation ? 'SIMULATION, SANS VALEUR FISCALE · ' : '' }}UID {{ factureVente.uid }}</template>
+            <template v-else>NON CERTIFIÉE — ne vaut pas facture normalisée</template>
+          </p>
+          <div v-if="fiscalQrUrl" class="vd-ticket__qr"><img :src="fiscalQrUrl" alt="QR DGI" class="vd-ticket__qr-img"></div>
+        </template>
+        <div v-else-if="qrDataUrl" class="vd-ticket__qr">
           <img :src="qrDataUrl" alt="QR" class="vd-ticket__qr-img">
         </div>
         <p class="vd-ticket__merci">Merci de votre achat !</p>
@@ -916,6 +1013,17 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 </template>
 
 <style scoped>
+.vd-fiscal__liste { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 24px; margin: 0; font-size: 0.82rem; }
+.vd-fiscal__liste div { display: flex; gap: 8px; }
+.vd-fiscal__liste dt { font-weight: 700; min-width: 110px; }
+.vd-fiscal__liste dd { margin: 0; word-break: break-all; }
+.vd-print-fiscal { display: none; }
+@media print {
+  .vd-print-fiscal { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; padding: 8px 10px; border: 1px solid #999; font-size: 9pt; }
+  .vd-print-fiscal__texte { display: flex; flex-direction: column; gap: 2px; word-break: break-all; }
+  .vd-print-fiscal__alerte { color: #b00020; font-weight: 700; }
+  .vd-print-fiscal__qr { width: 28mm; height: 28mm; }
+}
 .vd-page { max-width: 1000px; margin: 0 auto; padding-bottom: 48px; }
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }

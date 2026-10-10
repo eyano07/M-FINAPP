@@ -8,6 +8,8 @@ interface Client {
   telephone?: string
   email?: string
   adresse?: string
+  nif?: string | null
+  typeClient?: 'PARTICULIER' | 'ENTREPRISE' | 'ADMINISTRATION'
   actif: boolean
 }
 
@@ -31,6 +33,8 @@ const form = reactive({
   telephone: '',
   email: '',
   adresse: '',
+  nif: '',
+  typeClient: 'PARTICULIER' as 'PARTICULIER' | 'ENTREPRISE' | 'ADMINISTRATION',
   actif: true,
 })
 
@@ -54,7 +58,7 @@ onMounted(charger)
 
 function ouvrirCreation() {
   editId.value = null
-  Object.assign(form, { code: '', nom: '', telephone: '', email: '', adresse: '', actif: true })
+  Object.assign(form, { code: '', nom: '', telephone: '', email: '', adresse: '', nif: '', typeClient: 'PARTICULIER', actif: true })
   erreur.value = ''
   dialog.value = true
 }
@@ -67,6 +71,8 @@ function ouvrirEdition(c: Client) {
     telephone: c.telephone || '',
     email: c.email || '',
     adresse: c.adresse || '',
+    nif: c.nif || '',
+    typeClient: c.typeClient || 'PARTICULIER',
     actif: c.actif,
   })
   erreur.value = ''
@@ -85,6 +91,8 @@ async function enregistrer() {
       telephone: form.telephone || null,
       email: form.email || null,
       adresse: form.adresse || null,
+      nif: form.nif.trim() || null,
+      typeClient: form.typeClient,
       actif: form.actif,
     }
     if (editId.value) {
@@ -218,6 +226,21 @@ async function enregistrer() {
               label="Adresse"
               prepend-inner-icon="mdi-map-marker-outline"
               variant="outlined" density="comfortable" rounded="lg" class="mb-2"
+            />
+            <v-select
+              v-model="form.typeClient"
+              :items="[{ title: 'Particulier', value: 'PARTICULIER' }, { title: 'Entreprise', value: 'ENTREPRISE' }, { title: 'Administration', value: 'ADMINISTRATION' }]"
+              label="Type de client"
+              prepend-inner-icon="mdi-account-tie-outline"
+              variant="outlined" density="comfortable" rounded="lg" class="mb-3"
+            />
+            <v-text-field
+              v-model="form.nif"
+              label="NIF (numéro d'impôt)"
+              prepend-inner-icon="mdi-card-account-details-outline"
+              :hint="form.typeClient === 'PARTICULIER' ? 'Facultatif pour un particulier.' : 'Obligatoire pour la facture normalisée d\'une entreprise ou d\'une administration.'"
+              persistent-hint
+              variant="outlined" density="comfortable" rounded="lg" class="mb-3"
             />
             <v-switch v-model="form.actif" label="Actif" color="primary" density="compact" />
           </v-form>
