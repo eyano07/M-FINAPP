@@ -8,6 +8,10 @@ definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTAB
 const route = useRoute()
 const api = useApi()
 const auth = useAuthStore()
+// Libellés des rôles choisis par l'administrateur (ex. « DA » affiché « DAF ») : textes, boutons et confirmations.
+const rolesStore = useRolesStore()
+const lDA = computed(() => rolesStore.libelle('DA'))
+const lDFIN = computed(() => rolesStore.libelle('DFIN'))
 const parametresStore = useParametresStore()
 const id = computed(() => Number(route.params.id))
 
@@ -62,11 +66,11 @@ onUnmounted(() => {
 // Circuit
 // ---------------------------------------------------------------------------------------------
 // Actions lourdes de conséquences : confirmation préalable.
-const CONFIRMATIONS: Record<string, { titre: string, texte: string, bouton: string, couleur: string }> = {
-  soumettre: { titre: 'Soumettre au DA ?', texte: 'Le budget ne sera plus modifiable tant que le DA ne l’aura pas approuvé ou rejeté.', bouton: 'Soumettre', couleur: 'blue' },
+const CONFIRMATIONS = computed<Record<string, { titre: string, texte: string, bouton: string, couleur: string }>>(() => ({
+  soumettre: { titre: `Soumettre au ${lDA.value} ?`, texte: `Le budget ne sera plus modifiable tant que le ${lDA.value} ne l’aura pas approuvé ou rejeté.`, bouton: 'Soumettre', couleur: 'blue' },
   demarrer: { titre: 'Mettre ce budget en exécution ?', texte: 'Il contrôlera désormais toutes les notes de frais de l’exercice : toute dépense non budgétée ou en dépassement devra être justifiée.', bouton: 'Mettre en exécution', couleur: 'teal' },
   cloturer: { titre: 'Clôturer ce budget ?', texte: 'Il ne contrôlera plus les notes de frais et restera consultable.', bouton: 'Clôturer', couleur: 'brown' },
-}
+}))
 const actionAConfirmer = ref('')
 function confirmerAction() {
   const chemin = actionAConfirmer.value
@@ -88,9 +92,9 @@ async function transition(chemin: string, corps: any = {}) {
       return
     }
     succes.value = {
-      soumettre: 'Budget soumis au DA pour approbation.',
-      approuver: 'Budget approuvé : le DFIN peut le mettre en exécution.',
-      rejeter: 'Budget rejeté : le DFIN peut le reprendre et le corriger.',
+      soumettre: `Budget soumis au ${lDA.value} pour approbation.`,
+      approuver: `Budget approuvé : le ${lDFIN.value} peut le mettre en exécution.`,
+      rejeter: `Budget rejeté : le ${lDFIN.value} peut le reprendre et le corriger.`,
       reprendre: 'Budget repris en brouillon : il peut être modifié puis soumis à nouveau.',
       demarrer: 'Budget en exécution : il contrôle désormais les notes de frais de l’exercice.',
       cloturer: 'Budget clôturé : il reste consultable.',
@@ -306,7 +310,7 @@ const classeEcart = (section: string, v: number) => {
 
       <v-card class="classroom-card pa-3 mb-4 no-print bs-actions">
         <v-btn v-if="estDfin && budget.statut === 'BROUILLON'" color="primary" variant="tonal" prepend-icon="mdi-pencil" :to="`/budgets/${id}/modifier`">Modifier</v-btn>
-        <v-btn v-if="estDfin && budget.statut === 'BROUILLON'" color="blue" prepend-icon="mdi-send" :loading="action === 'soumettre'" @click="actionAConfirmer = 'soumettre'">Soumettre au DA</v-btn>
+        <v-btn v-if="estDfin && budget.statut === 'BROUILLON'" color="blue" prepend-icon="mdi-send" :loading="action === 'soumettre'" @click="actionAConfirmer = 'soumettre'">Soumettre au {{ lDA }}</v-btn>
         <v-btn v-if="estDa && budget.statut === 'SOUMIS'" color="success" prepend-icon="mdi-check-decagram" @click="dialogueMotif = 'approuver'">Approuver</v-btn>
         <v-btn v-if="estDa && budget.statut === 'SOUMIS'" color="error" variant="tonal" prepend-icon="mdi-close-octagon" @click="dialogueMotif = 'rejeter'">Rejeter</v-btn>
         <v-btn v-if="estDfin && budget.statut === 'REJETE'" color="primary" variant="tonal" prepend-icon="mdi-undo" :loading="action === 'reprendre'" @click="transition('reprendre')">Reprendre en brouillon</v-btn>

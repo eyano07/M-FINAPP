@@ -38,6 +38,7 @@ const props = defineProps<{ mois: number, annee: number, canWrite: boolean }>()
 const emit = defineEmits<{ (e: 'change'): void }>()
 
 const api = useApi()
+const rolesStore = useRolesStore()
 const etat = ref<Reglement | null>(null)
 const chargement = ref(false)
 const action = ref('')
@@ -81,15 +82,15 @@ const params = () => ({ mois: props.mois, annee: props.annee })
 function creerNotePaie() {
   if (!etat.value) return
   if (!confirm(`Créer la note de paie de ${periode.value} pour ${etat.value.bulletinsEligibles} agent(s), `
-    + `total net ${fmtUsd(etat.value.totalNet)} ? Elle sera soumise au DFIN.`)) return
+    + `total net ${fmtUsd(etat.value.totalNet)} ? Elle sera soumise au ${rolesStore.libelle('DFIN')}.`)) return
   executer('paie', () => api('/drh/bulletins/reglement/note-paie', { method: 'POST', params: params() }),
-    'Note de paie créée et soumise au DFIN. Son paiement écrira la constatation de la paie.')
+    `Note de paie créée et soumise au ${rolesStore.libelle('DFIN')}. Son paiement écrira la constatation de la paie.`)
 }
 
 function creerNoteImpot(v: Versement) {
   if (!confirm(`Créer la note « ${v.libelle} » de ${fmtUsd(v.montant)} à verser à ${v.beneficiaire} ?`)) return
   executer(v.organisme, () => api(`/drh/bulletins/reglement/notes-impots/${v.organisme}`, { method: 'POST', params: params() }),
-    `Note ${v.organisme} créée et soumise au DFIN.`)
+    `Note ${v.organisme} créée et soumise au ${rolesStore.libelle('DFIN')}.`)
 }
 
 function annulerNote(n: NoteResume) {

@@ -9,7 +9,11 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.AuthenticationException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -117,6 +121,39 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
         log.info("Methode non supportee : {}", ex.getMessage());
         return build(HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage());
+    }
+
+    /** Corps JSON illisible ou valeur hors liste (ex. modèle d'en-tête inconnu) : erreur du client, pas du serveur. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleCorpsIllisible(HttpMessageNotReadableException ex) {
+        String detail = "le corps de la requête est illisible (JSON attendu).";
+        if (ex.getCause() instanceof InvalidFormatException f) {
+            String champ = f.getPath().stream()
+                .map(r -> r.getFieldName() != null ? r.getFieldName() : "[" + r.getIndex() + "]")
+                .collect(java.util.stream.Collectors.joining("."));
+            detail = "valeur « " + f.getValue() + " » invalide pour « " + champ + " »" + valeursPossibles(f.getTargetType()) + ".";
+        }
+        return build(HttpStatus.BAD_REQUEST, "Requête invalide : " + detail);
+    }
+
+    /** Paramètre d'adresse ou de requête d'un mauvais type (ex. rôle ou devise inconnus). */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeParametre(MethodArgumentTypeMismatchException ex) {
+        return build(HttpStatus.BAD_REQUEST, "Valeur « " + ex.getValue() + " » invalide pour « " + ex.getName() + " »"
+            + valeursPossibles(ex.getRequiredType()) + ".");
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<Map<String, Object>> handleParametreManquant(MissingServletRequestParameterException ex) {
+        return build(HttpStatus.BAD_REQUEST, "Paramètre obligatoire manquant : « " + ex.getParameterName() + " ».");
+    }
+
+    private static String valeursPossibles(Class<?> type) {
+        if (type == null || !type.isEnum()) {
+            return "";
+        }
+        return " (valeurs possibles : " + java.util.Arrays.stream(type.getEnumConstants()).map(Object::toString)
+            .collect(java.util.stream.Collectors.joining(", ")) + ")";
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

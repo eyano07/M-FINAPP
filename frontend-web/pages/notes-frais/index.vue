@@ -634,7 +634,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
               rows="2"
               auto-grow
               placeholder="Pourquoi cette dépense n’est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...)"
-              hint="Obligatoire pour soumettre la note ; le DA devra aussi motiver sa validation."
+              :hint="`Obligatoire pour soumettre la note ; le ${rolesStore.libelle('DA')} devra aussi motiver sa validation.`"
               persistent-hint
             />
           </div>

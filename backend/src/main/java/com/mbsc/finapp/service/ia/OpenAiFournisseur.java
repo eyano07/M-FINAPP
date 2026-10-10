@@ -176,7 +176,7 @@ public class OpenAiFournisseur implements FournisseurIa {
     private ChatCompletionCreateParams.Builder requete(ConfigIa c, String systeme, String utilisateur, int maxTokens) {
         ChatCompletionCreateParams.Builder b = ChatCompletionCreateParams.builder()
             .model(c.openaiModele())
-            .maxCompletionTokens(maxTokens);
+            .maxCompletionTokens(plafondReponse(c.openaiModele(), maxTokens));
         // Tâches cadrées (données déjà fournies) : le raisonnement étendu n'y apporte rien. L'effort minimal
         // n'existe que sur gpt-5 ; la série « o » (o4-mini...) accepte low, medium et high.
         effort(b, c.openaiModele(), serieO(c.openaiModele()) ? ReasoningEffort.LOW : ReasoningEffort.MINIMAL);
@@ -193,7 +193,22 @@ public class OpenAiFournisseur implements FournisseurIa {
     }
 
     private static int budgetJson(ConfigIa c, int maxTokens) {
-        return serieO(c.openaiModele()) ? maxTokens + MARGE_RAISONNEMENT : maxTokens;
+        return plafondReponse(c.openaiModele(), serieO(c.openaiModele()) ? maxTokens + MARGE_RAISONNEMENT : maxTokens);
+    }
+
+    /**
+     * Jetons de réponse au plus acceptés par le modèle : au-delà, OpenAI refuse toute la requête (400 « max_tokens is too
+     * large »), ce qui empêchait par exemple la lecture d'un relevé (32 000 demandés) avec gpt-4o-mini (16 384 au plus).
+     * Les modèles à raisonnement (série o, gpt-5) acceptent davantage que ce que l'application demande.
+     */
+    static int plafondReponse(String modele, int demande) {
+        String m = modele == null ? "" : modele.toLowerCase(Locale.ROOT);
+        int plafond = m.startsWith("gpt-4o") || m.startsWith("chatgpt-4o") ? 16_384
+            : m.startsWith("gpt-4.1") ? 32_768
+            : m.startsWith("gpt-4-turbo") || m.startsWith("gpt-3.5") ? 4_096
+            : m.equals("gpt-4") || m.startsWith("gpt-4-0") ? 8_192
+            : Integer.MAX_VALUE;
+        return Math.min(demande, plafond);
     }
 
     static boolean serieO(String modele) {

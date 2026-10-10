@@ -72,7 +72,7 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
     <v-alert v-if="!loading && !enExecution" type="warning" variant="tonal" class="mb-4" icon="mdi-calendar-alert">
       Aucun budget n’est en exécution pour {{ new Date().getFullYear() }} : toute note de frais de l’exercice devra
       justifier sa dépense « hors budget ».
-      <span v-if="peutElaborer">Créez un budget (ou faites-le proposer par l’IA), faites-le approuver par le DA, puis démarrez-le.</span>
+      <span v-if="peutElaborer">Créez un budget (ou faites-le proposer par l’IA), faites-le approuver par le {{ rolesStore.libelle('DA') }}, puis démarrez-le.</span>
     </v-alert>
 
     <div v-if="exercices.length > 1" class="d-flex align-center ga-2 mb-3">
