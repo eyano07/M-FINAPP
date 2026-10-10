@@ -15,6 +15,7 @@ public record UserResponse(
     String prenom,
     String email,
     String telephone,
+    String emailNotification,
     String fonction,
     String affectation,
     boolean actif,
@@ -34,6 +35,7 @@ public record UserResponse(
             u.getPrenom(),
             u.getEmail(),
             u.getTelephone(),
+            u.getEmailNotification(),
             u.getFonction(),
             u.getAffectation(),
             u.isActif(),
@@ -44,7 +46,7 @@ public record UserResponse(
 
     /** Meme vue, signalant les roles qui n'avaient aucun droit et ont recu ceux d'origine. */
     public UserResponse avecDroitsParDefaut(List<RoleType> rolesAvecDroitsPoses) {
-        return new UserResponse(id, nom, prenom, email, telephone, fonction, affectation, actif, roles,
+        return new UserResponse(id, nom, prenom, email, telephone, emailNotification, fonction, affectation, actif, roles,
             rolesAvecDroitsPoses.stream().map(Enum::name).toList());
     }
 }

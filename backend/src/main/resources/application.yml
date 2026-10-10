@@ -1,4 +1,16 @@
 spring:
+  mail:
+    # Serveur SMTP des copies e-mail de notifications. Sans APP_MAIL_HOST, aucun e-mail n'est envoye.
+    host: ${APP_MAIL_HOST:}
+    port: ${APP_MAIL_PORT:587}
+    username: ${APP_MAIL_USERNAME:}
+    password: ${APP_MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${APP_MAIL_AUTH:true}
+      mail.smtp.starttls.enable: ${APP_MAIL_STARTTLS:true}
+      mail.smtp.connectiontimeout: 8000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
   application:
     name: mbsc-finapp
 
@@ -35,6 +47,10 @@ server:
     context-path: /api
 
 app:
+  public-url: ${APP_PUBLIC_URL:}            # URL publique du frontend (liens des e-mails), ex. https://finapp.exemple.cd
+  mail:
+    enabled: ${APP_MAIL_ENABLED:false}
+    from: ${APP_MAIL_FROM:}
   secrets:
     # Cle de chiffrement (32 octets en base64 : openssl rand -base64 32) des secrets stockes en base, dont les
     # cles d'API de l'IA. Absente : derivee du secret JWT (a eviter en production).

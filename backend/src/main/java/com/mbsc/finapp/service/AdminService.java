@@ -247,6 +247,7 @@ public class AdminService {
             .email(req.email())
             .motDePasse(passwordEncoder.encode(req.motDePasse()))
             .telephone(videEnNull(req.telephone()))
+            .emailNotification(emailNotification(req.emailNotification()))
             .fonction(videEnNull(req.fonction()))
             .affectation(videEnNull(req.affectation()))
             .actif(true)
@@ -282,10 +283,16 @@ public class AdminService {
             u.revoquerJetons();
         }
         u.setTelephone(videEnNull(req.telephone()));
+        u.setEmailNotification(emailNotification(req.emailNotification()));
         u.setFonction(videEnNull(req.fonction()));
         u.setAffectation(videEnNull(req.affectation()));
         u.setRoles(resoudreRoles(req.roles()));
         return avecDroitsParDefaut(userRepository.save(u));
+    }
+
+    private String emailNotification(String s) {
+        String v = videEnNull(s);
+        return v == null ? null : v.toLowerCase();
     }
 
     /** {@code null}/vide -> {@code null} (evite de stocker une chaine vide plutot qu'une absence de valeur). */

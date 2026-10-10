@@ -12,16 +12,17 @@ const erreur = ref('')
 const succes = ref('')
 
 // ── Informations ───────────────────────────────────────────────────────
-const form = reactive({ nom: '', prenom: '', telephone: '' })
+const form = reactive({ nom: '', prenom: '', telephone: '', emailNotification: '' })
 
 async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const p = await api<{ nom: string; prenom: string; telephone: string | null }>('/profil')
+    const p = await api<{ nom: string; prenom: string; telephone: string | null; emailNotification: string | null }>('/profil')
     form.nom = p.nom || ''
     form.prenom = p.prenom || ''
     form.telephone = p.telephone || ''
+    form.emailNotification = p.emailNotification || ''
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger le profil.')
   } finally {
@@ -41,7 +42,8 @@ async function enregistrer() {
   try {
     await api('/profil', {
       method: 'PUT',
-      body: { nom: form.nom.trim(), prenom: form.prenom.trim(), telephone: form.telephone.trim() || null },
+      body: { nom: form.nom.trim(), prenom: form.prenom.trim(), telephone: form.telephone.trim() || null,
+        emailNotification: form.emailNotification.trim() || null },
     })
     // Rafraichit le store global : le nom/l'avatar dans l'App Bar et le menu
     // laterale en dependent, pas seulement cette page.
@@ -198,6 +200,9 @@ async function changerMotDePasse() {
               hide-details="auto" readonly disabled hint="L'e-mail de connexion n'est pas modifiable ici." persistent-hint />
             <v-text-field v-model="form.telephone" label="Téléphone" variant="outlined" density="comfortable" rounded="lg"
               hide-details="auto" prepend-inner-icon="mdi-phone-outline" placeholder="Ex: +243 999 123 456" />
+            <v-text-field v-model="form.emailNotification" label="Mail de notification" type="email" variant="outlined" density="comfortable"
+              rounded="lg" prepend-inner-icon="mdi-email-fast-outline" placeholder="Ex: prenom.nom@exemple.cd"
+              hint="Vos notifications vous seront aussi envoyées à cette adresse (laisser vide pour ne rien recevoir)." persistent-hint />
           </div>
         </v-card-text>
         <v-card-actions class="px-4 pb-4">

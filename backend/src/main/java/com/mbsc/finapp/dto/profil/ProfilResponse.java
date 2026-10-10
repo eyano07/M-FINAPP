@@ -16,6 +16,7 @@ public record ProfilResponse(
     String nom,
     String prenom,
     String telephone,
+    String emailNotification,
     String photoUrl,
     List<String> roles
 ) {
@@ -31,6 +32,7 @@ public record ProfilResponse(
             u.getNom(),
             u.getPrenom(),
             u.getTelephone(),
+            u.getEmailNotification(),
             u.getPhotoCheminStockage() != null ? "/profil/photo" : null,
             roles
         );

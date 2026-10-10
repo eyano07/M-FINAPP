@@ -14,5 +14,6 @@ public record ProfilUpdateRequest(
     @NotBlank @Size(max = 100) String prenom,
     // Vide/absent autorise (retire le numero) : chiffres, espaces et + - ( ) uniquement.
     @Pattern(regexp = "^[0-9+()\\-\\s]{0,30}$", message = "Numero de telephone invalide")
-    String telephone
+    String telephone,
+    @jakarta.validation.constraints.Email @Size(max = 150) String emailNotification
 ) {}

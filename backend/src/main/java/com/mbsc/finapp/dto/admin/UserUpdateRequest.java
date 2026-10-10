@@ -18,6 +18,8 @@ public record UserUpdateRequest(
     // Vide/absent autorise : chiffres, espaces et + - ( ) uniquement (meme regle que ProfilUpdateRequest).
     @Pattern(regexp = "^[0-9+()\\-\\s]{0,30}$", message = "Numero de telephone invalide")
     String telephone,
+    // Facultatif ; vide = pas d'envoi par e-mail.
+    @jakarta.validation.constraints.Email @Size(max = 150) String emailNotification,
     @Size(max = 100) String fonction,
     @Size(max = 100) String affectation,
     @NotEmpty List<String> roles
