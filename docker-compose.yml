@@ -52,9 +52,11 @@ services:
       APP_MAIL_USERNAME: ${MAIL_USERNAME:-}
       APP_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       APP_MAIL_FROM: ${MAIL_FROM:-}
+      APP_AUDIT_DIR: /app/data/logs
       APP_SECRETS_KEY: ${SECRETS_KEY:-}
     volumes:
       - backend_uploads:/app/data/uploads
+      - backend_logs:/app/data/logs   # journal d'audit (audit.log) : a sauvegarder et a conserver
     expose: ["8080"]
     networks: [mbsc-net]
     healthcheck:
@@ -92,6 +94,7 @@ services:
 volumes:
   db_data:
   backend_uploads:
+  backend_logs:
 
 networks:
   mbsc-net:

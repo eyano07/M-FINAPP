@@ -37,6 +37,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final UserRepository userRepository;
     private final LoginAttemptService loginAttemptService;
+    private final com.mbsc.finapp.audit.AuditService audit;
 
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
@@ -45,6 +46,7 @@ public class AuthService {
         // Anti-bruteforce : blocage temporaire apres plusieurs echecs consecutifs.
         if (loginAttemptService.estBloque(request.email())) {
             log.warn("Connexion refusee pour {} : compte temporairement bloque", request.email());
+            audit.authentification("CONNEXION", request.email(), null, false, "compte temporairement bloque");
             throw new BadCredentialsException(
                 "Trop de tentatives de connexion. Reessayez dans "
                 + loginAttemptService.minutesRestantes(request.email()) + " minute(s).");
@@ -57,11 +59,13 @@ public class AuthService {
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
             loginAttemptService.enregistrerSucces(request.email());
             log.info("Connexion reussie : {}", principal.getUsername());
+            audit.authentification("CONNEXION", principal.getUsername(), principal.getDomainUser().getId(), true, null);
             return buildResponse(principal);
         } catch (BadCredentialsException ex) {
             // Audit : on trace l'echec sans divulguer la cause exacte cote client
             loginAttemptService.enregistrerEchec(request.email());
             log.warn("Echec de connexion pour {} : identifiants invalides", request.email());
+            audit.authentification("CONNEXION", request.email(), null, false, "identifiants invalides");
             throw ex;
         }
     }
@@ -103,6 +107,7 @@ public class AuthService {
         userRepository.findById(userId).ifPresent(user -> {
             user.revoquerJetons();
             log.info("Deconnexion : jetons revoques pour {}", user.getEmail());
+            audit.authentification("DECONNEXION", user.getEmail(), user.getId(), true, null);
         });
     }
 

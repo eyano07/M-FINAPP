@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Journalisation : configuration par defaut de Spring Boot (console) + journal d'AUDIT dans un fichier a part.
+  Le journal d'audit (logger "AUDIT") ecrit une ligne JSON par action d'utilisateur dans audit.log, avec rotation
+  quotidienne et conservation de 2555 jours (7 ans). Il n'apparait pas dans la console (additivity=false).
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+    <springProperty scope="context" name="AUDIT_DIR" source="app.audit.dir" defaultValue="./data/logs"/>
+
+    <appender name="AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${AUDIT_DIR}/audit.log</file>
+        <encoder>
+            <charset>UTF-8</charset>
+            <pattern>%msg%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${AUDIT_DIR}/audit-%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <maxHistory>2555</maxHistory>
+        </rollingPolicy>
+    </appender>
+
+    <logger name="AUDIT" level="INFO" additivity="false">
+        <appender-ref ref="AUDIT_FILE"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

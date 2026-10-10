@@ -47,6 +47,8 @@ server:
     context-path: /api
 
 app:
+  audit:
+    dir: ${APP_AUDIT_DIR:./data/logs}      # dossier du journal d'audit (audit.log) : a conserver et sauvegarder
   public-url: ${APP_PUBLIC_URL:}            # URL publique du frontend (liens des e-mails), ex. https://finapp.exemple.cd
   mail:
     enabled: ${APP_MAIL_ENABLED:false}
