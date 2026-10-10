@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -45,7 +46,10 @@ public class AuditAnalyseIaService {
         l'application. Un échec (statut 4xx/5xx) peut être une tentative refusée par manque de droits ou une erreur de saisie : \
         ne conclus à un comportement suspect que si les données le montrent (répétition, horaires inhabituels, droits refusés, \
         échecs de connexion), et présente-le comme un point à vérifier, jamais comme une accusation. \
-        Le journal n'indique pas les valeurs modifiées, seulement qui a fait quoi, quand et sur quelle ressource : signale cette limite si la question la touche.""";
+        Le journal n'indique pas les valeurs modifiées, seulement qui a fait quoi, quand et sur quelle ressource : signale cette limite si la question la touche. \
+        Le terminal (Ordinateur, Mobile, Tablette, Application) et le système (Windows, Android, iOS, macOS, Linux...) sont déduits de l'en-tête du \
+        navigateur : ils sont indicatifs, l'utilisateur peut les modifier, et ils valent « Inconnu » quand l'information manque (notamment pour les \
+        connexions enregistrées avant l'introduction de cette donnée).""";
 
     private static final Map<String, Object> SCHEMA = Map.of(
         "type", "object",
@@ -91,16 +95,19 @@ public class AuditAnalyseIaService {
         sb.append("- par utilisateur (actions/échecs) : ").append(liste(synthese.parUtilisateur(), 25)).append('\n');
         sb.append("- par module : ").append(liste(synthese.parModule(), 20)).append('\n');
         sb.append("- par opération : ").append(liste(synthese.parOperation(), 20)).append('\n');
+        sb.append("- par terminal : ").append(liste(synthese.parTerminal(), 10)).append('\n');
+        sb.append("- par système : ").append(liste(synthese.parSysteme(), 10)).append('\n');
         sb.append("- par jour : ").append(synthese.parJour().stream().limit(62)
             .map(j -> j.jour() + "=" + j.total() + "/" + j.echecs()).collect(Collectors.joining(", "))).append("\n\n");
         sb.append("ÉVÉNEMENTS").append(echantillon ? " (échantillon pertinent de " + pertinents.size() + " sur " + tout.evenements().size() + ")" : "")
-            .append(" — format : date heure | utilisateur | rôles | module opération #ressource | méthode chemin | statut | IP | détail :\n");
+            .append(" — format : date heure | utilisateur | rôles | module opération #ressource | méthode chemin | statut | IP | terminal système | détail :\n");
         ZoneId zone = ZoneId.systemDefault();
         int transmis = 0;
         for (Evenement e : pertinents) {
             String l = e.horodatage().atZone(zone).format(HEURE) + " | " + nn(e.email()) + " | " + (e.roles() == null ? "" : String.join(",", e.roles()))
                 + " | " + nn(e.module()) + " " + nn(e.operation()) + (e.ressourceId() != null ? " #" + e.ressourceId() : "")
                 + " | " + nn(e.methode()) + " " + nn(e.chemin()) + " | " + (e.statut() == null ? "-" : e.statut()) + " | " + nn(e.ip())
+                + " | " + nn(e.terminal()) + " " + nn(e.systeme())
                 + (e.detail() != null ? " | " + e.detail() : "") + '\n';
             if (sb.length() + l.length() > MAX_CARACTERES_EVENEMENTS + 6000) break;
             sb.append(l);
@@ -131,10 +138,14 @@ public class AuditAnalyseIaService {
         }).collect(Collectors.toSet());
         Set<String> modules = synthese.parModule().stream().map(Compte::cle).filter(m -> m.length() >= 4 && q.contains(m.toLowerCase(Locale.ROOT)))
             .collect(Collectors.toSet());
+        Set<String> terminaux = citees(q, synthese.parTerminal());
+        Set<String> systemes = citees(q, synthese.parSysteme());
         List<Evenement> cible = tous;
-        if (!users.isEmpty() || !modules.isEmpty()) {
+        if (!users.isEmpty() || !modules.isEmpty() || !terminaux.isEmpty() || !systemes.isEmpty()) {
             cible = tous.stream().filter(e -> (users.isEmpty() || users.contains(nn(e.email())))
-                && (modules.isEmpty() || modules.contains(e.module() == null ? "authentification" : e.module()))).toList();
+                && (modules.isEmpty() || modules.contains(e.module() == null ? "authentification" : e.module()))
+                && (terminaux.isEmpty() || terminaux.contains(e.terminal()))
+                && (systemes.isEmpty() || systemes.contains(e.systeme()))).toList();
             if (!cible.isEmpty()) return limiter(cible, 400);
         }
         List<Evenement> choix = new ArrayList<>();
@@ -144,6 +155,18 @@ public class AuditAnalyseIaService {
         tous.stream().filter(e -> !deja.contains(e)).limit(220).forEach(choix::add);
         choix.sort((a, b) -> b.horodatage().compareTo(a.horodatage()));
         return limiter(choix, 400);
+    }
+
+    /**
+     * Terminaux ou systèmes cités dans la question, comme mots entiers (pluriel accepté) : « mobiles » vise Mobile, mais
+     * « ios » ne se trouve pas dans « curiosité ». « Inconnu » et « Application » sont ignorés : ce sont des mots courants.
+     */
+    static Set<String> citees(String question, List<Compte> comptes) {
+        return comptes.stream().map(Compte::cle)
+            .filter(c -> !AgentUtilisateur.INCONNU.equals(c) && !AgentUtilisateur.APPLICATION.equals(c))
+            .filter(c -> Pattern.compile("(?<![\\p{L}\\p{N}])" + Pattern.quote(c.toLowerCase(Locale.ROOT)) + "s?(?![\\p{L}\\p{N}])")
+                .matcher(question).find())
+            .collect(Collectors.toSet());
     }
 
     private static List<Evenement> limiter(List<Evenement> l, int max) {

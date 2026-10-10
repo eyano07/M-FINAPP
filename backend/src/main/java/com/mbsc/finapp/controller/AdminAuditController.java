@@ -38,8 +38,9 @@ public class AdminAuditController {
                            @RequestParam(required = false) String utilisateur, @RequestParam(required = false) String module,
                            @RequestParam(required = false) String operation, @RequestParam(required = false) String resultat,
                            @RequestParam(required = false) String type, @RequestParam(required = false) String q,
+                           @RequestParam(required = false) String terminal, @RequestParam(required = false) String systeme,
                            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int taille) {
-        return lecteur.page(new Filtre(du, au, utilisateur, module, operation, resultat, type, q), page, taille);
+        return lecteur.page(new Filtre(du, au, utilisateur, module, operation, resultat, type, q, terminal, systeme), page, taille);
     }
 
     @GetMapping("/synthese")
@@ -53,8 +54,9 @@ public class AdminAuditController {
                                            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
                                            @RequestParam(required = false) String utilisateur, @RequestParam(required = false) String module,
                                            @RequestParam(required = false) String operation, @RequestParam(required = false) String resultat,
-                                           @RequestParam(required = false) String type, @RequestParam(required = false) String q) {
-        String csv = lecteur.exporterCsv(new Filtre(du, au, utilisateur, module, operation, resultat, type, q));
+                                           @RequestParam(required = false) String type, @RequestParam(required = false) String q,
+                                           @RequestParam(required = false) String terminal, @RequestParam(required = false) String systeme) {
+        String csv = lecteur.exporterCsv(new Filtre(du, au, utilisateur, module, operation, resultat, type, q, terminal, systeme));
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename("journal-audit.csv").build().toString())
             .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))

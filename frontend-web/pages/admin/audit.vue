@@ -9,13 +9,14 @@ useHead({ title: "Journal d'audit" })
 interface Evenement {
   horodatage: string, type: string, utilisateurId: number | null, email: string | null, roles: string[] | null, ip: string | null,
   module: string | null, operation: string | null, ressourceId: string | null, methode: string | null, chemin: string | null,
-  requete: string | null, statut: number | null, reussi: boolean, dureeMs: number | null, detail: string | null
+  requete: string | null, statut: number | null, reussi: boolean, dureeMs: number | null, detail: string | null,
+  agent: string | null, terminal: string, systeme: string
 }
 interface Compte { cle: string, total: number, echecs: number }
 interface Jour { jour: string, total: number, echecs: number }
 interface Synthese {
   total: number, echecs: number, connexionsRefusees: number, utilisateursActifs: number, tronque: boolean,
-  parUtilisateur: Compte[], parModule: Compte[], parOperation: Compte[], parJour: Jour[]
+  parUtilisateur: Compte[], parModule: Compte[], parOperation: Compte[], parTerminal: Compte[], parSysteme: Compte[], parJour: Jour[]
 }
 interface PageEv { total: number, page: number, taille: number, tronque: boolean, evenements: Evenement[] }
 interface ReponseIa {
@@ -28,7 +29,7 @@ const iso = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).t
 const aujourdhui = new Date()
 const il = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d) }
 
-const filtre = reactive({ du: il(6), au: iso(aujourdhui), utilisateur: '', module: '', operation: '', resultat: '', q: '' })
+const filtre = reactive({ du: il(6), au: iso(aujourdhui), utilisateur: '', module: '', operation: '', resultat: '', terminal: '', systeme: '', q: '' })
 const page = ref(0)
 const taille = 50
 const synthese = ref<Synthese | null>(null)
@@ -39,7 +40,7 @@ const detail = ref<Evenement | null>(null)
 
 function params(extra: Record<string, string | number> = {}) {
   const p: Record<string, string | number> = { du: filtre.du, au: filtre.au, ...extra }
-  for (const k of ['utilisateur', 'module', 'operation', 'resultat', 'q'] as const) if (filtre[k]) p[k] = filtre[k]
+  for (const k of ['utilisateur', 'module', 'operation', 'resultat', 'terminal', 'systeme', 'q'] as const) if (filtre[k]) p[k] = filtre[k]
   return p
 }
 const requete = (extra: Record<string, string | number> = {}) =>
@@ -70,7 +71,7 @@ function periode(jours: number) {
   charger()
 }
 function reinitialiser() {
-  Object.assign(filtre, { utilisateur: '', module: '', operation: '', resultat: '', q: '' })
+  Object.assign(filtre, { utilisateur: '', module: '', operation: '', resultat: '', terminal: '', systeme: '', q: '' })
   charger()
 }
 async function aller(delta: number) {
@@ -93,6 +94,13 @@ const pct = (n: number, m: number) => `${Math.round((n / m) * 100)}%`
 const modules = computed(() => synthese.value?.parModule.map(m => m.cle) ?? [])
 const operations = computed(() => synthese.value?.parOperation.map(m => m.cle) ?? [])
 const utilisateurs = computed(() => synthese.value?.parUtilisateur.map(m => m.cle) ?? [])
+const terminaux = computed(() => synthese.value?.parTerminal.map(m => m.cle) ?? [])
+const systemes = computed(() => synthese.value?.parSysteme.map(m => m.cle) ?? [])
+const iconeTerminal = (t?: string | null) =>
+  t === 'Mobile' ? 'mdi-cellphone' : t === 'Tablette' ? 'mdi-tablet' : t === 'Ordinateur' ? 'mdi-monitor'
+    : t === 'Application' ? 'mdi-application-cog-outline' : 'mdi-help-circle-outline'
+/** Système à afficher à côté du terminal : rien quand il est inconnu (ou quand le terminal l'est). */
+const systemeConnu = (e: { terminal: string, systeme: string }) => e.terminal !== 'Inconnu' && !!e.systeme && e.systeme !== 'Inconnu'
 const couleurOperation = (op?: string | null) =>
   op === 'SUPPRIMER' || op === 'ANNULER' ? 'error' : op === 'CONNEXION' || op === 'DECONNEXION' ? 'info' : op === 'CREER' ? 'success' : 'primary'
 
@@ -109,6 +117,7 @@ const SUGGESTIONS = [
   'Qui a supprimé ou annulé des données ?',
   'Quels utilisateurs sont les plus actifs ?',
   'Y a-t-il eu des connexions refusées ?',
+  'Qui se connecte depuis un mobile ou une tablette ?',
 ]
 async function demander(q?: string) {
   if (q) question.value = q
@@ -159,6 +168,8 @@ async function demander(q?: string) {
         <v-select v-model="filtre.operation" :items="operations" label="Opération" clearable variant="outlined" density="compact" hide-details />
         <v-select v-model="filtre.resultat" :items="[{ title: 'Réussies', value: 'OK' }, { title: 'Échecs / refus', value: 'ECHEC' }]" label="Résultat" clearable
           variant="outlined" density="compact" hide-details />
+        <v-select v-model="filtre.terminal" :items="terminaux" label="Terminal" clearable variant="outlined" density="compact" hide-details />
+        <v-select v-model="filtre.systeme" :items="systemes" label="Système" clearable variant="outlined" density="compact" hide-details />
         <v-text-field v-model="filtre.q" label="Recherche (chemin, IP, n°…)" prepend-inner-icon="mdi-magnify" clearable variant="outlined" density="compact" hide-details
           @keyup.enter="charger()" />
       </div>
@@ -198,6 +209,22 @@ async function demander(q?: string) {
           </div>
         </v-card>
         <v-card class="classroom-card pa-4">
+          <h2 class="au-titre">Par terminal</h2>
+          <div v-for="u in synthese.parTerminal" :key="u.cle" class="au-barre" @click="filtre.terminal = u.cle; charger()">
+            <span class="au-barre__lib"><v-icon :icon="iconeTerminal(u.cle)" size="14" class="mr-1" />{{ u.cle }}</span>
+            <span class="au-barre__fond"><span class="au-barre__val au-barre__val--d" :style="{ width: pct(u.total, max(synthese.parTerminal)) }" /></span>
+            <span class="au-barre__n">{{ u.total }}<small v-if="u.echecs" class="au-echec"> · {{ u.echecs }} ✗</small></span>
+          </div>
+        </v-card>
+        <v-card class="classroom-card pa-4">
+          <h2 class="au-titre">Par système</h2>
+          <div v-for="u in synthese.parSysteme.slice(0, 8)" :key="u.cle" class="au-barre" @click="filtre.systeme = u.cle; charger()">
+            <span class="au-barre__lib">{{ u.cle }}</span>
+            <span class="au-barre__fond"><span class="au-barre__val au-barre__val--e" :style="{ width: pct(u.total, max(synthese.parSysteme)) }" /></span>
+            <span class="au-barre__n">{{ u.total }}<small v-if="u.echecs" class="au-echec"> · {{ u.echecs }} ✗</small></span>
+          </div>
+        </v-card>
+        <v-card class="classroom-card pa-4">
           <h2 class="au-titre">Par jour</h2>
           <div v-for="j in synthese.parJour.slice(-10)" :key="j.jour" class="au-barre">
             <span class="au-barre__lib">{{ new Date(j.jour).toLocaleDateString('fr-FR') }}</span>
@@ -214,7 +241,7 @@ async function demander(q?: string) {
       <div v-else-if="resultat" class="au-table-wrap">
         <v-table density="compact" hover>
           <thead>
-            <tr><th>Date</th><th>Utilisateur</th><th>Module</th><th>Opération</th><th>Ressource</th><th>Résultat</th><th>IP</th></tr>
+            <tr><th>Date</th><th>Utilisateur</th><th>Module</th><th>Opération</th><th>Ressource</th><th>Résultat</th><th>Terminal</th><th>IP</th></tr>
           </thead>
           <tbody>
             <tr v-for="(e, i) in resultat.evenements" :key="i" class="au-ligne" @click="detail = e">
@@ -224,9 +251,12 @@ async function demander(q?: string) {
               <td><v-chip size="x-small" variant="tonal" :color="couleurOperation(e.operation)">{{ e.operation }}</v-chip></td>
               <td>{{ e.ressourceId ? '#' + e.ressourceId : '' }}</td>
               <td><v-chip size="x-small" :color="e.reussi ? 'success' : 'error'" variant="tonal">{{ e.reussi ? 'OK' : 'Échec' }}{{ e.statut ? ' ' + e.statut : '' }}</v-chip></td>
+              <td class="text-no-wrap" :class="{ 'text-medium-emphasis': e.terminal === 'Inconnu' }" :title="e.agent || 'En-tête du navigateur non enregistré'">
+                <v-icon :icon="iconeTerminal(e.terminal)" size="16" class="mr-1" />{{ e.terminal }}<small v-if="systemeConnu(e)" class="au-roles"> {{ e.systeme }}</small>
+              </td>
               <td>{{ e.ip }}</td>
             </tr>
-            <tr v-if="!resultat.evenements.length"><td colspan="7" class="text-center text-medium-emphasis py-6">Aucune action sur cette période avec ces filtres.</td></tr>
+            <tr v-if="!resultat.evenements.length"><td colspan="8" class="text-center text-medium-emphasis py-6">Aucune action sur cette période avec ces filtres.</td></tr>
           </tbody>
         </v-table>
         <div class="au-pagination">
@@ -247,6 +277,11 @@ async function demander(q?: string) {
           <div><dt>Date</dt><dd>{{ fmtDate(detail.horodatage) }}</dd></div>
           <div><dt>Utilisateur</dt><dd>{{ detail.email || '—' }} {{ detail.roles?.join(', ') }}</dd></div>
           <div><dt>Adresse IP</dt><dd>{{ detail.ip }}</dd></div>
+          <div>
+            <dt>Terminal</dt>
+            <dd><v-icon :icon="iconeTerminal(detail.terminal)" size="16" class="mr-1" />{{ detail.terminal }}<template v-if="systemeConnu(detail)"> · {{ detail.systeme }}</template></dd>
+          </div>
+          <div v-if="detail.agent"><dt>Client</dt><dd>{{ detail.agent }}</dd></div>
           <div><dt>Requête</dt><dd>{{ detail.methode }} {{ detail.chemin }}<template v-if="detail.requete">?{{ detail.requete }}</template></dd></div>
           <div><dt>Ressource</dt><dd>{{ detail.ressourceId ? '#' + detail.ressourceId : '—' }}</dd></div>
           <div><dt>Résultat</dt><dd>{{ detail.reussi ? 'Réussi' : 'Échec' }} {{ detail.statut ?? '' }} <template v-if="detail.dureeMs != null">({{ detail.dureeMs }} ms)</template></dd></div>
@@ -265,7 +300,7 @@ async function demander(q?: string) {
             Posez une question en français ; l'agent répond à partir des actions de la période
             <strong>{{ new Date(filtre.du).toLocaleDateString('fr-FR') }} → {{ new Date(filtre.au).toLocaleDateString('fr-FR') }}</strong>
             (modifiez-la dans les filtres). Citez un utilisateur ou un module pour cibler la réponse.
-            Seules des données du journal (e-mails, opérations, adresses IP) sont transmises au fournisseur d'IA, jamais le contenu des saisies.
+            Seules des données du journal (e-mails, opérations, adresses IP, type de terminal et système) sont transmises au fournisseur d'IA, jamais le contenu des saisies.
           </p>
           <div class="au-suggestions">
             <v-chip v-for="s in SUGGESTIONS" :key="s" size="small" variant="outlined" @click="demander(s)">{{ s }}</v-chip>
@@ -316,6 +351,8 @@ async function demander(q?: string) {
 .au-barre__val { display: block; height: 10px; border-radius: 4px; background: var(--color-primary, #15803d); }
 .au-barre__val--b { background: #2563eb; }
 .au-barre__val--c { background: #7c3aed; }
+.au-barre__val--d { background: #0891b2; }
+.au-barre__val--e { background: #d97706; }
 .au-echec { color: #b91c1c; }
 .au-table-wrap { overflow-x: auto; }
 .au-ligne { cursor: pointer; }

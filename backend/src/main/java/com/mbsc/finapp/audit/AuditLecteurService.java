@@ -116,6 +116,7 @@ public class AuditLecteurService {
             comptes(ev, e -> StringUtils.hasText(e.email()) ? e.email() : "(anonyme)"),
             comptes(ev, e -> StringUtils.hasText(e.module()) ? e.module() : "authentification"),
             comptes(ev, e -> e.operation() == null ? "?" : e.operation()),
+            comptes(ev, Evenement::terminal), comptes(ev, Evenement::systeme),
             jours.entrySet().stream().map(x -> new Jour(x.getKey(), x.getValue()[0], x.getValue()[1])).toList());
     }
 
@@ -134,13 +135,14 @@ public class AuditLecteurService {
     public String exporterCsv(Filtre f) {
         Resultat r = lire(f);
         StringBuilder sb = new StringBuilder("﻿");
-        sb.append("Horodatage;Type;Utilisateur;Roles;IP;Module;Operation;Ressource;Methode;Chemin;Statut;Resultat;Duree ms;Detail\n");
+        sb.append("Horodatage;Type;Utilisateur;Roles;IP;Terminal;Systeme;Module;Operation;Ressource;Methode;Chemin;Statut;Resultat;Duree ms;Detail;Agent\n");
         for (Evenement e : r.evenements()) {
             sb.append(String.join(";",
                 cell(e.horodatage().toString()), cell(e.type()), cell(e.email()), cell(e.roles() == null ? "" : String.join(",", e.roles())),
-                cell(e.ip()), cell(e.module()), cell(e.operation()), cell(e.ressourceId()), cell(e.methode()), cell(e.chemin()),
+                cell(e.ip()), cell(e.terminal()), cell(e.systeme()), cell(e.module()), cell(e.operation()), cell(e.ressourceId()),
+                cell(e.methode()), cell(e.chemin()),
                 cell(e.statut() == null ? "" : e.statut().toString()), cell(e.reussi() ? "OK" : "ECHEC"),
-                cell(e.dureeMs() == null ? "" : e.dureeMs().toString()), cell(e.detail()))).append('\n');
+                cell(e.dureeMs() == null ? "" : e.dureeMs().toString()), cell(e.detail()), cell(e.agent()))).append('\n');
         }
         return sb.toString();
     }
@@ -185,12 +187,15 @@ public class AuditLecteurService {
             JsonNode n = json.readTree(ligne);
             List<String> roles = new ArrayList<>();
             if (n.has("roles") && n.get("roles").isArray()) n.get("roles").forEach(x -> roles.add(x.asText()));
+            String agent = txt(n, "agent");
+            AgentUtilisateur.Terminal terminal = AgentUtilisateur.analyser(agent);
             return new Evenement(
                 n.hasNonNull("horodatage") ? Instant.parse(n.get("horodatage").asText()) : null,
                 txt(n, "type"), n.hasNonNull("utilisateurId") ? n.get("utilisateurId").asLong() : null, txt(n, "email"), roles,
                 txt(n, "ip"), txt(n, "module"), txt(n, "operation"), txt(n, "ressourceId"), txt(n, "methode"), txt(n, "chemin"),
                 txt(n, "requete"), n.hasNonNull("statut") ? n.get("statut").asInt() : null, n.path("reussi").asBoolean(true),
-                n.hasNonNull("dureeMs") ? n.get("dureeMs").asLong() : null, txt(n, "detail"));
+                n.hasNonNull("dureeMs") ? n.get("dureeMs").asLong() : null, txt(n, "detail"),
+                agent, terminal.type(), terminal.systeme());
         } catch (Exception e) {
             return null;
         }
@@ -205,11 +210,14 @@ public class AuditLecteurService {
         if (StringUtils.hasText(f.module()) && !f.module().equalsIgnoreCase(e.module() == null ? "authentification" : e.module())) return false;
         if (StringUtils.hasText(f.operation()) && !f.operation().equalsIgnoreCase(e.operation())) return false;
         if (StringUtils.hasText(f.type()) && !f.type().equalsIgnoreCase(e.type())) return false;
+        if (StringUtils.hasText(f.terminal()) && !f.terminal().equalsIgnoreCase(e.terminal())) return false;
+        if (StringUtils.hasText(f.systeme()) && !f.systeme().equalsIgnoreCase(e.systeme())) return false;
         if ("OK".equalsIgnoreCase(f.resultat()) && !e.reussi()) return false;
         if ("ECHEC".equalsIgnoreCase(f.resultat()) && e.reussi()) return false;
         if (StringUtils.hasText(f.q())) {
             String q = f.q().trim().toLowerCase(Locale.ROOT);
-            String hay = String.join(" ", nn(e.email()), nn(e.chemin()), nn(e.module()), nn(e.operation()), nn(e.ressourceId()), nn(e.ip()), nn(e.detail()), nn(e.requete()))
+            String hay = String.join(" ", nn(e.email()), nn(e.chemin()), nn(e.module()), nn(e.operation()), nn(e.ressourceId()), nn(e.ip()), nn(e.detail()), nn(e.requete()),
+                nn(e.terminal()), nn(e.systeme()))
                 .toLowerCase(Locale.ROOT);
             if (!hay.contains(q)) return false;
         }

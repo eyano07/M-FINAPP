@@ -21,6 +21,53 @@ class AuditLecteurServiceTest {
             + "\"chemin\":\"/" + module + "\",\"statut\":" + statut + ",\"reussi\":" + (statut < 400) + ",\"dureeMs\":10}";
     }
 
+    private static String ligneAvecAgent(String ts, String email, String module, String op, String agent) {
+        String base = ligne(ts, email, module, op, 200);
+        return base.substring(0, base.length() - 1) + ",\"agent\":\"" + agent + "\"}";
+    }
+
+    @Test
+    void terminalEtSystemeSontDeduitsDeLEnteteDuNavigateur(@TempDir Path dir) throws Exception {
+        String pc = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+        String tel = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
+        Files.writeString(dir.resolve("audit.log"), String.join("\n",
+            ligneAvecAgent("2026-10-10T08:00:00Z", "a@x.cd", "ventes", "VALIDER", pc),
+            ligneAvecAgent("2026-10-10T09:00:00Z", "b@x.cd", "clients", "CREER", tel),
+            ligne("2026-10-10T10:00:00Z", "c@x.cd", "ventes", "CREER", 200),      // ligne sans en-tête (avant son enregistrement)
+            ""), StandardCharsets.UTF_8);
+        AuditLecteurService s = new AuditLecteurService(dir.toString());
+        LocalDate d10 = LocalDate.of(2026, 10, 10);
+
+        var tout = s.lire(new Filtre(d10, d10, null, null, null, null, null, null)).evenements();
+        assertEquals(3, tout.size());
+        assertEquals("Inconnu", tout.get(0).terminal());          // c@x.cd : pas d'en-tête
+        assertEquals("Inconnu", tout.get(0).systeme());
+        assertNull(tout.get(0).agent());
+        assertEquals("Mobile", tout.get(1).terminal());           // b@x.cd
+        assertEquals("Android", tout.get(1).systeme());
+        assertEquals(tel, tout.get(1).agent());
+        assertEquals("Ordinateur", tout.get(2).terminal());       // a@x.cd
+        assertEquals("Windows", tout.get(2).systeme());
+
+        assertEquals(1, s.lire(new Filtre(d10, d10, null, null, null, null, null, null, "Mobile", null)).evenements().size());
+        assertEquals(1, s.lire(new Filtre(d10, d10, null, null, null, null, null, null, null, "windows")).evenements().size());   // casse indifférente
+        assertEquals(0, s.lire(new Filtre(d10, d10, null, null, null, null, null, null, "Tablette", null)).evenements().size());
+        assertEquals(0, s.lire(new Filtre(d10, d10, null, null, null, null, null, null, "Mobile", "Windows")).evenements().size());
+        assertEquals(1, s.lire(new Filtre(d10, d10, null, null, null, null, null, "android", null, null)).evenements().size());   // recherche libre
+
+        Synthese syn = s.synthese(new Filtre(d10, d10, null, null, null, null, null, null));
+        assertEquals(java.util.Set.of("Ordinateur", "Mobile", "Inconnu"),
+            syn.parTerminal().stream().map(Compte::cle).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(java.util.Set.of("Windows", "Android", "Inconnu"),
+            syn.parSysteme().stream().map(Compte::cle).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(1, syn.parTerminal().stream().filter(c -> c.cle().equals("Mobile")).findFirst().orElseThrow().total());
+
+        String csv = s.exporterCsv(new Filtre(d10, d10, null, null, null, null, null, null));
+        assertTrue(csv.contains("IP;Terminal;Systeme;Module"));
+        assertTrue(csv.contains("\"Mobile\";\"Android\""));
+        assertTrue(csv.contains("\"Ordinateur\";\"Windows\""));
+    }
+
     @Test
     void litLesArchivesEtLeFichierCourantAvecFiltres(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("audit.log"), String.join("\n",

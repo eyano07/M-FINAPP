@@ -1,6 +1,7 @@
 package com.mbsc.finapp.audit;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -29,6 +30,24 @@ class AuditServiceTest {
         assertEquals(new AuditService.Action("admin/ia", "MODIFIER", null), AuditService.decrire("PUT", "/admin/ia/openai"));
         assertEquals(new AuditService.Action("drh/bulletins", "PAYER", "12"), AuditService.decrire("POST", "/drh/bulletins/12/payer"));
         assertEquals(new AuditService.Action("ventes", "FACTURE_NORMALISEE", "5"), new AuditService.Action("ventes", "FACTURE_NORMALISEE", "5"));
+    }
+
+    @Test
+    void lEnteteUserAgentEstGardeTronqueOuAbsent() {
+        MockHttpServletRequest sans = new MockHttpServletRequest();
+        assertNull(AuditService.agent(sans));
+
+        MockHttpServletRequest vide = new MockHttpServletRequest();
+        vide.addHeader("User-Agent", "   ");
+        assertNull(AuditService.agent(vide));
+
+        MockHttpServletRequest normal = new MockHttpServletRequest();
+        normal.addHeader("User-Agent", "  Mozilla/5.0 (Windows NT 10.0)  ");
+        assertEquals("Mozilla/5.0 (Windows NT 10.0)", AuditService.agent(normal));
+
+        MockHttpServletRequest long_ = new MockHttpServletRequest();
+        long_.addHeader("User-Agent", "x".repeat(500));
+        assertEquals(300, AuditService.agent(long_).length());
     }
 
     @Test

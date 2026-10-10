@@ -32,6 +32,8 @@ public class AuditService {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Pattern PARAM_SENSIBLE = Pattern.compile("(?i)^(token|access_?token|refresh_?token|password|mot_?de_?passe|cle|secret|jeton|key)$");
     private static final List<String> EXCLUS = List.of("/auth", "/notifications", "/health", "/actuator");
+    /** Taille maximale de l'en-tête User-Agent conservé (assez pour garder « Mobile », placé après le navigateur). */
+    private static final int TAILLE_AGENT = 300;
 
     /** Action HTTP à tracer : modifie des données, hors rafraîchissement de jeton, notifications et supervision. */
     public static boolean aTracer(String methode, String chemin) {
@@ -107,6 +109,8 @@ public class AuditService {
         m.put("utilisateurId", utilisateurId);
         m.put("email", email);
         m.put("ip", adresseIpCourante());
+        String agent = agentCourant();
+        if (agent != null) m.put("agent", agent);
         m.put("reussi", reussi);
         if (detail != null) m.put("detail", detail);
         enregistrer(m);
@@ -118,8 +122,21 @@ public class AuditService {
         return ip;
     }
 
+    /** En-tête User-Agent de la requête (tronqué), d'où l'écran d'audit déduit le terminal et le système ; null s'il est absent. */
+    public static String agent(HttpServletRequest r) {
+        String a = r.getHeader("User-Agent");
+        if (a == null || a.isBlank()) return null;
+        a = a.strip();
+        return a.length() > TAILLE_AGENT ? a.substring(0, TAILLE_AGENT) : a;
+    }
+
     private static String adresseIpCourante() {
         RequestAttributes a = RequestContextHolder.getRequestAttributes();
         return a instanceof ServletRequestAttributes s ? adresseIp(s.getRequest()) : null;
+    }
+
+    private static String agentCourant() {
+        RequestAttributes a = RequestContextHolder.getRequestAttributes();
+        return a instanceof ServletRequestAttributes s ? agent(s.getRequest()) : null;
     }
 }
