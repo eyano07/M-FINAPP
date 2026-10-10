@@ -5,6 +5,8 @@ import com.mbsc.finapp.domain.ParametresEmcf;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.repository.GroupeTaxeDgiRepository;
 import com.mbsc.finapp.repository.ParametresEmcfRepository;
+import com.mbsc.finapp.domain.enums.ModuleMetier;
+import com.mbsc.finapp.service.ModuleConfigService;
 import com.mbsc.finapp.service.ia.ChiffrementSecretService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -23,20 +25,27 @@ public class ParametresEmcfService {
     private final ParametresEmcfRepository repository;
     private final GroupeTaxeDgiRepository groupes;
     private final ChiffrementSecretService chiffrement;
+    private final ModuleConfigService modules;
     private final TransactionTemplate tx;
 
     private volatile ConfigEmcf cache;
 
     public ParametresEmcfService(ParametresEmcfRepository repository, GroupeTaxeDgiRepository groupes,
-                                 ChiffrementSecretService chiffrement, PlatformTransactionManager tm) {
+                                 ChiffrementSecretService chiffrement, ModuleConfigService modules, PlatformTransactionManager tm) {
         this.repository = repository;
         this.groupes = groupes;
         this.chiffrement = chiffrement;
+        this.modules = modules;
         this.tx = new TransactionTemplate(tm);
         this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
+    /** Configuration effective : {@code actif} est l'état du module FACTURATION_NORMALISEE (écran Modules). */
     public ConfigEmcf config() {
+        return base().avecActif(modules.estActif(ModuleMetier.FACTURATION_NORMALISEE));
+    }
+
+    private ConfigEmcf base() {
         ConfigEmcf c = cache;
         if (c == null) {
             ParametresEmcf p = ligne();

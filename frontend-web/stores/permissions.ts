@@ -7,6 +7,8 @@ export type ModuleMetier =
   | 'BUDGET'
   // Rapprochement bancaire (relevés banque / mobile money), sous-module de COMPTABILITE.
   | 'RAPPROCHEMENT'
+  // Facture normalisée DGI, sous-module de VENTES : interrupteur dans Administration › Modules.
+  | 'FACTURATION_NORMALISEE'
   | 'PATRIMOINE'
   // Restaurant : module plat (pas de sous-modules), comme PATRIMOINE.
   | 'RESTAURANT'

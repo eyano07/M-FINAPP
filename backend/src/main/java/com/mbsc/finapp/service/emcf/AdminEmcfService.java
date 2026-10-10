@@ -45,13 +45,9 @@ public class AdminEmcfService {
         if (url != null && !url.matches("(?i)https?://[^\\s]+")) {
             throw new TransitionInvalideException("L'adresse du e-MCF doit commencer par http:// ou https://.");
         }
-        if (req.actif() && !"SIMULATION".equals(mode) && url == null) {
-            throw new TransitionInvalideException("Renseignez l'adresse du e-MCF pour activer le mode " + mode + ".");
-        }
         if (req.groupes() != null) validerGroupes(req.groupes());
         String jeton = StringUtils.hasText(req.jeton()) ? req.jeton().strip() : null;
         parametres.modifier(p -> {
-            p.setActif(req.actif());
             p.setMode(mode);
             p.setUrlBase(url);
             p.setNumeroDef(StringUtils.hasText(req.numeroDef()) ? req.numeroDef().strip() : null);

@@ -25,7 +25,7 @@ const succes = ref('')
 const action = ref<'' | 'enregistrer' | 'tester' | 'retirer'>('')
 const resultatTest = ref<{ ok: boolean, message: string } | null>(null)
 const voirJeton = ref(false)
-const form = reactive({ actif: false, mode: 'SIMULATION' as Etat['mode'], urlBase: '', jeton: '', numeroDef: '', delaiMs: 10000 })
+const form = reactive({ mode: 'SIMULATION' as Etat['mode'], urlBase: '', jeton: '', numeroDef: '', delaiMs: 10000 })
 const groupes = ref<Groupe[]>([])
 
 const MODES = [
@@ -36,7 +36,6 @@ const MODES = [
 
 function appliquer(e: Etat) {
   etat.value = e
-  form.actif = e.actif
   form.mode = e.mode
   form.urlBase = e.urlBase ?? ''
   form.numeroDef = e.numeroDef ?? ''
@@ -67,7 +66,7 @@ async function enregistrer() {
     appliquer(await api<Etat>('/admin/facturation-normalisee', {
       method: 'PUT',
       body: {
-        actif: form.actif, mode: form.mode, urlBase: form.urlBase.trim() || null, jeton: form.jeton || null,
+        mode: form.mode, urlBase: form.urlBase.trim() || null, jeton: form.jeton || null,
         numeroDef: form.numeroDef.trim() || null, delaiMs: Number(form.delaiMs) || 10000,
         groupes: groupes.value.map(g => ({ code: g.code.trim().toUpperCase(), libelle: g.libelle.trim(), taux: Number(g.taux) || 0, actif: g.actif })),
       },
@@ -140,8 +139,12 @@ const fmtMontant = (n: number, d: string) => `${Number(n).toLocaleString('fr-FR'
     <v-skeleton-loader v-if="chargement" type="card, card" />
     <template v-else>
       <v-card class="classroom-card pa-5 mb-4">
-        <v-switch v-model="form.actif" color="primary" hide-details inset label="Émettre des factures normalisées pour les ventes validées" />
-        <div class="fn-grille mt-4">
+        <v-alert :type="etat?.actif ? 'success' : 'warning'" variant="tonal" density="compact" class="mb-4"
+          :icon="etat?.actif ? 'mdi-check-circle-outline' : 'mdi-power-plug-off-outline'">
+          La facture normalisée est <strong>{{ etat?.actif ? 'activée' : 'désactivée' }}</strong>. Elle s'active ou se coupe dans
+          <NuxtLink to="/admin/modules">Administration › Modules</NuxtLink> (Ventes › Facture normalisée).
+        </v-alert>
+        <div class="fn-grille">
           <v-select v-model="form.mode" :items="MODES" label="Mode" variant="outlined" density="comfortable" hide-details="auto" />
           <v-text-field v-model="form.numeroDef" label="Numéro du dispositif (DEF / NIM)" variant="outlined" density="comfortable" hide-details="auto" />
           <v-text-field v-model="form.urlBase" label="Adresse du e-MCF" placeholder="http://192.168.1.50:8080" variant="outlined" density="comfortable"
