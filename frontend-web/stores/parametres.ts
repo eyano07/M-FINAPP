@@ -33,6 +33,17 @@ function hexToRgbTriplet(hex: string): string | null {
   return m ? [m[1], m[2], m[3]].map(h => parseInt(h, 16)).join(',') : null
 }
 
+/** Luminance relative WCAG d'une couleur « #rrggbb » (0 = noir, 1 = blanc) ; 0 si le format est invalide. */
+function luminanceRelative(hex: string): number {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!m) return 0
+  const [r, g, b] = [m[1], m[2], m[3]].map((h) => {
+    const v = parseInt(h, 16) / 255
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
 /** Assombrit un triplet "r,g,b" — approximation du darken-1 que Vuetify calcule lui-meme a la generation du theme. */
 function assombrirRgbTriplet(rgb: string, facteur = 0.15): string {
   return rgb.split(',').map(v => Math.round(Number(v) * (1 - facteur))).join(',')
@@ -56,6 +67,8 @@ function assombrirRgbTriplet(rgb: string, facteur = 0.15): string {
 function appliquerCouleurPrimaire(couleur: string) {
   if (!import.meta.client || !couleur) return
   document.documentElement.style.setProperty('--color-primary', couleur)
+  // Texte posé sur la couleur de marque (bandeau imprimé) : sombre sur une couleur claire, blanc sinon.
+  document.documentElement.style.setProperty('--color-on-primary', luminanceRelative(couleur) > 0.42 ? '#111827' : '#ffffff')
 
   let nomTheme = 'classroomLight'
   try {

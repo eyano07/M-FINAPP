@@ -247,7 +247,8 @@ body {
     background: #fff !important;
   }
 
-  .v-application {
+  .v-application,
+  .v-main {
     background: #fff !important;
   }
 
@@ -360,65 +361,194 @@ body {
    habille l'en-tete de toutes les impressions (classe print-entete posee
    sur l'en-tete imprime de chaque page). Le modele est porte par
    <html data-entete="..."> (stores/parametres.ts), la couleur par
-   --color-primary. CLASSIQUE = style propre a chaque page (filet epais).
-   Memes modeles que les PDF du serveur (EnteteDocumentRendu).
+   --color-primary et --color-on-primary (texte lisible sur cette couleur).
+   CLASSIQUE = style propre a chaque page (filet epais).
+   Memes cinq modeles que les PDF du serveur (EnteteDocumentRendu) : bandeau
+   en degrade avec cercles translucides, epure a trait d'accent, institutionnel
+   centre a ornement, lateral a rail de couleur, encadre en carte arrondie.
    ============================================================ */
 @media print {
   html[data-entete] .print-entete {
+    position: relative;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* Bandeau : aplat de couleur, textes en blanc */
+  /* ---------- Bandeau : degrade de la couleur du theme, cercles translucides ---------- */
   html[data-entete="BANDEAU"] .print-entete {
-    background: var(--color-primary) !important;
-    border-bottom: 3px solid var(--color-primary-darker) !important;
-    padding: 12px 16px !important;
+    padding: 16px 22px !important;
+    gap: 24px !important;
+    border: 0 !important;
+    border-radius: 14px;
+    color: var(--color-on-primary, #fff);
+    background:
+      radial-gradient(circle at 94% -30%, rgba(255, 255, 255, 0.17) 0 84px, transparent 85px),
+      radial-gradient(circle at 80% 140%, rgba(255, 255, 255, 0.1) 0 62px, transparent 63px),
+      linear-gradient(105deg, var(--color-primary-darker), var(--color-primary)) !important;
   }
-  html[data-entete="BANDEAU"] .print-entete [class*="__"],
-  html[data-entete="BANDEAU"] .print-entete strong,
-  html[data-entete="BANDEAU"] .print-entete__meta,
-  html[data-entete="BANDEAU"] .print-entete__meta * { color: #fff !important; }
-  html[data-entete="BANDEAU"] .print-entete__logo { background: #fff !important; }
+  html[data-entete="BANDEAU"] .print-entete__logo {
+    width: 46px !important;
+    height: 46px !important;
+    border-radius: 13px !important;
+    background: #fff !important;
+    border: 0 !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__logo img { padding: 5px; }
   html[data-entete="BANDEAU"] .print-entete__logo .v-icon { color: var(--color-primary) !important; }
+  html[data-entete="BANDEAU"] .print-entete__marque { gap: 14px !important; }
+  html[data-entete="BANDEAU"] .print-entete__nom {
+    color: var(--color-on-primary, #fff) !important;
+    font-size: 1.25rem !important;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  html[data-entete="BANDEAU"] .etat-print-header__doc,
+  html[data-entete="BANDEAU"] .etat-print-header__service {
+    color: color-mix(in srgb, var(--color-on-primary, #fff) 80%, var(--color-primary)) !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__meta {
+    color: var(--color-on-primary, #fff) !important;
+    padding-left: 18px;
+    border-left: 1px solid color-mix(in srgb, var(--color-on-primary, #fff) 38%, transparent);
+    font-size: 0.72rem !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__meta strong { color: var(--color-on-primary, #fff) !important; }
 
-  /* Epure : simple filet fin, nom en couleur */
-  html[data-entete="EPURE"] .print-entete { border-bottom: 1px solid var(--color-primary) !important; }
-  html[data-entete="EPURE"] .print-entete__nom { color: var(--color-primary) !important; }
+  /* ---------- Epure : blanc, trait d'accent, texte noir ---------- */
+  html[data-entete="EPURE"] .print-entete {
+    padding: 14px 0 14px !important;
+    border-bottom: 1px solid #e5e7eb !important;
+  }
+  html[data-entete="EPURE"] .print-entete::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 30px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--color-primary);
+  }
+  html[data-entete="EPURE"] .print-entete__marque { padding-top: 8px; }
+  html[data-entete="EPURE"] .print-entete__meta { padding-top: 8px; }
+  html[data-entete="EPURE"] .print-entete__nom {
+    color: #111827 !important;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  html[data-entete="EPURE"] .etat-print-header__doc { color: var(--color-primary-dark) !important; }
+  html[data-entete="EPURE"] .print-entete__meta { color: #6b7280 !important; font-size: 0.72rem !important; }
 
-  /* Institutionnel : tout centre, double filet */
+  /* ---------- Institutionnel : tout centre, nom espace, ornement a losange ---------- */
   html[data-entete="CENTRE"] .print-entete {
     flex-direction: column !important;
     align-items: center !important;
     text-align: center !important;
-    gap: 6px !important;
-    border-bottom: 4px double var(--color-primary) !important;
+    gap: 9px !important;
+    padding-bottom: 22px !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-primary) 42%, white) !important;
   }
-  html[data-entete="CENTRE"] .print-entete__marque { flex-direction: column !important; text-align: center; gap: 4px !important; }
+  html[data-entete="CENTRE"] .print-entete::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -4px;
+    width: 7px;
+    height: 7px;
+    margin-left: -3.5px;
+    transform: rotate(45deg);
+    background: var(--color-primary);
+    outline: 5px solid #fff;
+  }
+  html[data-entete="CENTRE"] .print-entete__marque { flex-direction: column !important; text-align: center; gap: 8px !important; }
+  html[data-entete="CENTRE"] .print-entete__logo { width: 44px !important; height: 44px !important; border-radius: 50% !important; }
+  html[data-entete="CENTRE"] .print-entete__nom {
+    color: var(--color-primary-darker) !important;
+    font-size: 1.1rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+  }
+  html[data-entete="CENTRE"] .etat-print-header__doc { letter-spacing: 0.2em !important; }
   html[data-entete="CENTRE"] .print-entete__meta {
     align-items: center !important;
     justify-content: center !important;
     text-align: center !important;
     flex-direction: row !important;
     flex-wrap: wrap;
-    gap: 4px 14px !important;
+    gap: 3px 0 !important;
+    font-size: 0.72rem !important;
+    color: #6b7280 !important;
   }
-  html[data-entete="CENTRE"] .print-entete__nom { color: var(--color-primary-darker) !important; }
+  html[data-entete="CENTRE"] .print-entete__meta span + span {
+    margin-left: 11px;
+    padding-left: 11px;
+    border-left: 1px solid #d1d5db;
+  }
 
-  /* Lateral : barre de couleur a gauche */
+  /* ---------- Lateral : rail de couleur le long de l'en-tete, filet signe ----------
+     (Chrome ne peint pas dans les marges de la page : le rail longe l'en-tete, dans la zone imprimable.) */
   html[data-entete="LATERAL"] .print-entete {
-    border-left: 8px solid var(--color-primary) !important;
+    padding: 4px 0 16px 22px !important;
     border-bottom: 1px solid #e5e7eb !important;
-    padding-left: 14px !important;
   }
-  html[data-entete="LATERAL"] .print-entete__nom { color: var(--color-primary) !important; }
+  html[data-entete="LATERAL"] .print-entete::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 16px;
+    width: 7px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--color-primary), var(--color-primary-darker));
+  }
+  html[data-entete="LATERAL"] .print-entete::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -2px;
+    width: 46px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--color-primary);
+  }
+  html[data-entete="LATERAL"] .print-entete__nom { color: var(--color-primary-darker) !important; letter-spacing: 0.02em; }
+  html[data-entete="LATERAL"] .print-entete__meta {
+    padding-left: 13px;
+    border-left: 2.5px solid var(--color-primary);
+    font-size: 0.72rem !important;
+  }
 
-  /* Encadre : cartouche teinte borde de couleur */
+  /* ---------- Encadre : carte arrondie teintee, pastilles ---------- */
   html[data-entete="ENCADRE"] .print-entete {
-    border: 1.5px solid var(--color-primary) !important;
-    background: var(--color-primary-lighter) !important;
-    border-radius: 8px;
-    padding: 10px 14px !important;
+    padding: 15px 20px !important;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 26%, white) !important;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--color-primary) 5%, white) !important;
+    outline: 3px solid color-mix(in srgb, var(--color-primary) 6%, white);
   }
-  html[data-entete="ENCADRE"] .print-entete__nom { color: var(--color-primary-darker) !important; }
+  html[data-entete="ENCADRE"] .print-entete__logo {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 12px !important;
+    background: #fff !important;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, white) !important;
+  }
+  html[data-entete="ENCADRE"] .print-entete__logo .v-icon { color: var(--color-primary) !important; }
+  html[data-entete="ENCADRE"] .print-entete__nom {
+    color: var(--color-primary-darker) !important;
+    font-size: 1.2rem !important;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  html[data-entete="ENCADRE"] .print-entete__meta { align-items: flex-end; gap: 4px !important; }
+  html[data-entete="ENCADRE"] .print-entete__meta > span {
+    display: inline-block;
+    padding: 2px 11px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 11%, white);
+    color: var(--color-primary-darker) !important;
+    font-size: 0.7rem !important;
+  }
+  html[data-entete="ENCADRE"] .print-entete__meta strong { color: var(--color-primary-darker) !important; }
 }

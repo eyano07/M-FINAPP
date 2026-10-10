@@ -8,11 +8,11 @@ export type ModeleEntete = 'CLASSIQUE' | 'BANDEAU' | 'EPURE' | 'CENTRE' | 'LATER
 
 export const MODELES_ENTETE: { value: ModeleEntete, titre: string, description: string }[] = [
   { value: 'CLASSIQUE', titre: 'Classique', description: 'Logo à gauche, bandeau incliné à droite avec RCCM, ID. Nat et NIF.' },
-  { value: 'BANDEAU', titre: 'Bandeau', description: 'Bandeau plein de la couleur du thème, textes en blanc.' },
-  { value: 'EPURE', titre: 'Épuré', description: 'Minimaliste : nom en couleur, identifiants en gris, un simple filet.' },
-  { value: 'CENTRE', titre: 'Institutionnel', description: 'Logo et nom centrés, double filet : pour les courriers officiels.' },
-  { value: 'LATERAL', titre: 'Latéral', description: 'Barre de couleur le long du bord gauche de chaque page.' },
-  { value: 'ENCADRE', titre: 'Encadré', description: 'En-tête et pied de page dans des cartouches teintés.' },
+  { value: 'BANDEAU', titre: 'Bandeau', description: 'Bandeau en dégradé de la couleur du thème, logo sur tuile blanche.' },
+  { value: 'EPURE', titre: 'Épuré', description: 'Minimaliste : texte noir, un trait d’accent, identifiants en colonne.' },
+  { value: 'CENTRE', titre: 'Institutionnel', description: 'Tout centré, nom espacé et ornement à losange : pour les courriers officiels.' },
+  { value: 'LATERAL', titre: 'Latéral', description: 'Rail de couleur sur le bord gauche de chaque page, nom de l’entreprise en vertical.' },
+  { value: 'ENCADRE', titre: 'Encadré', description: 'En-tête et pied en cartes arrondies, identifiants en pastilles.' },
 ]
 
 export const MODELE_ENTETE_DEFAUT: ModeleEntete = 'CLASSIQUE'
