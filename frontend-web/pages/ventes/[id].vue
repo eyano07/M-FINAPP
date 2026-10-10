@@ -124,7 +124,7 @@ async function ouvrirPdf(type: 'VENTE' | 'AVOIR') {
 }
 const fmtHeure = (d?: string | null) => (d ? new Date(d).toLocaleString('fr-FR') : '')
 
-const canWrite = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['CAISSIER']))
 const peutValider = computed(() => canWrite.value && vente.value?.statut === 'BROUILLON')
 // Annuler defait une vente deja comptabilisee : reserve a l'administrateur.
 const peutAnnuler = computed(() => auth.hasRole('ADMIN') && vente.value?.statut === 'VALIDEE')

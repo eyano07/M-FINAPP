@@ -67,7 +67,7 @@ public class BanqueService {
     // Saisie directe
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionBancaireResponse enregistrer(TransactionBancaireRequest req) {
         User operateur = currentUser.requireUser();
@@ -127,7 +127,7 @@ public class BanqueService {
     // Paiement d'une note de frais (TRANSMISE_CAISSE -> PAYEE)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionBancaireResponse payerNote(Long noteId, Long etablissementId) {
         User operateur = currentUser.requireUser();

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const rolesStore = useRolesStore()
-definePageMeta({ module: 'CAISSE', niveau: 'ECRITURE' })
+definePageMeta({ module: 'CAISSE', niveau: 'ECRITURE', roles: ['CAISSIER'] })
 
 interface Transaction {
   id: number

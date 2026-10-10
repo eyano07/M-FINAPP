@@ -57,12 +57,12 @@ const canWrite = computed(() => auth.hasRole('ADMIN'))
 const peutGererStatut = computed(() => auth.hasAnyRole(['ADMIN', 'RESP_RESTAURANT', 'CAISSIER']))
 /**
  * Règlement de l'addition : distinct de peutGererStatut ci-dessus — le
- * serveur (VenteService.reglerAdditionTable) le réserve à CAISSIER/ADMIN,
- * le responsable restaurant n'y a pas accès. Utiliser peutGererStatut ici
+ * serveur (VenteService.reglerAdditionTable) le réserve au CAISSIER,
+ * ni le responsable restaurant ni l'administrateur n'y ont accès. Utiliser peutGererStatut ici
  * affichait le bouton puis le refusait après une saisie complète (canal,
  * date) : la garde doit correspondre exactement à celle du serveur.
  */
-const peutEncaisser = computed(() => auth.hasAnyRole(['ADMIN', 'CAISSIER']))
+const peutEncaisser = computed(() => auth.hasAnyRole(['CAISSIER']))
 
 /** Pas de la grille magnetique (px) — doit rester egal a --plan-grille dans le CSS ci-dessous. */
 const PAS_GRILLE = 22

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'VENTES', niveau: 'ECRITURE' })
+definePageMeta({ module: 'VENTES', niveau: 'ECRITURE', roles: ['CAISSIER'] })
 
 interface Article {
   id: number

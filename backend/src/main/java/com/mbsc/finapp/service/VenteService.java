@@ -111,7 +111,7 @@ public class VenteService {
     // ---------------------------------------------------------------------
 
     /** Enregistre la vente en BROUILLON : aucune ecriture, aucun mouvement de stock. */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse creer(VenteRequest req) {
         User auteur = currentUser.requireUser();
@@ -198,7 +198,7 @@ public class VenteService {
      * au-dela du brouillon : une vente VALIDEE a deja genere sa sortie de
      * stock et son ecriture, la completer silencieusement les fausserait.
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse ajouterLigne(Long id, AjouterLigneVenteRequest req) {
         Vente vente = charger(id);
@@ -231,7 +231,7 @@ public class VenteService {
     // Validation : le seul endroit qui produit des effets comptables
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse valider(Long id) {
         Vente vente = charger(id);
@@ -365,7 +365,7 @@ public class VenteService {
      * principe que {@link EcartChangeService}, applique ici a une creance
      * plutot qu'a une charge.</p>
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse reglerCreance(Long id, ReglerCreanceRequest req) {
         return appliquerReglementCreance(charger(id), req).vente();
@@ -378,7 +378,7 @@ public class VenteService {
      * traçabilite comptable qu'un reglement individuel, juste declenchee en
      * une seule interaction cote caisse).
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public AdditionReglementResponse reglerAdditionTable(Long tableId, ReglerCreanceRequest req) {
         List<Vente> creances = venteRepository.findActivesByTableIdIn(List.of(tableId)).stream()

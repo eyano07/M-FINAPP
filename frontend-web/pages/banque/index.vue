@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'BANQUE', niveau: 'ECRITURE' })
+definePageMeta({ module: 'BANQUE', niveau: 'ECRITURE', roles: ['CAISSIER'] })
 
 interface Transaction {
   id: number

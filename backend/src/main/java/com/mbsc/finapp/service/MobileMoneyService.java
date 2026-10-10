@@ -67,7 +67,7 @@ public class MobileMoneyService {
     // Saisie directe
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionMobileMoneyResponse enregistrer(TransactionMobileMoneyRequest req) {
         User operateur = currentUser.requireUser();
@@ -127,7 +127,7 @@ public class MobileMoneyService {
     // Paiement d'une note de frais (TRANSMISE_CAISSE -> PAYEE)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionMobileMoneyResponse payerNote(Long noteId, Long etablissementId) {
         User operateur = currentUser.requireUser();

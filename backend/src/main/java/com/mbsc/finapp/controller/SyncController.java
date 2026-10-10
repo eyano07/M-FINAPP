@@ -23,7 +23,7 @@ public class SyncController {
     private final SyncService syncService;
 
     @PostMapping("/batch")
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     public SyncBatchResponse batch(@Valid @RequestBody SyncBatchRequest request) {
         return syncService.traiterLot(request);
     }

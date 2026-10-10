@@ -98,7 +98,7 @@ public class CaisseService {
     // Saisie directe
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse enregistrer(TransactionCaisseRequest req) {
         User caissier = currentUser.requireUser();
@@ -163,7 +163,7 @@ public class CaisseService {
      * credit et les sorties au debit, et se solde en cout des marchandises
      * vendues.</p>
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse acheterMarchandise(AchatMarchandiseRequest req) {
         User caissier = currentUser.requireUser();
@@ -252,7 +252,7 @@ public class CaisseService {
      * qu'il soit independant de la vente : un camion peut etre paye avant ou
      * apres avoir ete revendu.</p>
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse reglerCamionsMinerai(ReglementCamionsRequest req) {
         User caissier = currentUser.requireUser();

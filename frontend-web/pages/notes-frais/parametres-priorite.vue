@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// Arbitrage de trésorerie : réservé au DA (l'ADMIN y accède pour le support).
+// Arbitrage de trésorerie : réservé exclusivement au DA (l'administrateur n'y a pas accès, ni au menu ni à l'API).
 // Nuxt donne la priorité à cette route statique sur /notes-frais/[id].
-definePageMeta({ roles: ['DA', 'ADMIN'] })
+definePageMeta({ roles: ['DA'] })
 
 const api = useApi()
 const auth = useAuthStore()
-const canWrite = computed(() => auth.hasAnyRole(['DA', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['DA']))
 
 const loading = ref(true)
 const saving = ref(false)

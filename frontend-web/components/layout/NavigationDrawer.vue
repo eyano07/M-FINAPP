@@ -55,20 +55,21 @@ const items: NavItem[] = [
   { title: 'Notes de frais', icon: 'mdi-receipt-text-outline', to: '/notes-frais', roles: AVEC_NOTES_FRAIS },
   // Arbitrage de tresorerie : le DA y fixe la reserve minimale a preserver
   // par priorite de note (voir ParametresPrioriteNote cote backend).
-  { title: 'Seuils de priorité', icon: 'mdi-tune-vertical', to: '/notes-frais/parametres-priorite', roles: ['DA', 'ADMIN'] },
+  { title: 'Seuils de priorité', icon: 'mdi-tune-vertical', to: '/notes-frais/parametres-priorite', roles: ['DA'] },
   // Ni role ni module : accessible a tout compte authentifie, comme /profil
   // (auto-service, pas une fonctionnalite metier a activer/desactiver).
   { title: 'Papier à en-tête', icon: 'mdi-printer-outline', to: '/papier-entete' },
   // Le comptable consulte la tresorerie (journal/grand livre/balance) mais
   // n'opere pas la caisse (encaissement/decaissement direct) : cet ecran-ci
   // reste reserve aux roles qui en avaient deja l'usage.
-  // Ecran d'operation (encaissement/decaissement), pas de consultation : reserve
-  // aux roles qui l'operent reellement (niveau ECRITURE requis, comme la page).
-  { title: 'Caisse', icon: 'mdi-cash-register', to: '/caisse', module: 'CAISSE', niveau: 'ECRITURE', roles: ['CAISSIER', 'ADMIN'] },
+  // Ecrans d'operation (encaissement/decaissement : Caisse, Banque, Mobile Money), pas de
+  // consultation : reserves au CAISSIER, le seul role que le serveur autorise a operer.
+  // L'administrateur consulte les journaux, le grand livre et la balance, il n'encaisse ni ne decaisse.
+  { title: 'Caisse', icon: 'mdi-cash-register', to: '/caisse', module: 'CAISSE', niveau: 'ECRITURE', roles: ['CAISSIER'] },
   { title: 'Journal de caisse', icon: 'mdi-notebook-outline', to: '/caisse/journal', module: 'CAISSE' },
-  { title: 'Banque', icon: 'mdi-bank', to: '/banque', module: 'BANQUE' },
+  { title: 'Banque', icon: 'mdi-bank', to: '/banque', module: 'BANQUE', roles: ['CAISSIER'] },
   { title: 'Journal de banque', icon: 'mdi-notebook-outline', to: '/banque/journal', module: 'BANQUE' },
-  { title: 'Mobile Money', icon: 'mdi-cellphone', to: '/mobile-money', module: 'MOBILE_MONEY' },
+  { title: 'Mobile Money', icon: 'mdi-cellphone', to: '/mobile-money', module: 'MOBILE_MONEY', roles: ['CAISSIER'] },
   { title: 'Journal de mobile money', icon: 'mdi-notebook-outline', to: '/mobile-money/journal', module: 'MOBILE_MONEY' },
   { title: 'Grand Livre', icon: 'mdi-book-open-variant', to: '/grand-livre', module: 'CAISSE' },
   { title: 'Balance', icon: 'mdi-scale-balance', to: '/balance', module: 'CAISSE', essentiel: true },
