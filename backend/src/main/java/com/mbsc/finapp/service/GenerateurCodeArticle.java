@@ -9,9 +9,10 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
- * Code d'un article de la carte (boisson), composé à partir de son libellé et,
- * s'il existe, de sa société : « Primus 55CL » de « Bracongo » donne
- * {@code BRAC-PRIM-55CL}.
+ * Code d'un article de la carte, composé à partir de son libellé et, pour une boisson,
+ * de sa société : « Primus 55CL » de « Bracongo » donne {@code BRAC-PRIM-55CL}. Un plat
+ * n'a pas de société : le préfixe {@value #PREFIXE_PLAT} en tient lieu et le distingue
+ * des boissons (« Omelette » donne {@code PLAT-OMEL}).
  *
  * <p>Le code se lit en trois blocs séparés par des tirets :</p>
  * <ul>
@@ -35,6 +36,9 @@ public final class GenerateurCodeArticle {
     /** Taille de la colonne articles.code. */
     static final int LONGUEUR_MAX = 40;
 
+    /** Premier bloc du code d'un plat, qui n'a pas de société. */
+    static final String PREFIXE_PLAT = "PLAT";
+
     private static final int LETTRES_SOCIETE = 4;
     private static final int INITIALES_MAX = 4;
     private static final int MOTS_LIBELLE = 3;
@@ -43,7 +47,7 @@ public final class GenerateurCodeArticle {
 
     private static final Set<String> MOTS_VIDES = Set.of(
         "DE", "DU", "DES", "LA", "LE", "LES", "ET", "D", "L", "AU", "AUX", "EN", "A", "UN", "UNE",
-        "THE", "OF", "AND");
+        "AVEC", "SANS", "POUR", "PAR", "SUR", "SOUS", "DANS", "THE", "OF", "AND");
     private static final Set<String> FORMES_JURIDIQUES = Set.of(
         "SARL", "SA", "SAS", "SASU", "SPRL", "SNC", "SCS", "LTD", "LLC", "INC", "CO", "CIE");
     private static final Set<String> UNITES = Set.of("CL", "ML", "DL", "L", "KG", "G", "MG", "CM", "MM", "M");
@@ -63,7 +67,16 @@ public final class GenerateurCodeArticle {
      * @return le code, ou une chaîne vide si le libellé ne contient ni lettre ni chiffre
      */
     public static String generer(String libelle, String societe, Predicate<String> existe) {
-        String base = codeDeBase(libelle, societe);
+        return libre(codeDeBase(libelle, societe), existe);
+    }
+
+    /** Code libre d'un plat : le préfixe {@value #PREFIXE_PLAT}, les mots de son libellé et sa contenance éventuelle. */
+    public static String genererPlat(String libelle, Predicate<String> existe) {
+        return libre(codeDePlat(libelle), existe);
+    }
+
+    /** La base elle-même si elle est libre, sinon la première variante numérotée (-2, -3...) qui l'est. */
+    private static String libre(String base, Predicate<String> existe) {
         if (base.isEmpty() || !existe.test(base)) {
             return base;
         }
@@ -77,8 +90,18 @@ public final class GenerateurCodeArticle {
         throw new IllegalStateException("Aucun code disponible pour « " + base + " »");
     }
 
-    /** Le code avant toute vérification d'unicité. */
+    /** Le code d'une boisson avant toute vérification d'unicité. */
     static String codeDeBase(String libelle, String societe) {
+        return composer(libelle, abreviationSociete(societe));
+    }
+
+    /** Le code d'un plat avant toute vérification d'unicité. */
+    static String codeDePlat(String libelle) {
+        return composer(libelle, PREFIXE_PLAT);
+    }
+
+    /** Assemble le bloc initial (société ou préfixe, éventuellement vide), les mots du libellé et la contenance. */
+    private static String composer(String libelle, String blocInitial) {
         List<String> jetons = fusionnerMesures(jetons(libelle));
         if (jetons.isEmpty()) {
             return "";
@@ -92,9 +115,8 @@ public final class GenerateurCodeArticle {
             .map(t -> tronquer(t, LONGUEUR_MESURE_MAX)).orElse(null);
 
         List<String> blocs = new ArrayList<>();
-        String abreviationSociete = abreviationSociete(societe);
-        if (!abreviationSociete.isEmpty()) {
-            blocs.add(abreviationSociete);
+        if (!blocInitial.isEmpty()) {
+            blocs.add(blocInitial);
         }
         if (mots.isEmpty() && mesure == null) {
             // Libellé fait uniquement de mots vides (« De la ») : à défaut de mieux, son premier mot.

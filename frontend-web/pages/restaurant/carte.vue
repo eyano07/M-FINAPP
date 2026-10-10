@@ -219,11 +219,12 @@ function ouvrirEdition(a: ArticleCarte) {
   dialog.value = true
 }
 
-// ── Code d'une nouvelle boisson ───────────────────────────────────────────────────────
-// Il n'est pas saisi : le serveur le compose d'après le libellé et la société (ex. « Primus 55CL »
-// de « Bracongo » : BRAC-PRIM-55CL) et s'assure qu'il est libre. Un plat, ou une boisson déjà
-// créée, garde un code modifiable à la main.
-const codeAutomatique = computed(() => form.type === 'BOISSON' && editId.value === null)
+// ── Code d'un nouvel article ──────────────────────────────────────────────────────────
+// Il n'est pas saisi : le serveur le compose d'après le libellé et, pour une boisson, la société
+// (ex. « Primus 55CL » de « Bracongo » : BRAC-PRIM-55CL ; un plat reçoit le préfixe PLAT :
+// « Omelette » donne PLAT-OMEL) et s'assure qu'il est libre. Un article déjà créé garde un code
+// modifiable à la main.
+const codeAutomatique = computed(() => editId.value === null)
 const codeEnCours = ref(false)
 let numeroSuggestion = 0
 let minuterieCode: ReturnType<typeof setTimeout> | undefined
@@ -237,8 +238,8 @@ async function suggererCode() {
   }
   codeEnCours.value = true
   try {
-    const query: Record<string, string> = { libelle: form.libelle.trim() }
-    if (form.societe.trim()) query.societe = form.societe.trim()
+    const query: Record<string, string> = { libelle: form.libelle.trim(), type: form.type }
+    if (form.type === 'BOISSON' && form.societe.trim()) query.societe = form.societe.trim()
     const reponse = await api<{ code: string }>('/restaurant/carte/code-suggere', { query })
     // Une saisie plus récente a pu relancer la demande entre-temps : seule la dernière compte.
     if (numero === numeroSuggestion) form.code = reponse.code || ''
@@ -261,10 +262,6 @@ watch([() => form.libelle, () => form.societe, () => form.type, dialog, editId],
   }
   codeEnCours.value = true
   minuterieCode = setTimeout(suggererCode, 300)
-})
-// Passer de « Boisson » à « Plat » en pleine création : le code généré n'a plus de sens pour un plat.
-watch(() => form.type, (type, avant) => {
-  if (dialog.value && editId.value === null && avant === 'BOISSON' && type === 'PLAT') form.code = ''
 })
 onBeforeUnmount(() => clearTimeout(minuterieCode))
 
@@ -594,10 +591,11 @@ async function confirmerSuppression() {
           </v-btn>
         </v-btn-toggle>
 
-        <!-- Nouvelle boisson : le code se déduit du libellé et de la société, il vient donc après eux. -->
+        <!-- Nouvel article : le code se déduit du libellé (et de la société d'une boisson), il vient donc après eux. -->
         <template v-if="codeAutomatique">
           <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
           <v-text-field
+            v-if="form.type === 'BOISSON'"
             v-model="form.societe" label="Société (facultatif)" maxlength="100"
             hint="Brasserie, fabricant ou fournisseur, ex. Bracongo" persistent-hint
             variant="outlined" density="comfortable" class="mb-3"
@@ -605,8 +603,9 @@ async function confirmerSuppression() {
           <v-text-field
             :model-value="form.code" label="Code" readonly :loading="codeEnCours"
             prepend-inner-icon="mdi-auto-fix" bg-color="grey-lighten-5"
-            placeholder="Généré à partir du libellé et de la société"
-            hint="Généré automatiquement à partir du libellé et de la société" persistent-hint
+            :placeholder="form.type === 'BOISSON' ? 'Généré à partir du libellé et de la société' : 'Généré à partir du libellé'"
+            :hint="form.type === 'BOISSON' ? 'Généré automatiquement à partir du libellé et de la société' : 'Généré automatiquement à partir du libellé (préfixe PLAT)'"
+            persistent-hint
             variant="outlined" density="comfortable" class="mb-3"
           />
         </template>

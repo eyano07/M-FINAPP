@@ -235,16 +235,20 @@ public class RestaurantService {
     }
 
     /**
-     * Code proposé pour une nouvelle boisson, déduit de son libellé et de sa société (voir
-     * {@link GenerateurCodeArticle}) et libre au moment de l'appel : l'écran de création
-     * l'affiche au fil de la saisie. Il est à nouveau demandé juste avant l'enregistrement, et
-     * l'unicité reste contrôlée à la création.
+     * Code proposé pour un nouvel article de la carte, déduit de son libellé (et de sa société pour une
+     * boisson ; un plat reçoit le préfixe {@code PLAT}, voir {@link GenerateurCodeArticle}) et libre au
+     * moment de l'appel : l'écran de création l'affiche au fil de la saisie. Il est à nouveau demandé
+     * juste avant l'enregistrement, et l'unicité reste contrôlée à la création.
+     *
+     * @param type {@code PLAT} ou {@code BOISSON} ; absent, c'est une boisson (comportement d'origine)
      */
     @PreAuthorize(ECRITURE_CARTE)
     @Transactional(readOnly = true)
-    public CodeArticleSuggereResponse suggererCodeArticleCarte(String libelle, String societe) {
-        return new CodeArticleSuggereResponse(
-            GenerateurCodeArticle.generer(libelle, societe, articleRepository::existsByCode));
+    public CodeArticleSuggereResponse suggererCodeArticleCarte(String libelle, String societe, TypeArticle type) {
+        String code = type == TypeArticle.PLAT
+            ? GenerateurCodeArticle.genererPlat(libelle, articleRepository::existsByCode)
+            : GenerateurCodeArticle.generer(libelle, societe, articleRepository::existsByCode);
+        return new CodeArticleSuggereResponse(code);
     }
 
     @PreAuthorize(ECRITURE_CARTE)
