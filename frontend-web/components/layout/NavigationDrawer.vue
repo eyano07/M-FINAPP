@@ -9,6 +9,7 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
 const auth = useAuthStore()
 const permissions = usePermissionsStore()
 const parametresStore = useParametresStore()
+const appVersion = useRuntimeConfig().public.appVersion as string
 
 interface NavItem {
   title: string
@@ -406,7 +407,7 @@ function lignes(g: NavGroup): LigneMenu[] {
 
     <template #append>
       <div class="modern-drawer__footer">
-        Eyano MBSC &copy; {{ new Date().getFullYear() }}
+        Eyano MBSC &copy; {{ new Date().getFullYear() }} Version {{ appVersion }}
       </div>
     </template>
   </v-navigation-drawer>
