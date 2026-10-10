@@ -208,6 +208,7 @@ const adminItems: NavItem[] = [
   { title: 'Taux de TVA', icon: 'mdi-percent-outline', to: '/admin/taux-tva', roles: ['ADMIN'] },
   { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/admin/parametres', roles: ['ADMIN'] },
   { title: 'Intelligence artificielle', icon: 'mdi-robot-outline', to: '/admin/ia', roles: ['ADMIN'] },
+  { title: 'Messagerie (e-mails)', icon: 'mdi-email-fast-outline', to: '/admin/messagerie', roles: ['ADMIN'] },
   { title: 'Modules', icon: 'mdi-view-grid-outline', to: '/admin/modules', roles: ['ADMIN'] },
   { title: 'Permissions', icon: 'mdi-shield-key-outline', to: '/admin/permissions', roles: ['ADMIN'] },
   // Administrateur seul : l'import ecrit la tresorerie sans note de frais.

@@ -28,10 +28,9 @@ class MailNotificationServiceTest {
 
     @Test
     void lienAbsoluRelatifVersUrlPublique() {
-        MailNotificationService s = new MailNotificationService(null, null, true, "h", "a@b.cd", "https://finapp.cd/");
-        assertEquals("https://finapp.cd/notes-frais/7", s.lienAbsolu("/notes-frais/7"));
-        assertEquals("https://autre.cd/x", s.lienAbsolu("https://autre.cd/x"));
-        assertNull(s.lienAbsolu(null));
-        assertNull(new MailNotificationService(null, null, true, "h", "a@b.cd", "").lienAbsolu("/x"));
+        assertEquals("https://finapp.cd/notes-frais/7", MailNotificationService.lienAbsolu("https://finapp.cd/", "/notes-frais/7"));
+        assertEquals("https://autre.cd/x", MailNotificationService.lienAbsolu(null, "https://autre.cd/x"));
+        assertNull(MailNotificationService.lienAbsolu("https://finapp.cd", null));
+        assertNull(MailNotificationService.lienAbsolu("", "/x"));
     }
 }

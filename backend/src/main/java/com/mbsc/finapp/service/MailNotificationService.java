@@ -7,8 +7,10 @@ import jakarta.annotation.PreDestroy;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
+import com.mbsc.finapp.service.mail.ConfigMail;
+import com.mbsc.finapp.service.mail.ErreurMail;
+import com.mbsc.finapp.service.mail.ExpediteurMail;
+import com.mbsc.finapp.service.mail.ParametresMailService;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -33,11 +35,9 @@ public class MailNotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(MailNotificationService.class);
 
-    private final ObjectProvider<JavaMailSender> expediteur;
+    private final ExpediteurMail expediteur;
+    private final ParametresMailService parametres;
     private final ParametresEntrepriseRepository entreprise;
-    private final boolean actif;
-    private final String from;
-    private final String urlPublique;
 
     private final ExecutorService executeur = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "notifications-mail");
@@ -45,17 +45,11 @@ public class MailNotificationService {
         return t;
     });
 
-    public MailNotificationService(ObjectProvider<JavaMailSender> expediteur,
-                                   ParametresEntrepriseRepository entreprise,
-                                   @Value("${app.mail.enabled:false}") boolean actif,
-                                   @Value("${spring.mail.host:}") String hoteSmtp,
-                                   @Value("${app.mail.from:}") String from,
-                                   @Value("${app.public-url:}") String urlPublique) {
+    public MailNotificationService(ExpediteurMail expediteur, ParametresMailService parametres,
+                                   ParametresEntrepriseRepository entreprise) {
         this.expediteur = expediteur;
+        this.parametres = parametres;
         this.entreprise = entreprise;
-        this.actif = actif && StringUtils.hasText(hoteSmtp);
-        this.from = from;
-        this.urlPublique = urlPublique == null ? "" : urlPublique.strip().replaceAll("/+$", "");
     }
 
     @PreDestroy
@@ -66,14 +60,14 @@ public class MailNotificationService {
     /** Programme l'envoi apres le commit de la transaction en cours (immediat s'il n'y en a pas). */
     public void envoyerApresCommit(Notification notification) {
         String adresse = notification.getDestinataire() == null ? null : notification.getDestinataire().getEmailNotification();
-        if (!actif || !StringUtils.hasText(adresse) || expediteur.getIfAvailable() == null) return;
+        if (!StringUtils.hasText(adresse) || !parametres.config().pret()) return;
 
         // Instantane des valeurs : la notification et son destinataire (lazy) ne doivent pas etre lus hors transaction.
         String prenom = notification.getDestinataire().getPrenom();
         String titre = notification.getTitre();
         String message = notification.getMessage();
         String lien = notification.getLien();
-        Runnable envoi = () -> executeur.execute(() -> envoyer(adresse.strip(), prenom, titre, message, lien));
+        Runnable envoi = () -> executeur.execute(() -> envoyerEnArrierePlan(adresse.strip(), prenom, titre, message, lien));
 
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -87,30 +81,49 @@ public class MailNotificationService {
         }
     }
 
-    private void envoyer(String adresse, String prenom, String titre, String message, String lien) {
+    private void envoyerEnArrierePlan(String adresse, String prenom, String titre, String message, String lien) {
         try {
-            JavaMailSender sender = expediteur.getIfAvailable();
-            if (sender == null) return;
-            ParametresEntreprise e = entreprise.findAll().stream().findFirst().orElse(null);
-            String nom = e != null && StringUtils.hasText(e.getNom()) ? e.getNom() : "M-FINAPP";
-            String couleur = e != null && StringUtils.hasText(e.getCouleurPrimaire()) ? e.getCouleurPrimaire() : "#15803D";
-
-            MimeMessage mime = sender.createMimeMessage();
-            MimeMessageHelper h = new MimeMessageHelper(mime, true, StandardCharsets.UTF_8.name());
-            if (StringUtils.hasText(from)) h.setFrom(from, nom);
-            h.setTo(adresse);
-            h.setSubject("[" + nom + "] " + titre);
-            h.setText(texte(prenom, titre, message, lienAbsolu(lien)), corpsHtml(nom, couleur, prenom, titre, message, lienAbsolu(lien)));
-            sender.send(mime);
+            envoyer(parametres.config(), adresse, prenom, titre, message, lien);
+            parametres.noterEnvoi(null);
         } catch (Exception ex) {
+            parametres.noterEnvoi(ErreurMail.expliquer(ex));
             log.warn("Envoi du mail de notification impossible ({}) : {}", adresse, ex.toString());
         }
     }
 
+    /** Envoie un e-mail de test avec la configuration courante ; l'exception est remontée à l'appelant. */
+    public void envoyerTest(String adresse, String prenom) throws Exception {
+        ConfigMail c = parametres.config();
+        if (!StringUtils.hasText(c.hote())) throw new IllegalStateException("Aucun serveur SMTP renseigné.");
+        envoyer(c, adresse, prenom, "E-mail de test",
+            "Si vous lisez ce message, la messagerie est correctement configurée : les notifications seront envoyées "
+                + "à votre « Mail de notification ».", "/profil");
+    }
+
+    private void envoyer(ConfigMail c, String adresse, String prenom, String titre, String message, String lien) throws Exception {
+        JavaMailSender sender = expediteur.pour(c);
+        ParametresEntreprise e = entreprise.findAll().stream().findFirst().orElse(null);
+        String nom = e != null && StringUtils.hasText(e.getNom()) ? e.getNom() : "M-FINAPP";
+        String couleur = e != null && StringUtils.hasText(e.getCouleurPrimaire()) ? e.getCouleurPrimaire() : "#15803D";
+        String url = lienAbsolu(c.urlPublique(), lien);
+
+        MimeMessage mime = sender.createMimeMessage();
+        MimeMessageHelper h = new MimeMessageHelper(mime, true, StandardCharsets.UTF_8.name());
+        String from = c.expediteurEffectif();
+        if (StringUtils.hasText(from)) h.setFrom(from, nom);
+        h.setTo(adresse);
+        h.setSubject("[" + nom + "] " + titre);
+        h.setText(texte(prenom, titre, message, url), corpsHtml(nom, couleur, prenom, titre, message, url));
+        sender.send(mime);
+    }
+
     /** Lien complet vers l'application (null si l'URL publique n'est pas configuree ou s'il n'y a pas de lien). */
-    String lienAbsolu(String lien) {
-        if (!StringUtils.hasText(lien) || urlPublique.isEmpty()) return null;
-        return lien.startsWith("http") ? lien : urlPublique + (lien.startsWith("/") ? lien : "/" + lien);
+    static String lienAbsolu(String urlPublique, String lien) {
+        if (!StringUtils.hasText(lien)) return null;
+        if (lien.startsWith("http")) return lien;
+        if (!StringUtils.hasText(urlPublique)) return null;
+        String base = urlPublique.strip().replaceAll("/+$", "");
+        return base + (lien.startsWith("/") ? lien : "/" + lien);
     }
 
     static String texte(String prenom, String titre, String message, String lien) {
