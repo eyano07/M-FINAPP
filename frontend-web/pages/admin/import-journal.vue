@@ -14,6 +14,8 @@ interface Rapport {
   avertissements: string[]
   references: string[]
   suggestions: Suggestion[]
+  /** Banques et opérateurs mobile money créés pour les comptes de trésorerie du fichier (ou qui le seront). */
+  etablissementsRattaches: string[]
 }
 
 interface Suggestion {
@@ -82,7 +84,7 @@ async function envoyer(simulation: boolean) {
     body.append('fichier', fichier.value)
     const subs = Object.entries(substitutions.value).map(([a, b]) => `${a}:${b}`).join(',')
     const url = `/admin/import/journal?simulation=${simulation}&regroupement=${regroupement.value}`
-      + `&devise=${devise.value}`
+      + `&devise=${devise.value}&modeImport=${modeImport.value}`
       + (subs ? `&substitutions=${encodeURIComponent(subs)}` : '')
     const r = await api<Rapport>(url, { method: 'POST', body })
     rapport.value = r
@@ -362,6 +364,19 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
 
       <v-alert v-else-if="rapport.simulation" type="success" variant="tonal" class="mb-4">
         Aucune anomalie détectée. Vous pouvez lancer l’import réel.
+      </v-alert>
+
+      <v-alert v-if="rapport.etablissementsRattaches?.length" type="info" variant="tonal" class="mb-4"
+        icon="mdi-bank-plus">
+        <div class="font-weight-bold mb-1">
+          {{ rapport.simulation ? 'Seront créés automatiquement dans Banques & Mobile Money :' : 'Créés automatiquement dans Banques & Mobile Money :' }}
+        </div>
+        <ul class="pl-4 mb-1">
+          <li v-for="(e, i) in rapport.etablissementsRattaches" :key="i" class="text-body-2">{{ e }}</li>
+        </ul>
+        <div class="text-caption">
+          Leur solde se lit dans le grand livre : il correspond d’emblée aux écritures importées, sans montant à saisir.
+        </div>
       </v-alert>
 
       <v-card v-if="rapport.suggestions.length" class="classroom-card pa-5 mb-4 sugg-card">

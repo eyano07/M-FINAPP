@@ -270,7 +270,9 @@ public class AdminController {
             ImportJournalService.ModeRegroupement regroupement,
         @RequestParam(name = "devise", defaultValue = "CDF")
             com.mbsc.finapp.domain.enums.Devise devise,
-        @RequestParam(name = "modeImport", defaultValue = "REMPLACER")
+        // Sans choix explicite, on AJOUTE : effacer des ecritures doit toujours etre demande. Le defaut etait
+        // REMPLACER alors que l'ecran n'envoyait pas ce parametre : choisir « Ajouter » effacait quand meme tout.
+        @RequestParam(name = "modeImport", defaultValue = "AJOUTER")
             ImportJournalService.ModeImport modeImport
     ) {
         return importJournalService.importer(fichier, simulation,

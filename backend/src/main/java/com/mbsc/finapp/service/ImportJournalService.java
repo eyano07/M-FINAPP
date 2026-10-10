@@ -111,6 +111,8 @@ public class ImportJournalService {
     private final ImportIaService assistance;
     /** Convertit un journal en devise etrangere vers la devise de base. */
     private final ConversionDeviseService conversionDevise;
+    /** Cree la banque ou l'operateur mobile money des comptes de tresorerie importes qui n'en ont pas. */
+    private final EtablissementTresorerieService etablissements;
 
     /**
      * Cle de regroupement des lignes en pieces comptables.
@@ -325,6 +327,13 @@ public class ImportJournalService {
             references.addAll(parPiece.keySet());
         }
 
+        // Une banque ou un operateur mobile money mouvemente par le fichier doit exister dans l'application : sans
+        // lui, l'ecran des banques n'affichait rien et un ajout manuel ouvrait un second compte a solde nul. Son solde
+        // se lit dans le grand livre : il vaut d'emblee celui des ecritures importees, sans montant a initialiser.
+        List<String> etablissementsRattaches = erreurs.isEmpty()
+            ? etablissements.rattacherComptesOrphelins(comptesVus, simulation)
+            : List.of();
+
         if (!simulation && !erreurs.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Le fichier comporte " + erreurs.size() + " anomalie(s) : corrigez-les puis relancez. "
@@ -338,7 +347,7 @@ public class ImportJournalService {
             : List.of();
 
         return new ImportJournalResponse(simulation, lignes.size(), parPiece.size(), importees,
-            totalDebit, totalCredit, erreurs, avertissements, references, suggestions);
+            totalDebit, totalCredit, erreurs, avertissements, references, suggestions, etablissementsRattaches);
     }
 
     /** Cle sous laquelle une ligne est rattachee a une piece. */

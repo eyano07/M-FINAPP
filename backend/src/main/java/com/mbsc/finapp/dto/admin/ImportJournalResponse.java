@@ -15,6 +15,8 @@ import java.util.List;
  * @param erreurs         anomalies bloquantes, avec le numero de ligne du fichier
  * @param avertissements  anomalies non bloquantes
  * @param references      references des pieces creees (ou qui le seraient)
+ * @param etablissementsRattaches banques et operateurs mobile money crees pour les comptes de tresorerie du
+ *                        fichier qui n'en avaient pas (ou qui le seraient, en simulation)
  */
 public record ImportJournalResponse(
     boolean simulation,
@@ -26,5 +28,6 @@ public record ImportJournalResponse(
     List<String> erreurs,
     List<String> avertissements,
     List<String> references,
-    List<SuggestionImport> suggestions
+    List<SuggestionImport> suggestions,
+    List<String> etablissementsRattaches
 ) {}

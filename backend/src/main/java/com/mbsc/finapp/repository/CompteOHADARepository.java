@@ -10,4 +10,5 @@ public interface CompteOHADARepository extends JpaRepository<CompteOHADA, Long> 
     Optional<CompteOHADA> findByNumero(String numero);
     boolean existsByNumero(String numero);
     List<CompteOHADA> findAllByOrderByNumeroAsc();
+    List<CompteOHADA> findByLibelleIgnoreCaseOrderByNumeroAsc(String libelle);
 }

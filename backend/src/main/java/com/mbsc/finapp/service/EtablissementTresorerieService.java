@@ -21,7 +21,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Gestion des banques et operateurs mobile money.
@@ -48,6 +56,12 @@ public class EtablissementTresorerieService {
     private static final String PREFIXE_MOBILE_MONEY = "55";
     private static final String SEQ_BANQUE = "seq_compte_banque";
     private static final String SEQ_MOBILE_MONEY = "seq_compte_mobile_money";
+    /** Debut de l'intitule des comptes ouverts avec un etablissement : « Banque — Equity Bank ». */
+    private static final String LIBELLE_BANQUE = "Banque — ";
+    private static final String LIBELLE_MOBILE_MONEY = "Mobile Money — ";
+    private static final Pattern DEBUT_LIBELLE = Pattern.compile("^(banque|mobile money)\\s*[—–-]\\s*",
+        Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final int TAILLE_NOM = 100;
 
     private final EtablissementTresorerieRepository etablissementRepository;
     private final com.mbsc.finapp.repository.ReleveBancaireRepository releveRepository;
@@ -110,7 +124,17 @@ public class EtablissementTresorerieService {
                 "Un etablissement \"" + nom + "\" existe deja pour ce type.");
         }
 
-        CompteOHADA compte = creerCompteDedie(nom, req.type());
+        // Un compte deja ouvert a ce nom (apres un import de journal, ou un etablissement retire puis recree) est
+        // repris : il garde son solde et son historique. En ouvrir un neuf laisserait ces ecritures sur un compte
+        // orphelin, et le nouvel etablissement afficherait un solde nul, faux.
+        CompteOHADA compte = compteOrphelin(nom, req.type()).orElse(null);
+        boolean repris = compte != null;
+        if (!repris) {
+            compte = creerCompteDedie(nom, req.type());
+        } else if (!compte.isActif()) {
+            compte.setActif(true);
+            compteRepository.save(compte);
+        }
         EtablissementTresorerie etablissement = etablissementRepository.save(
             EtablissementTresorerie.builder()
                 .nom(nom)
@@ -120,9 +144,97 @@ public class EtablissementTresorerieService {
                 .devise(req.devise() == null ? com.mbsc.finapp.domain.enums.Devise.USD : req.devise())
                 .build());
 
-        log.info("Etablissement de tresorerie cree [nom={}, type={}, compte={}]",
-            nom, req.type(), compte.getNumero());
-        return EtablissementResponse.from(etablissement, BigDecimal.ZERO);
+        log.info("Etablissement de tresorerie cree [nom={}, type={}, compte={}{}]",
+            nom, req.type(), compte.getNumero(), repris ? ", compte existant repris" : "");
+        return EtablissementResponse.from(etablissement, repris ? solde(etablissement) : BigDecimal.ZERO);
+    }
+
+    /**
+     * Cree un etablissement pour chaque compte de banque ou de mobile money qui porte des ecritures sans en avoir —
+     * cas d'un journal importe. Aucun montant n'est saisi : le solde d'un etablissement se lit dans le grand livre,
+     * il est donc d'emblee celui des ecritures deja passees sur son compte.
+     *
+     * @param numeros    comptes a examiner (ceux d'un fichier importe) ; les autres comptes sont ignores
+     * @param simulation true : n'ecrit rien, decrit seulement ce qui serait cree
+     * @return un libelle par etablissement cree (ou a creer), ex. « Banque « Equity Bank » — compte 5215 »
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public List<String> rattacherComptesOrphelins(Collection<String> numeros, boolean simulation) {
+        List<String> rattaches = new ArrayList<>();
+        Set<String> nomsRetenus = new HashSet<>();
+        for (String numero : new LinkedHashSet<>(numeros)) {
+            CompteOHADA compte = compteRepository.findByNumero(numero).orElse(null);
+            TypeEtablissement type = typePourCompte(compte);
+            if (type == null || !compte.isActif() || !compte.isImputable()
+                || etablissementRepository.existsByCompteId(compte.getId())) {
+                continue;
+            }
+            String nom = nomDepuisLibelle(compte);
+            if (!nomsRetenus.add(type + "|" + nom.toLowerCase(Locale.ROOT))
+                || etablissementRepository.existsByNomIgnoreCaseAndType(nom, type)) {
+                // Nom deja pris (par un autre compte) : le numero de compte les distingue.
+                String suffixe = " (" + numero + ")";
+                nom = nom.substring(0, Math.min(nom.length(), TAILLE_NOM - suffixe.length())).strip() + suffixe;
+                nomsRetenus.add(type + "|" + nom.toLowerCase(Locale.ROOT));
+            }
+            if (!simulation) {
+                etablissementRepository.save(EtablissementTresorerie.builder()
+                    .nom(nom)
+                    .type(type)
+                    .compte(compte)
+                    .actif(true)
+                    .devise(com.mbsc.finapp.domain.enums.Devise.USD)
+                    .build());
+                log.info("Etablissement de tresorerie cree depuis le grand livre [nom={}, type={}, compte={}]",
+                    nom, type, numero);
+            }
+            rattaches.add((type == TypeEtablissement.BANQUE ? "Banque « " : "Mobile money « ") + nom
+                + " » — compte " + numero);
+        }
+        return rattaches;
+    }
+
+    /**
+     * Type d'etablissement que represente un compte, ou null. Banque : sous-comptes de 521 (banques locales du
+     * referentiel) et comptes « Banque — … » ouverts par l'application sous 52. Mobile money : sous-comptes de 552
+     * (telephone portable) et comptes « Mobile Money — … » sous 55. La caisse (57), les virements internes (585) et
+     * les autres comptes de 52 (interets courus, depots a terme...) ne sont jamais des etablissements.
+     */
+    static TypeEtablissement typePourCompte(CompteOHADA compte) {
+        if (compte == null || compte.getNumero() == null || !Integer.valueOf(5).equals(compte.getClasse())) {
+            return null;
+        }
+        String numero = compte.getNumero();
+        String libelle = compte.getLibelle() == null ? "" : compte.getLibelle();
+        if (numero.startsWith(EcritureComptableService.PREFIXE_COMPTES_BANQUE)
+            || (numero.startsWith(PREFIXE_BANQUE) && libelle.startsWith(LIBELLE_BANQUE))) {
+            return TypeEtablissement.BANQUE;
+        }
+        if (numero.startsWith(EcritureComptableService.PREFIXE_COMPTES_MOBILE_MONEY)
+            || (numero.startsWith(PREFIXE_MOBILE_MONEY) && libelle.startsWith(LIBELLE_MOBILE_MONEY))) {
+            return TypeEtablissement.MOBILE_MONEY;
+        }
+        return null;
+    }
+
+    /** Nom de l'etablissement tire de l'intitule du compte : « Banque — Equity Bank » donne « Equity Bank ». */
+    static String nomDepuisLibelle(CompteOHADA compte) {
+        String libelle = compte.getLibelle() == null ? "" : compte.getLibelle().strip();
+        String nom = DEBUT_LIBELLE.matcher(libelle).replaceFirst("").strip();
+        if (nom.isEmpty()) {
+            nom = "Compte " + compte.getNumero();
+        }
+        return nom.length() > TAILLE_NOM ? nom.substring(0, TAILLE_NOM).strip() : nom;
+    }
+
+    /** Compte « Banque — <nom> » (ou « Mobile Money — <nom> ») deja ouvert et rattache a aucun etablissement. */
+    private Optional<CompteOHADA> compteOrphelin(String nom, TypeEtablissement type) {
+        String libelle = (type == TypeEtablissement.BANQUE ? LIBELLE_BANQUE : LIBELLE_MOBILE_MONEY) + nom;
+        return compteRepository.findByLibelleIgnoreCaseOrderByNumeroAsc(libelle).stream()
+            .filter(c -> typePourCompte(c) == type && c.isImputable())
+            .filter(c -> !etablissementRepository.existsByCompteId(c.getId()))
+            .findFirst();
     }
 
     /**
@@ -199,7 +311,7 @@ public class EtablissementTresorerieService {
             numero = prefixe + suffixe.longValue();
         } while (compteRepository.existsByNumero(numero));
 
-        String libelle = (estBanque ? "Banque — " : "Mobile Money — ") + nom;
+        String libelle = (estBanque ? LIBELLE_BANQUE : LIBELLE_MOBILE_MONEY) + nom;
         CompteOHADA compte = CompteOHADA.builder()
             .numero(numero)
             .libelle(libelle.length() > 200 ? libelle.substring(0, 200) : libelle)
