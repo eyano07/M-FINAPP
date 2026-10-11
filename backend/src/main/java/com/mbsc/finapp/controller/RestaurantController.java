@@ -5,18 +5,17 @@ import com.mbsc.finapp.dto.logistique.ArticleResponse;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.dto.logistique.CodeArticleSuggereResponse;
 import com.mbsc.finapp.dto.logistique.EntrepotResponse;
-import com.mbsc.finapp.dto.logistique.StockGrandLivreResponse;
 import com.mbsc.finapp.dto.logistique.StockNiveauResponse;
 import com.mbsc.finapp.dto.restaurant.AnalyseVentesResponse;
 import com.mbsc.finapp.dto.restaurant.EmballageRequest;
 import com.mbsc.finapp.dto.restaurant.EmballageResponse;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageRequest;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageResponse;
+import com.mbsc.finapp.dto.restaurant.MouvementProvisionResponse;
 import com.mbsc.finapp.dto.restaurant.LotStockResponse;
 import com.mbsc.finapp.dto.restaurant.PlanSalleRequest;
 import com.mbsc.finapp.dto.restaurant.ProductionRequest;
 import com.mbsc.finapp.dto.restaurant.ProductionResponse;
-import com.mbsc.finapp.dto.restaurant.ProvisionEntreeRequest;
 import com.mbsc.finapp.dto.restaurant.ProvisionSortieRequest;
 import com.mbsc.finapp.dto.restaurant.ModifierPrixVenteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteRequest;
@@ -334,7 +333,7 @@ public class RestaurantController {
     }
 
     @GetMapping("/provisions/mouvements")
-    public List<StockGrandLivreResponse> grandLivreProvisions(
+    public List<MouvementProvisionResponse> grandLivreProvisions(
         @RequestParam(required = false) Long articleId,
         @RequestParam(required = false) Long entrepotId,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
@@ -343,12 +342,10 @@ public class RestaurantController {
         return service.grandLivreProvisions(articleId, entrepotId, du, au);
     }
 
-    @PostMapping("/provisions/entrees")
-    @ResponseStatus(HttpStatus.CREATED)
-    public void recevoirProvision(@Valid @RequestBody ProvisionEntreeRequest req) {
-        service.recevoirProvision(req);
-    }
-
+    /**
+     * Sortie d'une provision (type choisi dans une liste, observation libre). Il n'y a pas de route d'entrée : les
+     * entrées de provisions passent toujours par l'achat (note de frais), jamais par une réception saisie ici.
+     */
     @PostMapping("/provisions/sorties")
     @ResponseStatus(HttpStatus.CREATED)
     public void enregistrerSortieProvision(@Valid @RequestBody ProvisionSortieRequest req) {

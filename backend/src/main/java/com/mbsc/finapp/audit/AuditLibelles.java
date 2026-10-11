@@ -239,7 +239,6 @@ public final class AuditLibelles {
         r("POST", "/restaurant/productions/{}/annuler", "Annulation d'une production de plats");
         r("POST", "/restaurant/provisions", "Création d'une provision (matière première)");
         r("PUT", "/restaurant/provisions/{}", "Modification d'une provision (matière première)");
-        r("POST", "/restaurant/provisions/entrees", "Réception de provisions");
         r("POST", "/restaurant/provisions/sorties", "Enregistrement d'une sortie de provisions");
         r("POST", "/restaurant/provisions/mouvements/{}/annuler", "Annulation d'un mouvement de provisions");
         r("PUT", "/restaurant/recettes/{}", "Enregistrement de la recette d'un plat");

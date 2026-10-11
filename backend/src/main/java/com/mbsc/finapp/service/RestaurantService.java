@@ -4,7 +4,6 @@ import com.mbsc.finapp.service.DocumentationCompteService.RoleCompteArticle;
 
 import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CompteOHADA;
-import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.EmballageBoisson;
 import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.LigneMouvementStock;
@@ -14,16 +13,15 @@ import com.mbsc.finapp.domain.LigneVente;
 import com.mbsc.finapp.domain.MouvementEmballage;
 import com.mbsc.finapp.domain.MouvementStock;
 import com.mbsc.finapp.domain.Production;
-import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.SalleRestaurant;
 import com.mbsc.finapp.domain.SortiePlat;
+import com.mbsc.finapp.domain.SortieProvision;
 import com.mbsc.finapp.domain.StockGrandLivre;
 import com.mbsc.finapp.domain.TableRestaurant;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.Vente;
 import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.FormeTable;
-import com.mbsc.finapp.domain.enums.JournalComptable;
 import com.mbsc.finapp.domain.enums.ModeReglement;
 import com.mbsc.finapp.domain.enums.MotifSortiePlat;
 import com.mbsc.finapp.domain.enums.RoleType;
@@ -33,6 +31,7 @@ import com.mbsc.finapp.domain.enums.StatutVente;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeMouvementEmballage;
 import com.mbsc.finapp.domain.enums.TypeMouvementStock;
+import com.mbsc.finapp.domain.enums.TypeSortieProvision;
 import com.mbsc.finapp.dto.logistique.ArticleRequest;
 import com.mbsc.finapp.dto.logistique.ArticleResponse;
 import com.mbsc.finapp.dto.logistique.CodeArticleSuggereResponse;
@@ -44,6 +43,7 @@ import com.mbsc.finapp.dto.restaurant.EmballageRequest;
 import com.mbsc.finapp.dto.restaurant.EmballageResponse;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageRequest;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageResponse;
+import com.mbsc.finapp.dto.restaurant.MouvementProvisionResponse;
 import com.mbsc.finapp.dto.restaurant.LotStockResponse;
 import com.mbsc.finapp.dto.restaurant.LigneProductionRequest;
 import com.mbsc.finapp.dto.restaurant.LigneRecetteRequest;
@@ -51,7 +51,6 @@ import com.mbsc.finapp.dto.restaurant.LigneRecetteResponse;
 import com.mbsc.finapp.dto.restaurant.PlanSalleRequest;
 import com.mbsc.finapp.dto.restaurant.ProductionRequest;
 import com.mbsc.finapp.dto.restaurant.ProductionResponse;
-import com.mbsc.finapp.dto.restaurant.ProvisionEntreeRequest;
 import com.mbsc.finapp.dto.restaurant.ProvisionSortieRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteResponse;
@@ -83,6 +82,7 @@ import com.mbsc.finapp.repository.NoteFraisRepository;
 import com.mbsc.finapp.repository.ProductionRepository;
 import com.mbsc.finapp.repository.SalleRestaurantRepository;
 import com.mbsc.finapp.repository.SortiePlatRepository;
+import com.mbsc.finapp.repository.SortieProvisionRepository;
 import com.mbsc.finapp.repository.StockGrandLivreRepository;
 import com.mbsc.finapp.repository.StockNiveauRepository;
 import com.mbsc.finapp.repository.TableRestaurantRepository;
@@ -126,7 +126,9 @@ import java.util.TreeMap;
  * Notes de frais, circuit Creation-DFIN-DA-DFIN-Caisse) : ce service ne
  * reçoit plus de réception directe. L'entrée en stock et, le cas échéant,
  * l'échange de consigne sont déclenchés au paiement par {@code CaisseService}
- * via {@link #enregistrerAchatVidesDepuisNoteFraisInterne}.</p>
+ * via {@link #enregistrerAchatVidesDepuisNoteFraisInterne}. Il en va de même des provisions : leurs
+ * entrées en stock viennent uniquement de l'achat (page Achat de provisions, mêmes notes de frais) ; seules
+ * leurs sorties se saisissent ici.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -153,8 +155,8 @@ public class RestaurantService {
     /** Historique des provisions, lu en entités pour savoir quels mouvements l'écran peut annuler. */
     private final StockGrandLivreRepository stockGrandLivreRepository;
     private final StockService stockService;
-    /** Ecriture directe de l'achat d'une provision — voir {@link #recevoirProvision}. */
-    private final ComptabiliteService comptabilite;
+    /** Type et observation des sorties de provisions, que le mouvement de stock ne sait pas porter. */
+    private final SortieProvisionRepository sortieProvisionRepository;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     /** Fiche de documentation des comptes propres à chaque article (voir genererCompteDedie). */
@@ -1062,7 +1064,7 @@ public class RestaurantService {
      */
     @PreAuthorize(LECTURE)
     @Transactional(readOnly = true)
-    public List<StockGrandLivreResponse> grandLivreProvisions(
+    public List<MouvementProvisionResponse> grandLivreProvisions(
             Long articleId, Long entrepotId, LocalDate du, LocalDate au) {
         List<StockGrandLivre> lignes = stockGrandLivreRepository.rechercher(articleId, entrepotId,
                 du != null ? du : LocalDate.of(2000, 1, 1), au != null ? au : LocalDate.now()).stream()
@@ -1080,9 +1082,19 @@ public class RestaurantService {
             appartenantAUneOperation.addAll(productionRepository.idsMouvementsEntreeParmi(idsMouvements));
             appartenantAUneOperation.addAll(venteRepository.idsMouvementsParmi(idsMouvements));
         }
+        // Type et observation des sorties saisies ici, en une seule requête (une sortie plus ancienne n'en a pas).
+        Map<Long, SortieProvision> sortiesParMouvement = idsMouvements.isEmpty() ? Map.of()
+            : sortieProvisionRepository.findByMouvementStockIds(idsMouvements).stream()
+                .collect(java.util.stream.Collectors.toMap(s -> s.getMouvementStock().getId(), s -> s));
         return lignes.stream()
-            .map(s -> StockGrandLivreResponse.from(s,
-                mouvementProvisionAnnulable(s.getMouvement(), appartenantAUneOperation)))
+            .map(s -> {
+                SortieProvision sortie = s.getMouvement() == null ? null : sortiesParMouvement.get(s.getMouvement().getId());
+                return MouvementProvisionResponse.from(
+                    StockGrandLivreResponse.from(s,
+                        mouvementProvisionAnnulable(s.getMouvement(), appartenantAUneOperation)),
+                    sortie == null ? null : sortie.getTypeSortie().name(),
+                    sortie == null ? null : sortie.getObservation());
+            })
             .toList();
     }
 
@@ -1104,10 +1116,11 @@ public class RestaurantService {
     }
 
     /**
-     * Annule une réception directe ou une sortie de provision saisie par
-     * erreur : le stock est rétabli, la pièce de stock et, pour une
+     * Annule une sortie de provision saisie par erreur — ou une ancienne
+     * réception directe, que ce module ne propose plus (les entrées passent
+     * par l'achat) : le stock est rétabli, la pièce de stock et, pour une
      * réception, la pièce d'achat sont extournées. Sans cela, une erreur de
-     * saisie (100 kg reçus au lieu de 10) n'avait plus aucune voie de
+     * saisie (10 kg sortis au lieu de 1) n'avait plus aucune voie de
      * correction : la Logistique refuse ces articles et la Comptabilité
      * refuse d'extourner seule une pièce de stock.
      */
@@ -1246,117 +1259,39 @@ public class RestaurantService {
     }
 
     /**
-     * Réception d'une provision : achat immédiat, en deux écritures
-     * indissociables.
-     *
-     * <p><b>1. Achat</b> — {@code D 601x/602x (compte d'achat dédié de la
-     * provision) / C contrepartie} — puis <b>2. Entrée en stock</b> —
-     * {@code D 331x / C 6032/6033}, exactement le même schéma que pour un
-     * achat de boissons réglé par note de frais (voir {@code
-     * StockService.entreesDepuisNoteFraisInterne}). Une version antérieure ne
-     * produisait que la seconde écriture (via {@code
-     * enregistrerEntreeRestaurantInterne}) : le bilan en ressortait juste,
-     * mais l'achat (601/602) et sa variation de stock (603x) n'apparaissaient
-     * jamais au compte de résultat — le même défaut que la StockService
-     * documente déjà pour l'ancienne écriture directe des notes de frais.</p>
-     *
-     * <p>Le montant TOTAL (coût unitaire × quantité) est converti UNE SEULE
-     * FOIS si le coût est coté en FC, jamais le seul coût unitaire : convertir
-     * puis arrondir le coût unitaire à 2 décimales avant de le multiplier par
-     * une grande quantité pouvait faire entrer la provision en stock à une
-     * valeur significativement faussée (jusqu'à 12 % d'écart observé), et
-     * tout coût unitaire sous ~14 FC/2 800 (le taux) s'arrondissait carrément
-     * à zéro. Contrairement à un achat de boissons via note de frais (qui
-     * peut attendre plusieurs jours l'approbation DFIN/DA avant règlement),
-     * une réception de provision est immédiate : le taux du jour de la saisie
-     * EST le taux de cette réception, il n'y a pas de délai à couvrir et donc
-     * aucun écart de change à constater plus tard.</p>
-     */
-    @PreAuthorize(ECRITURE)
-    @Transactional
-    public void recevoirProvision(ProvisionEntreeRequest req) {
-        Article article = articleRepository.findById(req.articleId())
-            .orElseThrow(() -> RessourceIntrouvableException.of("Article", req.articleId()));
-        if (article.getType() != TypeArticle.PROVISION) {
-            throw new IllegalArgumentException("L'article " + article.getCode() + " n'est pas une provision");
-        }
-        if (article.getCompteAchat() == null || article.getCompteStock() == null || article.getCompteCharge() == null) {
-            throw new IllegalArgumentException(
-                "La provision " + article.getCode() + " n'a pas tous ses comptes dédiés "
-                + "(achat, stock, variation de stock) : complétez sa fiche avant de réceptionner.");
-        }
-        Entrepot entrepot = entrepotRepository.findById(req.entrepotId())
-            .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
-        CompteOHADA contrepartie = compteRepository.findByNumero(req.compteContrepartieNumero())
-            .orElseThrow(() -> new IllegalArgumentException(
-                "Compte de contrepartie introuvable : " + req.compteContrepartieNumero()));
-        // Une réception directe est un achat à crédit : sa contrepartie ne
-        // peut être qu'un fournisseur. Créditer la caisse ou la banque d'ici
-        // sortirait de l'argent au grand livre sans aucune opération à leur
-        // journal — le solde du compte et celui du journal divergeraient sans
-        // que le rapprochement le voie. Un achat payé comptant passe par une
-        // note de frais, que la caisse règle.
-        if (!contrepartie.getNumero().startsWith(RACINE_COMPTE_FOURNISSEURS)) {
-            throw new IllegalArgumentException(
-                "La contrepartie d'une réception doit être un compte fournisseur (" + RACINE_COMPTE_FOURNISSEURS
-                + "x), pas " + contrepartie.getNumero() + " : un achat payé comptant passe par une note de "
-                + "frais, que la caisse règle.");
-        }
-        LocalDate date = req.dateReception() == null ? LocalDate.now() : req.dateReception();
-        User auteur = currentUser.requireUser();
-
-        BigDecimal montantTotalUSD = conversionDevise
-            .enDeviseBase(req.coutUnitaire().multiply(req.quantite()), req.devise())
-            .montantBase();
-
-        String libelle = "Achat " + article.getLibelle();
-        PieceComptable pieceAchat = comptabilite.creerPieceInterne(JournalComptable.ACHATS, libelle, date, List.of(
-            ecritureRestaurant(article.getCompteAchat(), montantTotalUSD, BigDecimal.ZERO, libelle, date),
-            ecritureRestaurant(contrepartie, BigDecimal.ZERO, montantTotalUSD, libelle, date)
-        ), auteur);
-
-        MouvementStock reception = stockService.enregistrerEntreeAchatInterne(date, "Réception " + article.getLibelle(),
-            new StockService.AchatMarchandise(article, entrepot, req.quantite(), montantTotalUSD,
-                article.getCompteStock(), article.getCompteCharge()),
-            auteur);
-        // Rattachée à la réception : extournée avec elle à l'annulation, et
-        // protégée d'une extourne isolée depuis la Comptabilité, qui ferait
-        // disparaître l'achat en laissant la marchandise en stock.
-        reception.setPieceAchat(pieceAchat);
-    }
-
-    /** Racine des comptes fournisseurs, seule contrepartie admise pour une réception directe. */
-    private static final String RACINE_COMPTE_FOURNISSEURS = "40";
-
-    private EcritureGrandLivre ecritureRestaurant(CompteOHADA compte, BigDecimal debit, BigDecimal credit,
-                                                  String libelle, LocalDate date) {
-        return EcritureGrandLivre.builder()
-            .compte(compte).debit(debit).credit(credit).libelle(libelle).dateEcriture(date).build();
-    }
-
-    /**
-     * Sortie d'une provision : utilisation en cuisine, casse ou péremption —
-     * un seul mécanisme, la raison n'a pas d'incidence sur le traitement.
-     * Sortie de stock au CMP avec pièce comptable, même mécanique qu'une
-     * vente (voir {@code StockService.enregistrerSortieVenteInterne}) ; la
-     * garde de stock insuffisant s'applique ici aussi.
+     * Sortie d'une provision : utilisation en cuisine, casse, péremption, repas du personnel... Le type se
+     * choisit dans une liste fermée ({@link TypeSortieProvision}) et l'observation, libre, en donne le détail
+     * (obligatoire pour « Autre », sans quoi la sortie resterait inexpliquée). Un seul mécanisme, le type n'a
+     * pas d'incidence sur le traitement : sortie de stock au CMP avec pièce comptable, même mécanique qu'une
+     * vente (voir {@code StockService.enregistrerSortieVenteInterne}) ; la garde de stock insuffisant s'applique
+     * ici aussi. Le type et l'observation sont conservés avec la sortie, pour l'historique.
      */
     @PreAuthorize(ECRITURE)
     @Transactional
     public void enregistrerSortieProvision(ProvisionSortieRequest req) {
-        Article article = articleRepository.findById(req.articleId())
-            .orElseThrow(() -> RessourceIntrouvableException.of("Article", req.articleId()));
-        if (article.getType() != TypeArticle.PROVISION) {
-            throw new IllegalArgumentException("L'article " + article.getCode() + " n'est pas une provision");
+        Article article = exigerArticleProvision(req.articleId());
+        String observation = req.observation() == null || req.observation().isBlank() ? null : req.observation().trim();
+        if (req.typeSortie() == TypeSortieProvision.AUTRE && observation == null) {
+            throw new IllegalArgumentException(
+                "Précisez la raison de la sortie dans l'observation : le type « Autre » ne l'explique pas.");
         }
         Entrepot entrepot = entrepotRepository.findById(req.entrepotId())
             .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
         LocalDate date = req.dateMouvement() == null ? LocalDate.now() : req.dateMouvement();
-        String libelle = "Sortie provision — " + article.getLibelle()
-            + (req.motif() != null && !req.motif().isBlank() ? " (" + req.motif() + ")" : "");
+        User auteur = currentUser.requireUser();
+        String libelle = "Sortie provision — " + req.typeSortie().libelle() + " — " + article.getLibelle()
+            + (observation != null ? " (" + observation + ")" : "");
 
-        stockService.enregistrerSortieVenteInterne(date, libelleMouvement(libelle), entrepot,
-            List.of(new StockService.SortieVente(article, req.quantite())), currentUser.requireUser());
+        MouvementStock sortie = stockService.enregistrerSortieVenteInterne(date, libelleMouvement(libelle), entrepot,
+            List.of(new StockService.SortieVente(article, req.quantite())), auteur);
+        sortieProvisionRepository.save(SortieProvision.builder()
+            .mouvementStock(sortie)
+            .typeSortie(req.typeSortie())
+            .observation(observation)
+            .createdBy(auteur)
+            .build());
+        log.info("Sortie de provision enregistrée [provision={}, qte={}, type={}, mouvement={}]",
+            article.getCode(), req.quantite(), req.typeSortie(), sortie.getReference());
     }
 
     /**
