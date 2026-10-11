@@ -6,6 +6,7 @@ import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.LigneMouvementStock;
 import com.mbsc.finapp.domain.LigneVente;
 import com.mbsc.finapp.domain.MouvementStock;
+import com.mbsc.finapp.domain.ParametresRestaurant;
 import com.mbsc.finapp.domain.Production;
 import com.mbsc.finapp.domain.SortiePlat;
 import com.mbsc.finapp.domain.StockGrandLivre;
@@ -25,6 +26,7 @@ import com.mbsc.finapp.dto.restaurant.RetraitPerimesRequest;
 import com.mbsc.finapp.dto.restaurant.SortiePlatResponse;
 import com.mbsc.finapp.repository.ArticleRepository;
 import com.mbsc.finapp.repository.EntrepotRepository;
+import com.mbsc.finapp.repository.ParametresRestaurantRepository;
 import com.mbsc.finapp.repository.ProductionRepository;
 import com.mbsc.finapp.repository.SortiePlatRepository;
 import com.mbsc.finapp.repository.StockGrandLivreRepository;
@@ -67,6 +69,9 @@ class PlatsPerimesTest {
     private ProductionRepository productions;
     private StockGrandLivreRepository grandLivre;
     private SortiePlatRepository sortiesPlats;
+    private ParametresRestaurantRepository parametres;
+    private CurrentUserProvider utilisateur;
+    private User connecte;
     private StockService stock;
     private ReferenceGenerator references;
     private RestaurantService service;
@@ -85,11 +90,13 @@ class PlatsPerimesTest {
         productions = trouver(arguments, ProductionRepository.class);
         grandLivre = trouver(arguments, StockGrandLivreRepository.class);
         sortiesPlats = trouver(arguments, SortiePlatRepository.class);
+        parametres = trouver(arguments, ParametresRestaurantRepository.class);
         stock = trouver(arguments, StockService.class);
         references = trouver(arguments, ReferenceGenerator.class);
-        CurrentUserProvider utilisateur = trouver(arguments, CurrentUserProvider.class);
+        utilisateur = trouver(arguments, CurrentUserProvider.class);
 
-        when(utilisateur.requireUser()).thenReturn(User.builder().id(5L).prenom("Papy").nom("Penze").email("rest@mbsc.cd").build());
+        connecte = User.builder().id(5L).prenom("Papy").nom("Penze").email("rest@mbsc.cd").build();
+        when(utilisateur.requireUser()).thenReturn(connecte);
         omelette = Article.builder().id(10L).code("PLAT-OMEL").libelle("Omelette").uniteMesure("portion")
             .type(TypeArticle.PLAT).compteCharge(CompteOHADA.builder().numero("73611").build())
             .compteStock(CompteOHADA.builder().numero("36111").build()).build();
@@ -333,6 +340,72 @@ class PlatsPerimesTest {
         verify(sortiesPlats, never()).save(any());
 
         assertThat(service.retirerPlatsPerimes(new RetraitPerimesRequest(10L, 1L))).hasSize(1);
+    }
+
+    @Test
+    void leRetraitManuelSePasseAuNomDeLUtilisateurConnecte() {
+        douzeOmelettesDontCinqPerimees();
+
+        service.retirerPlatsPerimes(new RetraitPerimesRequest(null, null));
+
+        ArgumentCaptor<SortiePlat> enregistree = ArgumentCaptor.forClass(SortiePlat.class);
+        verify(sortiesPlats).save(enregistree.capture());
+        assertThat(enregistree.getValue().getCreatedBy()).isSameAs(connecte);
+        assertThat(enregistree.getValue().getPrecisionMotif()).startsWith("Expiré : ");
+        verify(stock).enregistrerSortieVenteInterne(any(), anyString(), eq(entrepot), any(), eq(connecte));
+    }
+
+    // ---------------------------------------------------------------------
+    // Retrait par la tâche planifiée : aucun utilisateur connecté, l'auteur est donné
+    // ---------------------------------------------------------------------
+
+    @Test
+    void leRetraitInterneSePasseAuNomDeLAuteurDonneSansUtilisateurConnecte() {
+        douzeOmelettesDontCinqPerimees();
+        User admin = User.builder().id(1L).prenom("Marie").nom("Admin").email("admin@mbsc.cd").build();
+
+        List<SortiePlatResponse> sorties = service.retirerPlatsPerimesInterne(admin, AUJOURDHUI, null, null, true);
+
+        assertThat(sorties).hasSize(1);
+        assertThat(sorties.get(0).quantite()).isEqualByComparingTo("5");
+        ArgumentCaptor<SortiePlat> enregistree = ArgumentCaptor.forClass(SortiePlat.class);
+        verify(sortiesPlats).save(enregistree.capture());
+        assertThat(enregistree.getValue().getMotif()).isEqualTo(MotifSortiePlat.PERIME);
+        assertThat(enregistree.getValue().getCreatedBy()).isSameAs(admin);
+        assertThat(enregistree.getValue().getPrecisionMotif()).startsWith("Retrait automatique").contains("PRD-2026-000001");
+        // Le mouvement de stock, et donc l'écriture comptable, est lui aussi au nom de l'administrateur.
+        verify(stock).enregistrerSortieVenteInterne(any(), anyString(), eq(entrepot), any(), eq(admin));
+        verify(utilisateur, never()).requireUser();
+    }
+
+    @Test
+    void leRetraitInterneSansPlatPerimeRenvoieUneListeVideSansRienEnregistrer() {
+        when(niveaux.findAllWithDetails()).thenReturn(List.of());
+
+        assertThat(service.retirerPlatsPerimesInterne(connecte, AUJOURDHUI, null, null, true)).isEmpty();
+        verify(sortiesPlats, never()).save(any());
+        verify(stock, never()).enregistrerSortieVenteInterne(any(), anyString(), any(), any(), any());
+    }
+
+    @Test
+    void leRetraitInterneJugeLaPeremptionAuJourDemande() {
+        douzeOmelettesDontCinqPerimees();
+
+        // La production n° 1 expire hier : il y a deux jours, rien n'était encore périmé.
+        assertThat(service.platsPerimesInterne(AUJOURDHUI.minusDays(2))).isEmpty();
+        assertThat(service.retirerPlatsPerimesInterne(connecte, AUJOURDHUI.minusDays(2), null, null, true)).isEmpty();
+        assertThat(service.platsPerimesInterne(AUJOURDHUI)).hasSize(1);
+    }
+
+    @Test
+    void chaqueRetraitVerrouilleLesParametresPourNePasSeCroiserAvecUnAutre() {
+        douzeOmelettesDontCinqPerimees();
+
+        service.retirerPlatsPerimes(new RetraitPerimesRequest(null, null));
+        verify(parametres).findByIdPourMiseAJour(ParametresRestaurant.SINGLETON_ID);
+
+        service.retirerPlatsPerimesInterne(connecte, AUJOURDHUI, null, null, true);
+        verify(parametres, org.mockito.Mockito.times(2)).findByIdPourMiseAJour(ParametresRestaurant.SINGLETON_ID);
     }
 
     // ---------------------------------------------------------------------

@@ -12,6 +12,7 @@ import com.mbsc.finapp.domain.LigneRecette;
 import com.mbsc.finapp.domain.LigneVente;
 import com.mbsc.finapp.domain.MouvementEmballage;
 import com.mbsc.finapp.domain.MouvementStock;
+import com.mbsc.finapp.domain.ParametresRestaurant;
 import com.mbsc.finapp.domain.Production;
 import com.mbsc.finapp.domain.SalleRestaurant;
 import com.mbsc.finapp.domain.SortiePlat;
@@ -82,6 +83,7 @@ import com.mbsc.finapp.repository.LotStockRepository;
 import com.mbsc.finapp.repository.MouvementEmballageRepository;
 import com.mbsc.finapp.repository.MouvementStockRepository;
 import com.mbsc.finapp.repository.NoteFraisRepository;
+import com.mbsc.finapp.repository.ParametresRestaurantRepository;
 import com.mbsc.finapp.repository.ProductionRepository;
 import com.mbsc.finapp.repository.SalleRestaurantRepository;
 import com.mbsc.finapp.repository.SortiePlatRepository;
@@ -170,6 +172,8 @@ public class RestaurantService {
     private final LotStockRepository lotStockRepository;
     /** Sorties de plats hors vente (périmé, renversé, offert...) — voir {@link #enregistrerSortiePlat}. */
     private final SortiePlatRepository sortiePlatRepository;
+    /** Verrou des retraits de plats périmés (voir {@link #retirerPlatsPerimesInterne}). */
+    private final ParametresRestaurantRepository parametresRestaurantRepository;
 
     private static final String LECTURE =
         "hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN')";
@@ -1004,27 +1008,56 @@ public class RestaurantService {
     /**
      * Retire du stock les portions périmées : une sortie « Périmé » par plat et par entrepôt, avec la même écriture qu'une
      * sortie saisie à la main (D 736x / C 361x au coût moyen) et l'expiration en précision. Tout ou rien : si une sortie
-     * échoue, aucune n'est enregistrée.
+     * échoue, aucune n'est enregistrée. Le retrait est au nom de l'utilisateur connecté ; la tâche planifiée utilise
+     * {@link #retirerPlatsPerimesInterne} au nom de l'administrateur qui a activé le retrait automatique.
      */
     @PreAuthorize(ECRITURE)
     @Transactional
     public List<SortiePlatResponse> retirerPlatsPerimes(RetraitPerimesRequest req) {
-        LocalDate jour = LocalDate.now();
-        List<SortiePlatResponse> sorties = new ArrayList<>();
-        for (PlatPerimeResponse p : calculerPlatsPerimes(jour)) {
-            if ((req.platId() != null && !req.platId().equals(p.platId()))
-                || (req.entrepotId() != null && !req.entrepotId().equals(p.entrepotId()))) {
-                continue;
-            }
-            String precision = "Expiré : " + p.lots().stream()
-                .map(l -> l.productionReference() + " (le " + l.dateExpiration().format(JOUR) + ")")
-                .collect(java.util.stream.Collectors.joining(", "));
-            sorties.add(enregistrerSortiePlat(new SortiePlatRequest(
-                p.platId(), p.quantitePerimee(), p.entrepotId(), MotifSortiePlat.PERIME,
-                precision.length() > 500 ? precision.substring(0, 499) + "…" : precision, jour)));
-        }
+        List<SortiePlatResponse> sorties = retirerPlatsPerimesInterne(
+            currentUser.requireUser(), LocalDate.now(), req.platId(), req.entrepotId(), false);
         if (sorties.isEmpty()) {
             throw new IllegalStateException("Aucun plat périmé à retirer du stock.");
+        }
+        return sorties;
+    }
+
+    /**
+     * Plats périmés encore en stock au {@code jour} donné, sans contrôle d'accès : pour la tâche planifiée, qui n'a pas
+     * d'utilisateur connecté (voir {@code PlatsPerimesAutomatiqueService}).
+     */
+    @Transactional(readOnly = true)
+    public List<PlatPerimeResponse> platsPerimesInterne(LocalDate jour) {
+        return calculerPlatsPerimes(jour);
+    }
+
+    /**
+     * Retrait des plats périmés, commun au clic du responsable et à la tâche planifiée, sans contrôle d'accès : l'appelant
+     * décide qui en répond ({@code auteur}) et si le retrait est automatique, ce que la précision de la sortie dit.
+     *
+     * <p>Un retrait à la fois : la ligne des paramètres est verrouillée jusqu'au commit. Sans cela, le responsable qui clique
+     * pendant que la tâche tourne calculerait les mêmes portions périmées, et les deux retraits sortiraient deux fois la
+     * même quantité du stock, entamant au passage les portions encore bonnes.</p>
+     *
+     * @param platId     restreint le retrait à un plat (null : tous)
+     * @param entrepotId restreint le retrait à un entrepôt (null : tous)
+     * @return les sorties enregistrées, vide s'il n'y avait rien de périmé
+     */
+    @Transactional
+    public List<SortiePlatResponse> retirerPlatsPerimesInterne(User auteur, LocalDate jour, Long platId, Long entrepotId,
+                                                               boolean automatique) {
+        parametresRestaurantRepository.findByIdPourMiseAJour(ParametresRestaurant.SINGLETON_ID);
+        List<SortiePlatResponse> sorties = new ArrayList<>();
+        for (PlatPerimeResponse p : calculerPlatsPerimes(jour)) {
+            if ((platId != null && !platId.equals(p.platId())) || (entrepotId != null && !entrepotId.equals(p.entrepotId()))) {
+                continue;
+            }
+            String precision = (automatique ? "Retrait automatique — expiré : " : "Expiré : ") + p.lots().stream()
+                .map(l -> l.productionReference() + " (le " + l.dateExpiration().format(JOUR) + ")")
+                .collect(java.util.stream.Collectors.joining(", "));
+            sorties.add(sortiePlat(new SortiePlatRequest(
+                p.platId(), p.quantitePerimee(), p.entrepotId(), MotifSortiePlat.PERIME,
+                precision.length() > 500 ? precision.substring(0, 499) + "…" : precision, jour), auteur));
         }
         return sorties;
     }
@@ -1500,6 +1533,11 @@ public class RestaurantService {
     @PreAuthorize(ECRITURE)
     @Transactional
     public SortiePlatResponse enregistrerSortiePlat(SortiePlatRequest req) {
+        return sortiePlat(req, currentUser.requireUser());
+    }
+
+    /** La sortie de plat, au nom de {@code auteur} : l'utilisateur connecté, ou l'administrateur du retrait automatique. */
+    private SortiePlatResponse sortiePlat(SortiePlatRequest req, User auteur) {
         Article plat = articleRepository.findById(req.articleId())
             .orElseThrow(() -> RessourceIntrouvableException.of("Article", req.articleId()));
         if (plat.getType() != TypeArticle.PLAT) {
@@ -1513,7 +1551,6 @@ public class RestaurantService {
         Entrepot entrepot = entrepotRepository.findById(req.entrepotId())
             .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
         LocalDate date = req.dateSortie() == null ? LocalDate.now() : req.dateSortie();
-        User auteur = currentUser.requireUser();
 
         String libelle = "Sortie de plat — " + req.motif().libelle() + " — " + plat.getLibelle()
             + (precision != null ? " (" + precision + ")" : "");

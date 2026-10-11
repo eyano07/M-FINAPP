@@ -226,6 +226,7 @@ public final class AuditLibelles {
 
         // --- Restaurant ------------------------------------------------------------------------------------------
         r("PUT", "/restaurant/parametres", "Modification des paramètres du restaurant");
+        r("PUT", "/restaurant/parametres/retrait-perimes", "Choix du retrait des plats périmés (automatique ou manuel avec notification)");
         r("POST", "/restaurant/carte", "Création d'un article de la carte");
         r("PUT", "/restaurant/carte/{}", "Modification d'un article de la carte");
         r("DELETE", "/restaurant/carte/{}", "Suppression d'un article de la carte");

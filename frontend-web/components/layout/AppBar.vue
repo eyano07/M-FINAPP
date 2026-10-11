@@ -31,6 +31,8 @@ const TYPE_META: Record<string, { icon: string; color: string }> = {
   NOTE_ANNULEE:   { icon: 'mdi-cancel',                color: '#6b7280' },
   ENCAISSEMENT_CAISSE: { icon: 'mdi-cash-plus',        color: 'var(--color-primary)' },
   IA_CREDIT_EPUISE: { icon: 'mdi-robot-confused-outline', color: '#b45309' },
+  PLATS_PERIMES:  { icon: 'mdi-clock-alert-outline',   color: '#b45309' },
+  PLATS_PERIMES_RETIRES: { icon: 'mdi-delete-clock-outline', color: '#6b7280' },
 }
 const typeMeta = (type: string) => TYPE_META[type] ?? { icon: 'mdi-bell-outline', color: '#6b7280' }
 

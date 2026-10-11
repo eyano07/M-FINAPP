@@ -16,5 +16,9 @@ public enum TypeNotification {
     /** Crédit Anthropic épuisé : les analyses passent sur OpenAI (administrateurs). */
     IA_CREDIT_EPUISE,
     /** Facture normalisée non certifiée (échecs répétés ou refus du dispositif DGI) : administrateurs. */
-    FACTURE_NORMALISEE_ECHEC
+    FACTURE_NORMALISEE_ECHEC,
+    /** Plats périmés encore en stock, à retirer (retrait manuel, ou retrait automatique suspendu ou en échec) : responsable du restaurant et administrateurs. */
+    PLATS_PERIMES,
+    /** Plats périmés retirés du stock automatiquement : responsable du restaurant et administrateurs. */
+    PLATS_PERIMES_RETIRES
 }

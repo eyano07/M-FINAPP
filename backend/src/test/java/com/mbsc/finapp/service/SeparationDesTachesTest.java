@@ -55,6 +55,11 @@ class SeparationDesTachesTest {
     }
 
     @Test
+    void leRetraitDesPlatsPerimesAutomatiqueOuManuelSeChoisitParLAdministrateurSeul() {
+        assertEquals("hasRole('ADMIN')", regle(ParametresRestaurantService.class, "definirRetraitPerimes"));
+    }
+
+    @Test
     void lesSeuilsDePrioriteSontReservesAuDa() {
         assertEquals("hasRole('DA')", regle(ParametresPrioriteNoteService.class, "enregistrer"));
         assertFalse(regle(ParametresPrioriteNoteService.class, "consulter").contains("ADMIN"));

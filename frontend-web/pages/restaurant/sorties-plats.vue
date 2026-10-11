@@ -279,9 +279,18 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
           Tout retirer
         </v-btn>
       </div>
-      <p class="text-caption text-medium-emphasis mb-3">
+      <p class="text-caption text-medium-emphasis mb-1">
         Ces portions ont dépassé la date d'expiration de leur production (durée de conservation de la fiche technique) sans
         être vendues : elles ne se vendent plus. Les retirer les enregistre en perte « Périmé », avec son écriture.
+      </p>
+      <p v-if="parametres.retraitPerimes === 'AUTOMATIQUE'" class="text-caption text-medium-emphasis mb-3 rst-perimes__mode">
+        <v-icon icon="mdi-autorenew" size="14" class="mr-1" />Retrait automatique activé : ces portions seront retirées à
+        la prochaine vérification (toutes les 30 minutes). Si elles sont encore là plus tard, le retrait automatique est
+        suspendu ou en échec — une notification vous prévient — et vous pouvez les retirer ici.
+      </p>
+      <p v-else class="text-caption text-medium-emphasis mb-3 rst-perimes__mode">
+        <v-icon icon="mdi-bell-outline" size="14" class="mr-1" />Retrait manuel : une notification vous prévient chaque jour
+        tant qu'il reste des plats périmés. L'administrateur peut choisir le retrait automatique dans les paramètres.
       </p>
       <div v-for="p in perimes" :key="`${p.platId}-${p.entrepotId}`" class="rst-perime">
         <div class="rst-perime__plat">
