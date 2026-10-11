@@ -7,9 +7,9 @@ definePageMeta({ module: 'RESTAURANT' })
  * Les mouvements de vente sont générés automatiquement à la validation d'une
  * vente : casse, perte et ajustements d'inventaire se saisissent ici.
  *
- * La casse d'une bouteille pleine et la péremption font aussi sortir la
- * boisson de son propre stock (avec écriture comptable) : ces deux types
- * exigent donc un entrepôt.
+ * La casse d'une bouteille pleine, la péremption et le cadeau font aussi
+ * sortir la boisson de son propre stock (avec écriture comptable) : ces trois
+ * types exigent donc un entrepôt.
  *
  * Un mouvement saisi ici s'annule ici : le serveur ajoute le mouvement
  * inverse (le journal reste en ajout seul) et, pour une perte de boisson,
@@ -67,7 +67,7 @@ const META_MVT: Record<string, { label: string; couleur: string; auto?: boolean;
   ACHAT: { label: 'Réception (consigne rendue)', couleur: 'orange', auto: true, sens: -1 },
   CASSE: { label: 'Casse — bouteille vide', couleur: 'error', sens: -1 },
   CASSE_PLEINE: { label: 'Casse — bouteille pleine', couleur: 'error', sens: -1, necessiteEntrepot: true },
-  PERIME: { label: 'Boisson périmée', couleur: 'deep-orange', sens: 0, necessiteEntrepot: true },
+  PERIME: { label: 'Boisson périmée', couleur: 'deep-orange', sens: 1, necessiteEntrepot: true },
   CADEAU: { label: 'Boisson offerte (cadeau)', couleur: 'pink', sens: 1, necessiteEntrepot: true },
   AJUSTEMENT_PLUS: { label: 'Ajustement +', couleur: 'primary', sens: 1 },
   AJUSTEMENT_MOINS: { label: 'Ajustement −', couleur: 'deep-orange', sens: -1 },
@@ -104,8 +104,8 @@ const apercu = computed(() => {
   const meta = META_MVT[form.type]
   if (!e || !q || q <= 0 || !meta) return null
   const apres = e.bouteillesVides + meta.sens * q
-  if (apres < 0) return { invalide: true, apres, texte: '', sansEffet: false }
-  return { invalide: false, apres, texte: formatCasiers(apres, e.contenanceCasier), sansEffet: meta.sens === 0 }
+  if (apres < 0) return { invalide: true, apres, texte: '' }
+  return { invalide: false, apres, texte: formatCasiers(apres, e.contenanceCasier) }
 })
 
 async function charger() {
@@ -276,8 +276,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           <v-chip v-if="item.annule" size="x-small" variant="tonal" color="grey" class="ml-1">Annulé</v-chip>
         </template>
         <template #item.delta="{ item }">
-          <span v-if="item.delta === 0" class="text-medium-emphasis">— (boisson seule)</span>
-          <span v-else :class="item.delta > 0 ? 'text-success font-weight-bold' : 'text-error font-weight-bold'">
+          <span :class="item.delta > 0 ? 'text-success font-weight-bold' : 'text-error font-weight-bold'">
             {{ item.delta > 0 ? '+' : '' }}{{ item.delta }}
           </span>
         </template>
@@ -339,7 +338,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           La bouteille n'a jamais été servie : le contenant est perdu (vides − N) ET la boisson qu'elle contenait aussi (stock − N).
         </p>
         <p v-else-if="form.type === 'PERIME'" class="text-caption text-medium-emphasis mb-3">
-          Le contenant reste intact et pourra être rendu normalement : seul le stock de boisson diminue, les vides ne changent pas.
+          C'est la boisson qui est périmée, pas la bouteille : la boisson jetée sort du stock, avec son écriture comptable de perte au coût moyen, et la bouteille vidée revient dans le stock de vides (vides + N).
         </p>
         <p v-else-if="form.type === 'CADEAU'" class="text-caption text-medium-emphasis mb-3">
           Bouteille offerte (promotion, geste commercial) : la boisson consommée sort du stock, avec son écriture comptable de perte au coût moyen, et la bouteille vide revient dans le stock de vides (vides + N), comme pour une vente.
@@ -364,10 +363,6 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           <template v-if="apercu.invalide">
             Impossible : le stock de vides passerait sous zéro.
             Il reste {{ emballageChoisi!.bouteillesVides }} bouteille(s) vide(s).
-          </template>
-          <template v-else-if="apercu.sansEffet">
-            Le stock de vides ne change pas ({{ emballageChoisi!.bouteillesVides }} bouteille(s)).
-            Seul le stock de la boisson diminuera de {{ form.quantite }}.
           </template>
           <template v-else>
             Vides après ce mouvement : <strong>{{ apercu.texte }}</strong>

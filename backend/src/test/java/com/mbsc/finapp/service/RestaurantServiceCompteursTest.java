@@ -91,14 +91,15 @@ class RestaurantServiceCompteursTest {
     }
 
     /**
-     * Une boisson perimee est jetee, mais la bouteille elle-meme n'est pas
-     * cassee : elle sera videe et pourra etre rendue normalement. Le stock de
-     * vides ne bouge donc pas — seul le stock de la boisson diminue (teste au
-     * niveau service).
+     * C'est la boisson qui est perimee, pas la bouteille : le contenu est jete (la sortie de
+     * stock de la boisson est testee au niveau service) et la bouteille, videe, est remise
+     * dans le stock de vides, comme pour une vente ou un cadeau.
      */
     @Test
-    void boisson_perimee_ne_change_pas_le_stock_de_vides() {
-        assertThat(appliquer(80, TypeMouvementEmballage.PERIME, 5)).isEqualTo(80);
+    void boisson_perimee_remet_la_bouteille_dans_le_stock_de_vides() {
+        assertThat(appliquer(80, TypeMouvementEmballage.PERIME, 5)).isEqualTo(85);
+        assertThat(appliquer(80, TypeMouvementEmballage.PERIME, 5))
+            .isEqualTo(appliquer(80, TypeMouvementEmballage.CADEAU, 5));
     }
 
     /**

@@ -7,9 +7,10 @@ package com.mbsc.finapp.domain.enums;
  * quantite saisie est toujours positive. Inferer le sens d'un signe obligerait
  * chaque appelant a le connaitre, et un oubli passerait silencieusement.</p>
  *
- * <p>Aucun de ces mouvements ne produit d'ecriture comptable : la consigne
- * n'est pas portee au bilan. Seule la reception de boissons, qui est un vrai
- * achat, genere une piece — par le moteur de stock ordinaire.</p>
+ * <p>Aucun de ces mouvements ne produit d'ecriture pour les bouteilles vides elles-memes : la
+ * consigne n'est pas portee au bilan. Les pieces viennent du moteur de stock ordinaire : la
+ * reception de boissons, qui est un vrai achat, et les pertes de boisson (casse d'une pleine,
+ * peremption, cadeau), qui sortent la boisson du stock au cout moyen.</p>
  */
 public enum TypeMouvementEmballage {
 
@@ -34,12 +35,11 @@ public enum TypeMouvementEmballage {
      */
     CASSE_PLEINE(-1),
     /**
-     * Boisson perimee : le contenu est jete mais le contenant n'est PAS
-     * detruit — sans effet sur le stock de vides (sens nul). Seul le stock de
-     * la boisson diminue, avec la meme ecriture comptable qu'une sortie
-     * ordinaire.
+     * Boisson perimee : c'est la boisson qui est perimee, pas la bouteille. Le contenu est jete —
+     * la boisson sort du stock avec son ecriture de perte au cout moyen — et la bouteille, videe,
+     * est remise dans le stock de vides (+1 par bouteille), comme pour un cadeau ou une vente.
      */
-    PERIME(0),
+    PERIME(1),
     /**
      * Boisson offerte (cadeau, promotion) : le contenu est consomme, comme pour une
      * vente — la boisson sort du stock avec son ecriture de perte au cout moyen — et

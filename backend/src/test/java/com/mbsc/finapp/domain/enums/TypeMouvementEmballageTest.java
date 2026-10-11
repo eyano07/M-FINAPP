@@ -16,8 +16,10 @@ class TypeMouvementEmballageTest {
     }
 
     @Test
-    void uneBoissonPerimeeGardeSaBouteillePleine() {
-        assertThat(PERIME.delta(5)).isZero();
+    void uneBoissonPerimeeRemetSaBouteilleEnVides() {
+        // C'est la boisson qui est périmée, pas la bouteille : le contenu est jeté, la bouteille vidée revient en stock.
+        assertThat(PERIME.delta(5)).isEqualTo(5);
+        assertThat(PERIME.delta(5)).isEqualTo(CADEAU.delta(5));
     }
 
     @Test
@@ -44,10 +46,12 @@ class TypeMouvementEmballageTest {
     }
 
     @Test
-    void annulerUnCadeauRetireLesVidesQuIlAvaitRemis() {
+    void annulerUneBoissonOfferteOuPerimeeRetireLesVidesRemis() {
         // L'annulation produit le mouvement inverse du delta : ajustement en moins pour un delta positif.
-        int delta = CADEAU.delta(5);
-        assertThat(delta).isPositive();
-        assertThat(AJUSTEMENT_MOINS.delta(Math.abs(delta))).isEqualTo(-delta);
+        for (TypeMouvementEmballage type : new TypeMouvementEmballage[] { CADEAU, PERIME }) {
+            int delta = type.delta(5);
+            assertThat(delta).as(type.name()).isPositive();
+            assertThat(AJUSTEMENT_MOINS.delta(Math.abs(delta))).as(type.name()).isEqualTo(-delta);
+        }
     }
 }
