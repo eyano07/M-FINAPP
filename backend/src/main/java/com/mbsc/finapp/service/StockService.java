@@ -455,10 +455,11 @@ public class StockService {
      *        camion — la raison d'etre de ce suivi — serait faussee.
      * @param compteCharge compte a debiter au lieu du compte de charge de
      *        l'article, ou {@code null} pour celui de l'article. Renseigne pour
-     *        une boisson offerte (6276.1) ou perimee (6031.2) : la sortie de
-     *        stock est la meme qu'une vente, seule la charge change de compte —
-     *        voir {@code RestaurantService.compteChargePerte}. Le compte de stock
-     *        credite reste celui de l'article.
+     *        une boisson offerte (6276.1) ou perimee (6031.2) et pour une sortie
+     *        de plat hors vente (un compte par motif) : la sortie de stock est la
+     *        meme qu'une vente, seule la charge change de compte — voir
+     *        {@code RestaurantService.compteChargePerte} et {@code compteSortiePlat}.
+     *        Le compte de stock credite reste celui de l'article.
      */
     public record SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose, CompteOHADA compteCharge) {
         public SortieVente(Article article, BigDecimal quantite) {

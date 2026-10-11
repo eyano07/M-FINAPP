@@ -111,7 +111,7 @@ public class DocumentationCompteService {
                 } + "\nInventaire permanent : le stock est suivi en continu, à chaque entrée et à chaque sortie.");
                 compte.setFonctionnement(switch (type) {
                     case PLAT -> "Débité à chaque production, pour le coût des provisions consommées (contrepartie : variation des stocks de produits finis 736x).\n"
-                        + "Crédité à chaque sortie (vente, perte, repas offert) au coût de production moyen.";
+                        + "Crédité à chaque sortie (vente, perte, plat offert, repas du personnel) au coût de production moyen.";
                     case PROVISION -> "Débité à l'entrée en stock, au paiement de la note d'achat de provisions (contrepartie : variation des stocks 6032x), frais d'approche compris.\n"
                         + "Crédité à chaque sortie (production de plats, péremption, perte) au coût moyen pondéré.";
                     default -> "Débité à l'entrée en stock, au paiement de la note d'achat de boissons (contrepartie : variation des stocks 6031x), frais d'approche compris.\n"
@@ -133,7 +133,10 @@ public class DocumentationCompteService {
                 });
                 compte.setFonctionnement(switch (type) {
                     case PLAT -> "Crédité à chaque production (portions entrées en stock, contrepartie 361x).\n"
-                        + "Débité à chaque sortie (vente, perte, repas offert) au coût de production moyen.";
+                        + "Débité à chaque vente, au coût de production moyen. Les autres sorties de plats (périmé, moisi, renversé, brûlé, "
+                        + "offert, repas du personnel, autre) vont à leur propre compte (" + RestaurantService.COMPTE_PLATS_PERIMES + " à "
+                        + RestaurantService.COMPTE_AUTRES_SORTIES_PLATS + ", " + RestaurantService.COMPTE_PLATS_OFFERTS + " et "
+                        + RestaurantService.COMPTE_REPAS_PERSONNEL + "), pas ici.";
                     case PROVISION -> "Crédité à l'entrée en stock (contrepartie : stock 331x).\n"
                         + "Débité à chaque sortie (production de plats, péremption, perte) au coût moyen pondéré.";
                     default -> "Crédité à l'entrée en stock (contrepartie : stock 3111x), pour le coût d'achat frais d'approche compris.\n"

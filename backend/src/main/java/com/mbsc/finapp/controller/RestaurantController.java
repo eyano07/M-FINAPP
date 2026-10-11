@@ -364,7 +364,6 @@ public class RestaurantController {
         return service.listerSortiesPlats(du, au);
     }
 
-    /** Sortie comptabilisée au coût de production moyen (D 736x / C 361x). */
     /**
      * Plats périmés encore en stock : la date d'expiration de leur production (durée de conservation de la fiche
      * technique) est passée sans que les portions aient été vendues.
@@ -380,6 +379,10 @@ public class RestaurantController {
         return service.retirerPlatsPerimes(req == null ? new RetraitPerimesRequest(null, null) : req);
     }
 
+    /**
+     * Sortie comptabilisée au coût de production moyen, au compte de son motif (D 736.1 à 736.5, 6276.2 pour un plat offert
+     * ou 6617.1 pour un repas du personnel / C 361x).
+     */
     @PostMapping("/plats/sorties")
     @ResponseStatus(HttpStatus.CREATED)
     public SortiePlatResponse enregistrerSortiePlat(@Valid @RequestBody SortiePlatRequest req) {

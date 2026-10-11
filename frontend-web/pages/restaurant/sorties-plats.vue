@@ -8,6 +8,9 @@ definePageMeta({ module: 'RESTAURANT' })
  * Chaque sortie est comptabilisée au coût de production moyen du plat, comme
  * la part « coût » d'une vente : D 736x Variations des stocks de produits
  * finis / C 361x stock du plat (voir RestaurantService.enregistrerSortiePlat).
+ * Chaque motif a son compte de débit (COMPTES_MOTIF ci-dessous, créés par V121) :
+ * D compte du motif / C 361x ; seule la sortie d'un plat vendu passe par le
+ * compte de variation du plat (736x).
  * Une sortie saisie par erreur s'annule d'ici : les portions reviennent en
  * stock et la pièce est extournée.
  */
@@ -54,6 +57,21 @@ const MOTIFS: { value: Motif; title: string; couleur: string }[] = [
   { value: 'AUTRE', title: 'Autre (à préciser)', couleur: 'grey' },
 ]
 const couleurMotif = (m: Motif) => MOTIFS.find(x => x.value === m)?.couleur ?? 'grey'
+
+/**
+ * Compte débité par la sortie de chaque motif (RestaurantService.compteSortiePlat, créés par V121) : les pertes restent en
+ * variation des stocks de produits finis, à part de la sortie des plats vendus ; un cadeau et un repas du personnel sont
+ * des charges par nature (relations publiques, avantages en nature).
+ */
+const COMPTES_MOTIF: Record<Motif, string> = {
+  PERIME: '736.1 Plats périmés',
+  MOISI: '736.2 Plats moisis ou avariés',
+  RENVERSE: '736.3 Plats renversés ou tombés',
+  BRULE: '736.4 Plats brûlés ou ratés',
+  CADEAU: '6276.2 Plats offerts à la clientèle',
+  REPAS_PERSONNEL: '6617.1 Repas du personnel',
+  AUTRE: '736.5 Autres sorties de plats',
+}
 
 /** Portions périmées d'un plat dans un entrepôt (PlatPerimeResponse côté serveur). */
 interface PlatPerime {
@@ -349,9 +367,13 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
           Enregistrer la sortie
         </v-btn>
       </div>
-      <p class="text-caption text-medium-emphasis mt-3 mb-0">
-        Comptabilisée au coût de production moyen, comme le coût d'une vente :
-        D 736 Variations des stocks de produits finis / C 361 stock du plat (journal STOCK).
+      <p v-if="form.motif" class="text-caption text-medium-emphasis mt-3 mb-0 rst-compta-motif">
+        Comptabilisée au coût de production moyen, au compte du motif :
+        D {{ COMPTES_MOTIF[form.motif] }} / C 361 stock du plat (journal STOCK).
+      </p>
+      <p v-else class="text-caption text-medium-emphasis mt-3 mb-0 rst-compta-motif">
+        Comptabilisée au coût de production moyen, au compte du motif choisi (perte de plat : 736.1 à 736.5 ; plat offert :
+        6276.2 ; repas du personnel : 6617.1) / C 361 stock du plat (journal STOCK).
       </p>
     </v-card>
 

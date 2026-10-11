@@ -231,6 +231,19 @@ public class RestaurantService {
      */
     static final String COMPTE_BOISSONS_OFFERTES = "6276.1";
     static final String COMPTE_BOISSONS_PERIMEES = "6031.2";
+    /**
+     * Comptes des sorties de plats hors vente, un par motif, créés par V121 — voir {@link #compteSortiePlat}. Un plat offert est
+     * une charge de relations publiques (sous 6276 « Cadeaux à la clientèle », comme une boisson offerte) ; un repas du
+     * personnel un avantage en nature (sous 6617) ; les pertes (périmé, moisi, renversé, brûlé, autre) restent en variation des
+     * stocks de produits finis, sous 736, à part de la sortie des plats vendus.
+     */
+    static final String COMPTE_PLATS_OFFERTS = "6276.2";
+    static final String COMPTE_PLATS_PERIMES = "736.1";
+    static final String COMPTE_PLATS_MOISIS = "736.2";
+    static final String COMPTE_PLATS_RENVERSES = "736.3";
+    static final String COMPTE_PLATS_BRULES = "736.4";
+    static final String COMPTE_AUTRES_SORTIES_PLATS = "736.5";
+    static final String COMPTE_REPAS_PERSONNEL = "6617.1";
 
     @PreAuthorize(ECRITURE_CARTE)
     @Transactional
@@ -1526,13 +1539,16 @@ public class RestaurantService {
      * Sortie de stock d'un plat qui ne sera pas vendu : périmé, moisi,
      * renversé, brûlé, offert, repas du personnel...
      *
-     * <p><b>Comptabilisée comme la part « coût » d'une vente.</b> Le plat
-     * quitte le stock au coût de production moyen, par la même sortie que
-     * pour une vente : D 736x Variations des stocks de produits finis /
-     * C 361x stock du plat, au journal STOCK. La production stockée diminue
-     * d'autant, si bien que le coût des ingrédients consommés reste en charge
-     * sans produit en face — la perte apparaît au résultat. Même traitement
-     * que la casse ou la péremption d'une boisson ; le motif sert au suivi.</p>
+     * <p><b>Une sortie par la même mécanique qu'une vente, un compte par motif.</b>
+     * Le plat quitte le stock au coût de production moyen, au journal STOCK :
+     * D compte du motif / C 361x stock du plat. La production stockée (736x)
+     * n'est plus soldée par la sortie, si bien que le coût des ingrédients
+     * consommés reste en charge — la perte apparaît au résultat, sous son nom.
+     * Le compte débité est celui du motif ({@link #compteSortiePlat}) : 736.1
+     * à 736.5 pour un plat périmé, moisi, renversé, brûlé ou « autre » (variation
+     * des stocks de produits finis, à part de la sortie des plats vendus),
+     * 6276.2 pour un plat offert, 6617.1 pour un repas du personnel. Même
+     * principe que les boissons offertes (6276.1) et périmées (6031.2).</p>
      *
      * <p>Un plat au coût de production nul (entré sans coût) sort sans
      * écriture : il n'y a rien à constater.</p>
@@ -1559,10 +1575,13 @@ public class RestaurantService {
             .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
         LocalDate date = req.dateSortie() == null ? LocalDate.now() : req.dateSortie();
 
+        // Chaque motif a son compte (voir compteSortiePlat) : seule la sortie d'un plat vendu passe par le compte de variation du plat.
+        CompteOHADA compteCharge = compteDuMotif(req.motif());
+
         String libelle = "Sortie de plat — " + req.motif().libelle() + " — " + plat.getLibelle()
             + (precision != null ? " (" + precision + ")" : "");
         MouvementStock mouvement = stockService.enregistrerSortieVenteInterne(date, libelleMouvement(libelle), entrepot,
-            List.of(new StockService.SortieVente(plat, req.quantite())), auteur);
+            List.of(new StockService.SortieVente(plat, req.quantite(), null, compteCharge)), auteur);
         BigDecimal valeur = mouvement.getLignes().stream()
             .map(LigneMouvementStock::getMontant)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -1769,10 +1788,43 @@ public class RestaurantService {
             return null;
         }
         boolean offerte = type == TypeMouvementEmballage.CADEAU;
+        return compteImposeOuRefus(numero, offerte ? "Boissons offertes à la clientèle" : "Boissons périmées",
+            offerte ? "6276" : "6031", offerte ? "une boisson offerte" : "une boisson périmée");
+    }
+
+    /** Compte débité par la sortie de stock d'un plat : son numéro, son libellé, la racine sous laquelle le recréer, et l'opération qu'il porte. */
+    record CompteSortiePlat(String numero, String libelle, String racine, String operation) {}
+
+    /**
+     * Le compte de chaque motif de sortie de plat, créés par V121. Un nouveau motif sans compte ne compile pas : le
+     * {@code switch} est exhaustif.
+     */
+    static CompteSortiePlat compteSortiePlat(MotifSortiePlat motif) {
+        return switch (motif) {
+            case PERIME -> new CompteSortiePlat(COMPTE_PLATS_PERIMES, "Plats périmés", "736", "un plat périmé");
+            case MOISI -> new CompteSortiePlat(COMPTE_PLATS_MOISIS, "Plats moisis ou avariés", "736", "un plat moisi ou avarié");
+            case RENVERSE -> new CompteSortiePlat(COMPTE_PLATS_RENVERSES, "Plats renversés ou tombés", "736", "un plat renversé");
+            case BRULE -> new CompteSortiePlat(COMPTE_PLATS_BRULES, "Plats brûlés ou ratés", "736", "un plat brûlé");
+            case CADEAU -> new CompteSortiePlat(COMPTE_PLATS_OFFERTS, "Plats offerts à la clientèle", "6276", "un plat offert");
+            case REPAS_PERSONNEL -> new CompteSortiePlat(COMPTE_REPAS_PERSONNEL, "Repas du personnel", "6617", "un repas du personnel");
+            case AUTRE -> new CompteSortiePlat(COMPTE_AUTRES_SORTIES_PLATS, "Autres sorties de plats", "736", "une autre sortie de plat");
+        };
+    }
+
+    /**
+     * Le compte du motif, lu au plan comptable. Absent (supprimé du plan comptable), la sortie est refusée plutôt que passée
+     * sur le compte de variation du plat : la perte se confondrait de nouveau avec le coût des plats vendus.
+     */
+    private CompteOHADA compteDuMotif(MotifSortiePlat motif) {
+        CompteSortiePlat c = compteSortiePlat(motif);
+        return compteImposeOuRefus(c.numero(), c.libelle(), c.racine(), c.operation());
+    }
+
+    /** Un compte que l'application impose à une perte ; absent du plan comptable, l'opération est refusée avec la marche à suivre. */
+    private CompteOHADA compteImposeOuRefus(String numero, String libelle, String racine, String operation) {
         return compteRepository.findByNumero(numero).orElseThrow(() -> new IllegalStateException(
-            "Le compte " + numero + " « " + (offerte ? "Boissons offertes à la clientèle" : "Boissons périmées")
-            + " » n'existe pas dans le plan comptable : un administrateur doit le recréer (Plan comptable, sous "
-            + (offerte ? "6276" : "6031") + ") avant d'enregistrer " + (offerte ? "une boisson offerte." : "une boisson périmée.")));
+            "Le compte " + numero + " « " + libelle + " » n'existe pas dans le plan comptable : un administrateur doit le "
+            + "recréer (Plan comptable, sous " + racine + ") avant d'enregistrer " + operation + "."));
     }
 
     /**

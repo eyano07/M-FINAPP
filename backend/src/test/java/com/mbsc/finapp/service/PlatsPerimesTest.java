@@ -25,6 +25,7 @@ import com.mbsc.finapp.dto.restaurant.RecetteResponse;
 import com.mbsc.finapp.dto.restaurant.RetraitPerimesRequest;
 import com.mbsc.finapp.dto.restaurant.SortiePlatResponse;
 import com.mbsc.finapp.repository.ArticleRepository;
+import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EntrepotRepository;
 import com.mbsc.finapp.repository.ParametresRestaurantRepository;
 import com.mbsc.finapp.repository.ProductionRepository;
@@ -91,6 +92,9 @@ class PlatsPerimesTest {
         grandLivre = trouver(arguments, StockGrandLivreRepository.class);
         sortiesPlats = trouver(arguments, SortiePlatRepository.class);
         parametres = trouver(arguments, ParametresRestaurantRepository.class);
+        // Chaque motif de sortie de plat a son compte (V121) : tous existent au plan comptable.
+        when(trouver(arguments, CompteOHADARepository.class).findByNumero(anyString()))
+            .thenAnswer(i -> Optional.of(CompteOHADA.builder().numero(i.getArgument(0)).build()));
         stock = trouver(arguments, StockService.class);
         references = trouver(arguments, ReferenceGenerator.class);
         utilisateur = trouver(arguments, CurrentUserProvider.class);
