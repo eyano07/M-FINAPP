@@ -517,10 +517,10 @@ public class NoteFraisService {
 
     private NoteFraisDetailResponse notifierEtRepondre(NoteFrais note) {
         // Reglement d'une dette fournisseur (4011) : pas une depense budgetaire, le statut est releve pour memoire.
-        appliquerControleBudgetaire(note, false);
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, null, "Soumission");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
-            "Note à vérifier", note.getReference() + " — " + note.getObjet(),
+            "Note à vérifier", note.getReference() + " — " + note.getObjet() + mentionHorsBudget(controle),
             "/notes-frais/" + note.getId(), note);
         return reponse;
     }
@@ -652,7 +652,7 @@ public class NoteFraisService {
             trace.append("ligne ").append(ligne.getId()).append(" : ").append(ancien).append(" -> ").append(nouveau);
         }
         note.addObservation(observation(note, auteur, note.getStatut(), trace.toString()));
-        appliquerControleBudgetaire(note, false);
+        appliquerControleBudgetaire(note);
         note = noteRepository.saveAndFlush(note);
 
         log.info("Note {} : comptes d'imputation modifies par le DFIN (par {})",
@@ -957,11 +957,11 @@ public class NoteFraisService {
                     + note.getStatut() + ")");
         }
         exigerCreateur(note);
-        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note, true);
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
         tracerControleBudgetaire(note, controle);
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, action, "Soumission");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
-            "Note à vérifier", note.getReference() + " — " + note.getObjet(),
+            "Note à vérifier", note.getReference() + " — " + note.getObjet() + mentionHorsBudget(controle),
             "/notes-frais/" + note.getId(), note);
         return reponse;
     }
@@ -972,10 +972,10 @@ public class NoteFraisService {
     public NoteFraisDetailResponse verifier(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.SOUMISE, "verifier");
-        appliquerControleBudgetaire(note, false);
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VERIFIEE_DFIN, action, "Verifiee");
         notificationService.notifierRole(RoleType.DA, TypeNotification.NOTE_VERIFIEE,
-            "Note à valider", note.getReference() + " — " + note.getObjet(),
+            "Note à valider", note.getReference() + " — " + note.getObjet() + mentionHorsBudget(controle),
             "/notes-frais/" + note.getId(), note);
         return reponse;
     }
@@ -987,7 +987,7 @@ public class NoteFraisService {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.VERIFIEE_DFIN, "valider");
         // Controle refait a la validation : le budget a pu etre consomme par d'autres notes depuis la soumission.
-        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note, false);
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
         // Etapes de l'historique sans role : la fonction de l'auteur s'affiche devant son nom (voir ObservationResponse).
         String libelle = "Validee";
         if (controle.justificationRequise()) {
@@ -1179,27 +1179,33 @@ public class NoteFraisService {
     }
 
     /**
-     * Releve le controle budgetaire de la note (statut, budget de reference). A la soumission, une depense non
-     * couverte par le budget (hors budget, depassement, aucun budget en execution) doit etre justifiee dans la note.
+     * Releve le controle budgetaire de la note (statut, budget de reference). Il ne bloque jamais : une depense non
+     * couverte par le budget (hors budget, depassement, aucun budget en execution) suit le circuit normal, signalee
+     * « hors budget » au DFIN puis au DA ; c'est le DA qui decide et qui doit motiver sa validation (voir {@link #valider}).
+     * Le demandeur peut ajouter une justification, facultative.
      */
-    private ControleBudgetaireResponse appliquerControleBudgetaire(NoteFrais note, boolean exigerJustification) {
+    private ControleBudgetaireResponse appliquerControleBudgetaire(NoteFrais note) {
         ControleBudgetaireResponse controle = controleBudgetaire.controlerNote(note);
         note.setStatutBudget(controle.statut());
         note.setBudget(controle.budgetId() == null ? null : budgetRepository.getReferenceById(controle.budgetId()));
-        if (exigerJustification && controle.justificationRequise() && !StringUtils.hasText(note.getJustificationBudget())) {
-            throw new IllegalArgumentException("Contrôle budgétaire : " + resumeControle(controle) + ". Toute dépense doit être "
-                + "couverte par le budget : précisez dans la note (justification budgétaire) pourquoi celle-ci ne l'est pas.");
-        }
         return controle;
     }
 
-    /** Trace dans l'historique une soumission hors budget, avec sa justification. */
+    /** Trace dans l'historique une soumission hors budget, avec la justification du demandeur si elle existe. */
     private void tracerControleBudgetaire(NoteFrais note, ControleBudgetaireResponse controle) {
         if (!controle.justificationRequise()) {
             return;
         }
+        String justification = StringUtils.hasText(note.getJustificationBudget())
+            ? "justification du demandeur : " + note.getJustificationBudget().strip()
+            : "sans justification du demandeur";
         note.addObservation(observation(note, currentUser.requireUser(), note.getStatut(),
-            "Contrôle budgétaire : " + resumeControle(controle) + " — justification : " + note.getJustificationBudget()));
+            "Contrôle budgétaire : " + resumeControle(controle) + " — " + justification));
+    }
+
+    /** Mention ajoutee aux notifications d'une note non couverte par le budget, pour que le DFIN et le DA le voient d'emblee. */
+    private static String mentionHorsBudget(ControleBudgetaireResponse controle) {
+        return controle != null && controle.justificationRequise() ? " (hors budget)" : "";
     }
 
     /** « ligne 1 (6042) : dépassement ; ligne 2 (6328) : hors budget » — lignes non conformes seulement. */

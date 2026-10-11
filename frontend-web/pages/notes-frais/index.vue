@@ -314,10 +314,6 @@ async function creerNote(executerEnsuite: boolean) {
     erreur.value = 'Renseignez un objet, le bénéficiaire et au moins une ligne avec un montant.'
     return
   }
-  if (executerEnsuite && form.sens === 'DECAISSEMENT' && controleCreation.value?.justificationRequise && !form.justificationBudget.trim()) {
-    erreur.value = 'Cette dépense n’est pas couverte par le budget : précisez la justification budgétaire avant de soumettre la note.'
-    return
-  }
   if (executerEnsuite) soumission.value = true
   else saving.value = true
   erreur.value = ''
@@ -628,13 +624,13 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 
           <BudgetControleBudgetaire :lignes="form.lignes" :devise="form.devise" :sens="form.sens" @resultat="(r: any) => controleCreation = r" />
           <div v-if="form.sens === 'DECAISSEMENT' && controleCreation?.justificationRequise" class="nf-field">
-            <label class="nf-label">Justification budgétaire *</label>
+            <label class="nf-label">Justification budgétaire (facultative)</label>
             <v-textarea
               v-model="form.justificationBudget"
               rows="2"
               auto-grow
               placeholder="Pourquoi cette dépense n’est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...)"
-              :hint="`Obligatoire pour soumettre la note ; le ${rolesStore.libelle('DA')} devra aussi motiver sa validation.`"
+              :hint="`Facultative : la note est transmise même hors budget. Le ${rolesStore.libelle('DA')} décide et doit motiver sa validation.`"
               persistent-hint
             />
           </div>

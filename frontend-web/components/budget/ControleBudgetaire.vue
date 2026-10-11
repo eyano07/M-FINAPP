@@ -4,7 +4,8 @@
  * l'exercice (budgétée, dépassement du disponible à fin de mois, hors budget, aucun budget). Deux modes :
  * - saisie (`lignes` fourni) : contrôle des lignes en cours de saisie, recalculé à chaque modification ;
  * - note enregistrée (`noteId` seul) : contrôle à jour de la note.
- * Émet le résultat pour que l'écran exige la justification quand elle est requise.
+ * Émet le résultat : une note non couverte par le budget n'est jamais bloquée, elle est signalée « hors budget »
+ * et le DA décide en motivant sa validation.
  */
 interface LigneSaisie {
   compteImputation?: string | null
@@ -23,6 +24,7 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'resultat', r: any | null): void }>()
 
 const api = useApi()
+const rolesStore = useRolesStore()
 const resultat = ref<any | null>(null)
 const chargement = ref(false)
 const erreur = ref('')
@@ -110,7 +112,7 @@ const lignesAffichees = computed(() => (resultat.value?.lignes || []).filter((l:
     </div>
     <p v-if="resultat?.justificationRequise" class="cb-exige">
       <v-icon icon="mdi-information-outline" size="15" />
-      Toute dépense doit être couverte par le budget : cette note doit préciser pourquoi elle ne l’est pas (justification budgétaire).
+      Cette note n’est pas couverte par le budget : elle suit le circuit normal, signalée « hors budget ». Le {{ rolesStore.libelle('DA') }} décide et doit motiver sa validation ; le demandeur peut ajouter une justification.
     </p>
     <p v-for="(a, i) in resultat?.avertissements || []" :key="i" class="cb-avert">{{ a }}</p>
   </div>

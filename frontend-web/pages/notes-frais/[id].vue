@@ -162,7 +162,10 @@ const lDFIN = computed(() => rolesStore.libelle('DFIN'))
 const lDA = computed(() => rolesStore.libelle('DA'))
 const isDFIN = computed(() => auth.hasRole('DFIN'))
 const isDA = computed(() => auth.hasRole('DA'))
-const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER']))
+// Rôles que le serveur autorise à créer et soumettre une note (NoteFraisService.soumettre) : le responsable restaurant en
+// fait partie. Absent d'ici, il ne pouvait ni soumettre ni justifier une note restée en brouillon (échec de l'envoi
+// automatique depuis « Achat de boissons »), et le DFIN n'était jamais prévenu.
+const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT']))
 
 // Une note d'encaissement ne suit pas le circuit DFIN/DA : "Soumettre" ne
 // s'applique qu'au décaissement (isCreateur n'est qu'un contrôle de rôle,
@@ -230,8 +233,9 @@ async function allerNoteSuivante(statutFile: string, noteActuelleId: string) {
 }
 
 // ── Contrôle budgétaire ──────────────────────────────────────────────
-// Contrôle à jour (composant BudgetControleBudgetaire) : une note non couverte par le budget doit être
-// justifiée avant la soumission, et le DA doit motiver sa validation.
+// Contrôle à jour (composant BudgetControleBudgetaire) : une note non couverte par le budget n'est jamais
+// bloquée à la soumission : elle part chez le DFIN, signalée « hors budget », et c'est le DA qui décide et
+// qui doit motiver sa validation. Le demandeur peut ajouter une justification, facultative.
 const controleNote = ref<any | null>(null)
 const rafraichirControle = ref(0)
 const justificationSaisie = ref('')
@@ -260,10 +264,6 @@ async function action(chemin: string, requiertCommentaire = false, statutFileSui
     erreur.value = chemin === 'valider'
       ? "Cette note n'est pas couverte par le budget : motivez votre validation dans le champ Observation."
       : 'Un motif est obligatoire pour cette action.'
-    return
-  }
-  if (chemin === 'soumettre' && horsBudget.value && !(note.value?.justificationBudget || '').trim()) {
-    erreur.value = "Cette dépense n'est pas couverte par le budget : enregistrez d'abord la justification budgétaire (encadré « Contrôle budgétaire »)."
     return
   }
   busy.value = true
@@ -791,13 +791,13 @@ const peutGererPieces = computed(() =>
           <div class="nd-card__body">
             <BudgetControleBudgetaire :note-id="note.id" :sens="note.sens" :rafraichir="rafraichirControle" @resultat="(r: any) => controleNote = r" />
             <div v-if="peutJustifier && (horsBudget || note.justificationBudget)" class="nd-justif">
-              <label class="nd-label">Justification budgétaire {{ horsBudget ? '*' : '' }}</label>
+              <label class="nd-label">Justification budgétaire (facultative)</label>
               <v-textarea
                 v-model="justificationSaisie"
                 rows="2"
                 auto-grow
                 hide-details
-                placeholder="Pourquoi cette dépense n'est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...)"
+                placeholder="Pourquoi cette dépense n'est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...) Facultatif : la note sera transmise dans tous les cas."
               />
               <v-btn class="mt-2" size="small" color="primary" variant="tonal" prepend-icon="mdi-content-save-outline"
                 :loading="enregistrementJustification" :disabled="justificationSaisie === (note.justificationBudget || '')"
