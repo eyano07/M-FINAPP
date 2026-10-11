@@ -375,7 +375,10 @@ function toggleCommande(id: number) {
 }
 
 // ── Addition : recapitulatif + reglement groupe de la table ───────────────
-const commandesNonPayees = computed(() => commandesTable.value.filter(c => !c.reglee))
+// L'addition regroupe les créances validées non soldées : ce sont les seules que le serveur encaisse en une fois
+// (VenteService.reglerAdditionTable). Un brouillon est « à payer » lui aussi, mais il doit d'abord être validé par
+// le caissier : il n'entre ni dans le total ni dans le ticket.
+const commandesNonPayees = computed(() => commandesTable.value.filter(c => c.statut === 'VALIDEE' && !c.reglee))
 
 /** Somme par devise : une addition peut cumuler des commandes saisies en CDF et en USD. */
 const totauxAdditionParDevise = computed(() => {
@@ -678,9 +681,12 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
               <span class="commande-ligne__ref">{{ c.reference }}</span>
               <span class="commande-ligne__montant">{{ fmtCommande(c) }}</span>
               <v-chip :color="c.reglee ? 'success' : 'error'" size="x-small" variant="tonal">
-                {{ c.reglee ? 'Payée' : 'Non payée' }}
+                {{ c.reglee ? 'Payée' : 'À payer' }}
               </v-chip>
             </button>
+            <p v-if="c.statut === 'BROUILLON'" class="commande-brouillon">
+              Brouillon : pas encore validée, donc pas encaissée. Le caissier la valide pour l'encaisser.
+            </p>
             <div v-if="commandeOuverteId === c.id" class="commande-detail">
               <div v-for="(l, li) in c.lignes" :key="li" class="commande-detail__ligne">
                 <span class="commande-detail__designation">{{ l.designation }} × {{ l.quantite }}</span>
@@ -936,6 +942,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
 .commande-ligne__ref { font-weight: 600; font-size: 0.8125rem; }
 .commande-ligne__montant { margin-left: auto; font-size: 0.8125rem; color: #6b7280; }
 
+.commande-brouillon { margin: 0; padding: 0 0 8px 26px; font-size: 0.72rem; line-height: 1.3; color: #6b7280; }
 .commande-detail { padding: 0 0 10px 26px; }
 .commande-detail__ligne {
   display: flex;

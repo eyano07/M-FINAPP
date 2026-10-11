@@ -4,8 +4,9 @@ import com.mbsc.finapp.domain.TableRestaurant;
 import com.mbsc.finapp.domain.enums.FormeTable;
 
 /**
- * @param aCommandeNonPayee au moins une vente VALIDEE liee a cette table n'est
- *                          pas encore reglee (voir Vente.estReglee())
+ * @param aCommandeNonPayee au moins une commande liee a cette table n'est pas
+ *                          encore reglee : un brouillon (ni valide ni encaisse)
+ *                          ou une creance non soldee (voir Vente.estReglee())
  * @param aCommandePayee    aucune commande non payee, mais au moins une vente
  *                          VALIDEE liee et reglee — la table reste occupee
  *                          jusqu'a liberation manuelle (voir RestaurantService)

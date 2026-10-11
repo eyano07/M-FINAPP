@@ -212,8 +212,12 @@ public class Vente {
         return clientNom == null || clientNom.isBlank() ? "Client comptoir" : clientNom;
     }
 
-    /** true si la creance est soldee (ou si la vente n'en genere pas). */
+    /**
+     * true si la vente est encaissee : validee, et sa creance soldee (ou aucune creance a regler, pour un
+     * reglement comptant). Un brouillon n'est jamais regle : rien n'est comptabilise, le client n'a pas paye.
+     */
     public boolean estReglee() {
-        return modeReglement != ModeReglement.CREDIT || pieceReglement != null;
+        return statut != StatutVente.BROUILLON
+            && (modeReglement != ModeReglement.CREDIT || pieceReglement != null);
     }
 }

@@ -695,10 +695,10 @@ public class RestaurantService {
      * Une commande BROUILLON compte comme "en cours" (deja engagee, pas
      * encore reglee) au meme titre qu'une VALIDEE non reglee : seule une
      * ANNULEE (deja exclue par la requete) ou une VALIDEE reglee sortent du
-     * compte "non payee".
+     * compte "non payee" — c'est ce que dit {@link Vente#estReglee()}.
      */
     private TableResponse tableResponseAvecBadges(TableRestaurant t, List<Vente> ventes) {
-        boolean nonPayee = ventes.stream().anyMatch(v -> !v.estReglee() || v.getStatut() == StatutVente.BROUILLON);
+        boolean nonPayee = ventes.stream().anyMatch(v -> !v.estReglee());
         boolean payee = !nonPayee && !ventes.isEmpty();
         return TableResponse.from(t, nonPayee, payee);
     }
