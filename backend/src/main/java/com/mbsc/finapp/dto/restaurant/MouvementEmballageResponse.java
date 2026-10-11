@@ -13,6 +13,8 @@ import java.time.LocalDate;
  * @param annulationDeId mouvement que celui-ci annule, pour le mouvement inverse d'une annulation
  * @param annulable      true si ce mouvement peut etre annule depuis l'ecran des mouvements —
  *                       un ajustement d'inventaire exige en plus le role administrateur
+ * @param pieceReference piece comptable de la perte de boisson (casse d'une pleine, peremption, cadeau),
+ *                       null pour un mouvement qui ne touche que les vides
  */
 public record MouvementEmballageResponse(
     Long id,
@@ -30,7 +32,8 @@ public record MouvementEmballageResponse(
     Instant createdAt,
     boolean annule,
     Long annulationDeId,
-    boolean annulable
+    boolean annulable,
+    String pieceReference
 ) {
     public static MouvementEmballageResponse from(MouvementEmballage m) {
         var e = m.getEmballage();
@@ -61,7 +64,9 @@ public record MouvementEmballageResponse(
             m.getCreatedAt(),
             m.isAnnule(),
             annulationDe == null ? null : annulationDe.getId(),
-            annulable
+            annulable,
+            m.getMouvementStock() == null || m.getMouvementStock().getPiece() == null
+                ? null : m.getMouvementStock().getPiece().getReference()
         );
     }
 }

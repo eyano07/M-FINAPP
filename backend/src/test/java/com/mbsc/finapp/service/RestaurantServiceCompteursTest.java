@@ -102,13 +102,15 @@ class RestaurantServiceCompteursTest {
     }
 
     /**
-     * Boisson offerte (cadeau, promotion) : meme traitement que PERIME — le
-     * contenant reste intact, seul le stock de boisson diminue (teste au
-     * niveau service).
+     * Boisson offerte (cadeau, promotion) : le contenu est consomme, comme pour une
+     * vente, et la bouteille revient dans le stock de vides (la sortie de stock de la
+     * boisson est testee au niveau service).
      */
     @Test
-    void boisson_offerte_en_cadeau_ne_change_pas_le_stock_de_vides() {
-        assertThat(appliquer(80, TypeMouvementEmballage.CADEAU, 5)).isEqualTo(80);
+    void boisson_offerte_en_cadeau_remet_les_bouteilles_dans_le_stock_de_vides() {
+        assertThat(appliquer(80, TypeMouvementEmballage.CADEAU, 5)).isEqualTo(85);
+        assertThat(appliquer(80, TypeMouvementEmballage.CADEAU, 5))
+            .isEqualTo(appliquer(80, TypeMouvementEmballage.VENTE, 5));
     }
 
     @Test

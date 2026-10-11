@@ -68,7 +68,7 @@ const META_MVT: Record<string, { label: string; couleur: string; auto?: boolean;
   CASSE: { label: 'Casse — bouteille vide', couleur: 'error', sens: -1 },
   CASSE_PLEINE: { label: 'Casse — bouteille pleine', couleur: 'error', sens: -1, necessiteEntrepot: true },
   PERIME: { label: 'Boisson périmée', couleur: 'deep-orange', sens: 0, necessiteEntrepot: true },
-  CADEAU: { label: 'Boisson offerte (cadeau)', couleur: 'pink', sens: 0, necessiteEntrepot: true },
+  CADEAU: { label: 'Boisson offerte (cadeau)', couleur: 'pink', sens: 1, necessiteEntrepot: true },
   AJUSTEMENT_PLUS: { label: 'Ajustement +', couleur: 'primary', sens: 1 },
   AJUSTEMENT_MOINS: { label: 'Ajustement −', couleur: 'deep-orange', sens: -1 },
 }
@@ -258,6 +258,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           { title: 'Effet sur les vides', key: 'delta', align: 'end' },
           { title: 'Motif', key: 'motif' },
           { title: 'Vente', key: 'venteReference' },
+          { title: 'Écriture comptable', key: 'pieceReference' },
           { title: 'Saisi par', key: 'createdByNom' },
           { title: '', key: 'actions', align: 'end', sortable: false },
         ]"
@@ -282,6 +283,12 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         </template>
         <template #item.motif="{ item }">{{ item.motif || '—' }}</template>
         <template #item.venteReference="{ item }">{{ item.venteReference || '—' }}</template>
+        <template #item.pieceReference="{ item }">
+          <span v-if="item.pieceReference" class="text-no-wrap" title="Pièce comptable de la perte de boisson (journal Stock)">
+            <v-icon icon="mdi-book-check-outline" size="14" class="mr-1 text-medium-emphasis" />{{ item.pieceReference }}
+          </span>
+          <span v-else class="text-medium-emphasis">—</span>
+        </template>
         <template #item.createdByNom="{ item }">{{ item.createdByNom || '—' }}</template>
         <template #item.actions="{ item }">
           <v-btn
@@ -335,7 +342,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           Le contenant reste intact et pourra être rendu normalement : seul le stock de boisson diminue, les vides ne changent pas.
         </p>
         <p v-else-if="form.type === 'CADEAU'" class="text-caption text-medium-emphasis mb-3">
-          Bouteille offerte (promotion, geste commercial) : seul le stock de boisson diminue, les vides ne changent pas.
+          Bouteille offerte (promotion, geste commercial) : la boisson consommée sort du stock, avec son écriture comptable de perte au coût moyen, et la bouteille vide revient dans le stock de vides (vides + N), comme pour une vente.
         </p>
 
         <v-text-field v-model.number="form.quantite" type="number" label="Nombre de bouteilles *" variant="outlined" density="comfortable" class="mb-3" />

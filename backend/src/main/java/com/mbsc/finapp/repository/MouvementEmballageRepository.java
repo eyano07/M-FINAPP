@@ -42,6 +42,8 @@ public interface MouvementEmballageRepository extends JpaRepository<MouvementEmb
         select m from MouvementEmballage m
         join fetch m.emballage e
         left join fetch m.createdBy
+        left join fetch m.mouvementStock ms
+        left join fetch ms.piece
         where (:emballageId is null or e.id = :emballageId)
           and (:du is null or m.dateMouvement >= :du)
           and (:au is null or m.dateMouvement <= :au)
@@ -62,6 +64,8 @@ public interface MouvementEmballageRepository extends JpaRepository<MouvementEmb
         select m from MouvementEmballage m
         join fetch m.emballage e
         left join fetch m.createdBy
+        left join fetch m.mouvementStock ms
+        left join fetch ms.piece
         where m.dateMouvement between :du and :au
         order by m.dateMouvement desc, m.id desc
     """)

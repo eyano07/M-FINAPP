@@ -41,11 +41,11 @@ public enum TypeMouvementEmballage {
      */
     PERIME(0),
     /**
-     * Boisson offerte (cadeau, promotion) : meme traitement que PERIME — sans
-     * effet sur le stock de vides (sens nul), seul le stock de la boisson
-     * diminue. Distingue du PERIME par le motif, pas par le mecanisme.
+     * Boisson offerte (cadeau, promotion) : le contenu est consomme, comme pour une
+     * vente — la boisson sort du stock avec son ecriture de perte au cout moyen — et
+     * la bouteille, elle, est remise dans le stock de vides (+1 par bouteille).
      */
-    CADEAU(0),
+    CADEAU(1),
     /** Ecart d'inventaire en faveur du stock. */
     AJUSTEMENT_PLUS(1),
     /** Ecart d'inventaire en defaveur du stock. */
