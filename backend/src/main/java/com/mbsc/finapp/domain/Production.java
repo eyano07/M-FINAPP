@@ -58,6 +58,13 @@ public class Production {
     @Column(nullable = false, precision = 15, scale = 3)
     private BigDecimal quantite;
 
+    /**
+     * Date d'expiration des portions : date de production + durée de conservation de la fiche technique, relevée à la
+     * production. Les portions encore en stock le lendemain sont périmées. Absente : elles ne se périment pas.
+     */
+    @Column(name = "date_expiration")
+    private LocalDate dateExpiration;
+
     /** Cout reel des ingredients consommes, au CMP du moment. */
     @Column(name = "cout_total", nullable = false, precision = 15, scale = 2)
     @Builder.Default

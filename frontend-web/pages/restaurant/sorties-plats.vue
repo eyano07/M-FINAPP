@@ -55,6 +55,20 @@ const MOTIFS: { value: Motif; title: string; couleur: string }[] = [
 ]
 const couleurMotif = (m: Motif) => MOTIFS.find(x => x.value === m)?.couleur ?? 'grey'
 
+/** Portions périmées d'un plat dans un entrepôt (PlatPerimeResponse côté serveur). */
+interface PlatPerime {
+  platId: number
+  platCode: string
+  platLibelle: string
+  uniteMesure?: string
+  entrepotId: number
+  entrepotCode: string
+  quantitePerimee: number
+  valeur: number
+  perimeDepuis: string
+  lots: { productionReference: string; dateProduction: string; dateExpiration: string; quantite: number }[]
+}
+
 const api = useApi()
 const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
@@ -66,6 +80,8 @@ const niveaux = ref<StockNiveau[]>([])
 const typesParArticle = ref<Record<number, string>>({})
 const entrepots = ref<Entrepot[]>([])
 const sorties = ref<SortiePlat[]>([])
+const perimes = ref<PlatPerime[]>([])
+const retraitEnCours = ref(false)
 
 const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
 
@@ -82,17 +98,19 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [stock, carte, ents, hist] = await Promise.all([
+    const [stock, carte, ents, hist, per] = await Promise.all([
       api<StockNiveau[]>('/restaurant/stock'),
       api<ArticleCarte[]>('/restaurant/carte').catch(() => []),
       api<Entrepot[]>('/restaurant/entrepots').catch(() => []),
       api<SortiePlat[]>('/restaurant/plats/sorties'),
+      api<PlatPerime[]>('/restaurant/plats/perimes').catch(() => []),
       parametres.charger(),
     ])
     niveaux.value = stock
     typesParArticle.value = Object.fromEntries(carte.map(a => [a.id, a.type]))
     entrepots.value = ents
     sorties.value = hist
+    perimes.value = per
     if (!form.entrepotId && ents.length === 1) {
       form.entrepotId = ents[0].id
     }
@@ -159,6 +177,38 @@ async function enregistrer() {
   }
 }
 
+// ── Plats périmés : la date d'expiration de leur production est passée ──────────────────────────────────
+// Durée de conservation de la fiche technique + date de production = date d'expiration. Les portions encore en stock
+// ensuite sont périmées : elles ne se vendent plus, et se retirent ici en perte « Périmé » (avec l'écriture comptable).
+const valeurPerimes = computed(() => perimes.value.reduce((t, p) => t + (p.valeur || 0), 0))
+const portionsPerimes = computed(() => perimes.value.reduce((t, p) => t + (p.quantitePerimee || 0), 0))
+
+async function retirerPerimes(p: PlatPerime | null) {
+  const cible = p ? [p] : perimes.value
+  const valeur = cible.reduce((t, x) => t + (x.valeur || 0), 0)
+  const portions = cible.reduce((t, x) => t + (x.quantitePerimee || 0), 0)
+  const quoi = p ? `${fmtQte(portions)} portion(s) de ${p.platLibelle}` : `${fmtQte(portions)} portion(s) périmée(s)`
+  if (!confirm(`Retirer ${quoi} du stock ? Une sortie « Périmé » de ${parametres.fmtMontant(valeur)} et son écriture comptable seront enregistrées.`)) {
+    return
+  }
+  retraitEnCours.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    const faites = await api<SortiePlat[]>('/restaurant/plats/perimes/retirer', {
+      method: 'POST',
+      body: p ? { platId: p.platId, entrepotId: p.entrepotId } : {},
+    })
+    succes.value = `${faites.length} sortie${faites.length > 1 ? 's' : ''} « Périmé » enregistrée${faites.length > 1 ? 's' : ''} : `
+      + faites.map(s => `${fmtQte(s.quantite)} ${s.uniteMesure || ''} de ${s.articleLibelle}`).join(', ') + '.'
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Échec du retrait des plats périmés.')
+  } finally {
+    retraitEnCours.value = false
+  }
+}
+
 // ── Récapitulatif (sorties non annulées) ───────────────────────────────────
 const actives = computed(() => sorties.value.filter(s => !s.annulee))
 const valeurTotale = computed(() => actives.value.reduce((t, s) => t + (s.valeur || 0), 0))
@@ -215,6 +265,41 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
     <v-alert v-if="succes" type="success" variant="tonal" rounded="lg" class="mb-4" closable @click:close="succes = ''">
       {{ succes }}
     </v-alert>
+
+    <v-card v-if="perimes.length" class="classroom-card pa-5 mb-5 rst-perimes">
+      <div class="d-flex align-center flex-wrap ga-3 mb-2">
+        <p class="rst-form-title ma-0">
+          <v-icon icon="mdi-timer-sand-complete" size="18" color="warning" class="mr-1" />
+          Plats périmés — {{ fmtQte(portionsPerimes) }} portion{{ portionsPerimes > 1 ? 's' : '' }} à retirer du stock
+        </p>
+        <v-spacer />
+        <span class="text-body-2">Valeur : <strong>{{ parametres.fmtMontant(valeurPerimes) }}</strong></span>
+        <v-btn v-if="canWrite" color="warning" variant="flat" rounded="lg" prepend-icon="mdi-delete-sweep-outline"
+          :loading="retraitEnCours" @click="retirerPerimes(null)">
+          Tout retirer
+        </v-btn>
+      </div>
+      <p class="text-caption text-medium-emphasis mb-3">
+        Ces portions ont dépassé la date d'expiration de leur production (durée de conservation de la fiche technique) sans
+        être vendues : elles ne se vendent plus. Les retirer les enregistre en perte « Périmé », avec son écriture.
+      </p>
+      <div v-for="p in perimes" :key="`${p.platId}-${p.entrepotId}`" class="rst-perime">
+        <div class="rst-perime__plat">
+          <span class="font-weight-medium">{{ p.platLibelle }}</span>
+          <span class="text-medium-emphasis text-caption"> · {{ p.entrepotCode }}</span>
+          <div class="text-caption text-medium-emphasis">
+            <span v-for="(l, i) in p.lots" :key="l.productionReference">
+              {{ i ? ' · ' : '' }}{{ l.productionReference }} : {{ fmtQte(l.quantite) }}, expirée le {{ fmtDate(l.dateExpiration) }}
+            </span>
+          </div>
+        </div>
+        <span class="rst-perime__qte">{{ fmtQte(p.quantitePerimee) }} {{ p.uniteMesure || '' }}</span>
+        <span class="rst-perime__valeur">{{ parametres.fmtMontant(p.valeur) }}</span>
+        <v-btn v-if="canWrite" size="small" variant="tonal" color="warning" :loading="retraitEnCours" @click="retirerPerimes(p)">
+          Retirer
+        </v-btn>
+      </div>
+    </v-card>
 
     <v-card v-if="canWrite" class="classroom-card pa-5 mb-5">
       <p class="rst-form-title"><v-icon icon="mdi-food-off-outline" size="16" class="mr-1" />Nouvelle sortie</p>
@@ -379,4 +464,9 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
 .rst-motif { font-weight: 600; }
+.rst-perimes { border-left: 4px solid rgb(var(--v-theme-warning)); }
+.rst-perime { display: flex; align-items: center; gap: 14px; padding: 8px 0; border-top: 1px solid #f0f0f0; }
+.rst-perime__plat { flex: 1 1 auto; min-width: 0; }
+.rst-perime__qte { flex: 0 0 auto; font-weight: 700; color: #b45309; white-space: nowrap; }
+.rst-perime__valeur { flex: 0 0 110px; text-align: right; color: #6b7280; font-size: 0.875rem; white-space: nowrap; }
 </style>

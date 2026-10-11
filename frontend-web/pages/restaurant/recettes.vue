@@ -26,6 +26,8 @@ interface Recette {
   prixVente?: number | null
   lignes: LigneRecette[]
   coutEstimeParPortion: number
+  /** Durée de conservation du plat, en jours ; absente : le plat ne se périme pas. */
+  dureeConservationJours?: number | null
 }
 interface Provision { id: number; code: string; libelle: string; uniteMesure?: string }
 /** Une ligne de l'état du stock des provisions (une par provision et par entrepôt). */
@@ -52,6 +54,8 @@ const succes = ref('')
 const platSelectionneId = ref<number | null>(null)
 const lignesEnCours = ref<LigneRecette[]>([])
 const modifie = ref(false)
+/** Durée de conservation en cours de saisie (champ numérique : vide = chaîne vide). */
+const dureeEnCours = ref<number | string | null>(null)
 
 const recetteSelectionnee = computed(() =>
   recettes.value.find(r => r.platId === platSelectionneId.value) || null)
@@ -216,8 +220,29 @@ function rechargerLignes() {
   lignesEnCours.value = recetteSelectionnee.value
     ? recetteSelectionnee.value.lignes.map(l => ({ ...l }))
     : []
+  dureeEnCours.value = recetteSelectionnee.value?.dureeConservationJours ?? null
   modifie.value = false
 }
+
+// ── Durée de conservation ─────────────────────────────────────────────────
+// Elle fait partie de la fiche : chaque production en tire la date d'expiration de ses portions (production + durée) ;
+// passé cette date, les portions non vendues sont périmées. Vide : le plat ne se périme pas.
+const dureeSaisie = computed<number | null>(() => {
+  const v = dureeEnCours.value
+  if (v === null || v === '' || (typeof v === 'string' && !v.trim())) return null
+  return Number(v)
+})
+const dureeValide = computed(() =>
+  dureeSaisie.value === null || (Number.isInteger(dureeSaisie.value) && dureeSaisie.value >= 0 && dureeSaisie.value <= 365))
+
+const aideConservation = computed(() => {
+  if (dureeSaisie.value === null) return 'Aucune durée : ce plat ne se périme pas.'
+  if (!dureeValide.value) return ''
+  const d = new Date()
+  d.setDate(d.getDate() + dureeSaisie.value)
+  const jour = d.toLocaleDateString('fr-FR', { dateStyle: 'long' })
+  return `Une production d'aujourd'hui expire le ${jour} ; le lendemain, les portions non vendues sont périmées.`
+})
 
 function choisirPlat(platId: number) {
   if (platId === platSelectionneId.value) return
@@ -261,6 +286,9 @@ const raisonsBlocage = computed(() => {
   if (lignesEnCours.value.some(l => !l.quantite || l.quantite <= 0)) {
     raisons.push('Chaque ligne doit porter une quantité strictement positive.')
   }
+  if (!dureeValide.value) {
+    raisons.push('La durée de conservation est un nombre entier de jours, de 0 à 365.')
+  }
   return raisons
 })
 const peutEnregistrer = computed(() => raisonsBlocage.value.length === 0)
@@ -280,6 +308,7 @@ async function enregistrer() {
         provisionId: l.provisionId,
         quantite: l.quantite,
       })),
+      dureeConservationJours: dureeSaisie.value,
     }
     await api(`/restaurant/recettes/${platSelectionneId.value}`, { method: 'PUT', body })
     succes.value = 'Fiche technique enregistrée.'
@@ -350,6 +379,7 @@ const fmtQte = (n?: number | null) =>
               {{ r.platCode }} ·
               <span v-if="r.lignes.length">{{ r.lignes.length }} ingrédient{{ r.lignes.length > 1 ? 's' : '' }}</span>
               <span v-else class="fiche-sans">sans fiche</span>
+              <span v-if="r.dureeConservationJours != null"> · conservation {{ r.dureeConservationJours }} j</span>
             </v-list-item-subtitle>
           </v-list-item>
           <p v-if="!recettesFiltrees.length" class="text-caption text-medium-emphasis text-center pa-4 mb-0">
@@ -380,6 +410,23 @@ const fmtQte = (n?: number | null) =>
               Enregistrer
             </v-btn>
           </div>
+        </div>
+
+        <div class="fiche-conservation mb-4">
+          <v-text-field
+            v-model="dureeEnCours"
+            type="number" min="0" max="365" step="1"
+            label="Durée de conservation (jours)"
+            prepend-inner-icon="mdi-timer-sand"
+            variant="outlined" density="compact" rounded="lg" hide-details
+            :readonly="!canWrite"
+            class="fiche-conservation__champ"
+            @update:model-value="modifie = true"
+          />
+          <p class="text-caption text-medium-emphasis mb-0 fiche-conservation__aide">
+            {{ aideConservation }}
+            <template v-if="dureeSaisie !== null && dureeValide">0 = à vendre le jour même.</template>
+          </p>
         </div>
 
         <v-alert
@@ -482,6 +529,10 @@ const fmtQte = (n?: number | null) =>
 .fiche-plats__liste { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .fiche-detail { flex: 1 1 420px; min-width: 0; }
 .fiche-sans { color: #b45309; font-weight: 600; }
+
+.fiche-conservation { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.fiche-conservation__champ { flex: 0 0 250px; }
+.fiche-conservation__aide { flex: 1 1 260px; min-width: 0; }
 
 .fiche-ligne {
   display: flex;

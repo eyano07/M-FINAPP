@@ -263,6 +263,10 @@ public class VenteService {
             throw new IllegalArgumentException("Le montant total de la vente doit etre strictement positif.");
         }
 
+        // 1 ter. Plats périmés : les portions dont la date d'expiration est passée ne se vendent plus (voir
+        //        RestaurantService.exigerPlatsNonPerimesInterne) ; les portions encore bonnes se vendent normalement.
+        restaurantService.exigerPlatsNonPerimesInterne(vente);
+
         // 2. Sortie de stock des articles stockés : décrément au CMP + pièce
         //    STOCK (coût des ventes). La garde de stock insuffisant s'applique
         //    ici. Le critère est estStocke() et non le seul type MARCHANDISE :

@@ -9,6 +9,7 @@ import java.util.List;
  *                             pas le cout de revient comptable : celui-la ne
  *                             nait qu'a la production, du CMP reel du moment.
  * @param prixVente            prix de vente du plat (en FC), pour situer la marge.
+ * @param dureeConservationJours duree de conservation du plat, en jours ; null quand il ne se perime pas.
  */
 public record RecetteResponse(
     Long platId,
@@ -17,5 +18,6 @@ public record RecetteResponse(
     String uniteMesure,
     BigDecimal prixVente,
     List<LigneRecetteResponse> lignes,
-    BigDecimal coutEstimeParPortion
+    BigDecimal coutEstimeParPortion,
+    Integer dureeConservationJours
 ) {}

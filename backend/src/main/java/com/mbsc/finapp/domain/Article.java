@@ -100,6 +100,14 @@ public class Article {
     @Builder.Default
     private BigDecimal stockMin = BigDecimal.ZERO;
 
+    /**
+     * Durée de conservation d'un plat, en jours, définie dans sa fiche technique : les portions d'une production expirent
+     * à sa date de production + cette durée (0 : le jour même), et celles qui n'ont pas été vendues ensuite sont périmées.
+     * Absente : le plat ne se périme pas. Sans objet pour les autres types d'article.
+     */
+    @Column(name = "duree_conservation_jours")
+    private Integer dureeConservationJours;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean actif = true;

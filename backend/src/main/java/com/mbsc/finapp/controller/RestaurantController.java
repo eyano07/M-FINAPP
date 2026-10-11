@@ -14,12 +14,14 @@ import com.mbsc.finapp.dto.restaurant.MouvementEmballageResponse;
 import com.mbsc.finapp.dto.restaurant.MouvementProvisionResponse;
 import com.mbsc.finapp.dto.restaurant.LotStockResponse;
 import com.mbsc.finapp.dto.restaurant.PlanSalleRequest;
+import com.mbsc.finapp.dto.restaurant.PlatPerimeResponse;
 import com.mbsc.finapp.dto.restaurant.ProductionRequest;
 import com.mbsc.finapp.dto.restaurant.ProductionResponse;
 import com.mbsc.finapp.dto.restaurant.ProvisionSortieRequest;
 import com.mbsc.finapp.dto.restaurant.ModifierPrixVenteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteResponse;
+import com.mbsc.finapp.dto.restaurant.RetraitPerimesRequest;
 import com.mbsc.finapp.dto.restaurant.RestaurantAnalyseIaResponse;
 import com.mbsc.finapp.dto.restaurant.SalleRequest;
 import com.mbsc.finapp.dto.restaurant.SalleResponse;
@@ -363,6 +365,21 @@ public class RestaurantController {
     }
 
     /** Sortie comptabilisée au coût de production moyen (D 736x / C 361x). */
+    /**
+     * Plats périmés encore en stock : la date d'expiration de leur production (durée de conservation de la fiche
+     * technique) est passée sans que les portions aient été vendues.
+     */
+    @GetMapping("/plats/perimes")
+    public List<PlatPerimeResponse> listerPlatsPerimes() {
+        return service.listerPlatsPerimes();
+    }
+
+    /** Retire du stock les portions périmées : sortie « Périmé » avec son écriture, comme une sortie saisie à la main. */
+    @PostMapping("/plats/perimes/retirer")
+    public List<SortiePlatResponse> retirerPlatsPerimes(@RequestBody(required = false) RetraitPerimesRequest req) {
+        return service.retirerPlatsPerimes(req == null ? new RetraitPerimesRequest(null, null) : req);
+    }
+
     @PostMapping("/plats/sorties")
     @ResponseStatus(HttpStatus.CREATED)
     public SortiePlatResponse enregistrerSortiePlat(@Valid @RequestBody SortiePlatRequest req) {

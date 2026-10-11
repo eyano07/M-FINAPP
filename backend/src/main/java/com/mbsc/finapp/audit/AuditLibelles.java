@@ -233,6 +233,7 @@ public final class AuditLibelles {
         r("PUT", "/restaurant/emballages/{}", "Modification d'un type d'emballage consigné");
         r("POST", "/restaurant/emballages/mouvements", "Enregistrement d'un mouvement d'emballages");
         r("POST", "/restaurant/emballages/mouvements/{}/annuler", "Annulation d'un mouvement d'emballages");
+        r("POST", "/restaurant/plats/perimes/retirer", "Retrait du stock des plats périmés");
         r("POST", "/restaurant/plats/sorties", "Enregistrement d'une sortie de plats");
         r("POST", "/restaurant/plats/sorties/{}/annuler", "Annulation d'une sortie de plats");
         r("POST", "/restaurant/productions", "Enregistrement d'une production de plats");

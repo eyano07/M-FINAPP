@@ -17,6 +17,7 @@ import com.mbsc.finapp.domain.SalleRestaurant;
 import com.mbsc.finapp.domain.SortiePlat;
 import com.mbsc.finapp.domain.SortieProvision;
 import com.mbsc.finapp.domain.StockGrandLivre;
+import com.mbsc.finapp.domain.StockNiveau;
 import com.mbsc.finapp.domain.TableRestaurant;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.Vente;
@@ -49,11 +50,13 @@ import com.mbsc.finapp.dto.restaurant.LigneProductionRequest;
 import com.mbsc.finapp.dto.restaurant.LigneRecetteRequest;
 import com.mbsc.finapp.dto.restaurant.LigneRecetteResponse;
 import com.mbsc.finapp.dto.restaurant.PlanSalleRequest;
+import com.mbsc.finapp.dto.restaurant.PlatPerimeResponse;
 import com.mbsc.finapp.dto.restaurant.ProductionRequest;
 import com.mbsc.finapp.dto.restaurant.ProductionResponse;
 import com.mbsc.finapp.dto.restaurant.ProvisionSortieRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteResponse;
+import com.mbsc.finapp.dto.restaurant.RetraitPerimesRequest;
 import com.mbsc.finapp.dto.restaurant.SalleRequest;
 import com.mbsc.finapp.dto.restaurant.SalleResponse;
 import com.mbsc.finapp.dto.restaurant.SortiePlatRequest;
@@ -447,6 +450,8 @@ public class RestaurantService {
     @Transactional
     public RecetteResponse enregistrerRecette(Long platId, RecetteRequest req) {
         Article plat = exigerPlat(platId);
+        // La durée de conservation fait partie de la fiche : elle fixe, à chaque production, la date d'expiration des portions.
+        plat.setDureeConservationJours(req.dureeConservationJours());
         ligneRecetteRepository.deleteByPlatId(platId);
         // Flush avant réinsertion : la contrainte d'unicité (plat, provision)
         // se déclencherait sur une ligne recréée à l'identique si les deletes
@@ -463,7 +468,8 @@ public class RestaurantService {
             ligneRecetteRepository.save(LigneRecette.builder()
                 .plat(plat).provision(provision).quantite(l.quantite()).build());
         }
-        log.info("Fiche technique enregistrée [plat={}, ingrédients={}]", plat.getCode(), req.lignes().size());
+        log.info("Fiche technique enregistrée [plat={}, ingrédients={}, conservation={} j]",
+            plat.getCode(), req.lignes().size(), req.dureeConservationJours());
         return construireRecette(plat, ligneRecetteRepository.findByPlatIdAvecProvision(platId), cmpParArticle());
     }
 
@@ -563,6 +569,7 @@ public class RestaurantService {
             .plat(plat)
             .entrepot(entrepot)
             .quantite(req.quantite())
+            .dateExpiration(PeremptionPlats.dateExpiration(date, plat.getDureeConservationJours()))
             .coutTotal(coutTotal)
             .coutUnitaire(coutUnitaire)
             .statut(StatutProduction.VALIDEE)
@@ -639,7 +646,7 @@ public class RestaurantService {
         }
         return new RecetteResponse(
             plat.getId(), plat.getCode(), plat.getLibelle(), plat.getUniteMesure(),
-            plat.getPrixVente(), lignesDto, coutEstime);
+            plat.getPrixVente(), lignesDto, coutEstime, plat.getDureeConservationJours());
     }
 
     private Article exigerPlat(Long id) {
@@ -902,6 +909,173 @@ public class RestaurantService {
         return v.getStatut() == StatutVente.VALIDEE
             && v.getModeReglement() == ModeReglement.CREDIT
             && v.getPieceReglement() == null;
+    }
+
+    // ---------------------------------------------------------------------
+    // Plats périmés : durée de conservation de la fiche technique
+    //
+    // Chaque production fixe la date d'expiration de ses portions (date de production + durée de conservation de la
+    // fiche). Passé cette date, celles qui n'ont pas été vendues sont périmées : on les repère d'après le stock réel (voir
+    // PeremptionPlats), on refuse de les vendre, et le responsable les retire du stock en une opération — une sortie
+    // « Périmé » avec son écriture, exactement comme une sortie de plat saisie à la main.
+    // ---------------------------------------------------------------------
+
+    private static final java.time.format.DateTimeFormatter JOUR = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    /** Plats périmés encore en stock, entrepôt par entrepôt : la date d'expiration de leur production est passée. */
+    @PreAuthorize(LECTURE)
+    @Transactional(readOnly = true)
+    public List<PlatPerimeResponse> listerPlatsPerimes() {
+        return calculerPlatsPerimes(LocalDate.now());
+    }
+
+    private List<PlatPerimeResponse> calculerPlatsPerimes(LocalDate jour) {
+        Set<Long> retraitsPerimes = new java.util.HashSet<>(sortiePlatRepository.idsMouvementsParMotif(MotifSortiePlat.PERIME));
+        List<PlatPerimeResponse> perimes = new ArrayList<>();
+        for (StockNiveau niveau : stockNiveauRepository.findAllWithDetails()) {
+            Article plat = niveau.getArticle();
+            if (plat.getType() != TypeArticle.PLAT || niveau.getQuantite().signum() <= 0) {
+                continue;
+            }
+            List<PeremptionPlats.Part> parts = repartitionDuStock(niveau, jour, retraitsPerimes);
+            // Le stock fait foi : jamais plus de portions périmées qu'il n'y en a en stock.
+            BigDecimal perimee = PeremptionPlats.quantitePerimee(parts).min(niveau.getQuantite());
+            if (perimee.signum() <= 0) {
+                continue;
+            }
+            // Coût de production moyen d'une portion, à 6 décimales comme le CMP interne de StockService.
+            BigDecimal coutMoyen = niveau.getValeurTotale().divide(niveau.getQuantite(), 6, RoundingMode.HALF_UP);
+            List<PlatPerimeResponse.LotPerime> lots = parts.stream()
+                .filter(PeremptionPlats.Part::perimee)
+                .map(p -> new PlatPerimeResponse.LotPerime(
+                    p.lot().reference(), p.lot().dateProduction(), p.lot().dateExpiration(), p.quantite()))
+                .toList();
+            perimes.add(new PlatPerimeResponse(
+                plat.getId(), plat.getCode(), plat.getLibelle(), plat.getUniteMesure(),
+                niveau.getEntrepot().getId(), niveau.getEntrepot().getCode(),
+                perimee, coutMoyen, perimee.multiply(coutMoyen).setScale(2, RoundingMode.HALF_UP),
+                lots.stream().map(PlatPerimeResponse.LotPerime::dateExpiration).min(Comparator.naturalOrder()).orElse(null),
+                lots));
+        }
+        return perimes;
+    }
+
+    /**
+     * Ce qu'il reste de chaque production d'un plat dans un entrepôt, jugé {@code jour} : l'historique du stock du plat
+     * est rejoué (voir {@link PeremptionPlats}). Un mouvement annulé est ignoré, lui et sa contre-passation, qui s'annulent.
+     *
+     * @param retraitsPerimes mouvements de stock qui sont des retraits pour péremption, qui entament d'abord le périmé
+     */
+    private List<PeremptionPlats.Part> repartitionDuStock(StockNiveau niveau, LocalDate jour, Set<Long> retraitsPerimes) {
+        Long platId = niveau.getArticle().getId();
+        Long entrepotId = niveau.getEntrepot().getId();
+        // Productions du plat dans l'entrepôt, retrouvées par le mouvement qui a fait entrer leurs portions.
+        Map<Long, PeremptionPlats.LotProduit> parMouvement = new java.util.HashMap<>();
+        for (Production p : productionRepository.findValideesDuPlatDansEntrepot(platId, entrepotId)) {
+            if (p.getMouvementEntree() != null) {
+                parMouvement.put(p.getMouvementEntree().getId(), new PeremptionPlats.LotProduit(
+                    p.getReference(), p.getDateProduction(), p.getDateExpiration(), p.getQuantite()));
+            }
+        }
+        List<PeremptionPlats.Mouvement> chronologie = new ArrayList<>();
+        for (StockGrandLivre l : stockGrandLivreRepository.rechercher(
+                platId, entrepotId, LocalDate.of(2000, 1, 1), LocalDate.of(2100, 12, 31))) {
+            MouvementStock m = l.getMouvement();
+            if (m != null && m.getStatut() == StatutMouvement.ANNULE) {
+                continue;
+            }
+            if (l.getQteEntree().signum() > 0) {
+                PeremptionPlats.LotProduit origine = m == null ? null : parMouvement.get(m.getId());
+                if (origine == null) {   // entrée sans production : d'origine inconnue, elle n'expire jamais
+                    origine = new PeremptionPlats.LotProduit(null, l.getDateEcriture(), null, l.getQteEntree());
+                }
+                chronologie.add(new PeremptionPlats.Mouvement(
+                    l.getDateEcriture(), l.getQteEntree(), BigDecimal.ZERO, origine, false));
+            }
+            if (l.getQteSortie().signum() > 0) {
+                chronologie.add(new PeremptionPlats.Mouvement(
+                    l.getDateEcriture(), BigDecimal.ZERO, l.getQteSortie(), null,
+                    m != null && retraitsPerimes.contains(m.getId())));
+            }
+        }
+        return PeremptionPlats.rejouer(chronologie, jour);
+    }
+
+    /**
+     * Retire du stock les portions périmées : une sortie « Périmé » par plat et par entrepôt, avec la même écriture qu'une
+     * sortie saisie à la main (D 736x / C 361x au coût moyen) et l'expiration en précision. Tout ou rien : si une sortie
+     * échoue, aucune n'est enregistrée.
+     */
+    @PreAuthorize(ECRITURE)
+    @Transactional
+    public List<SortiePlatResponse> retirerPlatsPerimes(RetraitPerimesRequest req) {
+        LocalDate jour = LocalDate.now();
+        List<SortiePlatResponse> sorties = new ArrayList<>();
+        for (PlatPerimeResponse p : calculerPlatsPerimes(jour)) {
+            if ((req.platId() != null && !req.platId().equals(p.platId()))
+                || (req.entrepotId() != null && !req.entrepotId().equals(p.entrepotId()))) {
+                continue;
+            }
+            String precision = "Expiré : " + p.lots().stream()
+                .map(l -> l.productionReference() + " (le " + l.dateExpiration().format(JOUR) + ")")
+                .collect(java.util.stream.Collectors.joining(", "));
+            sorties.add(enregistrerSortiePlat(new SortiePlatRequest(
+                p.platId(), p.quantitePerimee(), p.entrepotId(), MotifSortiePlat.PERIME,
+                precision.length() > 500 ? precision.substring(0, 499) + "…" : precision, jour)));
+        }
+        if (sorties.isEmpty()) {
+            throw new IllegalStateException("Aucun plat périmé à retirer du stock.");
+        }
+        return sorties;
+    }
+
+    /**
+     * Refuse de vendre des portions périmées. À la validation d'une vente, les portions d'un plat dont la date
+     * d'expiration est passée (au jour de la vente) ne se vendent plus : si la vente en demande plus que le stock encore
+     * bon, elle est refusée jusqu'à ce que le responsable retire les portions périmées (Sorties de plats). Les portions
+     * encore bonnes se vendent normalement, même quand d'autres sont périmées.
+     */
+    @Transactional(readOnly = true)
+    public void exigerPlatsNonPerimesInterne(Vente vente) {
+        if (vente.getEntrepot() == null) {
+            return;
+        }
+        Map<Long, BigDecimal> demandees = new LinkedHashMap<>();
+        Map<Long, Article> plats = new java.util.HashMap<>();
+        for (LigneVente l : vente.getLignes()) {
+            if (l.getArticle().getType() == TypeArticle.PLAT) {
+                demandees.merge(l.getArticle().getId(), l.getQuantite(), BigDecimal::add);
+                plats.put(l.getArticle().getId(), l.getArticle());
+            }
+        }
+        if (demandees.isEmpty()) {
+            return;
+        }
+        Set<Long> retraitsPerimes = new java.util.HashSet<>(sortiePlatRepository.idsMouvementsParMotif(MotifSortiePlat.PERIME));
+        for (var demande : demandees.entrySet()) {
+            Article plat = plats.get(demande.getKey());
+            StockNiveau niveau = stockNiveauRepository.findByArticleAndEntrepot(plat, vente.getEntrepot()).orElse(null);
+            if (niveau == null) {
+                continue;   // aucun stock : la garde de stock insuffisant refusera la vente
+            }
+            List<PeremptionPlats.Part> parts = repartitionDuStock(niveau, vente.getDateVente(), retraitsPerimes);
+            BigDecimal perimee = PeremptionPlats.quantitePerimee(parts).min(niveau.getQuantite());
+            BigDecimal vendable = niveau.getQuantite().subtract(perimee);
+            if (perimee.signum() > 0 && demande.getValue().compareTo(vendable) > 0) {
+                String expirations = parts.stream().filter(PeremptionPlats.Part::perimee)
+                    .map(p -> p.lot().reference() + ", périmée le " + p.lot().dateExpiration().format(JOUR))
+                    .collect(java.util.stream.Collectors.joining(" ; "));
+                throw new IllegalStateException(
+                    "Plat périmé : " + quantite(perimee) + " portion(s) de « " + plat.getLibelle()
+                    + " » ont dépassé leur date d'expiration (" + expirations + ") et ne peuvent plus être vendues. "
+                    + "Il n'en reste que " + quantite(vendable) + " de vendable(s) pour " + quantite(demande.getValue())
+                    + " demandée(s) : retirez les portions périmées du stock (Sorties de plats) ou réduisez la quantité.");
+            }
+        }
+    }
+
+    private static String quantite(BigDecimal q) {
+        return q.stripTrailingZeros().toPlainString();
     }
 
     // ---------------------------------------------------------------------
