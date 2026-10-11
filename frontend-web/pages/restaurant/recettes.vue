@@ -28,6 +28,8 @@ interface Recette {
   coutEstimeParPortion: number
 }
 interface Provision { id: number; code: string; libelle: string; uniteMesure?: string }
+/** Une ligne de l'état du stock des provisions (une par provision et par entrepôt). */
+interface NiveauStock { articleId: number; quantite: number; valeurTotale: number }
 
 const api = useApi()
 const auth = useAuthStore()
@@ -40,6 +42,7 @@ const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
 
 const recettes = ref<Recette[]>([])
 const provisions = ref<Provision[]>([])
+const niveauxStock = ref<NiveauStock[]>([])
 const tauxChange = ref(0)
 const loading = ref(false)
 const saving = ref(false)
@@ -70,14 +73,34 @@ const provisionsOptions = computed(() =>
     value: p.id,
   })))
 
+/**
+ * CMP courant de CHAQUE provision, tous entrepôts confondus (valeur totale ÷ quantité totale, comme le serveur :
+ * RestaurantService.cmpParArticle). C'est lui qui chiffre un ingrédient dès son ajout, sans attendre qu'il figure
+ * dans une fiche enregistrée.
+ */
+const cmpDepuisLeStock = computed(() => {
+  const cumul = new Map<number, { quantite: number; valeur: number }>()
+  for (const n of niveauxStock.value) {
+    const c = cumul.get(n.articleId) ?? { quantite: 0, valeur: 0 }
+    c.quantite += n.quantite
+    c.valeur += n.valeurTotale
+    cumul.set(n.articleId, c)
+  }
+  const cmp = new Map<number, number>()
+  cumul.forEach((c, id) => cmp.set(id, c.quantite === 0 ? 0 : c.valeur / c.quantite))
+  return cmp
+})
+
 /** CMP courant par provision, pour chiffrer une ligne dès sa saisie. */
 const coutParProvision = computed(() => {
   const m: Record<number, number> = {}
+  // Les fiches enregistrées portent le CMP de leurs ingrédients : un repli si l'état du stock n'a pas pu être lu.
   for (const r of recettes.value) {
     for (const l of r.lignes) {
       if (l.provisionId != null && l.coutMoyenActuel != null) m[l.provisionId] = l.coutMoyenActuel
     }
   }
+  cmpDepuisLeStock.value.forEach((cmp, id) => { m[id] = cmp })
   return m
 })
 
@@ -88,6 +111,15 @@ function coutLigne(l: LigneRecette): number {
   if (l.provisionId == null || !l.quantite) return 0
   return (coutParProvision.value[l.provisionId] ?? 0) * l.quantite
 }
+
+/** Une ligne n'a de coût à afficher que si elle porte une provision et une quantité. */
+const ligneChiffree = (l: LigneRecette) => l.provisionId != null && !!l.quantite
+
+/** Ingrédients de la fiche en cours qui n'ont encore aucun achat : leur coût moyen est inconnu, donc compté à 0. */
+const ingredientsSansCout = computed(() => [...new Set(
+  lignesEnCours.value
+    .filter(l => l.provisionId != null && (coutParProvision.value[l.provisionId] ?? 0) <= 0)
+    .map(l => provisions.value.find(p => p.id === l.provisionId)?.libelle ?? '?'))])
 
 /** Marge théorique : prix de vente (FC) vs coût estimé (USD, devise du grand livre). */
 const margeEstimee = computed(() => {
@@ -157,14 +189,16 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [recs, provs, taux] = await Promise.all([
+    const [recs, provs, taux, niveaux] = await Promise.all([
       api<Recette[]>('/restaurant/recettes'),
       api<Provision[]>('/restaurant/provisions'),
       api<{ taux: number }>('/admin/taux-change').catch(() => ({ taux: 0 })),
+      api<NiveauStock[]>('/restaurant/provisions/stock').catch(() => []),
       parametres.charger(),
     ])
     recettes.value = recs
     provisions.value = provs
+    niveauxStock.value = niveaux
     tauxChange.value = taux.taux || 0
     if (platSelectionneId.value === null || !recs.some(r => r.platId === platSelectionneId.value)) {
       platSelectionneId.value = recs.length ? recs[0].platId : null
@@ -378,7 +412,7 @@ const fmtQte = (n?: number | null) =>
             class="fiche-ligne__qte"
             @update:model-value="modifie = true"
           />
-          <span class="fiche-ligne__cout">{{ fmtUSD(coutLigne(l)) }}</span>
+          <span class="fiche-ligne__cout">{{ ligneChiffree(l) ? fmtUSD(coutLigne(l)) : '—' }}</span>
           <v-btn
             v-if="canWrite"
             icon="mdi-close" size="x-small" variant="text" title="Retirer"
@@ -429,6 +463,9 @@ const fmtQte = (n?: number | null) =>
             {{ margeEstimee.toFixed(1) }} %
           </span>
         </div>
+        <p v-if="ingredientsSansCout.length" class="text-caption text-warning mt-3 mb-0">
+          Sans achat enregistré, coût inconnu (compté à 0) : {{ ingredientsSansCout.join(', ') }}.
+        </p>
         <p class="text-caption text-medium-emphasis mt-3 mb-0">
           Estimation au coût moyen actuel des provisions. Le coût de revient réel est figé à chaque
           production, d'après les ingrédients effectivement consommés.
