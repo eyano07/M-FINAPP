@@ -30,6 +30,19 @@ const loading = ref(false)
 const erreur = ref('')
 const pieces = ref<Piece[]>([])
 
+// Recherche par référence : filtre la liste déjà chargée (le serveur renvoie toutes les pièces). Sans casse et sans
+// tenir compte des espaces, tirets ou barres : « pc-2026-000093 », « PC 2026 000093 » et « 93 » retrouvent la même pièce.
+const recherche = ref<string | null>('')
+const page = ref(1)
+const requete = computed(() => (recherche.value ?? '').trim())
+const compacter = (texte: string) => texte.toLowerCase().replace(/[\s\-_/.]+/g, '')
+const piecesFiltrees = computed(() => {
+  const cherche = compacter(requete.value)
+  return cherche ? pieces.value.filter(p => compacter(p.reference ?? '').includes(cherche)) : pieces.value
+})
+// Une nouvelle recherche repart de la première page (sinon on pourrait rester sur une page devenue vide).
+watch(requete, () => { page.value = 1 })
+
 const canWrite = computed(() => auth.hasAnyRole(['DFIN', 'COMPTABLE']))
 // Reclassification ouverture/mouvements : reservee au DFIN (ADMIN a le
 // filet de securite cote serveur mais pas ce controle a l'ecran, meme
@@ -162,6 +175,25 @@ function fmtDate(d: string) {
 
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4">{{ erreur }}</v-alert>
 
+    <div class="d-flex align-center flex-wrap ga-3 mb-4">
+      <v-text-field
+        v-model="recherche"
+        label="Référence de la pièce"
+        placeholder="Ex. PC-2026-000093 ou 93"
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        hide-details
+        clearable
+        autocomplete="off"
+        style="max-width: 420px"
+      />
+      <span v-if="requete" class="text-body-2 text-medium-emphasis" aria-live="polite">
+        {{ piecesFiltrees.length }} pièce{{ piecesFiltrees.length > 1 ? 's' : '' }} sur {{ pieces.length }}
+      </span>
+    </div>
+
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
@@ -174,9 +206,11 @@ function fmtDate(d: string) {
           { title: 'Crédit', key: 'totalCredit', align: 'end' },
           { title: 'Actions', key: 'actions', sortable: false },
         ]"
-        :items="pieces"
+        :items="piecesFiltrees"
         :loading="loading"
         items-per-page="15"
+        v-model:page="page"
+        :no-data-text="requete ? `Aucune pièce ne correspond à « ${requete} ».` : 'Aucune pièce comptable.'"
       >
         <template #item.datePiece="{ item }">{{ fmtDate(item.datePiece) }}</template>
         <template #item.journal="{ item }">{{ journalLabel[item.journal] || item.journal }}</template>
