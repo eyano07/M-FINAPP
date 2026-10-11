@@ -127,7 +127,9 @@ public class DocumentationCompteService {
                     case PROVISION -> "Variation du stock de la provision « " + libelleArticle + " »" + codeTxt
                         + " : avec son compte d'achat 6021x, il donne la consommation réelle de la provision sur la période.";
                     default -> "Variation du stock de la boisson « " + libelleArticle + " »" + codeTxt
-                        + " : avec son compte d'achat 6011x, il forme le coût d'achat des bouteilles vendues ou perdues sur la période.";
+                        + " : avec son compte d'achat 6011x, il forme le coût d'achat des bouteilles vendues ou cassées sur la période"
+                        + " (les boissons périmées vont en " + RestaurantService.COMPTE_BOISSONS_PERIMEES
+                        + ", les boissons offertes en " + RestaurantService.COMPTE_BOISSONS_OFFERTES + ").";
                 });
                 compte.setFonctionnement(switch (type) {
                     case PLAT -> "Crédité à chaque production (portions entrées en stock, contrepartie 361x).\n"
@@ -135,7 +137,9 @@ public class DocumentationCompteService {
                     case PROVISION -> "Crédité à l'entrée en stock (contrepartie : stock 331x).\n"
                         + "Débité à chaque sortie (production de plats, péremption, perte) au coût moyen pondéré.";
                     default -> "Crédité à l'entrée en stock (contrepartie : stock 3111x), pour le coût d'achat frais d'approche compris.\n"
-                        + "Débité à chaque sortie (vente, casse, péremption, cadeau) au coût moyen pondéré.";
+                        + "Débité à chaque vente et à chaque casse d'une bouteille pleine, au coût moyen pondéré. Une boisson périmée est "
+                        + "débitée en " + RestaurantService.COMPTE_BOISSONS_PERIMEES + ", une boisson offerte en "
+                        + RestaurantService.COMPTE_BOISSONS_OFFERTES + ".";
                 });
                 compte.setControle("Rapprocher des entrées et sorties de stock " + article
                     + " sur la période (mouvements de stock et grand livre du stock).");

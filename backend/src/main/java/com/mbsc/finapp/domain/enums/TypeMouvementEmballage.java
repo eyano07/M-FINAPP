@@ -36,14 +36,16 @@ public enum TypeMouvementEmballage {
     CASSE_PLEINE(-1),
     /**
      * Boisson perimee : c'est la boisson qui est perimee, pas la bouteille. Le contenu est jete —
-     * la boisson sort du stock avec son ecriture de perte au cout moyen — et la bouteille, videe,
-     * est remise dans le stock de vides (+1 par bouteille), comme pour un cadeau ou une vente.
+     * la boisson sort du stock au cout moyen, imputee au compte 6031.2 « Boissons perimees » — et la
+     * bouteille, videe, est remise dans le stock de vides (+1 par bouteille), comme pour un cadeau ou
+     * une vente.
      */
     PERIME(1),
     /**
      * Boisson offerte (cadeau, promotion) : le contenu est consomme, comme pour une
-     * vente — la boisson sort du stock avec son ecriture de perte au cout moyen — et
-     * la bouteille, elle, est remise dans le stock de vides (+1 par bouteille).
+     * vente — la boisson sort du stock au cout moyen, imputee au compte 6276.1 « Boissons
+     * offertes a la clientele » — et la bouteille, elle, est remise dans le stock de vides
+     * (+1 par bouteille).
      */
     CADEAU(1),
     /** Ecart d'inventaire en faveur du stock. */

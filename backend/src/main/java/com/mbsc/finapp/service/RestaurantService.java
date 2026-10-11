@@ -224,6 +224,13 @@ public class RestaurantService {
     private static final String RACINE_COMPTE_STOCK_BOISSON = "3111";
     private static final String RACINE_COMPTE_CHARGE_BOISSON = "6031";
     private static final String RACINE_COMPTE_PRODUIT_BOISSON = "7011";
+    /**
+     * Comptes des boissons perdues autrement que par la casse, créés par V120 — voir {@link #compteChargePerte}. Une boisson
+     * offerte est une charge de relations publiques, sous 6276 « Cadeaux à la clientèle » ; une boisson périmée reste en
+     * variation des stocks de marchandises, à part de celle de chaque boisson. Le 6031.1 appartient aux minerais (V67).
+     */
+    static final String COMPTE_BOISSONS_OFFERTES = "6276.1";
+    static final String COMPTE_BOISSONS_PERIMEES = "6031.2";
 
     @PreAuthorize(ECRITURE_CARTE)
     @Transactional
@@ -1705,11 +1712,12 @@ public class RestaurantService {
             e, req.type(), req.quantite(), req.dateMouvement(), req.motif(), null, auteur);
 
         // CASSE_PLEINE, PERIME et CADEAU font aussi perdre la boisson
-        // elle-meme (pas seulement le contenant) : sortie de stock au CMP avec
-        // la meme ecriture comptable qu'une sortie ordinaire (D compte de
-        // charge de la boisson / C compte de stock) — casse, peremption et
+        // elle-meme (pas seulement le contenant) : sortie de stock au CMP,
+        // credit du compte de stock de la boisson — casse, peremption et
         // offre gracieuse sont toutes des pertes de marchandise reelle, pas de
-        // simples ajustements d'emballage.
+        // simples ajustements d'emballage. Le compte debite depend de la perte
+        // (voir compteChargePerte) : la casse garde celui de la boisson, comme
+        // une vente ; la boisson perimee va en 6031.2, la boisson offerte en 6276.1.
         if (req.type() == TypeMouvementEmballage.CASSE_PLEINE || req.type() == TypeMouvementEmballage.PERIME
             || req.type() == TypeMouvementEmballage.CADEAU) {
             if (req.entrepotId() == null) {
@@ -1718,6 +1726,7 @@ public class RestaurantService {
             }
             Entrepot entrepot = entrepotRepository.findById(req.entrepotId())
                 .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
+            CompteOHADA compteCharge = comptePerte(req.type());
             String motifLibelle = switch (req.type()) {
                 case PERIME -> "Boisson périmée";
                 case CADEAU -> "Boisson offerte (cadeau)";
@@ -1727,13 +1736,43 @@ public class RestaurantService {
                 + (req.motif() != null && !req.motif().isBlank() ? " (" + req.motif() + ")" : "");
             MouvementStock sortie = stockService.enregistrerSortieVenteInterne(
                 m.getDateMouvement(), libelleMouvement(libelle), entrepot,
-                List.of(new StockService.SortieVente(e.getArticleBoisson(), BigDecimal.valueOf(req.quantite()))),
+                List.of(new StockService.SortieVente(
+                    e.getArticleBoisson(), BigDecimal.valueOf(req.quantite()), null, compteCharge)),
                 auteur);
             // Retrouvée à l'annulation de la perte, pour rétablir le stock.
             m.setMouvementStock(sortie);
         }
 
         return MouvementEmballageResponse.from(m);
+    }
+
+    /**
+     * Compte débité par la sortie de stock d'une boisson perdue : 6276.1 pour une boisson offerte, 6031.2 pour une boisson
+     * périmée ; {@code null} pour une casse, qui garde le compte de variation de la boisson, comme une vente.
+     */
+    static String compteChargePerte(TypeMouvementEmballage type) {
+        return switch (type) {
+            case CADEAU -> COMPTE_BOISSONS_OFFERTES;
+            case PERIME -> COMPTE_BOISSONS_PERIMEES;
+            default -> null;
+        };
+    }
+
+    /**
+     * Le compte de {@link #compteChargePerte}, lu au plan comptable ; {@code null} pour une casse. Absent (supprimé du plan
+     * comptable), la perte est refusée plutôt que passée sur le compte de la boisson : elle se confondrait de nouveau avec
+     * le coût des boissons vendues.
+     */
+    private CompteOHADA comptePerte(TypeMouvementEmballage type) {
+        String numero = compteChargePerte(type);
+        if (numero == null) {
+            return null;
+        }
+        boolean offerte = type == TypeMouvementEmballage.CADEAU;
+        return compteRepository.findByNumero(numero).orElseThrow(() -> new IllegalStateException(
+            "Le compte " + numero + " « " + (offerte ? "Boissons offertes à la clientèle" : "Boissons périmées")
+            + " » n'existe pas dans le plan comptable : un administrateur doit le recréer (Plan comptable, sous "
+            + (offerte ? "6276" : "6031") + ") avant d'enregistrer " + (offerte ? "une boisson offerte." : "une boisson périmée.")));
     }
 
     /**

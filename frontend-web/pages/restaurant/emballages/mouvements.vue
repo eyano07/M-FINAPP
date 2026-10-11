@@ -338,10 +338,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           La bouteille n'a jamais été servie : le contenant est perdu (vides − N) ET la boisson qu'elle contenait aussi (stock − N).
         </p>
         <p v-else-if="form.type === 'PERIME'" class="text-caption text-medium-emphasis mb-3">
-          C'est la boisson qui est périmée, pas la bouteille : la boisson jetée sort du stock, avec son écriture comptable de perte au coût moyen, et la bouteille vidée revient dans le stock de vides (vides + N).
+          C'est la boisson qui est périmée, pas la bouteille : la boisson jetée sort du stock au coût moyen, imputée au compte 6031.2 « Boissons périmées », et la bouteille vidée revient dans le stock de vides (vides + N).
         </p>
         <p v-else-if="form.type === 'CADEAU'" class="text-caption text-medium-emphasis mb-3">
-          Bouteille offerte (promotion, geste commercial) : la boisson consommée sort du stock, avec son écriture comptable de perte au coût moyen, et la bouteille vide revient dans le stock de vides (vides + N), comme pour une vente.
+          Bouteille offerte (promotion, geste commercial) : la boisson consommée sort du stock au coût moyen, imputée au compte 6276.1 « Boissons offertes à la clientèle », et la bouteille vide revient dans le stock de vides (vides + N), comme pour une vente.
         </p>
 
         <v-text-field v-model.number="form.quantite" type="number" label="Nombre de bouteilles *" variant="outlined" density="comfortable" class="mb-3" />

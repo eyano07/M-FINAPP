@@ -442,8 +442,9 @@ public class StockService {
             .toList();
     }
 
-    /** Une ligne de sortie demandée par une vente : un article et sa quantité. */
     /**
+     * Une ligne de sortie demandée par une vente ou une perte : un article et sa quantité.
+     *
      * @param coutImpose cout de sortie a retenir au lieu du cout moyen pondere,
      *        ou {@code null} pour le CMP habituel. Renseigne pour un camion de
      *        minerais : chaque chargement sort du stock a SON propre cout
@@ -452,10 +453,20 @@ public class StockService {
      *        interchangeables. Sans cela, le CMP moyennerait des chargements
      *        de teneurs et de frais de route differents, et la marge camion par
      *        camion — la raison d'etre de ce suivi — serait faussee.
+     * @param compteCharge compte a debiter au lieu du compte de charge de
+     *        l'article, ou {@code null} pour celui de l'article. Renseigne pour
+     *        une boisson offerte (6276.1) ou perimee (6031.2) : la sortie de
+     *        stock est la meme qu'une vente, seule la charge change de compte —
+     *        voir {@code RestaurantService.compteChargePerte}. Le compte de stock
+     *        credite reste celui de l'article.
      */
-    public record SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose) {
+    public record SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose, CompteOHADA compteCharge) {
         public SortieVente(Article article, BigDecimal quantite) {
-            this(article, quantite, null);
+            this(article, quantite, null, null);
+        }
+
+        public SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose) {
+            this(article, quantite, coutImpose, null);
         }
     }
 
@@ -497,11 +508,13 @@ public class StockService {
 
         List<EcritureGrandLivre> ecrituresCompta = new ArrayList<>();
         // Les lignes sont creees dans l'ordre des sorties : l'index fait donc
-        // correspondre chaque ligne au cout impose eventuel de sa sortie.
+        // correspondre chaque ligne au cout impose et au compte de charge
+        // eventuels de sa sortie.
         List<LigneMouvementStock> lignesSortie = saved.getLignes();
         for (int i = 0; i < lignesSortie.size(); i++) {
-            BigDecimal coutImpose = i < sorties.size() ? sorties.get(i).coutImpose() : null;
-            appliquerLigne(saved, lignesSortie.get(i), ecrituresCompta, coutImpose);
+            SortieVente demande = i < sorties.size() ? sorties.get(i) : null;
+            appliquerLigne(saved, lignesSortie.get(i), ecrituresCompta,
+                demande == null ? null : demande.coutImpose(), demande == null ? null : demande.compteCharge());
         }
         if (!ecrituresCompta.isEmpty()) {
             PieceComptable piece = comptabilite.creerPieceInterne(
@@ -795,7 +808,7 @@ public class StockService {
 
     private void appliquerLigne(MouvementStock mouvement, LigneMouvementStock ligne,
                                 List<EcritureGrandLivre> ecrituresCompta) {
-        appliquerLigne(mouvement, ligne, ecrituresCompta, null);
+        appliquerLigne(mouvement, ligne, ecrituresCompta, null, null);
     }
 
     /**
@@ -803,9 +816,15 @@ public class StockService {
      *        pondere, ou {@code null} pour le CMP habituel — voir
      *        {@link SortieVente}. Sans effet sur une entree ou un transfert,
      *        dont le cout ne se deduit pas du stock existant.
+     * @param compteChargeImpose compte debite par une SORTIE au lieu du compte
+     *        de charge de l'article, ou {@code null} — voir
+     *        {@link SortieVente#compteCharge}. Sans effet sur une entree, un
+     *        transfert ou un ecart de valorisation (voir {@link #sortie}), qui
+     *        reste entre les comptes de variation et de stock de l'article.
      */
     private void appliquerLigne(MouvementStock mouvement, LigneMouvementStock ligne,
-                                List<EcritureGrandLivre> ecrituresCompta, BigDecimal coutImpose) {
+                                List<EcritureGrandLivre> ecrituresCompta, BigDecimal coutImpose,
+                                CompteOHADA compteChargeImpose) {
         Article article = ligne.getArticle();
         BigDecimal qte = ligne.getQuantite();
 
@@ -839,8 +858,10 @@ public class StockService {
                 ligne.setCoutUnitaire(cmp);
                 ligne.setMontant(montant);
                 ecrireStockGrandLivre(article, source, mouvement, BigDecimal.ZERO, qte, niveau);
-                // Comptable : Débit compte charge / Crédit compte stock
-                ajouterEcriture(ecrituresCompta, compteCharge(article), montant, BigDecimal.ZERO, mouvement);
+                // Comptable : Débit compte charge (celui de l'article, ou le compte imposé d'une boisson offerte ou
+                // périmée) / Crédit compte stock
+                ajouterEcriture(ecrituresCompta, compteChargeImpose != null ? compteChargeImpose : compteCharge(article),
+                    montant, BigDecimal.ZERO, mouvement);
                 ajouterEcriture(ecrituresCompta, compteStock(article), BigDecimal.ZERO, montant, mouvement);
                 // Suivi de gestion : déplète les lots en FIFO ou au prorata (résultat sans emploi ici, pas de transfert derrière).
                 lotStock.consommer(article, source, qte, ligne);
