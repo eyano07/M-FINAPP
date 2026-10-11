@@ -305,6 +305,12 @@ public class RestaurantController {
         return service.listerProvisions();
     }
 
+    /** Code proposé pour une nouvelle provision, d'après son libellé (préfixe PROV). Voir GenerateurCodeArticle. */
+    @GetMapping("/provisions/code-suggere")
+    public CodeArticleSuggereResponse suggererCodeProvision(@RequestParam(required = false) String libelle) {
+        return service.suggererCodeProvision(libelle);
+    }
+
     @PostMapping("/provisions")
     @ResponseStatus(HttpStatus.CREATED)
     public ArticleResponse creerProvision(@Valid @RequestBody ArticleRequest req) {

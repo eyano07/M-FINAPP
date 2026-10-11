@@ -243,4 +243,67 @@ class GenerateurCodeArticleTest {
     void la_meme_saisie_donne_toujours_le_meme_code_de_plat() {
         assertThat(codePlat("Poulet braisé")).isEqualTo(codePlat("  poulet   BRAISÉ "));
     }
+
+    // ---------------------------------------------------------------------
+    // Provisions : vivres, épices, charbon... — pas de société, le préfixe PROV
+    // ---------------------------------------------------------------------
+
+    private static String codeProvision(String libelle) {
+        return GenerateurCodeArticle.genererProvision(libelle, RIEN_N_EXISTE);
+    }
+
+    @Test
+    void une_provision_recoit_le_prefixe_prov_et_les_mots_de_son_libelle() {
+        assertThat(codeProvision("Riz")).isEqualTo("PROV-RIZ");
+        assertThat(codeProvision("Farine de blé")).isEqualTo("PROV-FARI-BLE");
+        assertThat(codeProvision("Charbon de bois")).isEqualTo("PROV-CHAR-BOIS");
+        assertThat(codeProvision("Tomates fraîches")).isEqualTo("PROV-TOMA-FRAI");
+    }
+
+    @Test
+    void une_provision_garde_son_conditionnement_ecrit_dans_le_libelle() {
+        assertThat(codeProvision("Huile de palme 5 L")).isEqualTo("PROV-HUIL-PALM-5L");
+        assertThat(codeProvision("Sac de riz 25 kg")).isEqualTo("PROV-SAC-RIZ-25KG");
+        assertThat(codeProvision("Sucre en poudre 1kg")).isEqualTo("PROV-SUCR-POUD-1KG");
+    }
+
+    @Test
+    void un_libelle_de_provision_vide_ne_donne_pas_de_code() {
+        assertThat(codeProvision(null)).isEmpty();
+        assertThat(codeProvision("")).isEmpty();
+        assertThat(codeProvision("   ")).isEmpty();
+        assertThat(codeProvision("!!! -- ???")).isEmpty();
+    }
+
+    @Test
+    void un_code_de_provision_deja_pris_recoit_un_numero() {
+        Set<String> pris = new HashSet<>(Set.of("PROV-RIZ"));
+
+        assertThat(GenerateurCodeArticle.genererProvision("Riz", pris::contains)).isEqualTo("PROV-RIZ-2");
+
+        pris.add("PROV-RIZ-2");
+        assertThat(GenerateurCodeArticle.genererProvision("Riz", pris::contains)).isEqualTo("PROV-RIZ-3");
+    }
+
+    @Test
+    void une_provision_ne_se_confond_ni_avec_un_plat_ni_avec_une_boisson() {
+        assertThat(codeProvision("Riz")).isEqualTo("PROV-RIZ");
+        assertThat(codePlat("Riz")).isEqualTo("PLAT-RIZ");
+        assertThat(code("Riz", null)).isEqualTo("RIZ");
+    }
+
+    @Test
+    void un_code_de_provision_ne_contient_que_des_majuscules_chiffres_et_tirets_et_tient_dans_la_colonne() {
+        for (String libelle : new String[] {"Piment « oiseau » (séché)", "Œufs & lait 1,5l", "Ñame",
+            "Extraordinairement Interminable Dénomination Commerciale 123456789012345678901234567890KG"}) {
+            String code = codeProvision(libelle);
+            assertThat(code).matches("[A-Z0-9]+(-[A-Z0-9]+)*").startsWith("PROV-");
+            assertThat(code.length()).isLessThanOrEqualTo(GenerateurCodeArticle.LONGUEUR_MAX);
+        }
+    }
+
+    @Test
+    void la_meme_saisie_donne_toujours_le_meme_code_de_provision() {
+        assertThat(codeProvision("Farine de blé")).isEqualTo(codeProvision("  farine   DE   BLÉ "));
+    }
 }

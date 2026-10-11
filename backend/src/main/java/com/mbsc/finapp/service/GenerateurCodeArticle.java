@@ -12,7 +12,9 @@ import java.util.regex.Pattern;
  * Code d'un article de la carte, composé à partir de son libellé et, pour une boisson,
  * de sa société : « Primus 55CL » de « Bracongo » donne {@code BRAC-PRIM-55CL}. Un plat
  * n'a pas de société : le préfixe {@value #PREFIXE_PLAT} en tient lieu et le distingue
- * des boissons (« Omelette » donne {@code PLAT-OMEL}).
+ * des boissons (« Omelette » donne {@code PLAT-OMEL}). Il en va de même d'une provision
+ * (vivres, épices, charbon...), préfixée {@value #PREFIXE_PROVISION} (« Riz » donne
+ * {@code PROV-RIZ}).
  *
  * <p>Le code se lit en trois blocs séparés par des tirets :</p>
  * <ul>
@@ -38,6 +40,9 @@ public final class GenerateurCodeArticle {
 
     /** Premier bloc du code d'un plat, qui n'a pas de société. */
     static final String PREFIXE_PLAT = "PLAT";
+
+    /** Premier bloc du code d'une provision, qui n'a pas de société non plus. */
+    static final String PREFIXE_PROVISION = "PROV";
 
     private static final int LETTRES_SOCIETE = 4;
     private static final int INITIALES_MAX = 4;
@@ -75,6 +80,11 @@ public final class GenerateurCodeArticle {
         return libre(codeDePlat(libelle), existe);
     }
 
+    /** Code libre d'une provision : le préfixe {@value #PREFIXE_PROVISION}, les mots de son libellé et sa contenance éventuelle. */
+    public static String genererProvision(String libelle, Predicate<String> existe) {
+        return libre(codeDeProvision(libelle), existe);
+    }
+
     /** La base elle-même si elle est libre, sinon la première variante numérotée (-2, -3...) qui l'est. */
     private static String libre(String base, Predicate<String> existe) {
         if (base.isEmpty() || !existe.test(base)) {
@@ -98,6 +108,11 @@ public final class GenerateurCodeArticle {
     /** Le code d'un plat avant toute vérification d'unicité. */
     static String codeDePlat(String libelle) {
         return composer(libelle, PREFIXE_PLAT);
+    }
+
+    /** Le code d'une provision avant toute vérification d'unicité. */
+    static String codeDeProvision(String libelle) {
+        return composer(libelle, PREFIXE_PROVISION);
     }
 
     /** Assemble le bloc initial (société ou préfixe, éventuellement vide), les mots du libellé et la contenance. */

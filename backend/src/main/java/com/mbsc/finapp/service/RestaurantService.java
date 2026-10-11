@@ -941,6 +941,19 @@ public class RestaurantService {
     private static final String RACINE_COMPTE_STOCK_PROVISION = "331";
     private static final String RACINE_COMPTE_CHARGE_PROVISION = "6032";
 
+    /**
+     * Code proposé pour une nouvelle provision, déduit de son libellé (préfixe {@code PROV}, voir
+     * {@link GenerateurCodeArticle}) et libre au moment de l'appel : l'écran de création l'affiche au fil
+     * de la saisie. Il est à nouveau demandé juste avant l'enregistrement, et l'unicité reste contrôlée à
+     * la création.
+     */
+    @PreAuthorize(ECRITURE)
+    @Transactional(readOnly = true)
+    public CodeArticleSuggereResponse suggererCodeProvision(String libelle) {
+        return new CodeArticleSuggereResponse(
+            GenerateurCodeArticle.genererProvision(libelle, articleRepository::existsByCode));
+    }
+
     @PreAuthorize(ECRITURE)
     @Transactional
     public ArticleResponse creerProvision(ArticleRequest req) {

@@ -171,9 +171,61 @@ function ouvrirEdition(p: Provision) {
   dialog.value = true
 }
 
+// ── Code d'une nouvelle provision ─────────────────────────────────────────────────────
+// Il n'est pas saisi : le serveur le compose d'après le libellé (préfixe PROV : « Riz » donne PROV-RIZ,
+// « Farine de blé » donne PROV-FARI-BLE) et s'assure qu'il est libre. Une provision déjà créée garde un
+// code modifiable à la main.
+const codeAutomatique = computed(() => editId.value === null)
+const codeEnCours = ref(false)
+let numeroSuggestion = 0
+let minuterieCode: ReturnType<typeof setTimeout> | undefined
+
+async function suggererCode() {
+  const numero = ++numeroSuggestion
+  if (!form.libelle.trim()) {
+    form.code = ''
+    codeEnCours.value = false
+    return
+  }
+  codeEnCours.value = true
+  try {
+    const reponse = await api<{ code: string }>('/restaurant/provisions/code-suggere', { query: { libelle: form.libelle.trim() } })
+    // Une saisie plus récente a pu relancer la demande entre-temps : seule la dernière compte.
+    if (numero === numeroSuggestion) form.code = reponse.code || ''
+  } catch {
+    if (numero === numeroSuggestion) form.code = ''
+  } finally {
+    if (numero === numeroSuggestion) codeEnCours.value = false
+  }
+}
+
+// Après une courte pause dans la frappe, pour ne pas interroger le serveur à chaque lettre.
+watch([() => form.libelle, dialog, editId], () => {
+  clearTimeout(minuterieCode)
+  if (!dialog.value || !codeAutomatique.value) return
+  if (!form.libelle.trim()) {
+    numeroSuggestion++
+    form.code = ''
+    codeEnCours.value = false
+    return
+  }
+  codeEnCours.value = true
+  minuterieCode = setTimeout(suggererCode, 300)
+})
+onBeforeUnmount(() => clearTimeout(minuterieCode))
+
 async function enregistrer() {
+  if (codeAutomatique.value) {
+    // Code redemandé au dernier moment : il tient compte de tout ce qui a été créé entre-temps.
+    clearTimeout(minuterieCode)
+    await suggererCode()
+  }
   if (!form.code.trim() || !form.libelle.trim()) {
-    erreur.value = 'Code et libellé sont obligatoires.'
+    erreur.value = codeAutomatique.value
+      ? (form.libelle.trim()
+        ? "Le code n'a pas pu être généré : réessayez."
+        : 'Le libellé est obligatoire : le code en est déduit.')
+      : 'Code et libellé sont obligatoires.'
     return
   }
   saving.value = true
@@ -316,8 +368,22 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR
         <v-card-text class="pa-0">
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-4">{{ erreur }}</v-alert>
 
-        <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
-        <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
+        <!-- Nouvelle provision : le code se déduit du libellé, il vient donc après lui. -->
+        <template v-if="codeAutomatique">
+          <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
+          <v-text-field
+            :model-value="form.code" label="Code" readonly :loading="codeEnCours"
+            prepend-inner-icon="mdi-auto-fix" bg-color="grey-lighten-5"
+            placeholder="Généré à partir du libellé"
+            hint="Généré automatiquement à partir du libellé (préfixe PROV)"
+            persistent-hint
+            variant="outlined" density="comfortable" class="mb-3"
+          />
+        </template>
+        <template v-else>
+          <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
+          <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
+        </template>
         <v-text-field v-model="form.uniteMesure" label="Unité (kg, sac, litre...)" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model.number="form.stockMin" type="number" label="Seuil de réapprovisionnement" variant="outlined" density="comfortable" class="mb-3" />
 
