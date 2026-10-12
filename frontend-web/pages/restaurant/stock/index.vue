@@ -13,6 +13,10 @@ definePageMeta({ module: 'RESTAURANT' })
  *
  * Un plat n'a pas de lot d'achat (il se produit) : il ne figure que sur la
  * page consolidée.
+ *
+ * La recherche (code, libellé, entrepôt, fournisseur, date d'achat — insensible à
+ * la casse et aux accents, plusieurs mots cumulés) ne touche pas aux trois
+ * compteurs du haut : ils restent ceux du stock entier.
  */
 interface LotStock {
   id: number
@@ -35,6 +39,8 @@ const parametres = useRestaurantParametresStore()
 const loading = ref(false)
 const erreur = ref('')
 const lots = ref<LotStock[]>([])
+const recherche = ref('')
+const page = ref(1)
 
 async function charger() {
   loading.value = true
@@ -58,6 +64,15 @@ const nbFournisseurs = computed(() => new Set(lots.value.map(l => l.fournisseur)
 
 const fmtQte = (q: number, u?: string) => `${parametres.fmtQuantite(q)}${u ? ' ' + u : ''}`
 const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—')
+
+/** Ce que le tableau affiche : les lots dont le code, le libellé, l'entrepôt, le fournisseur ou la date d'achat (telle qu'affichée) correspondent. */
+const lotsAffiches = computed(() => lots.value.filter(l =>
+  correspondRecherche([l.articleCode, l.articleLibelle, l.entrepotCode, l.fournisseur, l.dateEntree ? fmtDate(l.dateEntree) : null], recherche.value)))
+
+const rechercheActive = computed(() => !!recherche.value.trim())
+
+// Un filtre plus strict peut laisser moins de pages que celle affichée : retour à la première.
+watch(recherche, () => { page.value = 1 })
 </script>
 
 <template>
@@ -104,6 +119,25 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       Suivi de gestion, sans effet sur la comptabilité, qui reste au coût moyen pondéré.
     </p>
 
+    <div class="d-flex flex-wrap align-center ga-3 mb-4">
+      <v-text-field
+        v-model="recherche"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="Rechercher : code, libellé, entrepôt, fournisseur, date d'achat…"
+        aria-label="Rechercher un lot de stock"
+        clearable
+        hide-details
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        class="flex-grow-1 rst-recherche"
+        style="max-width: 460px; min-width: 240px"
+      />
+      <span v-if="rechercheActive" class="text-body-2 text-medium-emphasis rst-recherche-compte">
+        {{ lotsAffiches.length }} sur {{ lots.length }}
+      </span>
+    </div>
+
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
@@ -118,8 +152,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           { title: 'Coût unitaire', key: 'coutUnitaire', align: 'end' },
           { title: 'Valeur', key: 'valeur', align: 'end' },
         ]"
-        :items="lots"
+        :items="lotsAffiches"
         :loading="loading"
+        v-model:page="page"
         items-per-page="25"
       >
         <template #item.dateEntree="{ item }">{{ fmtDate(item.dateEntree) }}</template>
@@ -137,7 +172,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         <template #item.valeur="{ item }">{{ parametres.fmtMontant(item.valeur) }}</template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
-            Aucun lot actif. Les lots apparaissent après le paiement d'une note d'achat de boissons.
+            {{ rechercheActive
+              ? `Aucun lot ne correspond à « ${recherche.trim()} ».`
+              : "Aucun lot actif. Les lots apparaissent après le paiement d'une note d'achat de boissons." }}
           </div>
         </template>
       </v-data-table>

@@ -7,7 +7,8 @@ definePageMeta({ module: 'RESTAURANT' })
  * prix) qui le composent. Pour cette traçabilité par lot (et créer/modifier
  * une provision), voir /restaurant/provisions.
  *
- * Lecture seule.
+ * Lecture seule. La recherche (code, libellé, unité — insensible à la casse et aux
+ * accents, plusieurs mots cumulés) ne touche pas aux trois compteurs du haut.
  */
 interface Provision {
   id: number
@@ -37,6 +38,8 @@ const loading = ref(false)
 const erreur = ref('')
 const provisions = ref<Provision[]>([])
 const stock = ref<StockNiveau[]>([])
+const recherche = ref('')
+const page = ref(1)
 
 const valeurTotale = computed(() => stock.value.reduce((s, l) => s + (l.valeurTotale || 0), 0))
 const nbSousSeuil = computed(() => stock.value.filter(l => l.sousSeuil).length)
@@ -74,6 +77,15 @@ const lignes = computed(() =>
     }
   })
 )
+
+/** Ce que le tableau affiche : les provisions dont le code, le libellé ou l'unité correspondent. */
+const lignesAffichees = computed(() => lignes.value.filter(l =>
+  correspondRecherche([l.code, l.libelle, l.uniteMesure], recherche.value)))
+
+const rechercheActive = computed(() => !!recherche.value.trim())
+
+// Un filtre plus strict peut laisser moins de pages que celle affichée : retour à la première.
+watch(recherche, () => { page.value = 1 })
 
 const fmtQte = (q: number, u?: string) => `${parametres.fmtQuantite(q)}${u ? ' ' + u : ''}`
 
@@ -125,6 +137,24 @@ function fraisApproche(item: { coutMoyen: number; prixAchatMoyen: number }): num
     <p class="text-caption text-medium-emphasis mb-2">
       Transport et manutention : part de ces frais incorporée à chaque unité — le coût moyen et la valeur du stock les incluent déjà.
     </p>
+    <div class="d-flex flex-wrap align-center ga-3 mb-4">
+      <v-text-field
+        v-model="recherche"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="Rechercher : code, libellé, unité…"
+        aria-label="Rechercher une provision"
+        clearable
+        hide-details
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        class="flex-grow-1 rst-recherche"
+        style="max-width: 460px; min-width: 240px"
+      />
+      <span v-if="rechercheActive" class="text-body-2 text-medium-emphasis rst-recherche-compte">
+        {{ lignesAffichees.length }} sur {{ lignes.length }}
+      </span>
+    </div>
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
@@ -137,8 +167,9 @@ function fraisApproche(item: { coutMoyen: number; prixAchatMoyen: number }): num
           { title: 'Valeur', key: 'valeurTotale', align: 'end' },
           { title: 'Statut', key: 'actif' },
         ]"
-        :items="lignes"
+        :items="lignesAffichees"
         :loading="loading"
+        v-model:page="page"
         items-per-page="15"
       >
         <template #item.uniteMesure="{ item }">{{ item.uniteMesure || '—' }}</template>
@@ -157,7 +188,7 @@ function fraisApproche(item: { coutMoyen: number; prixAchatMoyen: number }): num
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
-            Aucune provision référencée.
+            {{ rechercheActive ? `Aucune provision ne correspond à « ${recherche.trim()} ».` : 'Aucune provision référencée.' }}
           </div>
         </template>
       </v-data-table>

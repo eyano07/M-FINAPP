@@ -10,6 +10,12 @@ definePageMeta({ module: 'RESTAURANT' })
  * Lecture seule : les entrées et sorties de stock passent par le module
  * Logistique (réception fournisseur) et par les ventes (déstockage au coût
  * moyen). Cet écran sert à voir ce qui reste et ce qui manque.
+ *
+ * Chaque ligne dit si l'article est un plat ou une boisson (colonne Type) ; la
+ * bascule Tous / Plats / Boissons et la recherche (code, libellé, entrepôt, type
+ * — insensible à la casse et aux accents, plusieurs mots cumulés) se combinent.
+ * Les trois compteurs du haut suivent la bascule, pas la recherche : ils restent
+ * la valeur du stock de la catégorie affichée.
  */
 interface StockNiveau {
   articleId: number
@@ -29,6 +35,13 @@ interface StockNiveau {
   sousSeuil: boolean
 }
 interface ArticleCarte { id: number; type: 'PLAT' | 'BOISSON' }
+type TypeArticle = 'PLAT' | 'BOISSON'
+
+/** Même présentation que la carte du restaurant (pages/restaurant/carte.vue) : une puce par type. */
+const META_TYPE: Record<TypeArticle, { label: string; couleur: string; icone: string }> = {
+  PLAT: { label: 'Plat', couleur: 'deep-orange', icone: 'mdi-food-outline' },
+  BOISSON: { label: 'Boisson', couleur: 'indigo', icone: 'mdi-bottle-soda-classic-outline' },
+}
 
 const api = useApi()
 const parametres = useRestaurantParametresStore()
@@ -37,6 +50,8 @@ const erreur = ref('')
 const stock = ref<StockNiveau[]>([])
 const typesParArticle = ref<Record<number, string>>({})
 const filtreType = ref<'TOUS' | 'PLAT' | 'BOISSON'>('TOUS')
+const recherche = ref('')
+const page = ref(1)
 
 async function charger() {
   loading.value = true
@@ -57,11 +72,20 @@ async function charger() {
 }
 onMounted(charger)
 
-const lignes = computed(() =>
-  filtreType.value === 'TOUS'
-    ? stock.value
-    : stock.value.filter(s => typesParArticle.value[s.articleId] === filtreType.value)
+/** Les lignes de la catégorie choisie, chacune avec son type (inconnu si la carte n'a pas pu être lue). */
+const lignes = computed(() => stock.value
+  .map(s => ({ ...s, type: (typesParArticle.value[s.articleId] ?? null) as TypeArticle | null }))
+  .filter(s => filtreType.value === 'TOUS' || s.type === filtreType.value)
 )
+
+/** Ce que le tableau affiche : la catégorie choisie, restreinte par la recherche. */
+const lignesAffichees = computed(() => lignes.value.filter(l =>
+  correspondRecherche([l.articleCode, l.articleLibelle, l.entrepotCode, l.type ? META_TYPE[l.type].label : null], recherche.value)))
+
+const rechercheActive = computed(() => !!recherche.value.trim())
+
+// Un filtre plus strict peut laisser moins de pages que celle affichée : retour à la première.
+watch([filtreType, recherche], () => { page.value = 1 })
 
 const valeurTotale = computed(() => lignes.value.reduce((s, l) => s + (l.valeurTotale || 0), 0))
 const nbSousSeuil = computed(() => lignes.value.filter(l => l.sousSeuil).length)
@@ -73,8 +97,7 @@ const nbSousSeuil = computed(() => lignes.value.filter(l => l.sousSeuil).length)
  * Production lui donne au contraire le coût réel de ses ingrédients.
  */
 const platsSansCout = computed(() =>
-  lignes.value.filter(l =>
-    typesParArticle.value[l.articleId] === 'PLAT' && l.quantite > 0 && (!l.coutMoyen || l.coutMoyen <= 0))
+  lignes.value.filter(l => l.type === 'PLAT' && l.quantite > 0 && (!l.coutMoyen || l.coutMoyen <= 0))
 )
 
 const fmtQte = (q: number) => parametres.fmtQuantite(q)
@@ -85,7 +108,7 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
  * stock antérieur à cette fonctionnalité, ou un plat, dont le coût moyen est
  * son coût de production).
  */
-function fraisApproche(item: StockNiveau): number {
+function fraisApproche(item: { coutMoyen: number; prixAchatMoyen: number }): number {
   const f = (item.coutMoyen || 0) - (item.prixAchatMoyen || 0)
   return f > 0.000001 ? f : 0
 }
@@ -145,17 +168,37 @@ function fraisApproche(item: StockNiveau): number {
     <p class="text-caption text-medium-emphasis mb-2">
       Transport et manutention : part de ces frais incorporée à chaque unité — le coût moyen et la valeur du stock les incluent déjà. Pour un plat, le coût moyen est son coût de production.
     </p>
-    <v-btn-toggle v-model="filtreType" mandatory density="comfortable" variant="outlined" rounded="lg" class="mb-4">
-      <v-btn value="TOUS">Tous</v-btn>
-      <v-btn value="PLAT">Plats</v-btn>
-      <v-btn value="BOISSON">Boissons</v-btn>
-    </v-btn-toggle>
+    <div class="d-flex flex-wrap align-center ga-3 mb-4">
+      <!-- Densité par défaut = 48 px, la hauteur du champ de recherche voisin. -->
+      <v-btn-toggle v-model="filtreType" mandatory variant="outlined" rounded="lg">
+        <v-btn value="TOUS">Tous</v-btn>
+        <v-btn value="PLAT">Plats</v-btn>
+        <v-btn value="BOISSON">Boissons</v-btn>
+      </v-btn-toggle>
+      <v-text-field
+        v-model="recherche"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="Rechercher : code, libellé, entrepôt, plat ou boisson…"
+        aria-label="Rechercher un article du stock"
+        clearable
+        hide-details
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        class="flex-grow-1 rst-recherche"
+        style="max-width: 460px; min-width: 240px"
+      />
+      <span v-if="rechercheActive" class="text-body-2 text-medium-emphasis rst-recherche-compte">
+        {{ lignesAffichees.length }} sur {{ lignes.length }}
+      </span>
+    </div>
 
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
           { title: 'Code', key: 'articleCode' },
           { title: 'Libellé', key: 'articleLibelle' },
+          { title: 'Type', key: 'type' },
           { title: 'Entrepôt', key: 'entrepotCode' },
           { title: 'Quantité', key: 'quantite', align: 'end' },
           { title: 'Transport et manutention', key: 'fraisApprocheUnitaire', align: 'end', sortable: false },
@@ -163,10 +206,21 @@ function fraisApproche(item: StockNiveau): number {
           { title: 'Valeur', key: 'valeurTotale', align: 'end' },
           { title: 'Seuil', key: 'stockMin', align: 'end' },
         ]"
-        :items="lignes"
+        :items="lignesAffichees"
         :loading="loading"
+        v-model:page="page"
         items-per-page="25"
       >
+        <!-- Un code composé (BRAL-PRIM-55CL) reste sur une ligne : coupé aux tirets, il ferait grandir chaque rangée. -->
+        <template #item.articleCode="{ item }"><span class="text-no-wrap">{{ item.articleCode }}</span></template>
+        <!-- Plat ou boisson : même puce que sur la carte. Inconnu seulement si la carte n'a pas pu être lue. -->
+        <template #item.type="{ item }">
+          <v-chip v-if="item.type" :color="META_TYPE[item.type].couleur" size="small" variant="tonal">
+            <v-icon :icon="META_TYPE[item.type].icone" size="14" class="mr-1" />
+            {{ META_TYPE[item.type].label }}
+          </v-chip>
+          <span v-else class="text-medium-emphasis">—</span>
+        </template>
         <template #item.quantite="{ item }">
           <span :class="item.sousSeuil ? 'font-weight-bold text-error' : ''">
             {{ fmtQte(item.quantite) }} {{ item.uniteMesure || '' }}
@@ -174,7 +228,7 @@ function fraisApproche(item: StockNiveau): number {
         </template>
         <!-- Un plat n'a pas de frais d'approche : son coût est celui de sa production. -->
         <template #item.fraisApprocheUnitaire="{ item }">
-          <span v-if="typesParArticle[item.articleId] === 'PLAT' || !fraisApproche(item)" class="text-medium-emphasis">—</span>
+          <span v-if="item.type === 'PLAT' || !fraisApproche(item)" class="text-medium-emphasis">—</span>
           <span v-else>{{ parametres.fmtMontant(fraisApproche(item)) }}</span>
         </template>
         <template #item.coutMoyen="{ item }">
@@ -186,7 +240,9 @@ function fraisApproche(item: StockNiveau): number {
         <template #item.stockMin="{ item }">{{ fmtQte(item.stockMin) }}</template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
-            Aucun stock enregistré pour la carte. Les quantités apparaîtront après une entrée en stock.
+            {{ rechercheActive
+              ? `Aucun article ne correspond à « ${recherche.trim()} ».`
+              : 'Aucun stock enregistré pour la carte. Les quantités apparaîtront après une entrée en stock.' }}
           </div>
         </template>
       </v-data-table>

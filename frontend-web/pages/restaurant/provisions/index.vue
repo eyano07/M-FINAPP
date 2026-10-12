@@ -13,6 +13,10 @@ definePageMeta({ module: 'RESTAURANT' })
  * /restaurant/provisions/consolide pour la vue agrégée (une ligne par
  * provision, sans tenir compte des lots). Suivi de gestion, sans effet sur
  * la comptabilité (toujours au coût moyen pondéré).
+ *
+ * La recherche (code, libellé, unité, fournisseur, date d'achat — insensible à la
+ * casse et aux accents, plusieurs mots cumulés) ne touche pas aux trois compteurs
+ * du haut : ils restent ceux du stock entier.
  */
 interface Provision {
   id: number
@@ -62,6 +66,8 @@ const stock = ref<StockNiveau[]>([])
 const lots = ref<LotProvision[]>([])
 const dialog = ref(false)
 const editId = ref<number | null>(null)
+const recherche = ref('')
+const page = ref(1)
 
 const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
 
@@ -142,6 +148,15 @@ const lignes = computed(() => {
     }))
   })
 })
+
+/** Ce que le tableau affiche : les lignes dont le code, le libellé, l'unité, le fournisseur ou la date d'achat (telle qu'affichée) correspondent. */
+const lignesAffichees = computed(() => lignes.value.filter(l =>
+  correspondRecherche([l.code, l.libelle, l.uniteMesure, l.fournisseur, l.dateEntree ? fmtDate(l.dateEntree) : null], recherche.value)))
+
+const rechercheActive = computed(() => !!recherche.value.trim())
+
+// Un filtre plus strict peut laisser moins de pages que celle affichée : retour à la première.
+watch(recherche, () => { page.value = 1 })
 
 function ouvrirCreation() {
   editId.value = null
@@ -310,6 +325,24 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR
       <strong>Sortie des lots : CMP</strong> — chaque sortie prélève sur tous les lots au prorata, d'où des quantités parfois décimales.
       Suivi de gestion, sans effet sur la comptabilité, qui reste au coût moyen pondéré.
     </p>
+    <div class="d-flex flex-wrap align-center ga-3 mb-4">
+      <v-text-field
+        v-model="recherche"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="Rechercher : code, libellé, fournisseur, date d'achat…"
+        aria-label="Rechercher une provision"
+        clearable
+        hide-details
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        class="flex-grow-1 rst-recherche"
+        style="max-width: 460px; min-width: 240px"
+      />
+      <span v-if="rechercheActive" class="text-body-2 text-medium-emphasis rst-recherche-compte">
+        {{ lignesAffichees.length }} sur {{ lignes.length }}
+      </span>
+    </div>
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
@@ -326,9 +359,10 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR
           { title: 'Statut', key: 'actif' },
           { title: 'Actions', key: 'actions', sortable: false, align: 'end' },
         ]"
-        :items="lignes"
+        :items="lignesAffichees"
         item-value="rowKey"
         :loading="loading"
+        v-model:page="page"
         items-per-page="15"
       >
         <template #item.uniteMesure="{ item }">{{ item.uniteMesure || '—' }}</template>
@@ -355,7 +389,9 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
-            Aucune provision référencée. Créez-en une pour commencer le suivi (riz, tomates, sel, charbon...).
+            {{ rechercheActive
+              ? `Aucune provision ne correspond à « ${recherche.trim()} ».`
+              : 'Aucune provision référencée. Créez-en une pour commencer le suivi (riz, tomates, sel, charbon...).' }}
           </div>
         </template>
       </v-data-table>
