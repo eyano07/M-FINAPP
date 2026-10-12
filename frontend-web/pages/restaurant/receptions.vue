@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const rolesStore = useRolesStore()
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Demande d'achat de boissons, saisie en casiers.

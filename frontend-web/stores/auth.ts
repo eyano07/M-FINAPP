@@ -14,6 +14,15 @@ function prefixerPhotoUrl(user: AuthUser): AuthUser {
   return { ...user, photoUrl: `${apiBase}${user.photoUrl}` }
 }
 
+/**
+ * Les rôles qui voient tout le module Restaurant : ceux que le serveur admet en lecture
+ * (RestaurantService.LECTURE), le caissier excepté. Le caissier a le module en ÉCRITURE (le plan des
+ * salles, les ventes) mais ne voit du restaurant que ce qu'il lui faut au comptoir : la carte, le plan
+ * des salles et les stocks (voir NavigationDrawer). Les pages réservées portent la même liste dans leur
+ * definePageMeta({ roles }) : une macro de compilation, qui ne peut pas la lire ici.
+ */
+export const ROLES_RESTAURANT_COMPLET = ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN']
+
 export interface AuthUser {
   id: number
   email: string
@@ -50,6 +59,8 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isAuthenticated: (s) => !!s.accessToken && !!s.user,
+    /** Voit tout le module Restaurant (faux pour un compte qui n'est que caissier) — voir ROLES_RESTAURANT_COMPLET. */
+    restaurantComplet: (s) => (s.user?.roles ?? []).some((r) => ROLES_RESTAURANT_COMPLET.includes(r)),
     roles: (s) => s.user?.roles ?? [],
     /**
      * Route d'atterrissage par defaut selon le role. Le Directeur metier

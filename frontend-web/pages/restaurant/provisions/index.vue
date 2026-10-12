@@ -289,7 +289,8 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR
         <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-view-list-outline" to="/restaurant/provisions/consolide">
           Stock consolidé
         </v-btn>
-        <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-swap-horizontal-bold" to="/restaurant/provisions/mouvements">
+        <!-- Les entrées et sorties ne sont pas une page du caissier (voir NavigationDrawer) : pas de lien mort. -->
+        <v-btn v-if="auth.restaurantComplet" variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-swap-horizontal-bold" to="/restaurant/provisions/mouvements">
           Entrées / sorties
         </v-btn>
         <v-btn v-if="canWrite" color="success" variant="flat" rounded="lg" prepend-icon="mdi-plus" @click="ouvrirCreation">

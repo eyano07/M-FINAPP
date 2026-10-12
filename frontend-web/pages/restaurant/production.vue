@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', niveau: 'ECRITURE' })
+definePageMeta({ module: 'RESTAURANT', niveau: 'ECRITURE', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Production : transforme des provisions en portions d'un plat.

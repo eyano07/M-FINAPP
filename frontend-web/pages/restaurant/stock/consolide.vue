@@ -44,7 +44,10 @@ const META_TYPE: Record<TypeArticle, { label: string; couleur: string; icone: st
 }
 
 const api = useApi()
+const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
+/** La production est ouverte au responsable restaurant et à l'administrateur (écriture sur le module) : pas de lien mort pour les autres. */
+const peutProduire = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
 const loading = ref(false)
 const erreur = ref('')
 const stock = ref<StockNiveau[]>([])
@@ -141,7 +144,7 @@ function fraisApproche(item: { coutMoyen: number; prixAchatMoyen: number }): num
       Leur entrée en stock a été saisie sans coût de production — à la vente, aucun coût ne sera constaté
       et la marge affichée sera de 100 %.
       <template #append>
-        <v-btn size="small" variant="tonal" color="warning" rounded="lg" to="/restaurant/production">
+        <v-btn v-if="peutProduire" size="small" variant="tonal" color="warning" rounded="lg" to="/restaurant/production">
           Produire
         </v-btn>
       </template>

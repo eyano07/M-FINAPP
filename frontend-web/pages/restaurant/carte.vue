@@ -520,8 +520,9 @@ async function confirmerSuppression() {
         </template>
         <template #item.actions="{ item }">
           <div class="d-flex justify-end flex-nowrap">
+          <!-- La fiche technique n'est pas une page du caissier (voir NavigationDrawer) : pas de lien mort. -->
           <v-btn
-            v-if="item.type === 'PLAT'"
+            v-if="item.type === 'PLAT' && auth.restaurantComplet"
             size="small" variant="text" icon="mdi-clipboard-text-outline"
             title="Fiche technique" to="/restaurant/recettes"
           />
