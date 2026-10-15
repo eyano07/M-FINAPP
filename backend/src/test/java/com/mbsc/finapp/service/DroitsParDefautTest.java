@@ -48,6 +48,10 @@ class DroitsParDefautTest {
     void les_roles_dont_l_accueil_est_un_module_y_ont_acces_en_ecriture() {
         assertThat(DroitsParDefaut.pour(RoleType.RESP_RESTAURANT))
             .containsEntry(ModuleMetier.RESTAURANT, NiveauPermission.ECRITURE);
+        assertThat(DroitsParDefaut.pour(RoleType.RESP_CUISINE))
+            .containsEntry(ModuleMetier.RESTAURANT, NiveauPermission.ECRITURE);
+        assertThat(DroitsParDefaut.pour(RoleType.RESP_BAR))
+            .containsEntry(ModuleMetier.RESTAURANT, NiveauPermission.ECRITURE);
         assertThat(DroitsParDefaut.pour(RoleType.LOGISTIQUE))
             .containsEntry(ModuleMetier.LOGISTIQUE, NiveauPermission.ECRITURE);
         assertThat(DroitsParDefaut.pour(RoleType.GEST_PATRIMOINE))
@@ -66,15 +70,31 @@ class DroitsParDefautTest {
 
     /**
      * Total de la grille livree par les migrations V28 a V104 : 49 lignes une fois V29, V30 et V40 appliquees,
-     * plus les 4 droits du module BUDGET (V104 : DFIN, DA, DG, COMPTABLE) et les 5 du module RAPPROCHEMENT (V105).
+     * plus les 4 droits du module BUDGET (V104 : DFIN, DA, DG, COMPTABLE) et les 5 du module RAPPROCHEMENT (V105),
+     * plus les 4 droits des responsables cuisine et bar (V124 : RESTAURANT en ecriture et LOGISTIQUE en lecture,
+     * pour chacun des deux roles — poses a la creation du premier compte, voir DroitsParDefaut).
      */
     @Test
-    void la_grille_d_origine_reprend_les_58_droits_des_migrations() {
+    void la_grille_d_origine_reprend_les_62_droits_des_migrations() {
         int total = 0;
         for (RoleType role : RoleType.values()) {
             total += DroitsParDefaut.pour(role).size();
         }
-        assertThat(total).isEqualTo(58);
+        assertThat(total).isEqualTo(62);
+    }
+
+    /**
+     * Les responsables cuisine et bar : le restaurant en ecriture, la logistique en LECTURE seulement (leurs ecrans
+     * Logistique ne leur permettent rien d'ecrire), et rien d'autre — pas de salles, de caisse ni de comptabilite.
+     */
+    @Test
+    void les_responsables_cuisine_et_bar_ont_le_restaurant_en_ecriture_et_la_logistique_en_lecture() {
+        for (RoleType role : List.of(RoleType.RESP_CUISINE, RoleType.RESP_BAR)) {
+            assertThat(DroitsParDefaut.pour(role)).as(role.name())
+                .containsOnly(
+                    java.util.Map.entry(ModuleMetier.RESTAURANT, NiveauPermission.ECRITURE),
+                    java.util.Map.entry(ModuleMetier.LOGISTIQUE, NiveauPermission.LECTURE));
+        }
     }
 
     // ---------------------------------------------------------------------

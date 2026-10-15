@@ -36,6 +36,15 @@ public class StockService {
 
     private static final Logger log = LoggerFactory.getLogger(StockService.class);
 
+    // Lecture du menu Logistique. Le responsable cuisine et le responsable bar y sont admis EN LECTURE SEULE, et ne
+    // voient que les articles de leur domaine (voir PerimetreRestaurant.logistique) : articles, etat du stock, grand
+    // livre et mouvements sont filtres dans chaque methode, jamais seulement a l'ecran. Aucune garde d'ecriture
+    // ne les cite — les ecritures sur les plats, boissons et provisions restent d'ailleurs refusees hors ADMIN.
+    private static final String LECTURE_CATALOGUE =
+        "hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')";
+    private static final String LECTURE_MOUVEMENTS =
+        "hasAnyRole('LOGISTIQUE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')";
+
     private final ArticleRepository articleRepository;
     private final EntrepotRepository entrepotRepository;
     private final MouvementStockRepository mouvementRepository;
@@ -60,10 +69,14 @@ public class StockService {
 
     // Le caissier est inclus en lecture : le catalogue (et sa disponibilite)
     // lui est necessaire pour saisir une vente.
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_CATALOGUE)
     @Transactional(readOnly = true)
     public List<ArticleResponse> listerArticles() {
-        return articleRepository.findAllWithComptes().stream().map(ArticleResponse::from).toList();
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        return articleRepository.findAllWithComptes().stream()
+            .filter(a -> perimetre.autorise(a.getType()))
+            .map(ArticleResponse::from)
+            .toList();
     }
 
     /**
@@ -72,10 +85,13 @@ public class StockService {
      * catalogue chargé à l'ouverture de l'écran — qui peut rester ouvert
      * toute la journée à la caisse. Mêmes droits que {@link #listerArticles}.
      */
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_CATALOGUE)
     @Transactional(readOnly = true)
     public ArticleResponse consulterArticle(Long id) {
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        // Un article hors du domaine de l'appelant n'existe pas pour lui : 404, jamais 403 (on ne confirme rien).
         return ArticleResponse.from(articleRepository.findById(id)
+            .filter(a -> perimetre.autorise(a.getType()))
             .orElseThrow(() -> RessourceIntrouvableException.of("Article", id)));
     }
 
@@ -158,7 +174,7 @@ public class StockService {
     // et l'etat du stock : une vente de marchandise impose de choisir
     // l'entrepot a decrementer (voir ventes/nouvelle.vue), donc sans cette
     // liste il ne peut pas aller au bout d'une vente.
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_CATALOGUE)
     @Transactional(readOnly = true)
     public List<EntrepotResponse> listerEntrepots() {
         return entrepotRepository.findAllByOrderByCodeAsc().stream().map(EntrepotResponse::from).toList();
@@ -198,7 +214,7 @@ public class StockService {
     // Mouvements de stock
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_MOUVEMENTS)
     @Transactional(readOnly = true)
     public List<MouvementResponse> listerMouvements() {
         // Une requête par propriétaire possible, pas une par mouvement : l'écran
@@ -209,17 +225,34 @@ public class StockService {
         rattaches.addAll(camionRepository.idsMouvementsValides());
         rattaches.addAll(mouvementEmballageRepository.idsMouvementsStockValides());
         java.util.Set<Long> restaurant = new java.util.HashSet<>(mouvementRepository.idsValidesModuleRestaurant());
+        // Un responsable cuisine ou bar ne voit que les mouvements qui portent au moins un article de son domaine.
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        java.util.Set<Long> visibles = perimetre.restreint()
+            ? new java.util.HashSet<>(mouvementRepository.idsMouvementsParTypes(perimetre.types()))
+            : null;
         return mouvementRepository.findAllWithCreatedBy().stream()
+            .filter(m -> visibles == null || visibles.contains(m.getId()))
             .map(m -> MouvementResponse.from(m, false,
                 m.getStatut() == StatutMouvement.VALIDE && !rattaches.contains(m.getId()),
                 restaurant.contains(m.getId())))
             .toList();
     }
 
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_MOUVEMENTS)
     @Transactional(readOnly = true)
     public MouvementResponse consulterMouvement(Long id) {
-        return MouvementResponse.from(chargerMouvement(id));
+        MouvementStock mouvement = chargerMouvement(id);
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        if (!perimetre.restreint()) {
+            return MouvementResponse.from(mouvement);
+        }
+        // Un mouvement mixte (ex. une vente : un plat et une boisson) ne montre que les lignes du domaine ; un
+        // mouvement sans aucune ligne du domaine n'existe pas pour l'appelant (404).
+        List<LigneMouvementStock> visibles = perimetre.filtrer(mouvement.getLignes(), l -> l.getArticle().getType());
+        if (visibles.isEmpty()) {
+            throw RessourceIntrouvableException.of("MouvementStock", id);
+        }
+        return MouvementResponse.from(mouvement, visibles);
     }
 
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'ADMIN')")
@@ -1133,19 +1166,34 @@ public class StockService {
     // ---------------------------------------------------------------------
 
     // Le caissier consulte la disponibilite avant de vendre.
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_CATALOGUE)
     @Transactional(readOnly = true)
     public List<StockNiveauResponse> etatStock() {
-        return niveauRepository.findAllWithDetails().stream().map(StockNiveauResponse::from).toList();
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        return niveauRepository.findAllWithDetails().stream()
+            .filter(n -> perimetre.autorise(n.getArticle().getType()))
+            .map(StockNiveauResponse::from)
+            .toList();
     }
 
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_MOUVEMENTS)
     @Transactional(readOnly = true)
     public List<StockGrandLivreResponse> grandLivreStock(Long articleId, Long entrepotId,
                                                          LocalDate du, LocalDate au) {
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        // Un article hors du domaine de l'appelant : 404, comme pour la fiche de l'article. Verifie AVANT toute
+        // lecture : l'export Excel s'arrete ici et ne lit jamais le libelle de cet article (StockExcelService).
+        if (perimetre.restreint() && articleId != null) {
+            articleRepository.findById(articleId)
+                .filter(a -> !perimetre.autorise(a.getType()))
+                .ifPresent(a -> {
+                    throw RessourceIntrouvableException.of("Article", articleId);
+                });
+        }
         LocalDate debut = du != null ? du : LocalDate.of(2000, 1, 1);
         LocalDate fin = au != null ? au : LocalDate.now();
         return stockGrandLivreRepository.rechercher(articleId, entrepotId, debut, fin).stream()
+            .filter(g -> perimetre.autorise(g.getArticle().getType()))
             .map(StockGrandLivreResponse::from)
             .toList();
     }

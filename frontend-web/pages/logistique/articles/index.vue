@@ -2,7 +2,7 @@
 // Le caissier a LOGISTIQUE en LECTURE pour charger le catalogue depuis
 // « Nouvelle vente » (V29), pas pour consulter les ecrans du domaine : la
 // garde par roles l'exclut sans retirer la permission de module.
-definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN'] })
+definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] })
 
 interface Article {
   id: number

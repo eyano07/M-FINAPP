@@ -183,6 +183,23 @@ class PlatsPerimesAutomatiqueServiceTest {
     }
 
     @Test
+    void leResponsableCuisineEstPreventDesPlatsPerimesMaisPasLeResponsableBar() {
+        User cuisine = User.builder().id(4L).prenom("Chef").nom("Cuisine").build();
+        // Il porte aussi le rôle de responsable du restaurant : une seule notification quand même.
+        when(utilisateurs.findByRoles_NomAndActifTrue(RoleType.RESP_CUISINE)).thenReturn(List.of(cuisine, responsable));
+        // Le bar n'a rien à voir avec les plats : ses responsables ne sont jamais interrogés.
+        desPlatsPerimes(perime("Omelette", "5"));
+
+        service.traiter(JOUR);
+
+        ArgumentCaptor<User> destinataires = ArgumentCaptor.forClass(User.class);
+        verify(notifications, times(4)).notifierUtilisateur(
+            destinataires.capture(), eq(TypeNotification.PLATS_PERIMES), anyString(), anyString(), eq(LIEN), isNull());
+        assertThat(destinataires.getAllValues()).containsExactlyInAnyOrder(responsable, cumul, admin, cuisine);
+        verify(utilisateurs, never()).findByRoles_NomAndActifTrue(RoleType.RESP_BAR);
+    }
+
+    @Test
     void laNotificationNePartQuUneFoisParJour() {
         desPlatsPerimes(perime("Omelette", "5"));
 

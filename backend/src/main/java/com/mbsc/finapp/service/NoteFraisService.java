@@ -89,13 +89,16 @@ import java.util.stream.Collectors;
  * <p>Le controle des roles est applique par {@link PreAuthorize}. Chaque
  * transition trace une {@link ObservationNote} pour l'audit.</p>
  *
- * <p><b>Cas particulier RESP_RESTAURANT.</b> Le responsable restaurant ne
- * crée jamais de note de frais libre : il ne peut soumettre qu'une note
- * "spéciale" d'achat de boissons et/ou de provisions (une ou plusieurs
- * lignes, chacune un achat de marchandise, article de type BOISSON ou
- * PROVISION), qui suit ensuite exactement le même circuit que toute autre
- * note de décaissement. Cela impose tout achat de boissons ou de provisions
- * dans le circuit d'approbation DFIN/DA et son règlement par la caisse — voir
+ * <p><b>Cas particulier des responsables du restaurant</b> (RESP_RESTAURANT,
+ * RESP_CUISINE, RESP_BAR). Ils ne créent jamais de note de frais libre : ils
+ * ne peuvent soumettre qu'une note "spéciale" d'achat (une ou plusieurs
+ * lignes, chacune un achat de marchandise) — de boissons et de provisions
+ * pour le responsable restaurant, de provisions seulement pour le responsable
+ * cuisine, de boissons seulement pour le responsable bar (voir
+ * {@link PerimetreRestaurant#typesAchetables}). Cette note suit ensuite
+ * exactement le même circuit que toute autre note de décaissement. Cela
+ * impose tout achat de boissons ou de provisions dans le circuit
+ * d'approbation DFIN/DA et son règlement par la caisse — voir
  * {@link #validerNoteRespRestaurant} et {@code CaisseService.payerNote}
  * (échange de consigne appliqué au paiement, boissons uniquement).</p>
  */
@@ -231,7 +234,7 @@ public class NoteFraisService {
     // Creation / modification (BROUILLON)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse creer(NoteFraisRequest req) {
         User auteur = currentUser.requireUser();
@@ -270,7 +273,7 @@ public class NoteFraisService {
         return NoteFraisDetailResponse.from(note);
     }
 
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse modifier(Long id, NoteFraisRequest req) {
         NoteFrais note = charger(id);
@@ -555,26 +558,31 @@ public class NoteFraisService {
     }
 
     /**
-     * Le responsable restaurant ne cree jamais de note de frais libre : ses
+     * Les responsables du restaurant ne creent jamais de note de frais libre : leurs
      * seules notes "speciales" possibles sont un achat de boissons et/ou de
      * provisions — une ou plusieurs lignes, chacune un achat de marchandise,
-     * article BOISSON ou PROVISION, en decaissement (plusieurs produits
-     * receptionnes ensemble, ex. chez un meme fournisseur, tiennent alors sur
-     * une seule note). Toute autre forme (depense libre, article d'un autre
-     * type) est refusee, sans quoi le role deviendrait une porte d'entree
-     * generale vers les notes de frais.
+     * en decaissement (plusieurs produits receptionnes ensemble, ex. chez un
+     * meme fournisseur, tiennent alors sur une seule note) — et chacun dans
+     * son domaine : le responsable cuisine achete des provisions, le
+     * responsable bar des boissons, le responsable restaurant les deux
+     * ({@link PerimetreRestaurant#typesAchetables}). Toute autre forme
+     * (depense libre, article d'un autre type ou d'un autre domaine) est
+     * refusee, sans quoi le role deviendrait une porte d'entree generale vers
+     * les notes de frais.
      */
     private void validerNoteRespRestaurant(NoteFrais note) {
-        if (!estRespRestaurantSeul()) {
+        if (!estRoleRestaurantSeul()) {
             return;
         }
+        Set<TypeArticle> autorises = PerimetreRestaurant.typesAchetables(autoritesCourantes());
+        String achats = PerimetreRestaurant.libelleAchats(autorises);
         if (note.getSens() != SensTransaction.DECAISSEMENT) {
             throw new IllegalArgumentException(
-                "Le responsable restaurant ne peut créer qu'une note d'achat de boissons ou de provisions (décaissement)");
+                "Votre rôle ne permet de créer qu'une note d'achat de " + achats + " (décaissement)");
         }
         if (note.getLignes().isEmpty()) {
             throw new IllegalArgumentException(
-                "Une note d'achat de boissons ou de provisions doit comporter au moins une ligne");
+                "Une note d'achat de " + achats + " doit comporter au moins une ligne");
         }
         for (LigneNoteFrais ligne : note.getLignes()) {
             // Le transport et la manutention accompagnent l'achat : leur ligne
@@ -584,10 +592,10 @@ public class NoteFraisService {
                 continue;
             }
             TypeArticle type = ligne.getArticle() == null ? null : ligne.getArticle().getType();
-            if (!ligne.isAchatMarchandise() || (type != TypeArticle.BOISSON && type != TypeArticle.PROVISION)) {
+            if (!ligneAchatAdmise(ligne.isAchatMarchandise(), type, autorises)) {
                 throw new IllegalArgumentException(
-                    "Le responsable restaurant ne peut créer qu'une note d'achat de boissons ou de provisions "
-                        + "(achat de marchandise, article de type BOISSON ou PROVISION)");
+                    "Votre rôle ne permet de créer qu'une note d'achat de " + achats
+                        + " (achat de marchandise, article de type " + PerimetreRestaurant.libelleTypes(autorises) + ")");
             }
             // L'echange de consigne n'a de sens que pour une boisson consignee :
             // une provision n'a jamais de conditionnement, la verification serait
@@ -601,9 +609,20 @@ public class NoteFraisService {
         }
     }
 
-    /** true si l'utilisateur courant n'a QUE le role RESP_RESTAURANT (pas COMPTABLE/CAISSIER/DFIN/DA/DG/ADMIN). */
-    private boolean estRespRestaurantSeul() {
-        return RegleVisibiliteNote.estRespRestaurantSeul(autoritesCourantes());
+    /**
+     * Une ligne de la note d'un responsable du restaurant est admise si c'est un achat de marchandise d'un type
+     * que son role peut acheter (cuisine : provisions ; bar : boissons ; responsable global : les deux).
+     */
+    static boolean ligneAchatAdmise(boolean achatMarchandise, TypeArticle type, Set<TypeArticle> autorises) {
+        return achatMarchandise && type != null && autorises.contains(type);
+    }
+
+    /**
+     * true si l'utilisateur courant n'a QUE des roles du restaurant (RESP_RESTAURANT, RESP_CUISINE, RESP_BAR : pas
+     * COMPTABLE/CAISSIER/DFIN/DA/DG/ADMIN).
+     */
+    private boolean estRoleRestaurantSeul() {
+        return RegleVisibiliteNote.estRoleRestaurantSeul(autoritesCourantes());
     }
 
     /**
@@ -853,7 +872,7 @@ public class NoteFraisService {
     // Pieces jointes (PDF / image)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse ajouterPieceJointe(Long id, MultipartFile fichier) {
         NoteFrais note = chargerVisible(id);
@@ -891,7 +910,7 @@ public class NoteFraisService {
         return NoteFraisDetailResponse.from(note);
     }
 
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional(readOnly = true)
     public PieceJointeTelechargement telechargerPieceJointe(Long noteId, Long pieceId) {
         NoteFrais note = chargerVisible(noteId);
@@ -906,7 +925,7 @@ public class NoteFraisService {
     /** Enveloppe le contenu d'une piece jointe pour le controleur (flux + metadonnees HTTP). */
     public record PieceJointeTelechargement(Resource ressource, String nomFichier, String typeMime) {}
 
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse supprimerPieceJointe(Long noteId, Long pieceId) {
         NoteFrais note = charger(noteId);
@@ -947,7 +966,7 @@ public class NoteFraisService {
     // ---------------------------------------------------------------------
 
     /** Le createur soumet sa note au DFIN (BROUILLON|REJETEE_DA -> SOUMISE). */
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse soumettre(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -1123,7 +1142,7 @@ public class NoteFraisService {
     }
 
     /** Annulation par le createur ou le DFIN (etats non terminaux -> ANNULEE). */
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'RESP_RESTAURANT', 'LOGISTIQUE', 'RESP_DRH', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'LOGISTIQUE', 'RESP_DRH', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse annuler(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -1131,7 +1150,7 @@ public class NoteFraisService {
             throw new TransitionInvalideException(
                 "Une note " + note.getStatut() + " ne peut plus etre annulee");
         }
-        // DIRECTEUR/CAISSIER/RESP_RESTAURANT : seulement leurs propres notes.
+        // DIRECTEUR/CAISSIER/roles du restaurant : seulement leurs propres notes.
         // DFIN/ADMIN : toutes les notes.
         var authorities = currentUser.requirePrincipal().getAuthorities();
         boolean estDfinOuAdmin = authorities.stream()
@@ -1179,7 +1198,7 @@ public class NoteFraisService {
     // ---------------------------------------------------------------------
 
     /** Le createur precise (ou corrige) la justification budgetaire d'une note pas encore soumise. */
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse definirJustificationBudget(Long id, String justification) {
         NoteFrais note = charger(id);
@@ -1197,7 +1216,7 @@ public class NoteFraisService {
      * pas soumise (brouillon, ou rejetee par le DA), le DFIN pendant sa verification (note SOUMISE). Le changement est
      * trace dans l'historique ; le controle budgetaire d'une note soumise est refait sur l'enveloppe du nouveau service.
      */
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'DFIN', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'DFIN', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse modifierService(Long id, Long serviceId) {
         NoteFrais note = charger(id);

@@ -4,6 +4,7 @@ import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.enums.StatutNote;
 
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -14,12 +15,12 @@ import java.util.Set;
  * de la regle appliquee.
  *
  * <ul>
- *   <li>{@link #SES_NOTES} : le Directeur metier (DIRECTEUR), le responsable
- *       restaurant (RESP_RESTAURANT) et la logistique (LOGISTIQUE), quand ils
- *       n'ont aucun role de la chaine de validation, ne voient que les notes
- *       qu'ils ont eux-memes creees : ils n'interviennent pas dans le circuit
- *       DFIN/DA/Caissier et n'ont pas a consulter les depenses des autres
- *       services ;</li>
+ *   <li>{@link #SES_NOTES} : le Directeur metier (DIRECTEUR), les responsables
+ *       du restaurant (RESP_RESTAURANT, RESP_CUISINE, RESP_BAR) et la logistique
+ *       (LOGISTIQUE), quand ils n'ont aucun role de la chaine de validation, ne
+ *       voient que les notes qu'ils ont eux-memes creees : ils n'interviennent
+ *       pas dans le circuit DFIN/DA/Caissier et n'ont pas a consulter les
+ *       depenses des autres services ;</li>
  *   <li>{@link #CAISSIER} : le caissier « pur » (sans role DFIN/DA/DG/ADMIN)
  *       voit les notes deja validees par le DA ({@link #STATUTS_VISIBLES_CAISSIER}),
  *       quel qu'en soit le createur, plus ses propres notes a n'importe quel
@@ -94,7 +95,7 @@ enum RegleVisibiliteNote {
         boolean estLogistiqueSeul = autorites.contains("ROLE_LOGISTIQUE") && sansRoleDeLaChaine;
         boolean estCaissierSeul = estCaissier && !estDfinOuAdmin && !estDA && !estDG;
 
-        if (estDirecteurSeul || estRespRestaurantSeul(autorites) || estLogistiqueSeul) {
+        if (estDirecteurSeul || estRoleRestaurantSeul(autorites) || estLogistiqueSeul) {
             return SES_NOTES;
         }
         if (estCaissierSeul) {
@@ -106,13 +107,18 @@ enum RegleVisibiliteNote {
         return TOUTES;
     }
 
+    /** Les trois roles du restaurant : le responsable global, le responsable cuisine et le responsable bar. */
+    private static final List<String> AUTORITES_RESTAURANT =
+        List.of("ROLE_RESP_RESTAURANT", "ROLE_RESP_CUISINE", "ROLE_RESP_BAR");
+
     /**
-     * Vrai si l'utilisateur n'a QUE le role RESP_RESTAURANT (pas
-     * COMPTABLE/CAISSIER/DFIN/DA/DG/ADMIN). Contrairement au Directeur et a la
-     * logistique, un COMPTABLE en plus suffit a lui rendre la vue complete.
+     * Vrai si l'utilisateur n'a QUE des roles du restaurant (RESP_RESTAURANT, RESP_CUISINE, RESP_BAR : pas
+     * COMPTABLE/CAISSIER/DFIN/DA/DG/ADMIN). Contrairement au Directeur et a la logistique, un COMPTABLE en plus
+     * suffit a lui rendre la vue complete. Un role du restaurant oublie ici retomberait sur {@link #TOUTES} :
+     * l'utilisateur verrait les notes de tout le monde.
      */
-    static boolean estRespRestaurantSeul(Set<String> autorites) {
-        return autorites.contains("ROLE_RESP_RESTAURANT")
+    static boolean estRoleRestaurantSeul(Set<String> autorites) {
+        return AUTORITES_RESTAURANT.stream().anyMatch(autorites::contains)
             && !(autorites.contains("ROLE_ADMIN") || autorites.contains("ROLE_DG")
                 || autorites.contains("ROLE_DA") || autorites.contains("ROLE_DFIN")
                 || autorites.contains("ROLE_CAISSIER") || autorites.contains("ROLE_COMPTABLE"));

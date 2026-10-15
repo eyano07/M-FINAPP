@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Sorties de plats hors vente : périmé, moisi, renversé, brûlé, offert,
@@ -101,7 +101,7 @@ const sorties = ref<SortiePlat[]>([])
 const perimes = ref<PlatPerime[]>([])
 const retraitEnCours = ref(false)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 const form = reactive({
   entrepotId: null as number | null,

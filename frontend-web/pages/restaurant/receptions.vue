@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const rolesStore = useRolesStore()
-definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Demande d'achat de boissons, saisie en casiers.
@@ -86,7 +86,7 @@ const panier = ref<LignePanier[]>([])
 const historiqueBoissons = computed(() =>
   historique.value.filter(n => n.objet?.startsWith('Achat de boissons')))
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_BAR', 'ADMIN']))
 
 // Devise et entrepôt sont communs à tout le panier (une seule note, un seul
 // fournisseur réglé en une fois) : la devise se verrouille dès la première
@@ -634,7 +634,7 @@ function fmtDate(iso: string) {
     </v-card>
 
     <v-alert v-else type="info" variant="tonal" rounded="lg" class="mb-6">
-      Seul le responsable restaurant peut demander un achat de boissons.
+      Seuls le responsable restaurant et le responsable bar peuvent demander un achat de boissons.
     </v-alert>
 
     <v-card class="classroom-card">

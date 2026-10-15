@@ -2,7 +2,7 @@
 // Ecran du module Restaurant : il en suit l'activation et les permissions
 // (le DFIN et le DG y ont la lecture), et parmi ses lecteurs, seuls ceux qui
 // pilotent l'offre y accedent — voir RestaurantService.LECTURE_ANALYSES.
-definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'DFIN', 'DG', 'ADMIN'] })
 
 /**
  * Analyse des ventes de la carte (plats et boissons) : meilleures/moins

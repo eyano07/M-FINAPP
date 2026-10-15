@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // StockService.listerMouvements exclut le caissier, qui a pourtant le
 // module en LECTURE pour le catalogue : sans ce controle il voyait la page.
-definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] })
 
 interface Mouvement {
   id: number

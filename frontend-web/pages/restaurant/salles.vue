@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN'] })
 
 /**
  * Editeur visuel du plan des salles et tables (façon Odoo Point de Vente) :

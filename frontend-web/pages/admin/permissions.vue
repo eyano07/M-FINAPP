@@ -22,6 +22,8 @@ const ROLES: { role: string; label: string }[] = [
   { role: 'GEST_PATRIMOINE', label: 'Gestionnaire patrimoine' },
   { role: 'RESP_DRH', label: 'Responsable DRH' },
   { role: 'RESP_RESTAURANT', label: 'Responsable restaurant' },
+  { role: 'RESP_CUISINE', label: 'Responsable cuisine' },
+  { role: 'RESP_BAR', label: 'Responsable bar' },
   { role: 'DFIN', label: 'DFIN' },
   { role: 'DA', label: 'DA' },
   { role: 'DG', label: 'DG' },
@@ -81,7 +83,7 @@ async function charger() {
 onMounted(charger)
 
 // ── Noms affichés des rôles (cosmétique : les droits restent liés au rôle) ──
-const TOUS_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT']
+const TOUS_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']
 const brouillons = reactive<Record<string, string>>({})
 const enregistrementLibelle = ref<string | null>(null)
 const succesLibelle = ref('')

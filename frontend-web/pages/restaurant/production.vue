@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', niveau: 'ECRITURE', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', niveau: 'ECRITURE', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Production : transforme des provisions en portions d'un plat.
@@ -68,7 +68,7 @@ const api = useApi()
 const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 const recettes = ref<Recette[]>([])
 const provisions = ref<Provision[]>([])

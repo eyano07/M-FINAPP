@@ -157,11 +157,14 @@ public class PlatsPerimesAutomatiqueService {
         return parametresRepository.save(ParametresRestaurant.builder().id(ParametresRestaurant.SINGLETON_ID).build());
     }
 
-    /** Le responsable du restaurant et les administrateurs, chacun une seule fois même s'il porte les deux rôles. */
+    /**
+     * Le responsable du restaurant, le responsable cuisine (les plats sont son domaine) et les administrateurs,
+     * chacun une seule fois même s'il porte plusieurs de ces rôles.
+     */
     private void prevenir(TypeNotification type, String titre, String message) {
         String texte = message.length() > LIMITE_MESSAGE ? message.substring(0, LIMITE_MESSAGE - 1) + "…" : message;
         Map<Long, User> destinataires = new LinkedHashMap<>();
-        for (RoleType role : List.of(RoleType.RESP_RESTAURANT, RoleType.ADMIN)) {
+        for (RoleType role : List.of(RoleType.RESP_RESTAURANT, RoleType.RESP_CUISINE, RoleType.ADMIN)) {
             for (User u : userRepository.findByRoles_NomAndActifTrue(role)) {
                 destinataires.putIfAbsent(u.getId(), u);
             }

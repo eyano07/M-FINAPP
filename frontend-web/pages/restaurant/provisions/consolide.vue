@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN'] })
 
 /**
  * État consolidé du stock des provisions : une ligne par provision, au coût

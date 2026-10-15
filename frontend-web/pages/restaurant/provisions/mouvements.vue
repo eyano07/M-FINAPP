@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Entrées et sorties des provisions.
@@ -61,7 +61,7 @@ const provisions = ref<Provision[]>([])
 const entrepots = ref<Entrepot[]>([])
 const historique = ref<LigneGrandLivre[]>([])
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 const formSortie = reactive({
   articleId: null as number | null,

@@ -6,6 +6,7 @@ import com.mbsc.finapp.domain.ParametresEntreprise;
 import com.mbsc.finapp.domain.enums.StatutMouvement;
 import com.mbsc.finapp.dto.logistique.StockGrandLivreResponse;
 import com.mbsc.finapp.dto.logistique.StockNiveauResponse;
+import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.repository.ArticleRepository;
 import com.mbsc.finapp.repository.EntrepotRepository;
 import com.mbsc.finapp.repository.ParametresEntrepriseRepository;
@@ -24,8 +25,13 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -147,6 +153,22 @@ class StockExcelServiceTest {
             assertThat(sh.getLastRowNum()).isEqualTo(6);
         }
         verify(stockService).grandLivreStock(5L, 2L, du, au);
+    }
+
+    /**
+     * Un responsable cuisine ou bar n'a pas le droit de voir un article d'un autre domaine : le grand livre le
+     * refuse (404) AVANT toute lecture, donc le libellé de l'article n'est jamais lu ni écrit dans l'en-tête.
+     */
+    @Test
+    void un_article_hors_du_domaine_de_l_appelant_arrete_l_export_avant_toute_lecture_de_son_libelle() {
+        societe("MBSC SARL");
+        when(stockService.grandLivreStock(eq(9L), isNull(), any(), any()))
+            .thenThrow(RessourceIntrouvableException.of("Article", 9L));
+
+        assertThatThrownBy(() -> service.genererGrandLivre(9L, null, null, null))
+            .isInstanceOf(RessourceIntrouvableException.class);
+
+        verify(articleRepository, never()).findById(any());
     }
 
     @Test

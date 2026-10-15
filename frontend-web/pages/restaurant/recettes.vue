@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Fiches techniques : la composition d'un plat en provisions, pour UNE portion.
@@ -40,7 +40,7 @@ const parametres = useRestaurantParametresStore()
 // Composer un plat en ingrédients est le travail quotidien du chef
 // cuisinier (responsable restaurant) — l'administrateur, lui, se limite à
 // créer la fiche article sur la carte (RestaurantService.ECRITURE).
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 const recettes = ref<Recette[]>([])
 const provisions = ref<Provision[]>([])

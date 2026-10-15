@@ -41,6 +41,20 @@ public record MouvementResponse(
         List<LigneMouvementResponse> lignesDto = withLignes && m.getLignes() != null
             ? m.getLignes().stream().map(LigneMouvementResponse::from).toList()
             : List.of();
+        return avec(m, lignesDto, annulable, moduleRestaurant);
+    }
+
+    /**
+     * Le mouvement avec seulement certaines de ses lignes : la vue d'un responsable cuisine ou bar sur un mouvement
+     * mixte (une vente porte un plat et une boisson). Jamais annulable ni « module restaurant » : ces deux
+     * indicateurs ne servent qu'aux boutons d'annulation, qu'un lecteur seul n'a pas.
+     */
+    public static MouvementResponse from(MouvementStock m, List<com.mbsc.finapp.domain.LigneMouvementStock> lignes) {
+        return avec(m, lignes.stream().map(LigneMouvementResponse::from).toList(), false, false);
+    }
+
+    private static MouvementResponse avec(MouvementStock m, List<LigneMouvementResponse> lignesDto,
+                                          boolean annulable, boolean moduleRestaurant) {
         return new MouvementResponse(
             m.getId(),
             m.getReference(),

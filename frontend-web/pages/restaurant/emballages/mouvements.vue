@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Journal du stock de bouteilles vides.
@@ -54,7 +54,7 @@ const entrepots = ref<Entrepot[]>([])
 const mouvements = ref<Mouvement[]>([])
 const dialog = ref(false)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_BAR', 'ADMIN']))
 
 const filtreEmballage = ref<number | null>(null)
 const du = ref('')

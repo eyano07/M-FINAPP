@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Demande d'achat de provisions (matieres premieres de cuisine), sur le meme
@@ -66,7 +66,7 @@ const panier = ref<LignePanier[]>([])
 const historiqueProvisions = computed(() =>
   historique.value.filter(n => n.objet?.startsWith('Achat de provisions')))
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 // Devise commune à tout le panier (une seule note, un seul fournisseur réglé
 // en une fois) : verrouillée dès la première ligne ajoutée pour éviter qu'un
@@ -493,7 +493,7 @@ function fmtDate(iso: string) {
     </v-card>
 
     <v-alert v-else type="info" variant="tonal" rounded="lg" class="mb-6">
-      Seul le responsable restaurant peut demander un achat de provisions.
+      Seuls le responsable restaurant et le responsable cuisine peuvent demander un achat de provisions.
     </v-alert>
 
     <v-card class="classroom-card">

@@ -52,7 +52,7 @@ public class ParametresRestaurantService {
      * taux du jour, et montraient les montants en dollars ou en tirets.</p>
      */
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN')")
     public ParametresRestaurantResponse consulter() {
         return ParametresRestaurantResponse.from(
             repository.findById(ParametresRestaurant.SINGLETON_ID).orElseGet(this::parDefaut));

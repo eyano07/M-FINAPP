@@ -23,6 +23,17 @@ function prefixerPhotoUrl(user: AuthUser): AuthUser {
  */
 export const ROLES_RESTAURANT_COMPLET = ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN']
 
+/**
+ * La cuisine (plats, fiches techniques, production, provisions) et le bar (boissons, bouteilles vides, achats de
+ * boissons) : le responsable restaurant, la direction et la comptabilité voient les deux ; le responsable cuisine
+ * et le responsable bar chacun le sien. Ces listes servent au menu et aux boutons — le serveur applique de toute
+ * façon la même séparation (PerimetreRestaurant, gardes de RestaurantService) et filtre les listes mixtes (carte,
+ * stock, analyses) sur le type des articles. Les `definePageMeta({ roles })` en recopient les valeurs (macro de
+ * compilation, qui ne peut pas lire cette constante).
+ */
+export const ROLES_RESTAURANT_CUISINE = ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN']
+export const ROLES_RESTAURANT_BAR = ['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN']
+
 export interface AuthUser {
   id: number
   email: string
@@ -61,6 +72,10 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: (s) => !!s.accessToken && !!s.user,
     /** Voit tout le module Restaurant (faux pour un compte qui n'est que caissier) — voir ROLES_RESTAURANT_COMPLET. */
     restaurantComplet: (s) => (s.user?.roles ?? []).some((r) => ROLES_RESTAURANT_COMPLET.includes(r)),
+    /** Voit la cuisine du restaurant (plats, fiches techniques, provisions) — voir ROLES_RESTAURANT_CUISINE. */
+    restaurantCuisine: (s) => (s.user?.roles ?? []).some((r) => ROLES_RESTAURANT_CUISINE.includes(r)),
+    /** Voit le bar du restaurant (boissons, bouteilles vides) — voir ROLES_RESTAURANT_BAR. */
+    restaurantBar: (s) => (s.user?.roles ?? []).some((r) => ROLES_RESTAURANT_BAR.includes(r)),
     roles: (s) => s.user?.roles ?? [],
     /**
      * Route d'atterrissage par defaut selon le role. Le Directeur metier
@@ -93,11 +108,15 @@ export const useAuthStore = defineStore('auth', {
       if (roles.includes('RESP_DRH')) {
         return '/drh/bulletins'
       }
-      // Responsable restaurant : meme logique. La carte est la page d'entree
-      // naturelle du module, et il a le droit de l'ouvrir — condition
-      // necessaire pour ne pas creer de boucle de redirection.
-      if (roles.includes('RESP_RESTAURANT')) {
+      // Responsable restaurant et responsable bar : le tableau de bord du bar. La page d'entree naturelle du module,
+      // qu'ils ont le droit d'ouvrir — condition necessaire pour ne pas creer de boucle de redirection.
+      if (roles.includes('RESP_RESTAURANT') || roles.includes('RESP_BAR')) {
         return '/restaurant'
+      }
+      // Responsable cuisine : /restaurant est un tableau de bord de boissons, interdit a ce role ; son tableau de
+      // bord est celui des provisions.
+      if (roles.includes('RESP_CUISINE')) {
+        return '/restaurant/provisions/tableau-bord'
       }
       // Directeur metier (et tout role sans tableau de bord) : ses notes.
       return '/notes-frais'

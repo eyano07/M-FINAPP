@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Voir pages/notes-frais/index.vue : ni le DRH ni LOGISTIQUE n'ont acces a cet ecran.
-definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'LOGISTIQUE'] })
+definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'LOGISTIQUE'] })
 
 interface Observation {
   auteurNom?: string
@@ -170,7 +170,7 @@ const isDA = computed(() => auth.hasRole('DA'))
 // Rôles que le serveur autorise à créer et soumettre une note (NoteFraisService.soumettre) : le responsable restaurant en
 // fait partie. Absent d'ici, il ne pouvait ni soumettre ni justifier une note restée en brouillon (échec de l'envoi
 // automatique depuis « Achat de boissons »), et le DFIN n'était jamais prévenu.
-const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT']))
+const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']))
 
 // Une note d'encaissement ne suit pas le circuit DFIN/DA : "Soumettre" ne
 // s'applique qu'au décaissement (isCreateur n'est qu'un contrôle de rôle,
@@ -198,7 +198,7 @@ const peutValiderRejeter = computed(() => isDA.value && statut.value === 'VERIFI
 const peutPrioriser    = computed(() => isDA.value && ['VALIDEE_DA', 'TRANSMISE_CAISSE'].includes(statut.value || ''))
 const peutTransmettre  = computed(() => isDFIN.value && statut.value === 'VALIDEE_DA')
 const peutAnnuler      = computed(() =>
-  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','RESP_RESTAURANT','LOGISTIQUE','ADMIN']) &&
+  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','RESP_RESTAURANT','RESP_CUISINE','RESP_BAR','LOGISTIQUE','ADMIN']) &&
   ['BROUILLON','SOUMISE','VERIFIEE_DFIN','VALIDEE_DA','REJETEE_DA'].includes(statut.value || ''))
 
 /** Message contextuel quand aucune action n'est disponible. */

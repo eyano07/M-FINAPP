@@ -124,7 +124,8 @@ public class PermissionService {
     /** ADMIN est exclu de la grille : acces total fixe, non editable (voir la Javadoc de la classe). */
     private static final List<RoleType> ROLES_CONFIGURABLES = List.of(
         RoleType.DG, RoleType.DA, RoleType.DFIN, RoleType.DIRECTEUR, RoleType.CAISSIER, RoleType.COMPTABLE,
-        RoleType.LOGISTIQUE, RoleType.GEST_PATRIMOINE, RoleType.RESP_DRH, RoleType.RESP_RESTAURANT);
+        RoleType.LOGISTIQUE, RoleType.GEST_PATRIMOINE, RoleType.RESP_DRH, RoleType.RESP_RESTAURANT,
+        RoleType.RESP_CUISINE, RoleType.RESP_BAR);
 
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional

@@ -175,24 +175,41 @@ public class RestaurantService {
     /** Verrou des retraits de plats périmés (voir {@link #retirerPlatsPerimesInterne}). */
     private final ParametresRestaurantRepository parametresRestaurantRepository;
 
+    // Trois perimetres de garde. Le module RESTAURANT est plat (ModuleAccessFilter ne distingue ni la cuisine ni le
+    // bar) : c'est ici que les responsables cuisine et bar sont separes, sur le type des articles de chaque ecran
+    // (voir PerimetreRestaurant, qui filtre ensuite les listes mixtes : carte, stock, analyses).
+    //   - LECTURE        : tout le restaurant — plan des salles, tables et commandes (ni cuisine ni bar n'y accedent) ;
+    //   - *_CUISINE      : plats, fiches techniques, production, provisions, sorties de plats ;
+    //   - *_BAR          : tableau de bord des boissons, lots de boissons, bouteilles vides ;
+    //   - LECTURE_CARTE  : les ecrans partages (carte, stock, entrepots), filtres par domaine dans la methode.
     private static final String LECTURE =
         "hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN')";
-    private static final String ECRITURE = "hasAnyRole('RESP_RESTAURANT', 'ADMIN')";
+    private static final String LECTURE_CARTE =
+        "hasAnyRole('RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN')";
+    private static final String LECTURE_CUISINE =
+        "hasAnyRole('RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN')";
+    private static final String LECTURE_BAR =
+        "hasAnyRole('RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN')";
+    private static final String ECRITURE_CUISINE = "hasAnyRole('RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN')";
+    private static final String ECRITURE_BAR = "hasAnyRole('RESP_RESTAURANT', 'RESP_BAR', 'ADMIN')";
     /**
      * Occuper/liberer une table est une action de service (le caissier y a
      * autant besoin qu'au responsable restaurant), a distinguer de {@link
-     * #ECRITURE} qui couvre aussi la production, les provisions et les
-     * emballages — restes hors du quotidien du caissier.
+     * #ECRITURE_CUISINE} et {@link #ECRITURE_BAR} qui couvrent la production,
+     * les provisions et les emballages — restes hors du quotidien du caissier.
      */
     private static final String ECRITURE_STATUT_TABLE = "hasAnyRole('RESP_RESTAURANT', 'CAISSIER', 'ADMIN')";
     /**
      * Analyse des ventes : un outil de pilotage de l'offre, reserve parmi les
      * lecteurs du module ({@link #LECTURE}) a ceux qui la pilotent — le
-     * responsable restaurant, le DFIN et le DG. Exposee sous /restaurant
+     * responsable restaurant, les responsables cuisine et bar (chacun pour son
+     * domaine : l'analyse est filtree sur le type des articles, voir
+     * {@link PerimetreRestaurant}), le DFIN et le DG. Exposee sous /restaurant
      * comme le reste du module, donc soumise a son activation et a ses
      * permissions (le DFIN et le DG y ont la lecture).
      */
-    private static final String LECTURE_ANALYSES = "hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN')";
+    private static final String LECTURE_ANALYSES =
+        "hasAnyRole('RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'DFIN', 'DG', 'ADMIN')";
     /**
      * Creation et modification des plats/boissons de la carte (prix de vente,
      * imputation comptable) : reservees a l'administrateur — le responsable
@@ -207,11 +224,14 @@ public class RestaurantService {
     // Carte : plats et boissons
     // ---------------------------------------------------------------------
 
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CARTE)
     @Transactional(readOnly = true)
     public List<ArticleResponse> listerCarte() {
+        // Le responsable cuisine ne recoit que les plats, le responsable bar que les boissons.
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.restaurantCourant();
         return articleRepository.findAllWithComptes().stream()
             .filter(a -> TYPES_CARTE.contains(a.getType()))
+            .filter(a -> perimetre.autorise(a.getType()))
             .map(ArticleResponse::from)
             .toList();
     }
@@ -374,12 +394,14 @@ public class RestaurantService {
         log.info("Article de carte supprimé définitivement [id={}, code={}]", id, article.getCode());
     }
 
-    /** Etat du stock limite aux articles de la carte. */
-    @PreAuthorize(LECTURE)
+    /** Etat du stock limite aux articles de la carte (et, pour un responsable cuisine ou bar, a son domaine). */
+    @PreAuthorize(LECTURE_CARTE)
     @Transactional(readOnly = true)
     public List<StockNiveauResponse> etatStockCarte() {
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.restaurantCourant();
         Set<Long> idsCarte = articleRepository.findAll().stream()
             .filter(a -> TYPES_CARTE.contains(a.getType()))
+            .filter(a -> perimetre.autorise(a.getType()))
             .map(Article::getId)
             .collect(java.util.stream.Collectors.toSet());
         return stockService.etatStockInterne().stream()
@@ -393,7 +415,7 @@ public class RestaurantService {
      * {@link LotStockService}. Un plat n'a pas de lot d'achat : il ne figure
      * que sur {@link #etatStockCarte()}.
      */
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_BAR)
     @Transactional(readOnly = true)
     public List<LotStockResponse> listerLotsBoissons() {
         return lotStockRepository.findByArticle_TypeAndQuantiteRestanteGreaterThanOrderByDateEntreeAsc(
@@ -402,7 +424,7 @@ public class RestaurantService {
     }
 
     /** Entrepots disponibles pour une reception, sans exiger le module LOGISTIQUE. */
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CARTE)
     @Transactional(readOnly = true)
     public List<EntrepotResponse> listerEntrepots() {
         return entrepotRepository.findAll().stream()
@@ -442,7 +464,7 @@ public class RestaurantService {
     // journal STOCK, chacune équilibrée.
     // ---------------------------------------------------------------------
 
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public RecetteResponse consulterRecette(Long platId) {
         Article plat = exigerPlat(platId);
@@ -451,7 +473,7 @@ public class RestaurantService {
     }
 
     /** Fiches de tous les plats, y compris ceux qui n'en ont pas encore (lignes vides). */
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public List<RecetteResponse> listerRecettes() {
         Map<Long, List<LigneRecette>> parPlat = ligneRecetteRepository.findAllAvecArticles().stream()
@@ -470,7 +492,7 @@ public class RestaurantService {
      * l'administrateur — qui, lui, se limite à créer la fiche article
      * (code, prix, imputation comptable) sur la carte.
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public RecetteResponse enregistrerRecette(Long platId, RecetteRequest req) {
         Article plat = exigerPlat(platId);
@@ -503,7 +525,7 @@ public class RestaurantService {
      * endroit pour corriger un prix devenu trop juste — plutôt que de
      * l'obliger à rouvrir la carte pour la même information.
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public RecetteResponse modifierPrixVenteCarte(Long platId, BigDecimal prixVente) {
         Article plat = exigerPlat(platId);
@@ -513,7 +535,7 @@ public class RestaurantService {
         return construireRecette(plat, ligneRecetteRepository.findByPlatIdAvecProvision(platId), cmpParArticle());
     }
 
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public List<ProductionResponse> listerProductions(LocalDate du, LocalDate au) {
         return productionRepository.rechercherPeriode(du, au).stream()
@@ -531,7 +553,7 @@ public class RestaurantService {
      * <p>Opération du quotidien, donc ouverte au responsable restaurant —
      * contrairement à la fiche technique, qui définit l'offre.</p>
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public ProductionResponse produire(ProductionRequest req) {
         Article plat = exigerPlat(req.platId());
@@ -617,7 +639,7 @@ public class RestaurantService {
     }
 
     /** Extourne les deux mouvements : les ingrédients reviennent en stock, les portions en sortent. */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public ProductionResponse annulerProduction(Long id) {
         Production production = productionRepository.findAvecLignes(id)
@@ -947,7 +969,7 @@ public class RestaurantService {
     private static final java.time.format.DateTimeFormatter JOUR = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     /** Plats périmés encore en stock, entrepôt par entrepôt : la date d'expiration de leur production est passée. */
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public List<PlatPerimeResponse> listerPlatsPerimes() {
         return calculerPlatsPerimes(LocalDate.now());
@@ -1031,7 +1053,7 @@ public class RestaurantService {
      * échoue, aucune n'est enregistrée. Le retrait est au nom de l'utilisateur connecté ; la tâche planifiée utilise
      * {@link #retirerPlatsPerimesInterne} au nom de l'administrateur qui a activé le retrait automatique.
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public List<SortiePlatResponse> retirerPlatsPerimes(RetraitPerimesRequest req) {
         List<SortiePlatResponse> sorties = retirerPlatsPerimesInterne(
@@ -1141,7 +1163,7 @@ public class RestaurantService {
     // motif libre puisqu'aucune n'a d'incidence differente sur le stock.
     // ---------------------------------------------------------------------
 
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public List<ArticleResponse> listerProvisions() {
         return articleRepository.findAllWithComptes().stream()
@@ -1176,14 +1198,14 @@ public class RestaurantService {
      * de la saisie. Il est à nouveau demandé juste avant l'enregistrement, et l'unicité reste contrôlée à
      * la création.
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional(readOnly = true)
     public CodeArticleSuggereResponse suggererCodeProvision(String libelle) {
         return new CodeArticleSuggereResponse(
             GenerateurCodeArticle.genererProvision(libelle, articleRepository::existsByCode));
     }
 
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public ArticleResponse creerProvision(ArticleRequest req) {
         exigerTypeProvision(req.type());
@@ -1251,7 +1273,7 @@ public class RestaurantService {
             "Plus de sous-compte disponible sous " + racineNumero + " (99 atteints)");
     }
 
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public ArticleResponse modifierProvision(Long id, ArticleRequest req) {
         exigerTypeProvision(req.type());
@@ -1259,7 +1281,7 @@ public class RestaurantService {
         return stockService.modifierArticleInterne(id, completerParLExistant(existant, req));
     }
 
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public List<StockNiveauResponse> etatStockProvisions() {
         Set<Long> idsProvisions = articleRepository.findAll().stream()
@@ -1272,7 +1294,7 @@ public class RestaurantService {
     }
 
     /** Lots de stock actifs des provisions (date d'achat, fournisseur, prix) — voir {@link #listerLotsBoissons()}. */
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public List<LotStockResponse> listerLotsProvisions() {
         return lotStockRepository.findByArticle_TypeAndQuantiteRestanteGreaterThanOrderByDateEntreeAsc(
@@ -1289,7 +1311,7 @@ public class RestaurantService {
      * {@link #annulerMouvementProvision}) : le bouton n'est proposé que là où
      * le serveur l'accepte.</p>
      */
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public List<MouvementProvisionResponse> grandLivreProvisions(
             Long articleId, Long entrepotId, LocalDate du, LocalDate au) {
@@ -1351,7 +1373,7 @@ public class RestaurantService {
      * correction : la Logistique refuse ces articles et la Comptabilité
      * refuse d'extourner seule une pièce de stock.
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public void annulerMouvementProvision(Long mouvementId) {
         MouvementStock m = mouvementStockRepository.findWithLignesById(mouvementId)
@@ -1387,7 +1409,7 @@ public class RestaurantService {
      * <p>Pas de "profit" ici : une provision est un centre de coût, jamais
      * revendue — contrairement au tableau de bord de la carte.</p>
      */
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public TableauBordProvisionsResponse tableauBordProvisions(LocalDate du, LocalDate au) {
         List<StockNiveauResponse> niveaux = etatStockProvisions();
@@ -1493,7 +1515,7 @@ public class RestaurantService {
      * vente (voir {@code StockService.enregistrerSortieVenteInterne}) ; la garde de stock insuffisant s'applique
      * ici aussi. Le type et l'observation sont conservés avec la sortie, pour l'historique.
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public void enregistrerSortieProvision(ProvisionSortieRequest req) {
         Article article = exigerArticleProvision(req.articleId());
@@ -1553,7 +1575,7 @@ public class RestaurantService {
      * <p>Un plat au coût de production nul (entré sans coût) sort sans
      * écriture : il n'y a rien à constater.</p>
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public SortiePlatResponse enregistrerSortiePlat(SortiePlatRequest req) {
         return sortiePlat(req, currentUser.requireUser());
@@ -1602,7 +1624,7 @@ public class RestaurantService {
         return SortiePlatResponse.from(sortie);
     }
 
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_CUISINE)
     @Transactional(readOnly = true)
     public List<SortiePlatResponse> listerSortiesPlats(LocalDate du, LocalDate au) {
         LocalDate debut = du != null ? du : LocalDate.of(2000, 1, 1);
@@ -1615,7 +1637,7 @@ public class RestaurantService {
      * stock au coût auquel elles étaient sorties, et la pièce est extournée.
      * La sortie reste dans l'historique, marquée annulée.
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public SortiePlatResponse annulerSortiePlat(Long id) {
         SortiePlat sortie = sortiePlatRepository.findById(id)
@@ -1636,13 +1658,13 @@ public class RestaurantService {
     // Emballages : conditionnement et stock de vides
     // ---------------------------------------------------------------------
 
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_BAR)
     @Transactional(readOnly = true)
     public List<EmballageResponse> listerEmballages() {
         return emballageRepository.findAllAvecBoisson().stream().map(EmballageResponse::from).toList();
     }
 
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_BAR)
     @Transactional
     public EmballageResponse creerEmballage(EmballageRequest req) {
         if (emballageRepository.existsByCode(req.code())) {
@@ -1657,7 +1679,7 @@ public class RestaurantService {
         return EmballageResponse.from(emballageRepository.save(e));
     }
 
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_BAR)
     @Transactional
     public EmballageResponse modifierEmballage(Long id, EmballageRequest req) {
         EmballageBoisson e = chargerEmballage(id);
@@ -1696,7 +1718,7 @@ public class RestaurantService {
     // Mouvements du stock de vides
     // ---------------------------------------------------------------------
 
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_BAR)
     @Transactional(readOnly = true)
     public List<MouvementEmballageResponse> listerMouvements(Long emballageId, LocalDate du, LocalDate au) {
         return mouvementRepository.rechercher(emballageId, du, au).stream()
@@ -1704,7 +1726,7 @@ public class RestaurantService {
             .toList();
     }
 
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_BAR)
     @Transactional
     public MouvementEmballageResponse enregistrerMouvement(MouvementEmballageRequest req) {
         // Les mouvements automatiques ne se saisissent pas a la main : les
@@ -1840,7 +1862,7 @@ public class RestaurantService {
      * ajustement d'inventaire, réservé à l'administrateur à la saisie, l'est
      * aussi à l'annulation.</p>
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(ECRITURE_BAR)
     @Transactional
     public MouvementEmballageResponse annulerMouvementEmballage(Long id) {
         MouvementEmballage m = mouvementRepository.findByIdPourMiseAJour(id)
@@ -1941,7 +1963,7 @@ public class RestaurantService {
      * avant d'être combiné au CMUP ; les mélanger sans conversion produirait
      * une marge dénuée de sens (FC moins USD).</p>
      */
-    @PreAuthorize(LECTURE)
+    @PreAuthorize(LECTURE_BAR)
     @Transactional(readOnly = true)
     public TableauBordRestaurantResponse tableauBord(LocalDate du, LocalDate au) {
         List<EmballageBoisson> emballages = emballageRepository.findAllAvecBoisson();
@@ -1957,8 +1979,11 @@ public class RestaurantService {
         // CMUP courant par boisson, agrégé tous entrepôts confondus (ce
         // module suppose un usage mono-entrepôt ; agréger reste correct même
         // si plusieurs sont utilisés, seul le détail par entrepôt se perdrait).
+        // Boissons seulement : ce tableau de bord est celui du bar (bouteilles, casiers, boissons les plus vendues). Y
+        // compter les plats gonflait la valeur du stock et le nombre d'articles sous le seuil, et laissait le
+        // responsable bar voir la valeur du stock de la cuisine.
         Set<Long> idsCarte = articleRepository.findAll().stream()
-            .filter(a -> TYPES_CARTE.contains(a.getType()))
+            .filter(a -> a.getType() == TypeArticle.BOISSON)
             .map(Article::getId)
             .collect(java.util.stream.Collectors.toSet());
         Map<Long, BigDecimal[]> qteEtValeurParArticle = new LinkedHashMap<>(); // [quantite, valeur]
@@ -2159,7 +2184,13 @@ public class RestaurantService {
     @PreAuthorize(LECTURE_ANALYSES)
     @Transactional(readOnly = true)
     public AnalyseVentesResponse analyserVentes(LocalDate du, LocalDate au) {
-        List<LigneVente> lignes = venteRepository.ligneVentesCartePeriode(du, au);
+        // Domaine de l'appelant : un responsable cuisine n'analyse que les plats, un responsable bar que les
+        // boissons. Le filtre porte sur les lignes (donc sur les totaux, les categories et la tendance, qui en
+        // decoulent) et sur la liste des articles jamais vendus ; le cout reste celui de chaque article.
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.restaurantCourant();
+        List<LigneVente> lignes = venteRepository.ligneVentesCartePeriode(du, au).stream()
+            .filter(l -> perimetre.autorise(l.getArticle().getType()))
+            .toList();
 
         // Cout reel de chaque (mouvement, article) : un seul aller-retour en
         // base pour toutes les ventes de la periode plutot qu'un par ligne.
@@ -2244,7 +2275,7 @@ public class RestaurantService {
         // ferait une simple agregation des lignes de vente) le cacherait
         // derriere les articles vendus au moins une fois.
         for (Article a : articleRepository.findAll()) {
-            if (!TYPES_CARTE.contains(a.getType()) || !a.isActif()) continue;
+            if (!TYPES_CARTE.contains(a.getType()) || !a.isActif() || !perimetre.autorise(a.getType())) continue;
             parArticleId.putIfAbsent(a.getId(), new Cumul(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
         }
 

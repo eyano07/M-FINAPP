@@ -3,7 +3,7 @@
 // passe par son propre tableau de bord, /logistique) ne gerent leurs notes
 // de frais via cet ecran (voir NavigationDrawer.vue, AVEC_NOTES_FRAIS) :
 // garde repetee ici pour que l'URL directe /notes-frais reste elle aussi fermee.
-definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'LOGISTIQUE'] })
+definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'LOGISTIQUE'] })
 
 const rolesStore = useRolesStore()
 interface NoteFrais {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Stock de bouteilles vides, par boisson.
@@ -34,7 +34,7 @@ const boissons = ref<Boisson[]>([])
 const dialog = ref(false)
 const editId = ref<number | null>(null)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_BAR', 'ADMIN']))
 
 const FORMATS = ['33CL', '50CL', '65CL', '1L', '1.5L']
 

@@ -136,6 +136,19 @@ public interface MouvementStockRepository extends JpaRepository<MouvementStock, 
     """)
     List<Long> idsValidesModuleRestaurant();
 
+    /**
+     * Identifiants des mouvements, tous statuts confondus, qui portent au moins un article de l'un de ces
+     * types : limite la liste des mouvements d'un responsable cuisine ou bar a son domaine (voir
+     * StockService.listerMouvements et PerimetreRestaurant).
+     */
+    @Query("""
+        select distinct m.id from LigneMouvementStock l
+        join l.mouvement m
+        join l.article a
+        where a.type in :types
+    """)
+    List<Long> idsMouvementsParTypes(@Param("types") Collection<com.mbsc.finapp.domain.enums.TypeArticle> types);
+
     /** Un seul mouvement citant cet article suffit a interdire sa suppression definitive. */
     @Query("select count(l) > 0 from LigneMouvementStock l where l.article.id = :articleId")
     boolean existsLigneAvecArticle(@Param("articleId") Long articleId);

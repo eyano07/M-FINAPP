@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN'] })
 
 /**
  * Provisions de cuisine : vivres, épices, charbon...
@@ -69,7 +69,7 @@ const editId = ref<number | null>(null)
 const recherche = ref('')
 const page = ref(1)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 /**
  * Racines des comptes d'une provision, les mêmes que celles sous lesquelles
@@ -290,7 +290,7 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR
           Stock consolidé
         </v-btn>
         <!-- Les entrées et sorties ne sont pas une page du caissier (voir NavigationDrawer) : pas de lien mort. -->
-        <v-btn v-if="auth.restaurantComplet" variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-swap-horizontal-bold" to="/restaurant/provisions/mouvements">
+        <v-btn v-if="auth.restaurantCuisine" variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-swap-horizontal-bold" to="/restaurant/provisions/mouvements">
           Entrées / sorties
         </v-btn>
         <v-btn v-if="canWrite" color="success" variant="flat" rounded="lg" prepend-icon="mdi-plus" @click="ouvrirCreation">

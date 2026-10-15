@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN'] })
 
 /**
  * Stock des boissons par lot : date d'achat, fournisseur et prix de chaque

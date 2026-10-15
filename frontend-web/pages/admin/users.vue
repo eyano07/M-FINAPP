@@ -23,7 +23,7 @@ interface UserRow {
 }
 
 const rolesStore = useRolesStore()
-const ALL_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT']
+const ALL_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']
 
 const api = useApi()
 const loading = ref(false)
@@ -172,6 +172,8 @@ const roleColor: Record<string, string> = {
   ADMIN: '#7c3aed', DG: '#0ea5e9', DA: '#f59e0b',
   DFIN: 'var(--color-primary)', DIRECTEUR: '#2563eb', CAISSIER: '#ea580c', COMPTABLE: '#be185d', LOGISTIQUE: '#0d9488',
   GEST_PATRIMOINE: '#9333ea', RESP_DRH: '#c026d3', RESP_RESTAURANT: '#e11d48',
+  // Cuisine : orange (comme les plats dans l'analyse des ventes) ; bar : indigo (comme les boissons).
+  RESP_CUISINE: '#ea580c', RESP_BAR: '#4f46e5',
 }
 </script>
 

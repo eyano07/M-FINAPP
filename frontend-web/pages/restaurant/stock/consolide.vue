@@ -46,13 +46,18 @@ const META_TYPE: Record<TypeArticle, { label: string; couleur: string; icone: st
 const api = useApi()
 const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
-/** La production est ouverte au responsable restaurant et à l'administrateur (écriture sur le module) : pas de lien mort pour les autres. */
-const peutProduire = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+/** La production est ouverte au responsable restaurant, au responsable cuisine et à l'administrateur (écriture sur le module) : pas de lien mort pour les autres. */
+const peutProduire = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 const loading = ref(false)
 const erreur = ref('')
 const stock = ref<StockNiveau[]>([])
 const typesParArticle = ref<Record<number, string>>({})
 const filtreType = ref<'TOUS' | 'PLAT' | 'BOISSON'>('TOUS')
+/**
+ * Le serveur ne renvoie à un responsable cuisine que les plats, à un responsable bar que les boissons (voir
+ * PerimetreRestaurant) : la bascule Tous / Plats / Boissons n'a alors rien à départager. Les autres rôles gardent les deux.
+ */
+const unSeulDomaine = computed(() => auth.restaurantCuisine !== auth.restaurantBar)
 const recherche = ref('')
 const page = ref(1)
 
@@ -173,7 +178,7 @@ function fraisApproche(item: { coutMoyen: number; prixAchatMoyen: number }): num
     </p>
     <div class="d-flex flex-wrap align-center ga-3 mb-4">
       <!-- Densité par défaut = 48 px, la hauteur du champ de recherche voisin. -->
-      <v-btn-toggle v-model="filtreType" mandatory variant="outlined" rounded="lg">
+      <v-btn-toggle v-if="!unSeulDomaine" v-model="filtreType" mandatory variant="outlined" rounded="lg">
         <v-btn value="TOUS">Tous</v-btn>
         <v-btn value="PLAT">Plats</v-btn>
         <v-btn value="BOISSON">Boissons</v-btn>

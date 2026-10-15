@@ -127,6 +127,16 @@ watch([filtreType, filtreCategorie, recherche], () => { page.value = 1 })
 const nbPlats = computed(() => articles.value.filter(a => a.type === 'PLAT').length)
 const nbBoissons = computed(() => articles.value.filter(a => a.type === 'BOISSON').length)
 
+/**
+ * Le serveur ne renvoie à un responsable cuisine que les plats, à un responsable bar que les boissons (voir
+ * PerimetreRestaurant) : la bascule Tous / Plats / Boissons et le compteur de l'autre domaine n'ont alors rien à
+ * montrer. Les autres rôles (responsable restaurant, direction, caissier…) gardent les deux.
+ */
+const seulementCuisine = computed(() => auth.restaurantCuisine && !auth.restaurantBar)
+const seulementBar = computed(() => auth.restaurantBar && !auth.restaurantCuisine)
+const montrePlats = computed(() => !seulementBar.value)
+const montreBoissons = computed(() => !seulementCuisine.value)
+
 /** Categories reellement utilisees par le type actuellement affiche, pour le filtre. */
 const categoriesUtilisees = computed(() => {
   if (filtreType.value === 'TOUS') return []
@@ -417,12 +427,12 @@ async function confirmerSuppression() {
     </v-alert>
 
     <div class="rst-stats mb-4">
-      <div class="rst-stat rst-stat--plats">
+      <div v-if="montrePlats" class="rst-stat rst-stat--plats">
         <v-icon icon="mdi-food-outline" size="18" />
         <span class="rst-stat__val">{{ nbPlats }}</span>
         <span class="rst-stat__lbl">Plats</span>
       </div>
-      <div class="rst-stat rst-stat--boissons">
+      <div v-if="montreBoissons" class="rst-stat rst-stat--boissons">
         <v-icon icon="mdi-bottle-soda-classic-outline" size="18" />
         <span class="rst-stat__val">{{ nbBoissons }}</span>
         <span class="rst-stat__lbl">Boissons</span>
@@ -431,7 +441,7 @@ async function confirmerSuppression() {
 
     <div class="d-flex flex-wrap align-center ga-3 mb-4">
       <!-- Densité par défaut = 48 px, la hauteur du champ de recherche voisin. -->
-      <v-btn-toggle v-model="filtreType" mandatory variant="outlined" rounded="lg">
+      <v-btn-toggle v-if="montrePlats && montreBoissons" v-model="filtreType" mandatory variant="outlined" rounded="lg">
         <v-btn value="TOUS">Tous</v-btn>
         <v-btn value="PLAT">Plats</v-btn>
         <v-btn value="BOISSON">Boissons</v-btn>
@@ -522,7 +532,7 @@ async function confirmerSuppression() {
           <div class="d-flex justify-end flex-nowrap">
           <!-- La fiche technique n'est pas une page du caissier (voir NavigationDrawer) : pas de lien mort. -->
           <v-btn
-            v-if="item.type === 'PLAT' && auth.restaurantComplet"
+            v-if="item.type === 'PLAT' && auth.restaurantCuisine"
             size="small" variant="text" icon="mdi-clipboard-text-outline"
             title="Fiche technique" to="/restaurant/recettes"
           />

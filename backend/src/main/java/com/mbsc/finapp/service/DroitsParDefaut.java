@@ -66,6 +66,16 @@ public final class DroitsParDefaut {
         definir(RoleType.RESP_RESTAURANT,
             modules(RESTAURANT),
             modules());
+        // Responsables cuisine et bar (V124) : le restaurant en ecriture, et la logistique en lecture seule — sans
+        // elle le filtre de module renverrait 403 sur les ecrans Logistique (articles, stock, mouvements) que
+        // chacun consulte pour son domaine ; les gardes de StockService et PerimetreRestaurant limitent ces lectures
+        // aux articles du role. Aucune ecriture logistique.
+        definir(RoleType.RESP_CUISINE,
+            modules(RESTAURANT),
+            modules(ModuleMetier.LOGISTIQUE));
+        definir(RoleType.RESP_BAR,
+            modules(RESTAURANT),
+            modules(ModuleMetier.LOGISTIQUE));
     }
 
     private DroitsParDefaut() {

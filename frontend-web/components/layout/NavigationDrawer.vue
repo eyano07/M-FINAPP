@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useAuthStore, ROLES_RESTAURANT_COMPLET } from '~/stores/auth'
+import { useAuthStore, ROLES_RESTAURANT_BAR, ROLES_RESTAURANT_COMPLET, ROLES_RESTAURANT_CUISINE } from '~/stores/auth'
 import { usePermissionsStore, type ModuleMetier, type NiveauPermission } from '~/stores/permissions'
 import { useParametresStore } from '~/stores/parametres'
 
@@ -49,7 +49,7 @@ const NON_DIRECTEUR = ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE']
 // Roles qui gerent leurs propres notes de frais via cet ecran : ni RESP_DRH
 // (paie/RH, pas de notes personnelles), ni LOGISTIQUE (son suivi passe par
 // son propre tableau de bord) - a mettre a jour si un nouveau role est ajoute.
-const AVEC_NOTES_FRAIS = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT']
+const AVEC_NOTES_FRAIS = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']
 const items: NavItem[] = [
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/dashboard', roles: NON_DIRECTEUR },
   { title: 'Notes de frais', icon: 'mdi-receipt-text-outline', to: '/notes-frais', roles: AVEC_NOTES_FRAIS },
@@ -120,23 +120,27 @@ const venteItems: NavItem[] = [
 // sans toucher a la permission de module dont depend la saisie d'une vente.
 // GEST_PATRIMOINE y figure : il a lui aussi LOGISTIQUE en LECTURE.
 const LOGISTIQUE_HORS_CAISSIER = ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN']
+// Le responsable cuisine et le responsable bar lisent le menu Logistique (lecture seule : StockService leur
+// ouvre ses lectures et les limite aux articles de leur domaine) — mais ni son tableau de bord ni les camions
+// de minerais, qui n'ont rien a voir avec le restaurant.
+const LOGISTIQUE_AVEC_RESTAURANT = [...LOGISTIQUE_HORS_CAISSIER, 'RESP_CUISINE', 'RESP_BAR']
 const logistiqueItems: NavItem[] = [
   // Remplace le tableau de bord financier (notes de frais/tresorerie) pour ce
   // role : voir pages/logistique/index.vue. Meme place en tete de section
   // que 'Tableau de bord' dans restaurantItems.
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/logistique', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
-  { title: 'Articles', icon: 'mdi-package-variant-closed', to: '/logistique/articles', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
-  { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
+  { title: 'Articles', icon: 'mdi-package-variant-closed', to: '/logistique/articles', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
+  { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
   // Mouvements et grand livre stock : StockService en reserve la lecture aux
   // roles logistiques et financiers. Le caissier a bien le module en LECTURE
   // (catalogue + disponibilite necessaires a une vente) mais pas ces deux
   // ecrans, qui lui renverraient 403.
-  { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/logistique/mouvements', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
-  { title: 'État du stock', icon: 'mdi-clipboard-list-outline', to: '/logistique/stock', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
+  { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/logistique/mouvements', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
+  { title: 'État du stock', icon: 'mdi-clipboard-list-outline', to: '/logistique/stock', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
   // Minerais : suivi camion par camion, chaque chargement ayant son propre
   // prix de vente (voir pages/logistique/minerais.vue).
   { title: 'Camions de minerais', icon: 'mdi-dump-truck', to: '/logistique/minerais', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
-  { title: 'Grand livre stock', icon: 'mdi-book-open-page-variant-outline', to: '/logistique/stock/grand-livre', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
+  { title: 'Grand livre stock', icon: 'mdi-book-open-page-variant-outline', to: '/logistique/stock/grand-livre', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
 ]
 const patrimoineItems: NavItem[] = [
   { title: 'Immobilisations', icon: 'mdi-office-building-cog-outline', to: '/patrimoine/immobilisations', module: 'PATRIMOINE' },
@@ -149,52 +153,61 @@ const transportItems: NavItem[] = [
   { title: 'Dépenses', icon: 'mdi-fuel', to: '/transport/depenses', module: 'TRANSPORT' },
 ]
 
-// Toutes les pages du restaurant appellent /restaurant/* et jamais
-// /logistique/* : le responsable restaurant n'a pas le module LOGISTIQUE, le
-// filtre serveur lui renverrait un 403 sur sa propre carte.
+// Les pages du restaurant appellent /restaurant/* et jamais /logistique/* : le responsable restaurant n'a pas le
+// module LOGISTIQUE, le filtre serveur lui renverrait un 403 sur sa propre carte. (Les responsables cuisine et bar,
+// eux, ont aussi la lecture du menu Logistique — voir logistiqueItems — pour les articles de leur domaine.)
+//
+// Le menu se partage entre la cuisine (ROLES_RESTAURANT_CUISINE) et le bar (ROLES_RESTAURANT_BAR) : le responsable
+// cuisine ne voit que la cuisine et ses stocks, le responsable bar que le bar et ses stocks ; le responsable
+// restaurant, la direction et la comptabilite voient tout. Carte et Stock consolide sont ouverts aux deux : le
+// serveur ne leur renvoie que les articles de leur domaine (PerimetreRestaurant). Ni l'un ni l'autre n'a les salles
+// et tables ni les parametres.
 //
 // Le caissier a le module en ECRITURE (plan des salles, ventes) mais n'en voit que ce qu'il lui faut au
 // comptoir : la carte, les salles et tables, et les stocks en consultation (Stock cuisine & bar, Stock
 // consolide, Provisions, Provisions consolide). Tout le reste — tableau de bord, fiches techniques, production,
-// sorties de plats, achats, bar, parametres — est reserve aux autres roles du module
-// (ROLES_RESTAURANT_COMPLET), comme les pages elles-memes (definePageMeta.roles). Un compte qui cumule
-// CAISSIER et un autre de ces roles voit tout le menu.
+// sorties de plats, achats, bar, parametres — lui est ferme, comme dans les pages elles-memes
+// (definePageMeta.roles). Un compte qui cumule CAISSIER et un autre de ces roles voit tout le menu.
+const ROLES_RESTAURANT_SALLES = ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN']
+const ROLES_RESTAURANT_ANALYSES = ['RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'DFIN', 'DG', 'ADMIN']
+const ROLES_STOCK_BAR = [...ROLES_RESTAURANT_BAR, 'CAISSIER']
+const ROLES_STOCK_CUISINE = [...ROLES_RESTAURANT_CUISINE, 'CAISSIER']
 const restaurantItems: NavEntree[] = [
-  { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/restaurant', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },
+  { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/restaurant', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
   // Pilotage de l'offre : parmi les lecteurs du module, seuls ceux admis par
   // RestaurantService.LECTURE_ANALYSES (le caissier, le DA et le comptable
   // lisent le module sans avoir cet ecran).
-  { title: 'Analyses des ventes', icon: 'mdi-chart-timeline-variant', to: '/restaurant/analyses-ventes', module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN'] },
+  { title: 'Analyses des ventes', icon: 'mdi-chart-timeline-variant', to: '/restaurant/analyses-ventes', module: 'RESTAURANT', roles: ROLES_RESTAURANT_ANALYSES },
   { title: 'Carte', icon: 'mdi-silverware-fork-knife', to: '/restaurant/carte', module: 'RESTAURANT' },
-  { title: 'Salles et tables', icon: 'mdi-floor-plan', to: '/restaurant/salles', module: 'RESTAURANT' },
+  { title: 'Salles et tables', icon: 'mdi-floor-plan', to: '/restaurant/salles', module: 'RESTAURANT', roles: ROLES_RESTAURANT_SALLES },
   {
     id: 'restaurant-cuisine', title: 'Cuisine', icon: 'mdi-stove', items: [
-      { title: 'Fiches techniques', icon: 'mdi-clipboard-text-outline', to: '/restaurant/recettes', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },
-      { title: 'Production', icon: 'mdi-chef-hat', to: '/restaurant/production', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_COMPLET },
+      { title: 'Fiches techniques', icon: 'mdi-clipboard-text-outline', to: '/restaurant/recettes', module: 'RESTAURANT', roles: ROLES_RESTAURANT_CUISINE },
+      { title: 'Production', icon: 'mdi-chef-hat', to: '/restaurant/production', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_CUISINE },
       // Périmé, moisi, renversé, offert... : consultable par les lecteurs du
       // module, saisie réservée au responsable restaurant et à l'administrateur.
-      { title: 'Sorties de plats', icon: 'mdi-food-off-outline', to: '/restaurant/sorties-plats', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },
-      { title: 'Achat de provisions', icon: 'mdi-truck-delivery-outline', to: '/restaurant/provisions/receptions', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_COMPLET },
+      { title: 'Sorties de plats', icon: 'mdi-food-off-outline', to: '/restaurant/sorties-plats', module: 'RESTAURANT', roles: ROLES_RESTAURANT_CUISINE },
+      { title: 'Achat de provisions', icon: 'mdi-truck-delivery-outline', to: '/restaurant/provisions/receptions', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_CUISINE },
       // Consultable par tous les lecteurs du module ; les formulaires
       // (réception directe, utilisation, casse, péremption) restent réservés
       // au responsable restaurant et à l'administrateur, sur la page même.
-      { title: 'Entrées / sorties de provisions', icon: 'mdi-swap-vertical', to: '/restaurant/provisions/mouvements', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },
+      { title: 'Entrées / sorties de provisions', icon: 'mdi-swap-vertical', to: '/restaurant/provisions/mouvements', module: 'RESTAURANT', roles: ROLES_RESTAURANT_CUISINE },
     ],
   },
   {
     id: 'restaurant-bar', title: 'Bar', icon: 'mdi-glass-cocktail', items: [
-      { title: 'Bouteilles vides', icon: 'mdi-bottle-wine-outline', to: '/restaurant/emballages', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },
-      { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/restaurant/emballages/mouvements', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },
-      { title: 'Achat de boissons', icon: 'mdi-truck-delivery-outline', to: '/restaurant/receptions', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_COMPLET },
+      { title: 'Bouteilles vides', icon: 'mdi-bottle-wine-outline', to: '/restaurant/emballages', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
+      { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/restaurant/emballages/mouvements', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
+      { title: 'Achat de boissons', icon: 'mdi-truck-delivery-outline', to: '/restaurant/receptions', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_BAR },
     ],
   },
   {
     id: 'restaurant-stocks', title: 'Stocks', icon: 'mdi-warehouse', items: [
-      { title: 'Tableau de bord Provisions', icon: 'mdi-chart-box-outline', to: '/restaurant/provisions/tableau-bord', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },
-      { title: 'Stock cuisine & bar', icon: 'mdi-clipboard-list-outline', to: '/restaurant/stock', module: 'RESTAURANT' },
+      { title: 'Tableau de bord Provisions', icon: 'mdi-chart-box-outline', to: '/restaurant/provisions/tableau-bord', module: 'RESTAURANT', roles: ROLES_RESTAURANT_CUISINE },
+      { title: 'Stock cuisine & bar', icon: 'mdi-clipboard-list-outline', to: '/restaurant/stock', module: 'RESTAURANT', roles: ROLES_STOCK_BAR },
       { title: 'Stock consolidé', icon: 'mdi-view-list-outline', to: '/restaurant/stock/consolide', module: 'RESTAURANT' },
-      { title: 'Provisions', icon: 'mdi-sack', to: '/restaurant/provisions', module: 'RESTAURANT' },
-      { title: 'Provisions (consolidé)', icon: 'mdi-view-list-outline', to: '/restaurant/provisions/consolide', module: 'RESTAURANT' },
+      { title: 'Provisions', icon: 'mdi-sack', to: '/restaurant/provisions', module: 'RESTAURANT', roles: ROLES_STOCK_CUISINE },
+      { title: 'Provisions (consolidé)', icon: 'mdi-view-list-outline', to: '/restaurant/provisions/consolide', module: 'RESTAURANT', roles: ROLES_STOCK_CUISINE },
     ],
   },
   { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/restaurant/parametres', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },

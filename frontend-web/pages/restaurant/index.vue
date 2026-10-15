@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Tableau de bord du module Restaurant : stock de bouteilles et casiers,
@@ -92,7 +92,7 @@ const fmtNb = (n?: number | null) => new Intl.NumberFormat('fr-FR').format(n || 
 // Rôles admis par RestaurantAnalyseIaService : le bouton n'est pas proposé
 // aux autres lecteurs du module (DA, comptable, caissier), qui recevraient un refus.
 const auth = useAuthStore()
-const peutAnalyser = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN']))
+const peutAnalyser = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'ADMIN']))
 const chargementIa = ref(false)
 const erreurIa = ref('')
 const analyse = ref<AnalyseIa | null>(null)
