@@ -55,6 +55,8 @@ public class AdminService {
     /** Fiche de documentation de chaque compte créé (voir ajouterCompte). */
     private final DocumentationCompteService documentation;
     private final PermissionService permissionService;
+    /** Etat des modules : un role dont le module est coupe n'est plus propose, ni ses comptes montres. */
+    private final RolesDisponibles rolesDisponibles;
 
     /** Plan comptable OHADA, accessible a tout utilisateur authentifie. */
     @Transactional(readOnly = true)
@@ -160,8 +162,12 @@ public class AdminService {
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional(readOnly = true)
     public List<UserResponse> listerUtilisateurs() {
+        EtatModules etat = rolesDisponibles.etat();
         return userRepository.findAllByOrderByNomAscPrenomAsc().stream()
-            .map(UserResponse::from)
+            // Un compte dont tous les roles sont lies a un module desactive est masque (et desactive : voir
+            // SynchronisationComptesModules). Les roles masques ne figurent pas non plus sur les autres comptes.
+            .filter(u -> !SynchronisationComptesModules.estBloque(u, etat))
+            .map(u -> UserResponse.from(u, role -> ModulesDesRoles.estDisponible(role, etat::estActif)))
             .toList();
     }
 
@@ -245,6 +251,9 @@ public class AdminService {
         if (userRepository.existsByEmailIgnoreCase(identifiant)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Cet identifiant de connexion est déjà utilisé.");
         }
+        EtatModules etat = rolesDisponibles.etat();
+        Set<Role> roles = resoudreRoles(req.roles());
+        exigerRolesDisponibles(roles, Set.of(), etat);
         User u = User.builder()
             .nom(req.nom())
             .prenom(req.prenom())
@@ -255,9 +264,24 @@ public class AdminService {
             .fonction(videEnNull(req.fonction()))
             .affectation(videEnNull(req.affectation()))
             .actif(true)
-            .roles(resoudreRoles(req.roles()))
+            .roles(roles)
             .build();
-        return avecDroitsParDefaut(userRepository.save(u));
+        return avecDroitsParDefaut(userRepository.save(u), etat);
+    }
+
+    /**
+     * Refuse (409) un role dont le module est desactive, sauf s'il est deja porte par le compte : un role masque deja
+     * detenu n'est jamais retire par une modification, il reste en place pour le retour du module.
+     */
+    private static void exigerRolesDisponibles(Set<Role> demandes, Set<RoleType> dejaPortes, EtatModules etat) {
+        for (Role role : demandes) {
+            RoleType type = role.getNom();
+            if (!dejaPortes.contains(type) && !ModulesDesRoles.estDisponible(type, etat::estActif)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Le rôle " + type + " n'est pas disponible : le module auquel il est lié est désactivé "
+                        + "(Administration > Modules).");
+            }
+        }
     }
 
     /**
@@ -267,9 +291,10 @@ public class AdminService {
      * On pose donc les droits d'origine des roles de l'utilisateur qui n'en ont
      * aucun ; un role deja configure n'est jamais modifie.
      */
-    private UserResponse avecDroitsParDefaut(User u) {
+    private UserResponse avecDroitsParDefaut(User u, EtatModules etat) {
         List<RoleType> noms = u.getRoles().stream().map(Role::getNom).toList();
-        return UserResponse.from(u).avecDroitsParDefaut(permissionService.appliquerDroitsParDefaut(noms));
+        return UserResponse.from(u, role -> ModulesDesRoles.estDisponible(role, etat::estActif))
+            .avecDroitsParDefaut(permissionService.appliquerDroitsParDefaut(noms));
     }
 
     /** Modifie un utilisateur existant (ADMIN). */
@@ -278,6 +303,8 @@ public class AdminService {
     public UserResponse modifierUtilisateur(Long id, UserUpdateRequest req) {
         User u = userRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur introuvable."));
+        EtatModules etat = rolesDisponibles.etat();
+        exigerCompteVisible(u, etat);
         u.setNom(req.nom());
         u.setPrenom(req.prenom());
         if (req.motDePasse() != null && !req.motDePasse().isBlank()) {
@@ -290,8 +317,39 @@ public class AdminService {
         u.setEmailNotification(emailNotification(req.emailNotification()));
         u.setFonction(videEnNull(req.fonction()));
         u.setAffectation(videEnNull(req.affectation()));
-        u.setRoles(resoudreRoles(req.roles()));
-        return avecDroitsParDefaut(userRepository.save(u));
+        u.setRoles(rolesApresModification(u, resoudreRoles(req.roles()), etat));
+        return avecDroitsParDefaut(userRepository.save(u), etat);
+    }
+
+    /**
+     * Les roles du compte apres modification : ceux que l'ecran envoie, plus les roles masques (module desactive)
+     * qu'il portait deja et que l'ecran ne montre pas — sans cela, enregistrer un compte multi-roles lui retirerait
+     * en silence le role masque, qui ne reviendrait pas avec le module. Refuse (409) un role indisponible
+     * nouvellement demande, et un resultat qui ne laisserait au compte que des roles indisponibles.
+     */
+    private static Set<Role> rolesApresModification(User u, Set<Role> demandes, EtatModules etat) {
+        Set<RoleType> dejaPortes = u.getRoles().stream().map(Role::getNom).collect(Collectors.toSet());
+        exigerRolesDisponibles(demandes, dejaPortes, etat);
+        Set<Role> resultat = new java.util.HashSet<>(demandes);
+        for (Role porte : u.getRoles()) {
+            if (!ModulesDesRoles.estDisponible(porte.getNom(), etat::estActif)) {
+                resultat.add(porte);
+            }
+        }
+        List<RoleType> types = resultat.stream().map(Role::getNom).toList();
+        if (ModulesDesRoles.estBloque(types, etat::estActif)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Ce compte n'aurait plus que des rôles liés à des modules désactivés : choisissez au moins un rôle disponible.");
+        }
+        return resultat;
+    }
+
+    /** Un compte masque (tous ses roles lies a des modules desactives) ne se modifie ni ne s'active qu'une fois le module reactive. */
+    private static void exigerCompteVisible(User u, EtatModules etat) {
+        if (SynchronisationComptesModules.estBloque(u, etat)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Ce compte est lié à un module désactivé : réactivez le module pour le retrouver.");
+        }
     }
 
     private String emailNotification(String s) {
@@ -310,12 +368,21 @@ public class AdminService {
     public UserResponse toggleActif(Long id) {
         User u = userRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur introuvable."));
+        EtatModules etat = rolesDisponibles.etat();
+        exigerCompteVisible(u, etat);
         u.setActif(!u.isActif());
         if (!u.isActif()) {
             // Un compte désactivé perd immédiatement l'accès : ses jetons
             // (accès et rafraîchissement) ne sont plus acceptés.
             u.revoquerJetons();
         }
-        return UserResponse.from(userRepository.save(u));
+        return UserResponse.from(userRepository.save(u), role -> ModulesDesRoles.estDisponible(role, etat::estActif));
+    }
+
+    /** Roles qu'on peut attribuer aujourd'hui (ceux dont le module n'est pas desactive). */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional(readOnly = true)
+    public List<RoleType> rolesDisponibles() {
+        return rolesDisponibles.disponibles();
     }
 }

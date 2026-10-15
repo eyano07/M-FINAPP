@@ -5,6 +5,7 @@ import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.RoleType;
 
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Vue d'un utilisateur pour l'administration (sans donnee sensible).
@@ -24,8 +25,17 @@ public record UserResponse(
     List<String> droitsParDefaut
 ) {
     public static UserResponse from(User u) {
+        return from(u, role -> true);
+    }
+
+    /**
+     * Meme vue, sans les roles que {@code roleVisible} refuse : l'administration ne montre pas les roles dont le
+     * module est desactive. Ils restent portes par le compte (reactiver le module les rend), simplement absents de l'ecran.
+     */
+    public static UserResponse from(User u, Predicate<RoleType> roleVisible) {
         List<String> roles = u.getRoles().stream()
             .map(Role::getNom)
+            .filter(roleVisible)
             .map(Enum::name)
             .sorted()
             .toList();

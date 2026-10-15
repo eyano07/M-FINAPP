@@ -25,6 +25,14 @@ interface UserRow {
 const rolesStore = useRolesStore()
 const ALL_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']
 
+/**
+ * Rôles qu'on peut attribuer aujourd'hui : ceux dont le module n'est pas désactivé (le serveur en décide, voir
+ * ModulesDesRoles). Un rôle dont le module est coupé disparaît du sélecteur ; les comptes qui n'ont plus que de
+ * tels rôles sont masqués de la liste, et reviennent avec le module.
+ */
+const rolesDisponibles = ref<string[]>([...ALL_ROLES])
+const rolesMasques = computed(() => ALL_ROLES.filter((r) => !rolesDisponibles.value.includes(r)))
+
 const api = useApi()
 const loading = ref(false)
 const saving = ref(false)
@@ -86,8 +94,13 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const data = await api<UserRow[]>('/admin/users')
+    const [data, disponibles] = await Promise.all([
+      api<UserRow[]>('/admin/users'),
+      // Sans cette liste (erreur réseau), on propose tous les rôles : le serveur refusera un rôle indisponible.
+      api<string[]>('/admin/roles/disponibles').catch(() => null),
+    ])
     users.value = data.map((u) => ({ ...u, nomComplet: `${u.prenom ?? ''} ${u.nom ?? ''}`.trim() }))
+    if (disponibles) rolesDisponibles.value = ALL_ROLES.filter((r) => disponibles.includes(r))
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les utilisateurs.')
   } finally {
@@ -201,6 +214,11 @@ const roleColor: Record<string, string> = {
     </v-alert>
     <v-alert v-if="erreur && !dialog" type="error" variant="tonal" rounded="lg" density="compact" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
+    </v-alert>
+    <v-alert v-if="rolesMasques.length" type="info" variant="tonal" rounded="lg" density="compact" class="mb-4">
+      Rôles masqués, leur module étant désactivé :
+      <strong>{{ rolesMasques.map((r) => rolesStore.libelle(r)).join(', ') }}</strong>.
+      Les comptes qui n'ont que ces rôles sont désactivés et masqués ; ils reviennent avec le module (Administration › Modules).
     </v-alert>
 
     <!-- ── Tableau ───────────────────────────────────────────────────── -->
@@ -414,7 +432,7 @@ const roleColor: Record<string, string> = {
             <label class="usr-label">Rôles *</label>
             <div class="usr-roles-grid">
               <button
-                v-for="r in ALL_ROLES"
+                v-for="r in rolesDisponibles"
                 :key="r"
                 class="usr-role-toggle"
                 :class="{ 'usr-role-toggle--on': form.roles.includes(r) }"

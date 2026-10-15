@@ -58,6 +58,15 @@ public class User {
     private boolean actif = true;
 
     /**
+     * Vrai si le compte a ete desactive automatiquement parce que tous ses roles sont lies a des modules
+     * desactives (V125) : il est alors reactive avec le module. Une desactivation manuelle ne pose pas ce
+     * drapeau et n'est jamais annulee automatiquement. Voir {@code SynchronisationComptesModules}.
+     */
+    @Column(name = "desactive_par_module", nullable = false)
+    @Builder.Default
+    private boolean desactiveParModule = false;
+
+    /**
      * Version des jetons JWT de l'utilisateur (claim « tv », voir JwtService) :
      * l'augmenter rend inutilisables tous les jetons déjà émis (V96).
      */

@@ -15,6 +15,7 @@ import com.mbsc.finapp.dto.admin.UserResponse;
 import com.mbsc.finapp.dto.admin.UserUpdateRequest;
 import com.mbsc.finapp.dto.parametrage.ModuleActifRequest;
 import com.mbsc.finapp.dto.parametrage.ModuleConfigResponse;
+import com.mbsc.finapp.dto.parametrage.ModuleImpactResponse;
 import com.mbsc.finapp.dto.parametrage.NiveauPermissionRequest;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseRequest;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseResponse;
@@ -213,6 +214,15 @@ public class AdminController {
         return moduleConfigService.definir(module, req.actif());
     }
 
+    /**
+     * Apercu d'une bascule de module (ADMIN) : roles qui disparaitraient et comptes qui seraient desactives.
+     * Lecture seule — l'ecran l'affiche avant de demander confirmation.
+     */
+    @GetMapping("/admin/modules/{module}/impact")
+    public ModuleImpactResponse impactModule(@PathVariable ModuleMetier module, @RequestParam(defaultValue = "false") boolean actif) {
+        return moduleConfigService.impact(module, actif);
+    }
+
     // ---------------------------------------------------------------------
     // Grille de permissions role x module (ADMIN)
     // ---------------------------------------------------------------------
@@ -235,6 +245,15 @@ public class AdminController {
     @GetMapping("/roles/libelles")
     public Map<RoleType, String> libellesRoles() {
         return roleLibelleService.lister();
+    }
+
+    /**
+     * Roles qu'on peut attribuer aujourd'hui (ADMIN) : ceux dont le module n'est pas desactive. Un role lie a un
+     * module desactive disparait de la gestion des utilisateurs jusqu'a la reactivation du module.
+     */
+    @GetMapping("/admin/roles/disponibles")
+    public List<RoleType> rolesDisponibles() {
+        return service.rolesDisponibles();
     }
 
     /** Renomme l'affichage d'un role, sans toucher a ses droits (ADMIN). Libelle vide = defaut. */

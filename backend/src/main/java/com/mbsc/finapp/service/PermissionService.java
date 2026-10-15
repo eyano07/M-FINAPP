@@ -78,10 +78,14 @@ public class PermissionService {
         // Cascade hierarchique (DRH et ses sous-modules) : un sous-module ne
         // peut jamais etre plus permissif que son parent. Le parent lui-meme
         // n'a pas de parentModule, donc cette verification ne boucle pas.
-        if (actif && config != null && config.getParentModule() != null) {
-            actif = moduleConfigRepository.findById(config.getParentModule())
-                .map(ModuleConfig::isActif)
-                .orElse(true);
+        if (actif) {
+            // Parent de la ligne, ou celui de la hierarchie du code si la ligne manque ou l'a perdu.
+            ModuleMetier parent = EtatModules.parentDe(config, module);
+            if (parent != null) {
+                actif = moduleConfigRepository.findById(parent)
+                    .map(ModuleConfig::isActif)
+                    .orElse(true);
+            }
         }
         if (!actif) {
             return NiveauPermission.AUCUN;

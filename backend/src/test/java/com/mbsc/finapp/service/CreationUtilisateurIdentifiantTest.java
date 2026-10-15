@@ -11,6 +11,7 @@ import com.mbsc.finapp.repository.RoleRepository;
 import com.mbsc.finapp.repository.TauxChangeRepository;
 import com.mbsc.finapp.repository.UserRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
@@ -38,10 +39,16 @@ class CreationUtilisateurIdentifiantTest {
     private final UserRepository users = mock(UserRepository.class);
     private final RoleRepository roles = mock(RoleRepository.class);
     private final PasswordEncoder encodeur = mock(PasswordEncoder.class);
+    private final RolesDisponibles rolesDisponibles = mock(RolesDisponibles.class);
     private final AdminService service = new AdminService(
         mock(CompteOHADARepository.class), mock(EcritureGrandLivreRepository.class), users, roles,
         mock(TauxChangeRepository.class), encodeur, mock(CurrentUserProvider.class),
-        mock(DocumentationCompteService.class), mock(PermissionService.class));
+        mock(DocumentationCompteService.class), mock(PermissionService.class), rolesDisponibles);
+
+    @BeforeEach
+    void tousLesModulesSontActifs() {
+        when(rolesDisponibles.etat()).thenReturn(EtatModules.de(List.of()));
+    }
 
     private static UserCreateRequest demande(String identifiant) {
         return new UserCreateRequest("Kalunga", "Bruno", identifiant, "motdepasse-ok", "094589334", null,

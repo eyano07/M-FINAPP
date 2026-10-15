@@ -7,11 +7,30 @@ interface ModuleConfig {
   parentModule: string | null
 }
 
+/** Ce que changerait la coupure d'un module : les rôles qui disparaîtraient et les comptes qui seraient désactivés. */
+interface ImpactModule {
+  module: string
+  actif: boolean
+  roles: string[]
+  comptesADesactiver: string[]
+  comptesAReactiver: string[]
+}
+
 const api = useApi()
+const rolesStore = useRolesStore()
 const loading = ref(true)
 const erreur = ref('')
+const succes = ref('')
 const toggling = ref<string | null>(null)
 const modules = ref<ModuleConfig[]>([])
+/** Coupure en attente de confirmation (le module et son aperçu d'impact), ou null. */
+const aConfirmer = ref<{ module: ModuleConfig; impact: ImpactModule } | null>(null)
+/**
+ * Un clic sur l'interrupteur bascule d'abord la case native, avant que la page ait décidé quoi que ce soit : si la
+ * coupure est annulée (ou échoue), le module reste actif mais la case est restée « éteinte ». Incrémenter ce
+ * compteur, qui entre dans la clé des interrupteurs, les recrée dans l'état réel du module.
+ */
+const resynchro = ref(0)
 
 const META: Record<string, { label: string; description: string; icon: string; color: string }> = {
   CAISSE: { label: 'Caisse', description: 'Opérations de caisse, paiement des notes de frais, journal, grand livre et balance.', icon: 'mdi-cash-register', color: 'var(--color-primary)' },
@@ -53,19 +72,66 @@ async function charger() {
 }
 onMounted(charger)
 
+/** Combien de comptes en clair : « 1 compte », « 3 comptes ». */
+const comptes = (n: number) => `${n} compte${n > 1 ? 's' : ''}`
+
 async function basculer(m: ModuleConfig) {
   const nouvelEtat = !m.actif
+  erreur.value = ''
+  succes.value = ''
+  // Couper un module qui porte des rôles ou des comptes : on montre d'abord ce qui va disparaître et on demande
+  // confirmation. Les comptes concernés sont désactivés et masqués, puis remis en service avec le module.
+  if (!nouvelEtat) {
+    toggling.value = m.module
+    try {
+      const impact = await api<ImpactModule>(`/admin/modules/${m.module}/impact`, { query: { actif: false } })
+      if (impact.roles.length > 0 || impact.comptesADesactiver.length > 0) {
+        aConfirmer.value = { module: m, impact }
+        return
+      }
+    } catch (e: any) {
+      erreur.value = messageErreurApi(e, "Impossible de mesurer l'effet de la désactivation.")
+      resynchro.value++
+      return
+    } finally {
+      toggling.value = null
+    }
+  }
+  await appliquer(m, nouvelEtat)
+}
+
+/** Coupure refusée (bouton Annuler, clic à côté, Échap) : le module reste actif, l'interrupteur aussi. */
+function annulerCoupure() {
+  aConfirmer.value = null
+  resynchro.value++
+}
+
+async function confirmerCoupure() {
+  const attente = aConfirmer.value
+  aConfirmer.value = null
+  if (attente) await appliquer(attente.module, false)
+}
+
+async function appliquer(m: ModuleConfig, nouvelEtat: boolean) {
   toggling.value = m.module
   erreur.value = ''
   try {
-    await api(`/admin/modules/${m.module}`, { method: 'PUT', body: { actif: nouvelEtat } })
+    const reponse = await api<{ comptesDesactives?: number | null; comptesReactives?: number | null }>(
+      `/admin/modules/${m.module}`, { method: 'PUT', body: { actif: nouvelEtat } })
     m.actif = nouvelEtat
+    const coupes = reponse?.comptesDesactives ?? 0
+    const remis = reponse?.comptesReactives ?? 0
+    const nom = meta(m.module).label
+    succes.value = nouvelEtat
+      ? `Module « ${nom} » activé.` + (remis ? ` ${comptes(remis)} réactivé${remis > 1 ? 's' : ''} et de nouveau visible${remis > 1 ? 's' : ''}.` : '')
+      : `Module « ${nom} » désactivé.` + (coupes ? ` ${comptes(coupes)} désactivé${coupes > 1 ? 's' : ''} et masqué${coupes > 1 ? 's' : ''}.` : '')
     // Les permissions effectives ne sont chargees qu'une fois par session :
     // sans ce rechargement, le module desactive restait visible dans le menu
     // jusqu'a la reconnexion, alors que toutes ses pages renvoyaient deja 403.
     await usePermissionsStore().charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Échec de la mise à jour.')
+    resynchro.value++
   } finally {
     toggling.value = null
   }
@@ -84,9 +150,14 @@ async function basculer(m: ModuleConfig) {
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" density="compact" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
     </v-alert>
+    <v-alert v-if="succes" type="success" variant="tonal" rounded="lg" density="compact" class="mb-4" closable @click:close="succes = ''">
+      {{ succes }}
+    </v-alert>
 
     <v-alert type="info" variant="tonal" rounded="lg" density="compact" class="mb-5">
       Désactiver un module le rend inaccessible à tous les utilisateurs, y compris les administrateurs — cette page reste toujours disponible pour le réactiver.
+      Les rôles propres au module disparaissent de la gestion des utilisateurs, et les comptes qui n'ont plus que ces rôles
+      sont désactivés et masqués, puis remis en service automatiquement quand le module est réactivé.
     </v-alert>
 
     <v-skeleton-loader v-if="loading" type="list-item-avatar-two-line, list-item-avatar-two-line, list-item-avatar-two-line" />
@@ -105,6 +176,7 @@ async function basculer(m: ModuleConfig) {
             {{ m.actif ? 'Actif' : 'Désactivé' }}
           </span>
           <v-switch
+            :key="`${m.module}-${resynchro}`"
             :model-value="m.actif"
             color="primary"
             hide-details
@@ -133,6 +205,7 @@ async function basculer(m: ModuleConfig) {
             {{ !m.actif ? 'Coupé (parent off)' : (enfant.actif ? 'Actif' : 'Désactivé') }}
           </span>
           <v-switch
+            :key="`${enfant.module}-${resynchro}`"
             :model-value="enfant.actif"
             color="primary"
             hide-details
@@ -143,6 +216,39 @@ async function basculer(m: ModuleConfig) {
         </div>
       </template>
     </div>
+
+    <!-- Confirmation avant de couper un module qui porte des rôles ou des comptes. -->
+    <v-dialog :model-value="!!aConfirmer" max-width="520" @update:model-value="(v: boolean) => { if (!v) annulerCoupure() }">
+      <v-card v-if="aConfirmer" rounded="xl" class="pa-2">
+        <v-card-title class="text-h6">Désactiver « {{ meta(aConfirmer.module.module).label }} » ?</v-card-title>
+        <v-card-text>
+          <p v-if="aConfirmer.impact.roles.length" class="mb-3">
+            Ces rôles disparaissent de la gestion des utilisateurs :
+            <strong>{{ aConfirmer.impact.roles.map((r) => rolesStore.libelle(r)).join(', ') }}</strong>.
+          </p>
+          <template v-if="aConfirmer.impact.comptesADesactiver.length">
+            <p class="mb-2">
+              <strong>{{ comptes(aConfirmer.impact.comptesADesactiver.length) }}</strong>
+              {{ aConfirmer.impact.comptesADesactiver.length > 1 ? 'seront désactivés et masqués' : 'sera désactivé et masqué' }}
+              (leurs sessions ouvertes sont fermées) :
+            </p>
+            <ul class="mod-impact">
+              <li v-for="nom in aConfirmer.impact.comptesADesactiver.slice(0, 8)" :key="nom">{{ nom }}</li>
+              <li v-if="aConfirmer.impact.comptesADesactiver.length > 8">… et {{ aConfirmer.impact.comptesADesactiver.length - 8 }} autre(s)</li>
+            </ul>
+          </template>
+          <p v-else class="mb-2">Aucun compte n'est désactivé : ils ont tous un autre rôle.</p>
+          <p class="text-caption text-medium-emphasis mt-3 mb-0">
+            Ils sont réactivés automatiquement quand le module est réactivé. Un compte désactivé à la main n'est jamais réactivé automatiquement.
+          </p>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-3">
+          <v-spacer />
+          <v-btn variant="text" @click="annulerCoupure">Annuler</v-btn>
+          <v-btn color="error" variant="flat" rounded="lg" @click="confirmerCoupure">Désactiver le module</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -187,6 +293,7 @@ async function basculer(m: ModuleConfig) {
   flex-shrink: 0;
   white-space: nowrap;
 }
+.mod-impact { margin: 0 0 4px; padding-left: 20px; font-size: 0.85rem; color: #374151; }
 .mod-row__statut--on { background: var(--color-primary-light); color: var(--color-primary); }
 .mod-row__statut--off { background: #f3f4f6; color: #9ca3af; }
 </style>

@@ -36,10 +36,23 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler({BadCredentialsException.class, DisabledException.class, AuthenticationException.class})
+    static final String MESSAGE_COMPTE_DESACTIVE = "Ce compte est désactivé. Contactez l'administrateur.";
+
+    @ExceptionHandler({BadCredentialsException.class, AuthenticationException.class})
     public ResponseEntity<Map<String, Object>> handleAuth(AuthenticationException ex) {
         log.warn("Authentification refusee : {}", ex.getMessage());
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    /**
+     * Compte desactive : par l'administrateur, ou par la cascade des modules (tous ses roles sont lies a un module
+     * desactive). Message en francais plutot que « User is disabled » de Spring ; il ne dit pas pourquoi : la
+     * raison se lit dans le journal d'audit et dans Administration > Modules.
+     */
+    @ExceptionHandler(DisabledException.class)
+    public ResponseEntity<Map<String, Object>> handleCompteDesactive(DisabledException ex) {
+        log.warn("Connexion refusee : compte desactive");
+        return build(HttpStatus.UNAUTHORIZED, MESSAGE_COMPTE_DESACTIVE);
     }
 
     @ExceptionHandler(AccessDeniedException.class)

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { usePermissionsStore } from '~/stores/permissions'
+import { usePermissionsStore, type ModuleMetier } from '~/stores/permissions'
 
 /**
  * Le backend renvoie photoUrl en chemin relatif a la racine de l'API (meme
@@ -92,30 +92,35 @@ export const useAuthStore = defineStore('auth', {
       if (roles.some((r) => ROLES_DASHBOARD.includes(r))) {
         return '/dashboard'
       }
+      // Meme risque de boucle quand le module de la page d'accueil est coupe (ou ferme a ce compte) alors que le
+      // compte garde un autre role : une fois les permissions chargees, un atterrissage inaccessible est ignore
+      // au profit du suivant. Avant leur chargement on ne sait rien : on garde l'ordre habituel.
+      const permissions = usePermissionsStore()
+      const accessible = (module: ModuleMetier) => !permissions.charge || permissions.peutVoir(module)
       // La logistique atterrit directement sur son propre tableau de bord
       // (meme logique que GEST_PATRIMOINE ci-dessous) : le tableau de bord
       // general (tresorerie/notes de frais) n'a rien de pertinent pour elle.
-      if (roles.includes('LOGISTIQUE')) {
+      if (roles.includes('LOGISTIQUE') && accessible('LOGISTIQUE')) {
         return '/logistique'
       }
       // Le gestionnaire du patrimoine atterrit directement sur son module.
-      if (roles.includes('GEST_PATRIMOINE')) {
+      if (roles.includes('GEST_PATRIMOINE') && accessible('PATRIMOINE')) {
         return '/patrimoine/immobilisations'
       }
       // Le responsable DRH atterrit directement sur son module (meme logique
       // que GEST_PATRIMOINE) : la paie/RH n'a pas de place dans le tableau de
       // bord financier general.
-      if (roles.includes('RESP_DRH')) {
+      if (roles.includes('RESP_DRH') && accessible('DRH_PAIE')) {
         return '/drh/bulletins'
       }
       // Responsable restaurant et responsable bar : le tableau de bord du bar. La page d'entree naturelle du module,
       // qu'ils ont le droit d'ouvrir — condition necessaire pour ne pas creer de boucle de redirection.
-      if (roles.includes('RESP_RESTAURANT') || roles.includes('RESP_BAR')) {
+      if ((roles.includes('RESP_RESTAURANT') || roles.includes('RESP_BAR')) && accessible('RESTAURANT')) {
         return '/restaurant'
       }
       // Responsable cuisine : /restaurant est un tableau de bord de boissons, interdit a ce role ; son tableau de
       // bord est celui des provisions.
-      if (roles.includes('RESP_CUISINE')) {
+      if (roles.includes('RESP_CUISINE') && accessible('RESTAURANT')) {
         return '/restaurant/provisions/tableau-bord'
       }
       // Directeur metier (et tout role sans tableau de bord) : ses notes.
