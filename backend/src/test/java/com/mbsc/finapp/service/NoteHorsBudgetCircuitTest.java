@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -150,6 +151,9 @@ class NoteHorsBudgetCircuitTest {
         assertThat(note.getStatut()).isEqualTo(StatutNote.VALIDEE_DA);
         assertThat(note.getObservations()).extracting(o -> o.getCommentaire())
             .anyMatch(c -> c.startsWith("Validee hors budget : Budget 2026 pas encore approuvé"));
+        // Le DFIN, qui tient le budget, est prévenu que la dépense est engagée sans budget.
+        verify(notifications).notifierBudget(eq(List.of(RoleType.DFIN)), isNull(), any(), eq(TypeNotification.BUDGET_DEPASSE),
+            eq("Dépense validée sans budget"), contains("NF-2026-000002 — Achat de boissons"), any());
     }
 
     @Test
@@ -159,6 +163,25 @@ class NoteHorsBudgetCircuitTest {
 
         service.valider(2L, null);
 
+        assertThat(note.getStatut()).isEqualTo(StatutNote.VALIDEE_DA);
+        verify(notifications, never()).notifierBudget(any(), any(), any(), any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void unDepassementValideParLeDaPrevientLeDfinAvecLeDetailDuControle() {
+        NoteFrais note = note(StatutNote.VERIFIEE_DFIN, null);
+        var ligne = new ControleBudgetaireResponse.LigneControle(0, "6042", "Matières combustibles", new BigDecimal("700"),
+            new BigDecimal("700"), StatutControleBudget.DEPASSEMENT, "6042", "Matières combustibles", null, null, null, null, null, null,
+            "Dépasse le disponible à fin octobre sur 6042 (service Logistique) : disponible 500,00, demandé 700,00 USD.", "service Logistique");
+        when(controle.controlerNote(any(NoteFrais.class))).thenReturn(new ControleBudgetaireResponse(
+            2026, 10, 10L, "BUD-2026-000010", "Octobre", StatutControleBudget.DEPASSEMENT, true, "USD", BigDecimal.ONE,
+            List.of(ligne), List.of(), true));
+
+        service.valider(2L, new ActionWorkflowRequest("Carburant indispensable pour la livraison."));
+
+        verify(notifications).notifierBudget(eq(List.of(RoleType.DFIN)), isNull(), any(), eq(TypeNotification.BUDGET_DEPASSE),
+            eq("Dépassement budgétaire"),
+            contains("Dépasse le disponible à fin octobre sur 6042 (service Logistique) : disponible 500,00, demandé 700,00 USD."), any());
         assertThat(note.getStatut()).isEqualTo(StatutNote.VALIDEE_DA);
     }
 }

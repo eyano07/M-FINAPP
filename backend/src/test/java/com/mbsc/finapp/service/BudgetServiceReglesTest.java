@@ -64,7 +64,8 @@ class BudgetServiceReglesTest {
         when(references.pourBudget()).thenReturn("BUD-2026-000099");
         CurrentUserProvider courant = mock(CurrentUserProvider.class);
         when(courant.requireUser()).thenReturn(User.builder().id(7L).prenom("Bruno").nom("Kalunga").email("dfin_bruno").build());
-        service = new BudgetService(budgets, comptes, references, courant, mock(SuiviBudgetaireService.class), services);
+        service = new BudgetService(budgets, comptes, references, courant, mock(SuiviBudgetaireService.class), services,
+            mock(NotificationService.class));
     }
 
     private static List<BigDecimal> decembre(String montant) {

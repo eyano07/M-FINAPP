@@ -10,9 +10,10 @@ import java.time.Instant;
 /**
  * Notification adressee a un utilisateur, generee automatiquement par les
  * transitions du workflow des notes de frais (soumission, verification,
- * validation, rejet, transmission, paiement, annulation). Diffusee en temps
- * reel par {@code NotificationService} via SSE, et persistee pour rester
- * consultable apres reconnexion.
+ * validation, rejet, transmission, paiement, annulation) et du circuit des
+ * budgets (soumission, approbation, rejet, mise en execution, depassement).
+ * Diffusee en temps reel par {@code NotificationService} via SSE, et
+ * persistee pour rester consultable apres reconnexion.
  */
 @Entity
 @Table(name = "notifications")
@@ -48,6 +49,11 @@ public class Notification {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "note_frais_id")
     private NoteFrais noteFrais;
+
+    /** Budget concerne (circuit des budgets, depassements) : la notification est supprimee avec lui (V123). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "budget_id")
+    private Budget budget;
 
     @Column(nullable = false)
     @Builder.Default

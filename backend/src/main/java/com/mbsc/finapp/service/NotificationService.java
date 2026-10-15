@@ -1,5 +1,6 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.Budget;
 import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.Notification;
 import com.mbsc.finapp.domain.User;
@@ -20,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -121,7 +124,7 @@ public class NotificationService {
                                     String lien, NoteFrais note) {
         if (destinataire == null) return;
 
-        Notification notif = Notification.builder()
+        enregistrer(Notification.builder()
             .destinataire(destinataire)
             .type(type)
             .titre(titre)
@@ -129,11 +132,61 @@ public class NotificationService {
             .lien(lien)
             .noteFrais(note)
             .lue(false)
-            .build();
-        notif = notificationRepository.save(notif);
+            .build());
+    }
 
-        pousser(destinataire.getId(), NotificationResponse.from(notif));
-        mail.envoyerApresCommit(notif);
+    /**
+     * Notifie, au sujet d'un budget, les utilisateurs actifs des roles donnes et {@code aussi} (par exemple
+     * l'auteur du budget, s'il n'a pas ces roles) : une seule notification par personne, jamais a l'auteur de
+     * l'action ({@code acteur}). Le lien mene a la page du budget (a la liste des budgets sans budget).
+     */
+    @Transactional
+    public void notifierBudget(Collection<RoleType> roles, User aussi, User acteur, TypeNotification type,
+                               String titre, String message, Budget budget) {
+        Map<Long, User> destinataires = new LinkedHashMap<>();
+        for (RoleType role : roles) {
+            for (User u : userRepository.findByRoles_NomAndActifTrue(role)) {
+                destinataires.putIfAbsent(u.getId(), u);
+            }
+        }
+        if (aussi != null && aussi.isActif()) {
+            destinataires.putIfAbsent(aussi.getId(), aussi);
+        }
+        if (acteur != null) {
+            destinataires.remove(acteur.getId());
+        }
+        String lien = budget == null || budget.getId() == null ? "/budgets" : "/budgets/" + budget.getId();
+        for (User destinataire : destinataires.values()) {
+            enregistrer(Notification.builder()
+                .destinataire(destinataire)
+                .type(type)
+                .titre(titre)
+                .message(message)
+                .lien(lien)
+                .budget(budget)
+                .lue(false)
+                .build());
+        }
+    }
+
+    /**
+     * Enregistre, pousse en temps reel et copie par e-mail. Titre et message sont ramenes a la taille de leurs
+     * colonnes (200 et 500 caracteres) : un motif de rejet ou un objet long ne doit pas faire echouer l'action metier.
+     */
+    private void enregistrer(Notification notif) {
+        notif.setTitre(tronquer(notif.getTitre(), 200));
+        notif.setMessage(tronquer(notif.getMessage(), 500));
+        Notification enregistree = notificationRepository.save(notif);
+        pousser(enregistree.getDestinataire().getId(), NotificationResponse.from(enregistree));
+        mail.envoyerApresCommit(enregistree);
+    }
+
+    static String tronquer(String texte, int max) {
+        if (texte == null) {
+            return "";
+        }
+        String t = texte.strip();
+        return t.length() <= max ? t : t.substring(0, max - 1).stripTrailing() + "…";
     }
 
     // ---------------------------------------------------------------------

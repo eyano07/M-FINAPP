@@ -1006,7 +1006,33 @@ public class NoteFraisService {
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_VALIDEE,
             "Note validée par " + libelle(RoleType.DA), note.getReference() + " — " + note.getObjet() + " (prête à transmettre)",
             "/notes-frais/" + note.getId(), note);
+        if (controle.justificationRequise()) {
+            notifierDepassement(note, controle);
+        }
         return reponse;
+    }
+
+    /**
+     * Le DA vient de valider une depense que le budget ne couvre pas (depassement du disponible, compte hors budget,
+     * aucun budget en execution) : le DFIN, qui tient le budget, en est prevenu avec le detail du controle et un lien
+     * vers le budget concerne (a reviser au besoin). La depense est desormais engagee.
+     */
+    private void notifierDepassement(NoteFrais note, ControleBudgetaireResponse controle) {
+        String titre = switch (controle.statut()) {
+            case DEPASSEMENT -> "Dépassement budgétaire";
+            case SANS_BUDGET -> "Dépense validée sans budget";
+            default -> "Dépense hors budget validée";
+        };
+        List<String> details = controle.lignes().stream()
+            .filter(l -> l.statut().exigeJustification())
+            .map(l -> l.message())
+            .toList();
+        String detail = details.isEmpty() ? resumeControle(controle) : details.get(0);
+        String message = note.getReference() + " — " + note.getObjet() + mentionService(note) + ", validée par le "
+            + libelle(RoleType.DA) + " : " + detail
+            + (details.size() > 1 ? " (et " + (details.size() - 1) + " autre(s) ligne(s) non couverte(s))" : "");
+        notificationService.notifierBudget(List.of(RoleType.DFIN), null, currentUser.requireUser(),
+            TypeNotification.BUDGET_DEPASSE, titre, message, note.getBudget());
     }
 
     /** Le DA rejette la note ; un motif est obligatoire (VERIFIEE_DFIN -> REJETEE_DA). */

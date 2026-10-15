@@ -6,7 +6,9 @@ import com.mbsc.finapp.domain.LigneBudget;
 import com.mbsc.finapp.domain.ServiceBudgetaire;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.DureeBudget;
+import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.domain.enums.StatutBudget;
+import com.mbsc.finapp.domain.enums.TypeNotification;
 import com.mbsc.finapp.dto.budget.BudgetRequest;
 import com.mbsc.finapp.dto.budget.BudgetResponse;
 import com.mbsc.finapp.dto.budget.BudgetResumeResponse;
@@ -80,6 +82,8 @@ public class BudgetService {
     private final CurrentUserProvider currentUser;
     private final SuiviBudgetaireService suivi;
     private final ServiceBudgetaireRepository serviceRepository;
+    /** Circuit du budget : le DA est prevenu d'une soumission, le DFIN d'une approbation ou d'un rejet, etc. */
+    private final NotificationService notifications;
 
     // ---------------------------------------------------------------------
     // Lecture
@@ -279,7 +283,14 @@ public class BudgetService {
         budget.setStatut(StatutBudget.SOUMIS);
         budget.setDateSoumission(Instant.now());
         log.info("Budget {} soumis pour approbation", budget.getReference());
-        return BudgetResponse.from(budget);
+        BudgetResponse reponse = BudgetResponse.from(budget);
+        User auteur = currentUser.requireUser();
+        notifications.notifierBudget(List.of(RoleType.DA), null, auteur, TypeNotification.BUDGET_SOUMIS, "Budget à approuver",
+            designation(budget) + revision(budget) + " : " + montant(reponse.totalCharges().add(reponse.totalInvestissements()))
+                + " USD de dépenses prévues" + (reponse.totalProduits().signum() > 0 ? ", " + montant(reponse.totalProduits()) + " USD de recettes" : "")
+                + (budget.parService() ? ", réparti par service" : "") + ". Soumis par " + nom(auteur) + ".",
+            budget);
+        return reponse;
     }
 
     @PreAuthorize(APPROBATION)
@@ -287,13 +298,19 @@ public class BudgetService {
     public BudgetResponse approuver(Long id, ActionWorkflowRequest action) {
         Budget budget = charger(id);
         exigerEtat(budget, StatutBudget.SOUMIS, "approuver");
+        User approbateur = currentUser.requireUser();
         budget.setStatut(StatutBudget.APPROUVE);
-        budget.setApprouvePar(currentUser.requireUser());
+        budget.setApprouvePar(approbateur);
         budget.setDateApprobation(Instant.now());
-        if (action != null && StringUtils.hasText(action.commentaire())) {
+        boolean observation = action != null && StringUtils.hasText(action.commentaire());
+        if (observation) {
             budget.setObservation(action.commentaire().trim());
         }
         log.info("Budget {} approuve", budget.getReference());
+        notifications.notifierBudget(List.of(RoleType.DFIN), budget.getElaborePar(), approbateur, TypeNotification.BUDGET_APPROUVE,
+            "Budget approuvé", designation(budget) + " approuvé par " + nom(approbateur) + " : il peut être mis en exécution."
+                + (observation ? " Observation : " + action.commentaire().trim() : ""),
+            budget);
         return BudgetResponse.from(budget);
     }
 
@@ -305,10 +322,14 @@ public class BudgetService {
         if (action == null || !StringUtils.hasText(action.commentaire())) {
             throw new IllegalArgumentException("Un motif de rejet est obligatoire");
         }
+        User approbateur = currentUser.requireUser();
         budget.setStatut(StatutBudget.REJETE);
-        budget.setApprouvePar(currentUser.requireUser());
+        budget.setApprouvePar(approbateur);
         budget.setMotifRejet(action.commentaire().trim());
         log.info("Budget {} rejete", budget.getReference());
+        notifications.notifierBudget(List.of(RoleType.DFIN), budget.getElaborePar(), approbateur, TypeNotification.BUDGET_REJETE,
+            "Budget rejeté", designation(budget) + " rejeté par " + nom(approbateur) + " : " + action.commentaire().trim(),
+            budget);
         return BudgetResponse.from(budget);
     }
 
@@ -354,6 +375,11 @@ public class BudgetService {
         budget.setStatut(StatutBudget.EN_EXECUTION);
         budget.setDateExecution(Instant.now());
         log.info("Budget {} passe en execution ({})", budget.getReference(), budget.libellePeriode());
+        notifications.notifierBudget(List.of(RoleType.DA, RoleType.DG), null, currentUser.requireUser(),
+            TypeNotification.BUDGET_EN_EXECUTION, "Budget en exécution",
+            designation(budget) + " est en exécution : il contrôle désormais les notes de frais de « " + budget.libellePeriode() + " »"
+                + (remplace == null ? "." : " et remplace le budget " + remplace + "."),
+            budget);
         return BudgetResponse.from(budget);
     }
 
@@ -543,6 +569,28 @@ public class BudgetService {
 
     private static String vide(String s) {
         return StringUtils.hasText(s) ? s.trim() : null;
+    }
+
+    /** « BUD-2026-000002 — Budget de décembre (Décembre 2026) », pour les notifications. */
+    private static String designation(Budget b) {
+        return b.getReference() + " — " + b.getIntitule() + " (" + b.libellePeriode() + ")";
+    }
+
+    /** « , révision n° 1 de BUD-2026-000001 », vide pour une version initiale. */
+    private static String revision(Budget b) {
+        return b.getRevisionDe() == null ? "" : ", révision n° " + b.getNumeroRevision() + " de " + b.getRevisionDe().getReference();
+    }
+
+    private static String montant(BigDecimal v) {
+        return BudgetPdfService.montant(v);
+    }
+
+    private static String nom(User u) {
+        if (u == null) {
+            return "—";
+        }
+        String n = ((u.getPrenom() == null ? "" : u.getPrenom()) + " " + (u.getNom() == null ? "" : u.getNom())).trim();
+        return n.isEmpty() ? u.getEmail() : n;
     }
 
     static String normaliser(String s) {

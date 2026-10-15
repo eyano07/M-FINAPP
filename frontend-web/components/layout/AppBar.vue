@@ -33,6 +33,12 @@ const TYPE_META: Record<string, { icon: string; color: string }> = {
   IA_CREDIT_EPUISE: { icon: 'mdi-robot-confused-outline', color: '#b45309' },
   PLATS_PERIMES:  { icon: 'mdi-clock-alert-outline',   color: '#b45309' },
   PLATS_PERIMES_RETIRES: { icon: 'mdi-delete-clock-outline', color: '#6b7280' },
+  // Circuit des budgets : soumission au DA, approbation, rejet, mise en exécution, dépense validée hors budget.
+  BUDGET_SOUMIS:  { icon: 'mdi-file-send-outline',     color: '#2563eb' },
+  BUDGET_APPROUVE: { icon: 'mdi-check-decagram-outline', color: '#16a34a' },
+  BUDGET_REJETE:  { icon: 'mdi-close-octagon-outline', color: '#dc2626' },
+  BUDGET_EN_EXECUTION: { icon: 'mdi-play-circle-outline', color: '#0d9488' },
+  BUDGET_DEPASSE: { icon: 'mdi-alert-octagon-outline', color: '#dc2626' },
 }
 const typeMeta = (type: string) => TYPE_META[type] ?? { icon: 'mdi-bell-outline', color: '#6b7280' }
 
