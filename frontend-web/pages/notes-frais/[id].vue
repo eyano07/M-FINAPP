@@ -705,9 +705,9 @@ const peutGererPieces = computed(() =>
               </div>
             </div>
             <div class="nd-info-row">
-              <div class="nd-info-icon"><v-icon icon="mdi-email-outline" size="16" /></div>
+              <div class="nd-info-icon"><v-icon icon="mdi-account-key-outline" size="16" /></div>
               <div>
-                <span class="nd-info-label">Email</span>
+                <span class="nd-info-label">Identifiant</span>
                 <span class="nd-info-val">{{ note.demandeurEmail || '—' }}</span>
               </div>
             </div>

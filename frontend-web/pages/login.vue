@@ -3,7 +3,8 @@ definePageMeta({ layout: 'blank' })
 
 import { useParametresStore } from '~/stores/parametres'
 
-const email = ref('')
+// Identifiant de connexion : nom d'utilisateur OU adresse e-mail (le champ API s'appelle toujours « email »).
+const identifiant = ref('')
 const motDePasse = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -25,11 +26,10 @@ async function submit() {
   error.value = ''
   loading.value = true
   try {
-    await login(email.value, motDePasse.value)
+    await login(identifiant.value.trim(), motDePasse.value)
     await navigateTo('/dashboard')
   } catch (e: any) {
-    error.value =
-      e?.data?.message || 'Identifiants invalides. Veuillez réessayer.'
+    error.value = messageErreurApi(e, 'Identifiants invalides. Veuillez réessayer.')
   } finally {
     loading.value = false
   }
@@ -96,13 +96,16 @@ async function submit() {
 
         <v-form @submit.prevent="submit" class="form-body">
           <div class="field-group">
-            <span class="field-label">Adresse e-mail</span>
+            <span class="field-label">Nom d'utilisateur ou adresse e-mail</span>
             <v-text-field
-              v-model="email"
-              placeholder="vous@exemple.com"
-              type="email"
-              prepend-inner-icon="mdi-email-outline"
+              v-model="identifiant"
+              placeholder="nom_utilisateur ou vous@exemple.com"
+              type="text"
+              prepend-inner-icon="mdi-account-outline"
               autocomplete="username"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
               required
               hide-details="auto"
             />

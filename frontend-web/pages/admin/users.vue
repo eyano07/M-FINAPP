@@ -107,7 +107,7 @@ function noteDroitsParDefaut(roles?: string[]): string {
 }
 
 async function enregistrer() {
-  if (!form.nom || !form.prenom || !form.email || form.roles.length === 0) {
+  if (!form.nom || !form.prenom || !form.email.trim() || form.roles.length === 0) {
     erreur.value = 'Renseignez tous les champs obligatoires et au moins un rôle.'
     return
   }
@@ -134,7 +134,7 @@ async function enregistrer() {
       const cree = await api<UserRow>('/admin/users', {
         method: 'POST',
         body: {
-          nom: form.nom, prenom: form.prenom, email: form.email, motDePasse: form.motDePasse,
+          nom: form.nom, prenom: form.prenom, email: form.email.trim(), motDePasse: form.motDePasse,
           telephone: form.telephone.trim() || null,
           emailNotification: form.emailNotification.trim() || null,
           fonction: form.fonction.trim() || null, affectation: form.affectation.trim() || null,
@@ -217,7 +217,7 @@ const roleColor: Record<string, string> = {
         <thead>
           <tr>
             <th>Utilisateur</th>
-            <th>E-mail</th>
+            <th>Identifiant</th>
             <th>Rôles</th>
             <th>Statut</th>
             <th class="usr-th-actions">Actions</th>
@@ -349,12 +349,16 @@ const roleColor: Record<string, string> = {
           </div>
 
           <div class="usr-field">
-            <label class="usr-label">E-mail *</label>
+            <label class="usr-label">Identifiant de connexion *</label>
             <v-text-field
               v-model="form.email"
-              placeholder="utilisateur@mbsc.cd"
-              prepend-inner-icon="mdi-email-outline"
-              hide-details="auto"
+              placeholder="Ex: dfin_bruno ou utilisateur@mbsc.cd"
+              prepend-inner-icon="mdi-account-outline"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+              :hint="editMode ? 'L\'identifiant de connexion n\'est pas modifiable.' : 'Nom d\'utilisateur ou adresse e-mail (3 à 150 caractères : lettres, chiffres et . _ - @ +, sans espace). Non modifiable après la création.'"
+              persistent-hint
               :disabled="editMode"
             />
           </div>

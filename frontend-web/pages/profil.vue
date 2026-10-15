@@ -196,8 +196,8 @@ async function changerMotDePasse() {
           <div class="profil-form">
             <v-text-field v-model="form.nom" label="Nom" variant="outlined" density="comfortable" rounded="lg" hide-details="auto" />
             <v-text-field v-model="form.prenom" label="Prénom" variant="outlined" density="comfortable" rounded="lg" hide-details="auto" />
-            <v-text-field :model-value="auth.user?.email" label="E-mail" variant="outlined" density="comfortable" rounded="lg"
-              hide-details="auto" readonly disabled hint="L'e-mail de connexion n'est pas modifiable ici." persistent-hint />
+            <v-text-field :model-value="auth.user?.email" label="Identifiant de connexion" variant="outlined" density="comfortable" rounded="lg"
+              hide-details="auto" readonly disabled hint="L'identifiant de connexion n'est pas modifiable ici." persistent-hint />
             <v-text-field v-model="form.telephone" label="Téléphone" variant="outlined" density="comfortable" rounded="lg"
               hide-details="auto" prepend-inner-icon="mdi-phone-outline" placeholder="Ex: +243 999 123 456" />
             <v-text-field v-model="form.emailNotification" label="Mail de notification" type="email" variant="outlined" density="comfortable"

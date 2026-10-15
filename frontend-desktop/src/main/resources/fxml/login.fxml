@@ -17,7 +17,7 @@
 
         <Label fx:id="errorLabel" styleClass="error-label" visible="false" managed="false" wrapText="true"/>
 
-        <TextField fx:id="emailField" promptText="Adresse e-mail" styleClass="input-field"/>
+        <TextField fx:id="emailField" promptText="Nom d'utilisateur ou adresse e-mail" styleClass="input-field"/>
         <PasswordField fx:id="passwordField" promptText="Mot de passe" styleClass="input-field"/>
 
         <Button fx:id="loginButton" text="Se connecter" onAction="#onLogin"

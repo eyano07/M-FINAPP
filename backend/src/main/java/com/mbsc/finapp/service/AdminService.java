@@ -21,6 +21,7 @@ import com.mbsc.finapp.repository.RoleRepository;
 import com.mbsc.finapp.repository.TauxChangeRepository;
 import com.mbsc.finapp.repository.UserRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
+import com.mbsc.finapp.security.IdentifiantConnexion;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -238,13 +239,16 @@ public class AdminService {
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public UserResponse creerUtilisateur(UserCreateRequest req) {
-        if (userRepository.existsByEmail(req.email())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email déjà utilisé.");
+        // Identifiant de connexion : adresse e-mail ou nom d'utilisateur, enregistré en minuscules et
+        // unique sans tenir compte de la casse (« Dfin_Bruno » et « dfin_bruno » sont le même compte).
+        String identifiant = IdentifiantConnexion.normaliser(req.email());
+        if (userRepository.existsByEmailIgnoreCase(identifiant)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cet identifiant de connexion est déjà utilisé.");
         }
         User u = User.builder()
             .nom(req.nom())
             .prenom(req.prenom())
-            .email(req.email())
+            .email(identifiant)
             .motDePasse(passwordEncoder.encode(req.motDePasse()))
             .telephone(videEnNull(req.telephone()))
             .emailNotification(emailNotification(req.emailNotification()))
