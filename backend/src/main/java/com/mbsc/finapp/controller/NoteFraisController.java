@@ -11,6 +11,7 @@ import com.mbsc.finapp.dto.notes.NoteFraisRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisResponse;
 import com.mbsc.finapp.dto.notes.ModifierComptesRequest;
 import com.mbsc.finapp.dto.notes.ModifierObjetRequest;
+import com.mbsc.finapp.dto.notes.ModifierServiceRequest;
 import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteRequest;
 import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteResponse;
 import com.mbsc.finapp.dto.notes.PrioriteRequest;
@@ -135,6 +136,15 @@ public class NoteFraisController {
     public NoteFraisDetailResponse modifierComptes(@PathVariable Long id,
                                                     @Valid @RequestBody ModifierComptesRequest req) {
         return service.modifierComptesLignes(id, req);
+    }
+
+    /**
+     * Rattachement de la note a un service budgetaire (ou detachement) : le createur avant la soumission, le DFIN
+     * pendant la verification (note SOUMISE).
+     */
+    @PutMapping("/{id}/service")
+    public NoteFraisDetailResponse modifierService(@PathVariable Long id, @RequestBody ModifierServiceRequest req) {
+        return service.modifierService(id, req == null ? null : req.serviceId());
     }
 
     /** Correction du libelle (objet) par le DFIN lors de la verification (note SOUMISE). */

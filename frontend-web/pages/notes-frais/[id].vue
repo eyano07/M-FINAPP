@@ -58,6 +58,11 @@ interface NoteDetail {
   statutBudget?: string | null
   justificationBudget?: string | null
   budgetReference?: string | null
+  /** Service qui engage la dépense (contrôlée et suivie sur son budget). */
+  serviceId?: number | null
+  serviceNom?: string | null
+  serviceResponsable?: string | null
+  serviceActif?: boolean
   /** Notes du module DRH : PAIE ou IMPOT_PAIE (comptes imposés), avec leur mois de paie. */
   categorie?: string | null
   paieMois?: number | null
@@ -244,6 +249,41 @@ const horsBudget = computed(() => !!controleNote.value?.justificationRequise)
 const peutJustifier = computed(() =>
   isCreateur.value && !estEncaissement.value && ['BROUILLON', 'REJETEE_DA'].includes(statut.value || ''))
 watch(() => note.value?.justificationBudget, (v) => { justificationSaisie.value = v || '' }, { immediate: true })
+
+// ── Service budgétaire : le créateur avant la soumission, le DFIN pendant la vérification ──
+const peutModifierService = computed(() => !estEncaissement.value && (
+  (isCreateur.value && ['BROUILLON', 'REJETEE_DA'].includes(statut.value || '')) || (isDFIN.value && statut.value === 'SOUMISE')))
+const editionService = ref(false)
+const serviceChoisi = ref<number | null>(null)
+const enregistrementService = ref(false)
+const servicesDisponibles = ref<{ id: number, nom: string, responsable: string, actif: boolean }[]>([])
+const servicesChoix = computed(() => servicesDisponibles.value
+  .filter(s => s.actif || s.id === note.value?.serviceId)
+  .map(s => ({ id: s.id, titre: `${s.nom} — ${s.responsable}${s.actif ? '' : ' (désactivé)'}` })))
+
+async function activerEditionService() {
+  serviceChoisi.value = note.value?.serviceId ?? null
+  editionService.value = true
+  try {
+    servicesDisponibles.value = await api<any[]>('/services-budgetaires')
+  } catch {
+    servicesDisponibles.value = []
+  }
+}
+
+async function enregistrerService() {
+  enregistrementService.value = true
+  erreur.value = ''
+  try {
+    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/service`, { method: 'PUT', body: { serviceId: serviceChoisi.value } })
+    editionService.value = false
+    rafraichirControle.value++
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Le service n'a pas pu être enregistré.")
+  } finally {
+    enregistrementService.value = false
+  }
+}
 
 async function enregistrerJustification() {
   enregistrementJustification.value = true
@@ -709,6 +749,25 @@ const peutGererPieces = computed(() =>
               <div>
                 <span class="nd-info-label">Identifiant</span>
                 <span class="nd-info-val">{{ note.demandeurEmail || '—' }}</span>
+              </div>
+            </div>
+            <div v-if="!estEncaissement" class="nd-info-row">
+              <div class="nd-info-icon"><v-icon icon="mdi-account-group-outline" size="16" /></div>
+              <div class="nd-service">
+                <span class="nd-info-label">Service</span>
+                <span v-if="!editionService" class="nd-info-val">
+                  <template v-if="note.serviceNom">{{ note.serviceNom }}<span class="nd-fonction"> · {{ note.serviceResponsable }}</span></template>
+                  <template v-else>Aucun service</template>
+                  <button v-if="peutModifierService" type="button" class="nd-service__btn nd-noprint" @click="activerEditionService">
+                    <v-icon icon="mdi-pencil-outline" size="13" /> {{ note.serviceNom ? 'Changer' : 'Choisir' }}
+                  </button>
+                </span>
+                <div v-else class="nd-service__edit nd-noprint">
+                  <v-select v-model="serviceChoisi" :items="servicesChoix" item-title="titre" item-value="id" placeholder="Aucun service"
+                    clearable density="compact" hide-details aria-label="Service de la note" />
+                  <v-btn size="small" color="primary" :loading="enregistrementService" @click="enregistrerService">Enregistrer</v-btn>
+                  <v-btn size="small" variant="text" @click="editionService = false">Annuler</v-btn>
+                </div>
               </div>
             </div>
             <div v-if="note.description" class="nd-info-row nd-info-row--full">
@@ -1413,6 +1472,10 @@ const peutGererPieces = computed(() =>
 }
 /* Fonction de l'utilisateur, devant son nom : « Directeur Financier · Jean Dupont ». */
 .nd-fonction { color: #6b7280; font-weight: 500; }
+.nd-service { flex: 1; min-width: 0; }
+.nd-service__btn { margin-left: 8px; font-size: 0.75rem; color: var(--color-primary); background: none; border: none; cursor: pointer; padding: 0; }
+.nd-service__edit { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.nd-service__edit .v-select { min-width: 220px; flex: 1 1 220px; }
 .nd-timeline-item__who { min-width: 0; overflow-wrap: anywhere; }
 .nd-timeline-item__who .nd-fonction { font-size: 0.8rem; }
 .nd-timeline-item__author { font-size: 0.875rem; color: #111827; }

@@ -3,7 +3,9 @@ package com.mbsc.finapp.service;
 import com.mbsc.finapp.domain.Budget;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.LigneBudget;
+import com.mbsc.finapp.domain.ServiceBudgetaire;
 import com.mbsc.finapp.domain.User;
+import com.mbsc.finapp.domain.enums.DureeBudget;
 import com.mbsc.finapp.domain.enums.StatutBudget;
 import com.mbsc.finapp.dto.budget.BudgetRequest;
 import com.mbsc.finapp.dto.budget.BudgetResponse;
@@ -18,6 +20,7 @@ import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.BudgetRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
+import com.mbsc.finapp.repository.ServiceBudgetaireRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -34,18 +37,25 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Budgets previsionnels annuels, ventiles par mois (voir {@link StatutBudget} pour le circuit).
+ * Budgets previsionnels ventiles par mois (voir {@link StatutBudget} pour le circuit), sur l'exercice entier ou
+ * sur une periode plus courte (semestre, trimestre, mois : voir {@link DureeBudget}), organises ou non par service.
  *
- * <p>Regles : une ligne par compte budgetable (classes 2, 6, 7, 8 du plan SYSCOHADA, hors 28/29), sans
- * recouvrement entre lignes ; montants mensuels positifs ou nuls ; un seul budget en execution par exercice
- * (une revision le remplace quand elle est mise en execution) ; un budget n'est modifiable qu'en brouillon.</p>
+ * <p>Regles : comptes budgetables (classes 2, 6, 7, 8 du plan SYSCOHADA, hors 28/29) ; dans un service (ou dans
+ * les lignes generales), un compte une seule fois ; un meme compte peut figurer dans plusieurs services (il se
+ * cumule dans le budget consolide) mais un compte et l'un de ses sous-comptes ne coexistent jamais ; seules les
+ * depenses (charges, investissements) se rattachent a un service ; montants mensuels positifs ou nuls, zero hors
+ * de la periode ; un seul budget en execution sur un meme mois (une revision remplace le budget qu'elle revise
+ * quand elle est mise en execution) ; un budget n'est modifiable qu'en brouillon.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -60,12 +70,16 @@ public class BudgetService {
     /** Revisions encore en cours : une seule a la fois pour un meme budget. */
     private static final EnumSet<StatutBudget> REVISION_EN_COURS =
         EnumSet.of(StatutBudget.BROUILLON, StatutBudget.SOUMIS, StatutBudget.APPROUVE);
+    /** Budgets mis en execution (meme remplaces ou clotures depuis) : leurs depassements ont un sens. */
+    private static final EnumSet<StatutBudget> EXECUTES =
+        EnumSet.of(StatutBudget.EN_EXECUTION, StatutBudget.REMPLACE, StatutBudget.CLOTURE);
 
     private final BudgetRepository budgetRepository;
     private final CompteOHADARepository compteRepository;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     private final SuiviBudgetaireService suivi;
+    private final ServiceBudgetaireRepository serviceRepository;
 
     // ---------------------------------------------------------------------
     // Lecture
@@ -75,24 +89,31 @@ public class BudgetService {
     @Transactional(readOnly = true)
     public List<BudgetResumeResponse> lister() {
         List<Budget> budgets = budgetRepository.findAllByOrderByExerciceDescDateCreationDesc();
-        // Une seule lecture du grand livre par exercice, quel que soit le nombre de budgets.
-        Map<Integer, Map<String, SuiviBudgetaireService.MouvementsCompte>> mouvements = new HashMap<>();
+        // Une seule lecture du grand livre (et des engagements) par exercice, quel que soit le nombre de budgets.
+        Map<Integer, SuiviBudgetaireService.MouvementsExercice> mouvements = new HashMap<>();
+        Map<Integer, List<SuiviBudgetaireService.Engagement>> engagements = new HashMap<>();
+        Map<Long, ServiceBudgetaire> catalogue = suivi.catalogueServices();
         List<BudgetResumeResponse> resultat = new ArrayList<>();
         for (Budget b : budgets) {
-            Map<String, SuiviBudgetaireService.MouvementsCompte> mvts =
-                mouvements.computeIfAbsent(b.getExercice(), suivi::mouvementsDeLExercice);
+            SuiviBudgetaireService.MouvementsExercice mvts =
+                mouvements.computeIfAbsent(b.getExercice(), suivi::mouvementsDetailles);
+            boolean execute = EXECUTES.contains(b.getStatut());
+            List<SuiviBudgetaireService.Engagement> engages = execute
+                ? engagements.computeIfAbsent(b.getExercice(), e -> suivi.engagementsDeLExercice(e, null, new ArrayList<>()))
+                : List.of();
             BudgetResponse detail = BudgetResponse.from(b);
-            Map<MoteurBudgetaire.Section, BigDecimal[]> realise = suivi.realiseParSection(b, mvts);
-            BigDecimal rProduits = MoteurBudgetaire.total(realise.get(MoteurBudgetaire.Section.PRODUITS));
-            BigDecimal rCharges = MoteurBudgetaire.total(realise.get(MoteurBudgetaire.Section.CHARGES));
-            BigDecimal rInvest = MoteurBudgetaire.total(realise.get(MoteurBudgetaire.Section.INVESTISSEMENTS));
+            SuiviBudgetaireService.SyntheseExecution s = suivi.synthese(b, mvts, engages, catalogue, execute);
             BigDecimal prevuDepenses = detail.totalCharges().add(detail.totalInvestissements());
-            BigDecimal realiseDepenses = rCharges.add(rInvest);
+            BigDecimal realiseDepenses = s.realiseCharges().add(s.realiseInvestissements());
+            long nombreServices = b.getLignes().stream().map(LigneBudget::getService).filter(Objects::nonNull)
+                .map(ServiceBudgetaire::getId).distinct().count();
             resultat.add(new BudgetResumeResponse(b.getId(), b.getReference(), b.getIntitule(), b.getExercice(),
                 b.getStatut(), b.getNumeroRevision(), detail.elaboreParNom(), detail.approuveParNom(), b.getDateCreation(),
                 detail.totalProduits(), detail.totalCharges(), detail.totalInvestissements(),
-                rProduits, rCharges, rInvest, prevuDepenses, realiseDepenses,
-                MoteurBudgetaire.taux(realiseDepenses, prevuDepenses), b.getLignes().size()));
+                s.realiseProduits(), s.realiseCharges(), s.realiseInvestissements(), prevuDepenses, realiseDepenses,
+                MoteurBudgetaire.taux(realiseDepenses, prevuDepenses), b.getLignes().size(),
+                b.getDuree(), b.getPeriode(), b.libellePeriode(), b.moisDebut(), b.moisFin(), (int) nombreServices,
+                s.montantDepassement(), s.nombreDepassements(), s.servicesEnDepassement()));
         }
         return resultat;
     }
@@ -125,23 +146,37 @@ public class BudgetService {
     }
 
     /**
-     * Ventilation d'un montant annuel : parts egales, ou saisonnalite reelle (realise mensuel de l'annee
-     * precedente sur le compte et ses sous-comptes) ; parts egales a defaut d'historique.
+     * Ventilation d'un montant sur les mois d'une periode (l'exercice entier par defaut) : parts egales, ou
+     * saisonnalite reelle (realise mensuel de l'annee precedente sur le compte et ses sous-comptes, sur les memes
+     * mois) ; parts egales a defaut d'historique.
      */
     @PreAuthorize(LECTURE)
     @Transactional(readOnly = true)
     public RepartitionResponse repartir(RepartitionRequest req) {
+        int debut = req.moisDebut() == null ? 1 : req.moisDebut();
+        int fin = req.moisFin() == null ? MoteurBudgetaire.MOIS : req.moisFin();
+        if (debut > fin) {
+            throw new IllegalArgumentException("Période invalide : le premier mois suit le dernier.");
+        }
+        boolean annee = debut == 1 && fin == MoteurBudgetaire.MOIS;
+        String surLesMois = annee ? "sur les douze mois" : debut == fin ? "sur le mois de la période" : "sur les mois de la période";
         if ("SAISONNALITE".equalsIgnoreCase(req.mode()) && StringUtils.hasText(req.compteNumero()) && req.exercice() != null) {
             BigDecimal[] profil = realiseMensuelDuCompte(req.compteNumero().trim(), req.exercice() - 1);
-            if (MoteurBudgetaire.total(profil).signum() > 0) {
-                return new RepartitionResponse(List.of(MoteurBudgetaire.repartirSelonProfil(req.montantAnnuel(), profil)),
-                    "SAISONNALITE", "Réparti selon le réalisé mensuel de " + (req.exercice() - 1) + " sur le compte " + req.compteNumero() + ".");
+            BigDecimal surLaPeriode = BigDecimal.ZERO;
+            for (int m = debut; m <= fin; m++) {
+                surLaPeriode = surLaPeriode.add(profil[m - 1]);
             }
-            return new RepartitionResponse(List.of(MoteurBudgetaire.repartirUniformement(req.montantAnnuel())),
-                "UNIFORME", "Aucun réalisé en " + (req.exercice() - 1) + " sur ce compte : réparti à parts égales.");
+            if (surLaPeriode.signum() > 0) {
+                return new RepartitionResponse(List.of(MoteurBudgetaire.repartirSelonProfil(req.montantAnnuel(), profil, debut, fin)),
+                    "SAISONNALITE", "Réparti selon le réalisé mensuel de " + (req.exercice() - 1) + " sur le compte "
+                        + req.compteNumero() + (annee ? "." : ", mêmes mois."));
+            }
+            return new RepartitionResponse(List.of(MoteurBudgetaire.repartirUniformement(req.montantAnnuel(), debut, fin)),
+                "UNIFORME", "Aucun réalisé en " + (req.exercice() - 1) + " sur ce compte" + (annee ? "" : " pour ces mois")
+                    + " : réparti à parts égales.");
         }
-        return new RepartitionResponse(List.of(MoteurBudgetaire.repartirUniformement(req.montantAnnuel())),
-            "UNIFORME", "Réparti à parts égales sur les douze mois.");
+        return new RepartitionResponse(List.of(MoteurBudgetaire.repartirUniformement(req.montantAnnuel(), debut, fin)),
+            "UNIFORME", "Réparti à parts égales " + surLesMois + ".");
     }
 
     /** Realise mensuel d'un compte et de ses sous-comptes sur un exercice (sens selon la nature du compte). */
@@ -167,18 +202,22 @@ public class BudgetService {
     @Transactional
     public BudgetResponse creer(BudgetRequest req) {
         User auteur = currentUser.requireUser();
+        DureeBudget duree = duree(req);
+        int periode = periode(req, duree);
         Budget budget = Budget.builder()
             .reference(referenceGenerator.pourBudget())
             .intitule(req.intitule().trim())
             .exercice(req.exercice())
+            .duree(duree)
+            .periode(periode)
             .statut(StatutBudget.BROUILLON)
             .elaborePar(auteur)
             .observation(vide(req.observation()))
             .build();
-        appliquerLignes(budget, req.lignes());
+        appliquerLignes(budget, req.lignes(), Set.of());
         budget = budgetRepository.save(budget);
-        log.info("Budget cree [{} {}, exercice={}, lignes={}, par={}]", budget.getReference(), budget.getIntitule(),
-            budget.getExercice(), budget.getLignes().size(), auteur.getEmail());
+        log.info("Budget cree [{} {}, periode={}, lignes={}, par={}]", budget.getReference(), budget.getIntitule(),
+            budget.libellePeriode(), budget.getLignes().size(), auteur.getEmail());
         return BudgetResponse.from(budget);
     }
 
@@ -187,16 +226,26 @@ public class BudgetService {
     public BudgetResponse modifier(Long id, BudgetRequest req) {
         Budget budget = charger(id);
         exigerEtat(budget, StatutBudget.BROUILLON, "modifier");
-        if (budget.getRevisionDe() != null && !budget.getRevisionDe().getExercice().equals(req.exercice())) {
-            throw new IllegalArgumentException("Une révision porte sur le même exercice que le budget révisé ("
-                + budget.getRevisionDe().getExercice() + ").");
+        DureeBudget duree = duree(req);
+        int periode = periode(req, duree);
+        Budget revise = budget.getRevisionDe();
+        if (revise != null && (!revise.getExercice().equals(req.exercice()) || revise.getDuree() != duree
+                || revise.getPeriode() != periode)) {
+            throw new IllegalArgumentException("Une révision porte sur la même période que le budget révisé ("
+                + revise.libellePeriode() + ").");
         }
+        // Services deja presents dans le budget : une ligne existante garde son service meme s'il a ete desactive depuis.
+        Set<Long> servicesDejaPresents = new HashSet<>();
+        budget.getLignes().stream().map(LigneBudget::getService).filter(Objects::nonNull)
+            .forEach(s -> servicesDejaPresents.add(s.getId()));
         budget.setIntitule(req.intitule().trim());
         budget.setExercice(req.exercice());
+        budget.setDuree(duree);
+        budget.setPeriode(periode);
         budget.setObservation(vide(req.observation()));
         budget.getLignes().clear();
         budgetRepository.flush();   // les anciennes lignes partent avant l'insertion des nouvelles
-        appliquerLignes(budget, req.lignes());
+        appliquerLignes(budget, req.lignes(), servicesDejaPresents);
         log.info("Budget modifie [{}]", budget.getReference());
         return BudgetResponse.from(budget);
     }
@@ -276,27 +325,35 @@ public class BudgetService {
     }
 
     /**
-     * Met un budget approuve en execution : il controle alors les depenses de son exercice. Un seul budget en
-     * execution par exercice ; une revision approuvee remplace le budget qu'elle revise (qui passe REMPLACE).
+     * Met un budget approuve en execution : il controle alors les depenses des mois de sa periode. Un seul budget en
+     * execution sur un meme mois : un budget de decembre peut suivre un budget du 3e trimestre, pas chevaucher un budget
+     * annuel. Une revision approuvee remplace le budget qu'elle revise (qui passe REMPLACE).
      */
     @PreAuthorize(ECRITURE)
     @Transactional
     public BudgetResponse demarrerExecution(Long id) {
         Budget budget = charger(id);
         exigerEtat(budget, StatutBudget.APPROUVE, "mettre en exécution");
-        budgetRepository.findFirstByExerciceAndStatut(budget.getExercice(), StatutBudget.EN_EXECUTION).ifPresent(enCours -> {
-            if (budget.getRevisionDe() == null || !budget.getRevisionDe().getId().equals(enCours.getId())) {
-                throw new TransitionInvalideException("Le budget " + enCours.getReference() + " est déjà en exécution pour "
-                    + budget.getExercice() + " : pour le modifier, faites-en une révision.");
+        Long revise = budget.getRevisionDe() == null ? null : budget.getRevisionDe().getId();
+        String remplace = null;
+        for (Budget enCours : budgetRepository.findByExerciceAndStatut(budget.getExercice(), StatutBudget.EN_EXECUTION)) {
+            if (enCours.getId().equals(budget.getId()) || !enCours.chevauche(budget)) {
+                continue;
+            }
+            if (!enCours.getId().equals(revise)) {
+                throw new TransitionInvalideException("Le budget " + enCours.getReference() + " (" + enCours.libellePeriode()
+                    + ") est déjà en exécution sur une partie de cette période (" + budget.libellePeriode() + ") : "
+                    + "pour le modifier, faites-en une révision ; sinon choisissez une période qui ne le chevauche pas.");
             }
             enCours.setStatut(StatutBudget.REMPLACE);
             enCours.setDateCloture(Instant.now());
-            budgetRepository.saveAndFlush(enCours);   // libere l'index « un seul en execution » avant la bascule
+            budgetRepository.saveAndFlush(enCours);   // libere la contrainte « un seul en execution par mois » avant la bascule
+            remplace = enCours.getReference();
             log.info("Budget {} remplace par sa revision {}", enCours.getReference(), budget.getReference());
-        });
+        }
         budget.setStatut(StatutBudget.EN_EXECUTION);
         budget.setDateExecution(Instant.now());
-        log.info("Budget {} passe en execution", budget.getReference());
+        log.info("Budget {} passe en execution ({})", budget.getReference(), budget.libellePeriode());
         return BudgetResponse.from(budget);
     }
 
@@ -320,6 +377,8 @@ public class BudgetService {
             .reference(referenceGenerator.pourBudget())
             .intitule(budget.getIntitule())
             .exercice(budget.getExercice())
+            .duree(budget.getDuree())
+            .periode(budget.getPeriode())
             .statut(StatutBudget.BROUILLON)
             .elaborePar(currentUser.requireUser())
             .observation("Révision n° " + numero + " du budget " + budget.getReference())
@@ -329,6 +388,7 @@ public class BudgetService {
         for (LigneBudget l : budget.getLignes()) {
             revision.addLigne(LigneBudget.builder()
                 .compte(l.getCompte())
+                .service(l.getService())
                 .montantPrevu(l.getMontantPrevu())
                 .mois(new java.util.TreeMap<>(l.getMois()))
                 .commentaire(l.getCommentaire())
@@ -339,15 +399,15 @@ public class BudgetService {
         return BudgetResponse.from(revision);
     }
 
-    /** Cloture d'un budget en execution, une fois son exercice termine : il reste consultable. */
+    /** Cloture d'un budget en execution, une fois sa periode terminee : il reste consultable. */
     @PreAuthorize(ECRITURE)
     @Transactional
     public BudgetResponse cloturer(Long id) {
         Budget budget = charger(id);
         exigerEtat(budget, StatutBudget.EN_EXECUTION, "clôturer");
-        if (LocalDate.now().getYear() <= budget.getExercice()) {
-            throw new TransitionInvalideException("L'exercice " + budget.getExercice()
-                + " n'est pas terminé : le budget le contrôle jusqu'au 31 décembre.");
+        if (!LocalDate.now().isAfter(budget.dernierJour())) {
+            throw new TransitionInvalideException("La période « " + budget.libellePeriode() + " » n'est pas terminée : "
+                + "le budget la contrôle jusqu'au " + budget.dernierJour().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) + ".");
         }
         budget.setStatut(StatutBudget.CLOTURE);
         budget.setDateCloture(Instant.now());
@@ -364,37 +424,72 @@ public class BudgetService {
             .orElseThrow(() -> RessourceIntrouvableException.of("Budget", id));
     }
 
-    /** Controle et pose les lignes : comptes budgetables, ventilation de douze mois, aucun recouvrement. */
-    private void appliquerLignes(Budget budget, List<LigneBudgetRequest> lignes) {
+    /**
+     * Controle et pose les lignes : comptes budgetables, services existants (actifs pour un nouveau rattachement),
+     * recettes jamais rattachees a un service, un compte une seule fois par service, aucun recouvrement dans le budget
+     * consolide, montants nuls hors de la periode.
+     *
+     * @param servicesAdmis services deja presents dans le budget, admis meme s'ils ont ete desactives depuis
+     */
+    private void appliquerLignes(Budget budget, List<LigneBudgetRequest> lignes, Set<Long> servicesAdmis) {
         Map<String, CompteOHADA> comptes = new LinkedHashMap<>();
+        Map<Long, ServiceBudgetaire> services = new HashMap<>();
+        Set<String> clesVues = new HashSet<>();
         for (LigneBudgetRequest l : lignes) {
             String numero = l.compteNumero().trim();
-            CompteOHADA compte = compteRepository.findByNumero(numero)
-                .orElseThrow(() -> RessourceIntrouvableException.of("CompteOHADA", numero));
-            if (!MoteurBudgetaire.estBudgetable(compte.getNumero(), compte.getClasse())) {
-                throw new IllegalArgumentException("Le compte " + numero + " (" + compte.getLibelle() + ") ne peut pas porter de ligne "
-                    + "budgétaire : seuls les comptes de charges (6), de produits (7), d'investissement (2, hors amortissements "
-                    + "et dépréciations 28/29) et H.A.O. (8) se budgètent, à partir de deux chiffres.");
+            CompteOHADA compte = comptes.get(numero);
+            if (compte == null) {
+                compte = compteRepository.findByNumero(numero)
+                    .orElseThrow(() -> RessourceIntrouvableException.of("CompteOHADA", numero));
+                if (!MoteurBudgetaire.estBudgetable(compte.getNumero(), compte.getClasse())) {
+                    throw new IllegalArgumentException("Le compte " + numero + " (" + compte.getLibelle() + ") ne peut pas porter de ligne "
+                        + "budgétaire : seuls les comptes de charges (6), de produits (7), d'investissement (2, hors amortissements "
+                        + "et dépréciations 28/29) et H.A.O. (8) se budgètent, à partir de deux chiffres.");
+                }
+                comptes.put(numero, compte);
             }
-            if (comptes.put(numero, compte) != null) {
-                throw new IllegalArgumentException("Le compte " + numero + " figure deux fois dans le budget.");
+            ServiceBudgetaire service = null;
+            if (l.serviceId() != null) {
+                service = services.computeIfAbsent(l.serviceId(), sid -> serviceRepository.findById(sid)
+                    .orElseThrow(() -> RessourceIntrouvableException.of("ServiceBudgetaire", sid)));
+                if (!service.isActif() && !servicesAdmis.contains(service.getId())) {
+                    throw new IllegalArgumentException("Le service « " + service.getNom() + " » est désactivé : il ne reçoit plus de "
+                        + "nouvelle ligne budgétaire.");
+                }
+                if (MoteurBudgetaire.section(numero, compte.getType()) == MoteurBudgetaire.Section.PRODUITS) {
+                    throw new IllegalArgumentException("Le compte " + numero + " (" + compte.getLibelle() + ") est une recette : les "
+                        + "recettes ne se rattachent pas à un service, seules les dépenses se suivent par service. "
+                        + "Mettez cette ligne dans les lignes générales.");
+                }
+            }
+            if (!clesVues.add((service == null ? "" : service.getId()) + "|" + numero)) {
+                throw new IllegalArgumentException("Le compte " + numero + " figure deux fois "
+                    + (service == null ? "dans les lignes générales" : "dans le service « " + service.getNom() + " »") + ".");
             }
         }
-        List<String[]> conflits = MoteurBudgetaire.chevauchements(new ArrayList<>(comptes.keySet()));
+        List<String[]> conflits = ImputationBudgetaire.chevauchements(comptes.keySet());
         if (!conflits.isEmpty()) {
             String detail = conflits.stream().map(c -> c[0] + " couvre déjà " + c[1]).collect(Collectors.joining(", "));
             throw new IllegalArgumentException("Des lignes se recouvrent (" + detail + ") : une dépense serait comptée deux fois. "
-                + "Gardez soit le compte général, soit ses sous-comptes.");
+                + "Gardez soit le compte général, soit ses sous-comptes — le même dans tous les services.");
         }
+        int debut = budget.moisDebut();
+        int fin = budget.moisFin();
         for (LigneBudgetRequest l : lignes) {
             CompteOHADA compte = comptes.get(l.compteNumero().trim());
-            BigDecimal[] mensuel = mensuel(l);
+            BigDecimal[] mensuel = mensuel(l, debut, fin);
+            List<Integer> hors = MoteurBudgetaire.moisHorsPeriode(mensuel, debut, fin);
+            if (!hors.isEmpty()) {
+                throw new IllegalArgumentException("Compte " + compte.getNumero() + " : le budget couvre « " + budget.libellePeriode()
+                    + " », il n'a pas de montant pour " + nomsDesMois(hors) + ".");
+            }
             Map<Integer, BigDecimal> mois = new java.util.TreeMap<>();
             for (int i = 0; i < MoteurBudgetaire.MOIS; i++) {
                 mois.put(i + 1, mensuel[i]);
             }
             budget.addLigne(LigneBudget.builder()
                 .compte(compte)
+                .service(l.serviceId() == null ? null : services.get(l.serviceId()))
                 .mois(mois)
                 .montantPrevu(MoteurBudgetaire.total(mensuel))
                 .commentaire(vide(l.commentaire()))
@@ -402,7 +497,7 @@ public class BudgetService {
         }
     }
 
-    private BigDecimal[] mensuel(LigneBudgetRequest l) {
+    private BigDecimal[] mensuel(LigneBudgetRequest l, int debut, int fin) {
         if (l.mensuel() != null) {
             BigDecimal[] m = new BigDecimal[MoteurBudgetaire.MOIS];
             for (int i = 0; i < MoteurBudgetaire.MOIS; i++) {
@@ -415,9 +510,28 @@ public class BudgetService {
             return m;
         }
         if (l.montantPrevu() == null) {
-            throw new IllegalArgumentException("Compte " + l.compteNumero() + " : indiquez la ventilation mensuelle ou le montant annuel.");
+            throw new IllegalArgumentException("Compte " + l.compteNumero() + " : indiquez la ventilation mensuelle ou le montant de la période.");
         }
-        return MoteurBudgetaire.repartirUniformement(l.montantPrevu());
+        return MoteurBudgetaire.repartirUniformement(l.montantPrevu(), debut, fin);
+    }
+
+    private static DureeBudget duree(BudgetRequest req) {
+        return req.duree() == null ? DureeBudget.ANNUEL : req.duree();
+    }
+
+    private static int periode(BudgetRequest req, DureeBudget duree) {
+        int periode = req.periode() == null ? 1 : req.periode();
+        if (!duree.periodeValide(periode)) {
+            throw new IllegalArgumentException("Période " + periode + " invalide pour un budget " + duree.nom().toLowerCase(Locale.FRANCE)
+                + " : choisissez une période de 1 à " + duree.nombrePeriodes() + ".");
+        }
+        return periode;
+    }
+
+    private static String nomsDesMois(List<Integer> mois) {
+        return mois.stream()
+            .map(m -> java.time.Month.of(m).getDisplayName(java.time.format.TextStyle.FULL, Locale.FRANCE))
+            .collect(Collectors.joining(", "));
     }
 
     private void exigerEtat(Budget budget, StatutBudget attendu, String operation) {

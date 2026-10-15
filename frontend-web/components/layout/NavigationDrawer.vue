@@ -76,6 +76,8 @@ const items: NavItem[] = [
   // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
   // uniquement) mais ne voit pas les Budgets.
   { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  // Services (départements) et leur responsable : enveloppes des budgets, suivi des dépenses par service.
+  { title: 'Services budgétaires', icon: 'mdi-account-group-outline', to: '/budgets/services', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
 ]
 
 const comptabiliteItems: NavItem[] = [

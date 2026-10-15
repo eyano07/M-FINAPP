@@ -2,6 +2,7 @@ package com.mbsc.finapp.dto.budget;
 
 import com.mbsc.finapp.domain.Budget;
 import com.mbsc.finapp.domain.User;
+import com.mbsc.finapp.domain.enums.DureeBudget;
 import com.mbsc.finapp.domain.enums.StatutBudget;
 
 import java.math.BigDecimal;
@@ -10,8 +11,9 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Vue detaillee d'un budget : en-tete (reference, version, circuit d'approbation), totaux prevus par section
- * et lignes ventilees par mois. Le realise se consulte avec le suivi (GET /budgets/{id}/suivi).
+ * Vue detaillee d'un budget : en-tete (reference, periode, version, circuit d'approbation), totaux prevus par
+ * section et lignes ventilees par mois (avec leur service). Le realise se consulte avec le suivi
+ * (GET /budgets/{id}/suivi).
  */
 public record BudgetResponse(
     Long id,
@@ -36,12 +38,21 @@ public record BudgetResponse(
     BigDecimal totalInvestissements,
     /** Produits - charges prevus. */
     BigDecimal resultatPrevisionnel,
-    List<LigneBudgetResponse> lignes
+    List<LigneBudgetResponse> lignes,
+    DureeBudget duree,
+    int periode,
+    /** « Exercice 2026 », « 4e trimestre 2026 », « Décembre 2026 »... */
+    String libellePeriode,
+    int moisDebut,
+    int moisFin,
+    /** true si au moins une ligne est rattachee a un service. */
+    boolean parService
 ) {
     public static BudgetResponse from(Budget b) {
         List<LigneBudgetResponse> lignes = b.getLignes().stream()
             .map(LigneBudgetResponse::from)
-            .sorted(Comparator.comparing(LigneBudgetResponse::compteNumero, Comparator.nullsLast(Comparator.naturalOrder())))
+            .sorted(Comparator.comparing(LigneBudgetResponse::compteNumero, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(LigneBudgetResponse::serviceNom, Comparator.nullsFirst(Comparator.naturalOrder())))
             .toList();
         BigDecimal produits = totalSection(lignes, "PRODUITS");
         BigDecimal charges = totalSection(lignes, "CHARGES");
@@ -55,7 +66,8 @@ public record BudgetResponse(
             b.getObservation(), b.getMotifRejet(),
             b.getDateCreation(), b.getDateSoumission(), b.getDateApprobation(), b.getDateExecution(), b.getDateCloture(),
             produits, charges, totalSection(lignes, "INVESTISSEMENTS"), produits.subtract(charges),
-            lignes
+            lignes,
+            b.getDuree(), b.getPeriode(), b.libellePeriode(), b.moisDebut(), b.moisFin(), b.parService()
         );
     }
 

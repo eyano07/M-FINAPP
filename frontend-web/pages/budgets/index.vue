@@ -23,6 +23,15 @@ interface BudgetResume {
   totalRealise: number
   tauxExecution: number | null
   nombreLignes: number
+  duree: string
+  periode: number
+  libellePeriode: string
+  moisDebut: number
+  moisFin: number
+  nombreServices: number
+  montantDepassement: number
+  nombreDepassements: number
+  servicesEnDepassement: string[]
 }
 
 useHead({ title: 'Budgets' })
@@ -51,7 +60,19 @@ onMounted(charger)
 
 const exercices = computed(() => [...new Set(budgets.value.map(b => b.exercice))].sort((a, b) => b - a))
 const affiches = computed(() => budgets.value.filter(b => !filtreExercice.value || b.exercice === filtreExercice.value))
-const enExecution = computed(() => budgets.value.find(b => b.statut === 'EN_EXECUTION' && b.exercice === new Date().getFullYear()))
+// Budget qui contrôle les notes de frais du mois en cours : annuel, ou de la période qui contient ce mois.
+const aujourdhui = new Date()
+const moisCourant = aujourdhui.getMonth() + 1
+const libelleMoisCourant = `${MOIS_LONGS[aujourdhui.getMonth()].toLowerCase()} ${aujourdhui.getFullYear()}`
+const enExecution = computed(() => budgets.value.find(b => b.statut === 'EN_EXECUTION' && b.exercice === aujourdhui.getFullYear()
+  && dansLaPeriode(moisCourant, b.moisDebut || 1, b.moisFin || 12)))
+// Budgets qui couvriraient le mois en cours mais n'en contrôlent pas encore les dépenses : approuvés (à mettre en
+// exécution) d'abord, puis soumis (à approuver).
+const enAttente = computed(() => budgets.value
+  .filter(b => ['APPROUVE', 'SOUMIS'].includes(b.statut) && b.exercice === aujourdhui.getFullYear()
+    && dansLaPeriode(moisCourant, b.moisDebut || 1, b.moisFin || 12))
+  .sort((a, b) => (a.statut === 'APPROUVE' ? 0 : 1) - (b.statut === 'APPROUVE' ? 0 : 1)))
+const enDepassement = computed(() => budgets.value.filter(b => b.statut === 'EN_EXECUTION' && (Number(b.montantDepassement) > 0 || b.servicesEnDepassement?.length)))
 const resultatPrevu = (b: BudgetResume) => centimes(b.prevuProduits - b.prevuCharges)
 // Seul un budget mis en exécution (même remplacé ou clôturé depuis) a un taux d'exécution qui a un sens.
 const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE'].includes(b.statut)
@@ -62,17 +83,36 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
     <div class="page-head">
       <div>
         <h1 class="page-title">Budgets</h1>
-        <p class="page-sub">Budgets annuels ventilés par mois, élaborés par {{ rolesStore.libelle('DFIN') }}, approuvés par {{ rolesStore.libelle('DA') }}, suivis sur le grand livre</p>
+        <p class="page-sub">Budgets de l’exercice, d’un semestre, d’un trimestre ou d’un mois, ventilés par mois et répartis au besoin par service, élaborés par {{ rolesStore.libelle('DFIN') }}, approuvés par {{ rolesStore.libelle('DA') }}, suivis sur le grand livre</p>
       </div>
-      <v-btn v-if="peutElaborer" color="primary" prepend-icon="mdi-plus" height="44" to="/budgets/nouveau">Nouveau budget</v-btn>
+      <div class="d-flex flex-wrap ga-2">
+        <v-btn variant="tonal" prepend-icon="mdi-account-group-outline" height="44" to="/budgets/services">Services</v-btn>
+        <v-btn v-if="peutElaborer" color="primary" prepend-icon="mdi-plus" height="44" to="/budgets/nouveau">Nouveau budget</v-btn>
+      </div>
     </div>
 
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4" closable @click:close="erreur = ''">{{ erreur }}</v-alert>
 
     <v-alert v-if="!loading && !enExecution" type="warning" variant="tonal" class="mb-4" icon="mdi-calendar-alert">
-      Aucun budget n’est en exécution pour {{ new Date().getFullYear() }} : toute note de frais de l’exercice sera
+      Aucun budget n’est en exécution pour {{ libelleMoisCourant }} : toute note de frais de ce mois sera
       signalée « hors budget ». Elle suit le circuit normal, mais le {{ rolesStore.libelle('DA') }} devra motiver sa validation.
-      <span v-if="peutElaborer">Créez un budget (ou faites-le proposer par l’IA), faites-le approuver par le {{ rolesStore.libelle('DA') }}, puis démarrez-le.</span>
+      <template v-if="enAttente.length">
+        <div v-for="b in enAttente" :key="`att-${b.id}`" class="mt-2">
+          <strong>{{ b.reference }} — {{ b.intitule }} ({{ b.libellePeriode }})</strong> :
+          <template v-if="b.statut === 'APPROUVE'">approuvé, il reste à le mettre en exécution (bouton « Mettre en exécution » sur sa page<template v-if="enAttente.filter(x => x.statut === 'APPROUVE').length > 1"> ; un seul budget à la fois sur un même mois</template>).</template>
+          <template v-else>soumis, il attend l’approbation du {{ rolesStore.libelle('DA') }}.</template>{{ ' ' }}<NuxtLink :to="`/budgets/${b.id}`">Ouvrir le budget</NuxtLink>
+        </div>
+      </template>
+      <span v-else-if="peutElaborer">Créez un budget — pour l’exercice, ou seulement pour un semestre, un trimestre ou un mois (ex. décembre) —,
+        faites-le approuver par le {{ rolesStore.libelle('DA') }}, puis démarrez-le.</span>
+    </v-alert>
+
+    <v-alert v-for="b in enDepassement" :key="`dep-${b.id}`" type="error" variant="tonal" class="mb-4" icon="mdi-alert-octagon-outline">
+      <strong>Dépassement budgétaire — {{ b.intitule }} ({{ b.libellePeriode }})</strong> :
+      <template v-if="Number(b.montantDepassement) > 0">le budget consolidé est dépassé de {{ fmtMontant(b.montantDepassement) }} USD
+        sur {{ b.nombreDepassements }} ligne{{ b.nombreDepassements > 1 ? 's' : '' }}</template><template v-if="Number(b.montantDepassement) > 0 && b.servicesEnDepassement?.length"> ; </template>
+      <template v-if="b.servicesEnDepassement?.length">service{{ b.servicesEnDepassement.length > 1 ? 's' : '' }} en dépassement : {{ b.servicesEnDepassement.join(', ') }}</template>.
+      <NuxtLink :to="`/budgets/${b.id}`">Voir le détail</NuxtLink>
     </v-alert>
 
     <div v-if="exercices.length > 1" class="d-flex align-center ga-2 mb-3">
@@ -98,7 +138,18 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
               {{ statutBudget(b.statut).label }}
             </v-chip>
           </div>
-          <div class="text-caption text-medium-emphasis mb-3">Exercice {{ b.exercice }} · {{ b.nombreLignes }} ligne(s)</div>
+          <div class="text-caption text-medium-emphasis mb-1">
+            <v-icon icon="mdi-calendar-range" size="13" class="mr-1" />{{ b.duree && b.duree !== 'ANNUEL' ? `${DUREES.find(d => d.value === b.duree)?.title.split(' ')[0]} · ` : '' }}{{ b.libellePeriode || `Exercice ${b.exercice}` }}
+            · {{ b.nombreLignes }} ligne(s)<template v-if="b.nombreServices"> · {{ b.nombreServices }} service{{ b.nombreServices > 1 ? 's' : '' }}</template>
+          </div>
+          <div class="mb-3 d-flex flex-wrap ga-1">
+            <v-chip v-if="Number(b.montantDepassement) > 0" size="x-small" color="error" variant="flat" prepend-icon="mdi-alert-octagon-outline">
+              Dépassement {{ fmtEntier(b.montantDepassement) }} USD
+            </v-chip>
+            <v-chip v-for="s in b.servicesEnDepassement || []" :key="s" size="x-small" color="error" variant="tonal" prepend-icon="mdi-account-alert-outline">
+              {{ s }}
+            </v-chip>
+          </div>
 
           <div class="bud-chiffres">
             <div>

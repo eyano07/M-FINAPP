@@ -17,6 +17,8 @@ interface NoteFrais {
   paieMois?: number | null
   paieAnnee?: number | null
   organismePaie?: string | null
+  /** Service qui engage la dépense (suivi sur son budget). */
+  serviceNom?: string | null
 }
 
 const props = defineProps<{ note: NoteFrais }>()
@@ -78,6 +80,9 @@ const montantFmt = computed(() =>
         </span>
         <span v-if="prioMeta" class="nfc__chip" :style="{ background: prioMeta.bg, color: prioMeta.color }">
           <v-icon :icon="prioMeta.icon" size="11" class="mr-1" />{{ prioMeta.label }}
+        </span>
+        <span v-if="note.serviceNom" class="nfc__chip" style="background: #eef2ff; color: #3730a3" :title="'Service : ' + note.serviceNom">
+          <v-icon icon="mdi-account-group-outline" size="11" class="mr-1" />{{ note.serviceNom }}
         </span>
       </div>
 

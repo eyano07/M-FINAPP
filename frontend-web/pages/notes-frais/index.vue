@@ -155,7 +155,19 @@ const form = reactive({
   objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: 'DECAISSEMENT' as 'DECAISSEMENT' | 'ENCAISSEMENT',
   lignes: lignesVides(),
   justificationBudget: '',
+  serviceId: null as number | null,
 })
+
+// Services budgétaires actifs : la dépense se rattache au service qui l'engage (contrôlée et suivie sur son budget).
+const servicesActifs = ref<{ id: number, titre: string }[]>([])
+async function chargerServices() {
+  try {
+    const liste = await api<{ id: number, nom: string, responsable: string, actif: boolean }[]>('/services-budgetaires')
+    servicesActifs.value = liste.filter(s => s.actif).map(s => ({ id: s.id, titre: `${s.nom} — ${s.responsable}` }))
+  } catch {
+    servicesActifs.value = []
+  }
+}
 // Résultat du contrôle budgétaire des lignes en cours de saisie (composant BudgetControleBudgetaire) : une
 // dépense non couverte par le budget en exécution exige une justification avant la soumission.
 const controleCreation = ref<any | null>(null)
@@ -164,6 +176,7 @@ const devises = ['CDF', 'USD']
 function ouvrirDialog() {
   form.sens = activeSens.value
   dialog.value = true
+  chargerServices()
 }
 
 const lignesValides = computed(() =>
@@ -302,7 +315,7 @@ function utiliserPhoto() {
 }
 
 function resetForm() {
-  Object.assign(form, { objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: activeSens.value, lignes: lignesVides(), justificationBudget: '' })
+  Object.assign(form, { objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: activeSens.value, lignes: lignesVides(), justificationBudget: '', serviceId: null })
   controleCreation.value = null
   fichiersAJoindre.value = []
 }
@@ -327,6 +340,7 @@ async function creerNote(executerEnsuite: boolean) {
         description: form.description || null,
         sens: form.sens,
         justificationBudget: form.sens === 'DECAISSEMENT' && form.justificationBudget.trim() ? form.justificationBudget.trim() : null,
+        serviceId: form.sens === 'DECAISSEMENT' ? form.serviceId : null,
         lignes: lignesValides.value.map(l => ({
           montant: l.montant,
           compteImputation: l.compteImputation || null,
@@ -620,9 +634,24 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
             <v-textarea v-model="form.description" rows="2" placeholder="Détails supplémentaires..." hide-details="auto" />
           </div>
 
+          <div v-if="form.sens === 'DECAISSEMENT' && servicesActifs.length" class="nf-field">
+            <label class="nf-label">Service qui engage la dépense</label>
+            <v-select
+              v-model="form.serviceId"
+              :items="servicesActifs"
+              item-title="titre"
+              item-value="id"
+              placeholder="Aucun service"
+              prepend-inner-icon="mdi-account-group-outline"
+              clearable
+              hint="La dépense est contrôlée et suivie sur le budget de ce service."
+              persistent-hint
+            />
+          </div>
+
           <NotesFraisLignesNoteFrais v-model="form.lignes" :devise="form.devise" :sens="form.sens" />
 
-          <BudgetControleBudgetaire :lignes="form.lignes" :devise="form.devise" :sens="form.sens" @resultat="(r: any) => controleCreation = r" />
+          <BudgetControleBudgetaire :lignes="form.lignes" :devise="form.devise" :sens="form.sens" :service-id="form.serviceId" @resultat="(r: any) => controleCreation = r" />
           <div v-if="form.sens === 'DECAISSEMENT' && controleCreation?.justificationRequise" class="nf-field">
             <label class="nf-label">Justification budgétaire (facultative)</label>
             <v-textarea

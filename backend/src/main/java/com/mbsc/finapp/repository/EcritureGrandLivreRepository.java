@@ -290,24 +290,31 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
     int supprimerEcrituresSansTransaction();
 
     /**
-     * Mouvements mensuels d'une periode par compte des classes budgetaires (2, 6, 7, 8), pour le suivi
-     * budgetaire : [numero, type, mois (1-12), debit, credit]. Memes ecritures que le grand livre (pieces
-     * non brouillon et operations de tresorerie), sans les a-nouveaux, les reevaluations latentes de change
-     * ni la piece de cloture de l'exercice (qui solde les classes 6 et 7 vers le resultat et annulerait le
-     * realise de l'annee).
+     * Mouvements mensuels d'une periode par compte des classes budgetaires (2, 6, 7, 8) et par service, pour le
+     * suivi budgetaire : [numero, type, mois (1-12), serviceId (null : aucun), debit, credit]. Memes ecritures que
+     * le grand livre (pieces non brouillon et operations de tresorerie), sans les a-nouveaux, les reevaluations
+     * latentes de change ni la piece de cloture de l'exercice (qui solde les classes 6 et 7 vers le resultat et
+     * annulerait le realise de l'annee).
+     *
+     * <p>Le service est celui de la note de frais que l'operation de tresorerie (caisse, banque, mobile money) a
+     * payee ; une ecriture sans note, ou d'une note sans service, n'en a pas.</p>
      */
     @Query("""
-        select c.numero, c.type, extract(month from e.dateEcriture), coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
+        select c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sb.id, sm.id),
+               coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
         from EcritureGrandLivre e
         join e.compte c
         left join e.piece p
+        left join e.transaction tc left join tc.noteFrais nc left join nc.service sc
+        left join e.transactionBancaire tb left join tb.noteFrais nb left join nb.service sb
+        left join e.transactionMobileMoney tm left join tm.noteFrais nm left join nm.service sm
         where e.dateEcriture >= :du and e.dateEcriture <= :au
           and c.classe in (2, 6, 7, 8)
           and (p is null or (p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON
                              and p.soldeOuverture = false
                              and p.reevaluationDevise = false
                              and (p.libelle is null or p.libelle not like 'Clôture de l''exercice%')))
-        group by c.numero, c.type, extract(month from e.dateEcriture)
+        group by c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sb.id, sm.id)
     """)
     List<Object[]> mouvementsMensuelsBudgetaires(@Param("du") LocalDate du, @Param("au") LocalDate au);
 }

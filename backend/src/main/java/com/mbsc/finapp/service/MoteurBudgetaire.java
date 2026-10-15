@@ -15,9 +15,10 @@ import java.util.Map;
  * Calculs budgetaires purs (aucun acces a la base), testables isolement.
  *
  * <ul>
- *   <li><b>Ventilation</b> : un montant annuel se repartit sur les douze mois de l'exercice, a parts egales ou
- *       selon un profil (la saisonnalite reelle de l'annee precedente) ; la somme des mois est toujours
- *       exactement le montant annuel, au centime pres.</li>
+ *   <li><b>Ventilation</b> : le montant d'une ligne se repartit sur les mois de la periode du budget (l'exercice
+ *       entier, un semestre, un trimestre ou un mois), a parts egales ou selon un profil (la saisonnalite reelle
+ *       de l'annee precedente) ; la somme des mois est toujours exactement ce montant, au centime pres, et les
+ *       mois hors de la periode valent zero.</li>
  *   <li><b>Periodes</b> : trimestres, semestres et annee sont des totaux des mois — jamais saisis a part,
  *       donc toujours coherents entre eux.</li>
  *   <li><b>Comptes</b> (SYSCOHADA revise) : une ligne budgetaire porte sur un compte du plan comptable et
@@ -30,7 +31,6 @@ import java.util.Map;
 public final class MoteurBudgetaire {
 
     public static final int MOIS = 12;
-    private static final BigDecimal DOUZE = BigDecimal.valueOf(MOIS);
     private static final BigDecimal CENT = BigDecimal.valueOf(100);
 
     private MoteurBudgetaire() {
@@ -42,11 +42,23 @@ public final class MoteurBudgetaire {
 
     /** Parts egales au centime pres ; les centimes restants vont sur decembre (la somme est exacte). */
     public static BigDecimal[] repartirUniformement(BigDecimal annuel) {
-        BigDecimal total = arrondi(nz(annuel));
-        BigDecimal part = total.divide(DOUZE, 2, RoundingMode.DOWN);
-        BigDecimal[] mois = new BigDecimal[MOIS];
-        Arrays.fill(mois, part);
-        mois[MOIS - 1] = total.subtract(part.multiply(BigDecimal.valueOf(MOIS - 1)));
+        return repartirUniformement(annuel, 1, MOIS);
+    }
+
+    /**
+     * Parts egales sur les mois {@code debut} a {@code fin} (1-12) d'une periode, zero ailleurs ; les centimes
+     * restants vont sur le dernier mois de la periode (la somme est exacte).
+     */
+    public static BigDecimal[] repartirUniformement(BigDecimal montant, int debut, int fin) {
+        exigerPeriode(debut, fin);
+        BigDecimal total = arrondi(nz(montant));
+        int n = fin - debut + 1;
+        BigDecimal part = total.divide(BigDecimal.valueOf(n), 2, RoundingMode.DOWN);
+        BigDecimal[] mois = zeros();
+        for (int m = debut; m < fin; m++) {
+            mois[m - 1] = part;
+        }
+        mois[fin - 1] = total.subtract(part.multiply(BigDecimal.valueOf(n - 1L)));
         return mois;
     }
 
@@ -55,26 +67,53 @@ public final class MoteurBudgetaire {
      * mois de l'annee precedente). Profil absent, nul ou incomplet : parts egales.
      */
     public static BigDecimal[] repartirSelonProfil(BigDecimal annuel, BigDecimal[] poids) {
-        BigDecimal total = arrondi(nz(annuel));
+        return repartirSelonProfil(annuel, poids, 1, MOIS);
+    }
+
+    /**
+     * Repartition sur les mois {@code debut} a {@code fin} d'une periode, proportionnelle aux poids de ces mois
+     * (les poids des autres mois sont ignores) ; zero hors de la periode. Profil absent, incomplet ou nul sur la
+     * periode : parts egales.
+     */
+    public static BigDecimal[] repartirSelonProfil(BigDecimal montant, BigDecimal[] poids, int debut, int fin) {
+        exigerPeriode(debut, fin);
+        BigDecimal total = arrondi(nz(montant));
         if (poids == null || poids.length != MOIS) {
-            return repartirUniformement(total);
+            return repartirUniformement(total, debut, fin);
         }
         BigDecimal somme = BigDecimal.ZERO;
-        for (BigDecimal p : poids) {
-            somme = somme.add(nz(p).max(BigDecimal.ZERO));
+        for (int m = debut; m <= fin; m++) {
+            somme = somme.add(nz(poids[m - 1]).max(BigDecimal.ZERO));
         }
         if (somme.signum() <= 0) {
-            return repartirUniformement(total);
+            return repartirUniformement(total, debut, fin);
         }
-        BigDecimal[] mois = new BigDecimal[MOIS];
+        BigDecimal[] mois = zeros();
         BigDecimal reparti = BigDecimal.ZERO;
-        for (int i = 0; i < MOIS - 1; i++) {
-            // Arrondi par defaut sur les onze premiers mois : decembre recoit le reste, jamais negatif.
-            mois[i] = total.multiply(nz(poids[i]).max(BigDecimal.ZERO)).divide(somme, 2, RoundingMode.DOWN);
-            reparti = reparti.add(mois[i]);
+        for (int m = debut; m < fin; m++) {
+            // Arrondi par defaut sur les premiers mois : le dernier mois de la periode recoit le reste, jamais negatif.
+            mois[m - 1] = total.multiply(nz(poids[m - 1]).max(BigDecimal.ZERO)).divide(somme, 2, RoundingMode.DOWN);
+            reparti = reparti.add(mois[m - 1]);
         }
-        mois[MOIS - 1] = total.subtract(reparti);
+        mois[fin - 1] = total.subtract(reparti);
         return mois;
+    }
+
+    /** Mois (1-12) d'une serie mensuelle portant un montant non nul hors de la periode {@code debut}-{@code fin}. */
+    public static List<Integer> moisHorsPeriode(BigDecimal[] mensuel, int debut, int fin) {
+        List<Integer> hors = new ArrayList<>();
+        for (int m = 1; m <= MOIS; m++) {
+            if ((m < debut || m > fin) && mensuel != null && m <= mensuel.length && nz(mensuel[m - 1]).signum() != 0) {
+                hors.add(m);
+            }
+        }
+        return hors;
+    }
+
+    private static void exigerPeriode(int debut, int fin) {
+        if (debut < 1 || fin > MOIS || debut > fin) {
+            throw new IllegalArgumentException("Période invalide : mois " + debut + " à " + fin + ".");
+        }
     }
 
     // ---------------------------------------------------------------------

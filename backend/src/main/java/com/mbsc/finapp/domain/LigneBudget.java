@@ -30,13 +30,23 @@ public class LigneBudget {
     @JoinColumn(name = "compte_id")
     private CompteOHADA compte;
 
-    /** Montant annuel prevu : toujours egal a la somme des douze mois (maintenu par le service). */
+    /**
+     * Service dont la ligne forme l'enveloppe (null : ligne generale, commune a tous). Seules les depenses
+     * (charges, investissements) se rattachent a un service ; les recettes restent generales (V122).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "service_id")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private ServiceBudgetaire service;
+
+    /** Montant prevu sur la periode du budget : toujours egal a la somme des mois (maintenu par le service). */
     @Column(name = "montant_prevu", precision = 15, scale = 2, nullable = false)
     private BigDecimal montantPrevu;
 
     /**
-     * Ventilation mensuelle du montant prevu : mois (1 = janvier de l'exercice) -> montant. Les trimestres,
-     * semestres et l'annee en sont des totaux (voir MoteurBudgetaire).
+     * Ventilation mensuelle du montant prevu : mois (1 = janvier de l'exercice) -> montant. Les mois hors de la
+     * periode du budget valent zero. Les trimestres, semestres et l'annee en sont des totaux (voir MoteurBudgetaire).
      */
     @ElementCollection
     @CollectionTable(name = "lignes_budget_mois", joinColumns = @JoinColumn(name = "ligne_budget_id"))

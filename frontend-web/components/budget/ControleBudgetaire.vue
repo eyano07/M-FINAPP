@@ -20,6 +20,8 @@ const props = defineProps<{
   devise?: string
   sens?: string | null
   rafraichir?: number
+  /** Service qui engage la dépense (saisie) : la note est contrôlée sur l'enveloppe de ce service. */
+  serviceId?: number | null
 }>()
 const emit = defineEmits<{ (e: 'resultat', r: any | null): void }>()
 
@@ -56,7 +58,7 @@ async function controler() {
         return
       }
       resultat.value = await api<any>('/notes-frais/controle-budgetaire', {
-        method: 'POST', body: { devise: props.devise || 'CDF', lignes, noteId: props.noteId || null },
+        method: 'POST', body: { devise: props.devise || 'CDF', lignes, noteId: props.noteId || null, serviceId: props.serviceId ?? null },
       })
     } else if (props.noteId) {
       resultat.value = await api<any>(`/notes-frais/${props.noteId}/controle-budgetaire`)
@@ -76,7 +78,7 @@ function planifier() {
   minuterie = setTimeout(controler, 450)
 }
 
-watch(() => [props.lignes, props.devise, props.sens], planifier, { deep: true })
+watch(() => [props.lignes, props.devise, props.sens, props.serviceId], planifier, { deep: true })
 watch(() => [props.noteId, props.rafraichir], planifier)
 onMounted(controler)
 onBeforeUnmount(() => { if (minuterie) clearTimeout(minuterie) })
@@ -94,19 +96,24 @@ const lignesAffichees = computed(() => (resultat.value?.lignes || []).filter((l:
         {{ statutControle(resultat.statut).label }}
       </v-chip>
       <span v-if="resultat?.budgetReference" class="cb-budget">
-        Budget {{ resultat.budgetReference }} — {{ resultat.budgetIntitule }}
+        Budget {{ resultat.budgetReference }} — {{ resultat.budgetIntitule }}<template v-if="resultat.budgetPeriode"> ({{ resultat.budgetPeriode }})</template>
       </span>
-      <span v-else-if="resultat && resultat.statut !== 'NON_CONCERNE'" class="cb-budget">Aucun budget en exécution pour {{ resultat.exercice }}</span>
+      <span v-else-if="resultat && resultat.statut !== 'NON_CONCERNE'" class="cb-budget">
+        Aucun budget en exécution pour {{ (MOIS_LONGS[(resultat.mois || 1) - 1] || '').toLowerCase() }} {{ resultat.exercice }}
+      </span>
     </div>
+    <p v-if="resultat?.serviceNom" class="cb-service">
+      <v-icon icon="mdi-account-group-outline" size="14" /> Service {{ resultat.serviceNom }}<template v-if="resultat.serviceResponsable"> — responsable {{ resultat.serviceResponsable }}</template> : la dépense est contrôlée sur l’enveloppe de ce service.
+    </p>
     <p v-if="erreur" class="cb-erreur">{{ erreur }}</p>
     <div v-for="l in lignesAffichees" :key="l.index" class="cb-ligne">
       <v-icon :icon="statutControle(l.statut).icon" :color="statutControle(l.statut).color" size="16" />
       <div>
-        <span class="cb-ligne__titre">Ligne {{ l.index + 1 }} · {{ l.compteNumero }}<span v-if="l.compteLibelle"> {{ l.compteLibelle }}</span></span>
+        <span class="cb-ligne__titre">Ligne {{ l.index + 1 }} · {{ l.compteNumero }}<template v-if="l.compteLibelle"> — {{ l.compteLibelle }}</template></span>
         <span class="cb-ligne__msg">{{ l.message }}</span>
         <span v-if="l.prevuAnnuel !== null && l.prevuAnnuel !== undefined" class="cb-ligne__detail">
-          Ligne {{ l.ligneBudgetCompte }} : prévu à fin de mois {{ fmtMontant(l.prevuCumule) }}, réalisé {{ fmtMontant(l.realiseCumule) }},
-          engagé {{ fmtMontant(l.engage) }} — prévu annuel {{ fmtMontant(l.prevuAnnuel) }}, disponible sur l’année {{ fmtMontant(l.disponibleAnnuel) }} USD
+          Ligne {{ l.ligneBudgetCompte }}<template v-if="l.enveloppe"> ({{ l.enveloppe }})</template> : prévu à fin de mois {{ fmtMontant(l.prevuCumule) }}, réalisé {{ fmtMontant(l.realiseCumule) }},
+          engagé {{ fmtMontant(l.engage) }} — prévu sur la période {{ fmtMontant(l.prevuAnnuel) }}, disponible sur la période {{ fmtMontant(l.disponibleAnnuel) }} USD
         </span>
       </div>
     </div>
@@ -126,6 +133,7 @@ const lignesAffichees = computed(() => (resultat.value?.lignes || []).filter((l:
 .cb-tete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cb-titre { font-weight: 700; font-size: 0.86rem; }
 .cb-budget { font-size: 0.76rem; color: #4b5563; }
+.cb-service { font-size: 0.78rem; color: #3730a3; margin: 6px 0 0; display: flex; gap: 4px; align-items: baseline; flex-wrap: wrap; }
 .cb-ligne { display: flex; gap: 8px; margin-top: 8px; align-items: flex-start; }
 .cb-ligne__titre { display: block; font-size: 0.8rem; font-weight: 600; }
 .cb-ligne__msg { display: block; font-size: 0.8rem; color: #374151; }

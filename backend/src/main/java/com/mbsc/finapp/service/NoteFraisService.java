@@ -12,6 +12,7 @@ import com.mbsc.finapp.domain.LigneNoteFrais;
 import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.ObservationNote;
 import com.mbsc.finapp.domain.PieceJointe;
+import com.mbsc.finapp.domain.ServiceBudgetaire;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
@@ -45,6 +46,7 @@ import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EmballageBoissonRepository;
 import com.mbsc.finapp.repository.EntrepotRepository;
 import com.mbsc.finapp.repository.NoteFraisRepository;
+import com.mbsc.finapp.repository.ServiceBudgetaireRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -118,6 +120,7 @@ public class NoteFraisService {
     private final NoteFraisRepository noteRepository;
     private final BudgetRepository budgetRepository;
     private final ControleBudgetaireService controleBudgetaire;
+    private final ServiceBudgetaireRepository serviceBudgetaireRepository;
     private final CompteOHADARepository compteRepository;
     private final ArticleRepository articleRepository;
     private final EntrepotRepository entrepotRepository;
@@ -252,6 +255,7 @@ public class NoteFraisService {
             .sens(sens)
             .createur(auteur)
             .justificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null)
+            .service(sens == SensTransaction.DECAISSEMENT ? resoudreService(req.serviceId(), null) : null)
             .build();
 
         construireLignes(note, req.lignes());
@@ -279,6 +283,7 @@ public class NoteFraisService {
         note.setDescription(req.description());
         note.setDevise(req.devise() == null ? Devise.CDF : req.devise());
         note.setJustificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null);
+        note.setService(note.getSens() == SensTransaction.DECAISSEMENT ? resoudreService(req.serviceId(), note.getService()) : null);
 
         List<LigneNoteFrais> nouvelles = creerLignes(req.lignes(), note.getSens());
         note.remplacerLignes(nouvelles);
@@ -520,7 +525,7 @@ public class NoteFraisService {
         ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, null, "Soumission");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
-            "Note à vérifier", note.getReference() + " — " + note.getObjet() + mentionHorsBudget(controle),
+            "Note à vérifier", note.getReference() + " — " + note.getObjet() + mentionService(note) + mentionHorsBudget(controle),
             "/notes-frais/" + note.getId(), note);
         return reponse;
     }
@@ -961,7 +966,7 @@ public class NoteFraisService {
         tracerControleBudgetaire(note, controle);
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, action, "Soumission");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
-            "Note à vérifier", note.getReference() + " — " + note.getObjet() + mentionHorsBudget(controle),
+            "Note à vérifier", note.getReference() + " — " + note.getObjet() + mentionService(note) + mentionHorsBudget(controle),
             "/notes-frais/" + note.getId(), note);
         return reponse;
     }
@@ -975,7 +980,7 @@ public class NoteFraisService {
         ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VERIFIEE_DFIN, action, "Verifiee");
         notificationService.notifierRole(RoleType.DA, TypeNotification.NOTE_VERIFIEE,
-            "Note à valider", note.getReference() + " — " + note.getObjet() + mentionHorsBudget(controle),
+            "Note à valider", note.getReference() + " — " + note.getObjet() + mentionService(note) + mentionHorsBudget(controle),
             "/notes-frais/" + note.getId(), note);
         return reponse;
     }
@@ -1161,6 +1166,48 @@ public class NoteFraisService {
         return NoteFraisDetailResponse.from(noteRepository.saveAndFlush(note));
     }
 
+    /**
+     * Rattache une note de decaissement a un service budgetaire, ou l'en detache : le createur tant que la note n'est
+     * pas soumise (brouillon, ou rejetee par le DA), le DFIN pendant sa verification (note SOUMISE). Le changement est
+     * trace dans l'historique ; le controle budgetaire d'une note soumise est refait sur l'enveloppe du nouveau service.
+     */
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'DFIN', 'ADMIN')")
+    @Transactional
+    public NoteFraisDetailResponse modifierService(Long id, Long serviceId) {
+        NoteFrais note = charger(id);
+        if (note.getSens() != SensTransaction.DECAISSEMENT) {
+            throw new TransitionInvalideException("Une note d'encaissement ne se rattache pas à un service : seules les dépenses se suivent par service.");
+        }
+        StatutNote statut = note.getStatut();
+        if (statut == StatutNote.SOUMISE) {
+            if (!aLeRole("ROLE_DFIN")) {
+                throw new TransitionInvalideException("Pendant la vérification de la note, seul le " + libelle(RoleType.DFIN)
+                    + " en change le service.");
+            }
+        } else if (statut == StatutNote.BROUILLON || statut == StatutNote.REJETEE_DA) {
+            exigerCreateur(note);
+        } else {
+            throw new TransitionInvalideException("Le service d'une note se choisit avant sa vérification : par son créateur "
+                + "(note en brouillon ou rejetée), ou par le " + libelle(RoleType.DFIN) + " pendant la vérification.");
+        }
+        ServiceBudgetaire ancien = note.getService();
+        ServiceBudgetaire nouveau = resoudreService(serviceId, ancien);
+        if (java.util.Objects.equals(ancien == null ? null : ancien.getId(), nouveau == null ? null : nouveau.getId())) {
+            return NoteFraisDetailResponse.from(note);
+        }
+        User auteur = currentUser.requireUser();
+        note.setService(nouveau);
+        note.addObservation(observation(note, auteur, statut, "Service budgétaire : "
+            + (ancien == null ? "aucun" : ancien.getNom()) + " → " + (nouveau == null ? "aucun" : nouveau.getNom())));
+        if (statut == StatutNote.SOUMISE) {
+            appliquerControleBudgetaire(note);
+        }
+        note = noteRepository.saveAndFlush(note);
+        log.info("Note {} : service budgetaire {} -> {} (par {})", note.getReference(),
+            ancien == null ? "aucun" : ancien.getNom(), nouveau == null ? "aucun" : nouveau.getNom(), auteur.getEmail());
+        return NoteFraisDetailResponse.from(note);
+    }
+
     /** Controle d'une note en cours de saisie (ecran de creation / modification). */
     @Transactional(readOnly = true)
     public ControleBudgetaireResponse controleBudgetaire(ControleBudgetaireRequest req) {
@@ -1201,6 +1248,11 @@ public class NoteFraisService {
             : "sans justification du demandeur";
         note.addObservation(observation(note, currentUser.requireUser(), note.getStatut(),
             "Contrôle budgétaire : " + resumeControle(controle) + " — " + justification));
+    }
+
+    /** Service de la note dans les notifications (« · service Restaurant »), vide sans service. */
+    private static String mentionService(NoteFrais note) {
+        return note.getService() == null ? "" : " · service " + note.getService().getNom();
     }
 
     /** Mention ajoutee aux notifications d'une note non couverte par le budget, pour que le DFIN et le DA le voient d'emblee. */
@@ -1316,6 +1368,29 @@ public class NoteFraisService {
             throw new TransitionInvalideException(
                 "Seul le createur de la note peut effectuer cette action");
         }
+    }
+
+    /**
+     * Service choisi pour une depense : null si aucun ; le service actuel de la note est garde meme s'il a ete desactive
+     * depuis ; un autre service doit etre actif.
+     */
+    private ServiceBudgetaire resoudreService(Long serviceId, ServiceBudgetaire actuel) {
+        if (serviceId == null) {
+            return null;
+        }
+        if (actuel != null && serviceId.equals(actuel.getId())) {
+            return actuel;
+        }
+        ServiceBudgetaire s = serviceBudgetaireRepository.findById(serviceId)
+            .orElseThrow(() -> RessourceIntrouvableException.of("ServiceBudgetaire", serviceId));
+        if (!s.isActif()) {
+            throw new IllegalArgumentException("Le service « " + s.getNom() + " » est désactivé : choisissez un service actif.");
+        }
+        return s;
+    }
+
+    private boolean aLeRole(String autorite) {
+        return currentUser.requirePrincipal().getAuthorities().stream().anyMatch(a -> autorite.equals(a.getAuthority()));
     }
 
     private void exigerRoleCaissierOuAdmin() {

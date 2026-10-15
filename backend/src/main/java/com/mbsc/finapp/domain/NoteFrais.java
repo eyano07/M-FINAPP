@@ -122,6 +122,15 @@ public class NoteFrais {
     @ToString.Exclude
     private Budget budget;
 
+    /**
+     * Service qui engage la depense (facultatif) : la note est controlee sur l'enveloppe de ce service et sa
+     * depense se suit sur son budget (V122). Choisi par le demandeur, corrigeable par le DFIN a la verification.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "service_id")
+    @ToString.Exclude
+    private ServiceBudgetaire service;
+
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "createur_id")
     private User createur;   // Directeur (ou Caissier en urgence)

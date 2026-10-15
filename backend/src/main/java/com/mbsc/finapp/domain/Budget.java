@@ -1,11 +1,14 @@
 package com.mbsc.finapp.domain;
 
+import com.mbsc.finapp.domain.enums.DureeBudget;
 import com.mbsc.finapp.domain.enums.StatutBudget;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,6 +34,20 @@ public class Budget {
 
     @Column(nullable = false)
     private Integer exercice;   // annee
+
+    /**
+     * Duree couverte : l'exercice entier, un semestre, un trimestre ou un mois (V122). Avec {@link #periode},
+     * elle fixe les mois couverts ; les montants des autres mois restent a zero.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 12)
+    @Builder.Default
+    private DureeBudget duree = DureeBudget.ANNUEL;
+
+    /** Numero de la periode dans l'exercice : 1 pour l'annee, 1-2 (semestre), 1-4 (trimestre), 1-12 (mois). */
+    @Column(nullable = false)
+    @Builder.Default
+    private int periode = 1;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -88,5 +105,44 @@ public class Budget {
     public void addLigne(LigneBudget ligne) {
         ligne.setBudget(this);
         this.lignes.add(ligne);
+    }
+
+    /** Premier mois couvert (1 = janvier de l'exercice). */
+    public int moisDebut() {
+        return duree.moisDebut(periode);
+    }
+
+    /** Dernier mois couvert (12 = decembre de l'exercice). */
+    public int moisFin() {
+        return duree.moisFin(periode);
+    }
+
+    public boolean couvreMois(int mois) {
+        return mois >= moisDebut() && mois <= moisFin();
+    }
+
+    /** Premier jour de la periode couverte. */
+    public LocalDate premierJour() {
+        return LocalDate.of(exercice, moisDebut(), 1);
+    }
+
+    /** Dernier jour de la periode couverte. */
+    public LocalDate dernierJour() {
+        return YearMonth.of(exercice, moisFin()).atEndOfMonth();
+    }
+
+    /** « Exercice 2026 », « 2e semestre 2026 », « 4e trimestre 2026 », « Décembre 2026 ». */
+    public String libellePeriode() {
+        return duree.libelle(periode, exercice);
+    }
+
+    /** true si les deux budgets couvrent au moins un mois en commun. */
+    public boolean chevauche(Budget autre) {
+        return exercice.equals(autre.getExercice()) && moisDebut() <= autre.moisFin() && autre.moisDebut() <= moisFin();
+    }
+
+    /** true si au moins une ligne est rattachee a un service (budget organise par service). */
+    public boolean parService() {
+        return lignes.stream().anyMatch(l -> l.getService() != null);
     }
 }

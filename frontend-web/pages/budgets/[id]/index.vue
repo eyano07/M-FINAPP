@@ -68,7 +68,7 @@ onUnmounted(() => {
 // Actions lourdes de conséquences : confirmation préalable.
 const CONFIRMATIONS = computed<Record<string, { titre: string, texte: string, bouton: string, couleur: string }>>(() => ({
   soumettre: { titre: `Soumettre au ${lDA.value} ?`, texte: `Le budget ne sera plus modifiable tant que le ${lDA.value} ne l’aura pas approuvé ou rejeté.`, bouton: 'Soumettre', couleur: 'blue' },
-  demarrer: { titre: 'Mettre ce budget en exécution ?', texte: 'Il contrôlera désormais toutes les notes de frais de l’exercice : toute dépense non budgétée ou en dépassement devra être justifiée.', bouton: 'Mettre en exécution', couleur: 'teal' },
+  demarrer: { titre: 'Mettre ce budget en exécution ?', texte: `Il contrôlera désormais les notes de frais de « ${budget.value?.libellePeriode || ''} » : toute dépense non budgétée ou en dépassement (y compris d’un service sur son enveloppe) sera signalée.`, bouton: 'Mettre en exécution', couleur: 'teal' },
   cloturer: { titre: 'Clôturer ce budget ?', texte: 'Il ne contrôlera plus les notes de frais et restera consultable.', bouton: 'Clôturer', couleur: 'brown' },
 }))
 const actionAConfirmer = ref('')
@@ -96,7 +96,7 @@ async function transition(chemin: string, corps: any = {}) {
       approuver: `Budget approuvé : le ${lDFIN.value} peut le mettre en exécution.`,
       rejeter: `Budget rejeté : le ${lDFIN.value} peut le reprendre et le corriger.`,
       reprendre: 'Budget repris en brouillon : il peut être modifié puis soumis à nouveau.',
-      demarrer: 'Budget en exécution : il contrôle désormais les notes de frais de l’exercice.',
+      demarrer: `Budget en exécution : il contrôle désormais les notes de frais de « ${budget.value?.libellePeriode || ''} ».`,
       cloturer: 'Budget clôturé : il reste consultable.',
     }[chemin] || ''
     dialogueMotif.value = ''
@@ -139,6 +139,19 @@ const dateImpression = new Date().toLocaleDateString('fr-FR')
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—')
 
 // ---------------------------------------------------------------------------------------------
+// Période couverte
+// ---------------------------------------------------------------------------------------------
+const estAnnuel = computed(() => !budget.value?.duree || budget.value.duree === 'ANNUEL')
+const moisDebut = computed(() => suivi.value?.moisDebut || budget.value?.moisDebut || 1)
+const moisFin = computed(() => suivi.value?.moisFin || budget.value?.moisFin || 12)
+const libellePeriodeBudget = computed(() => budget.value?.libellePeriode || `Exercice ${budget.value?.exercice}`)
+const motDuree = computed(() => motPeriode(budget.value?.duree))
+/** La période est terminée (lendemain de son dernier jour) : le budget peut être clôturé. */
+const periodeTerminee = computed(() => !!budget.value && new Date() > new Date(budget.value.exercice, moisFin.value, 0, 23, 59, 59))
+/** Mois de la période (indices 0-11), pour les graphiques. */
+const moisPeriode = computed(() => Array.from({ length: moisFin.value - moisDebut.value + 1 }, (_, i) => moisDebut.value - 1 + i))
+
+// ---------------------------------------------------------------------------------------------
 // Indicateurs
 // ---------------------------------------------------------------------------------------------
 const section = (code: string) => suivi.value?.sections?.find((s: any) => s.code === code) || null
@@ -170,26 +183,27 @@ watch(sectionsDisponibles, (liste) => {
 
 const dataMensuel = computed(() => {
   const s = section(sectionGraphique.value)
+  const garder = (m: any[]) => moisPeriode.value.map(i => Number(m?.[i] || 0))
   return {
-    labels: MOIS_COURTS,
+    labels: moisPeriode.value.map(i => MOIS_COURTS[i]),
     datasets: [
-      { label: 'Prévu', data: (s?.prevu || []).map(Number), backgroundColor: 'rgba(148, 163, 184, 0.55)', borderRadius: 4 },
-      { label: 'Réalisé', data: (s?.realise || []).map(Number), backgroundColor: SECTIONS[sectionGraphique.value]?.color || '#2563eb', borderRadius: 4 },
-      { label: 'Engagé', data: (s?.engage || []).map(Number), backgroundColor: 'rgba(245, 158, 11, 0.75)', borderRadius: 4 },
+      { label: 'Prévu', data: garder(s?.prevu || []), backgroundColor: 'rgba(148, 163, 184, 0.55)', borderRadius: 4 },
+      { label: 'Réalisé', data: garder(s?.realise || []), backgroundColor: SECTIONS[sectionGraphique.value]?.color || '#2563eb', borderRadius: 4 },
+      { label: 'Engagé', data: garder(s?.engage || []), backgroundColor: 'rgba(245, 158, 11, 0.75)', borderRadius: 4 },
     ],
   }
 })
 
 const dataCumul = computed(() => {
   const s = section(sectionGraphique.value)
-  const cumuler = (m: any[]) => m.map((_: any, i: number) => cumul(m, i + 1))
+  const cumuler = (m: any[]) => moisPeriode.value.map(i => cumul(m, i + 1))
   const realise = cumuler(s?.realise || [])
   return {
-    labels: MOIS_COURTS,
+    labels: moisPeriode.value.map(i => MOIS_COURTS[i]),
     datasets: [
       { label: 'Prévu cumulé', data: cumuler(s?.prevu || []), borderColor: '#94a3b8', backgroundColor: 'rgba(148,163,184,0.15)', fill: true, tension: 0.25, pointRadius: 2 },
       // Le réalisé s'arrête au mois en cours : au-delà, rien n'est encore réalisé.
-      { label: 'Réalisé cumulé', data: realise.map((v: number, i: number) => (i < Math.max(moisEcoules.value, 1) ? v : null)), borderColor: SECTIONS[sectionGraphique.value]?.color || '#2563eb', tension: 0.25, pointRadius: 3 },
+      { label: 'Réalisé cumulé', data: realise.map((v: number, k: number) => (moisPeriode.value[k] < Math.max(moisEcoules.value, 1) ? v : null)), borderColor: SECTIONS[sectionGraphique.value]?.color || '#2563eb', tension: 0.25, pointRadius: 3 },
     ],
   }
 })
@@ -237,13 +251,20 @@ const VUES = [
   { value: 'realise', title: 'Réalisé' },
   { value: 'ecart', title: 'Écart (réalisé − prévu)' },
 ]
-const colonnes = computed(() => colonnesPeriode(periode.value))
+// Budget annuel : découpage au choix (mois, trimestres, semestres, année). Budget d'une période plus courte : ses
+// mois (aucune colonne de détail pour un seul mois, le total suffit).
+const colonnes = computed(() => (estAnnuel.value ? colonnesPeriode(periode.value)
+  : moisFin.value > moisDebut.value ? moisPeriode.value.map(i => MOIS_COURTS[i]) : []))
+function decouper(m: any[]): number[] {
+  if (estAnnuel.value) return regrouper(m, periode.value)
+  return moisFin.value > moisDebut.value ? moisPeriode.value.map(i => centimes(Number(m?.[i] || 0))) : []
+}
 
 function serie(x: any): number[] {
-  if (vue.value === 'prevu') return regrouper(x.prevu, periode.value)
-  if (vue.value === 'realise') return regrouper(x.realise, periode.value)
-  const p = regrouper(x.prevu, periode.value)
-  return regrouper(x.realise, periode.value).map((v, i) => centimes(v - p[i]))
+  if (vue.value === 'prevu') return decouper(x.prevu)
+  if (vue.value === 'realise') return decouper(x.realise)
+  const p = decouper(x.prevu)
+  return decouper(x.realise).map((v, i) => centimes(v - p[i]))
 }
 
 /** Lignes du tableau : section, puis pour chaque nature ses lignes et son sous-total. */
@@ -258,6 +279,24 @@ const blocs = computed(() => {
 })
 
 const disponible = (x: any) => centimes(Number(x.prevuAnnuel) - Number(x.realiseAnnuel) - Number(x.engageAnnuel || 0))
+
+// ---------------------------------------------------------------------------------------------
+// Services et dépassements
+// ---------------------------------------------------------------------------------------------
+const services = computed<any[]>(() => suivi.value?.services || [])
+const serviceOuvert = ref<number | string | null>(null)
+const cleService = (s: any) => s.serviceId ?? 'GENERAL'
+function basculerService(s: any) {
+  serviceOuvert.value = serviceOuvert.value === cleService(s) ? null : cleService(s)
+}
+const depassementsServices = computed<any[]>(() => (suivi.value?.depassements || []).filter((d: any) => d.niveau === 'SERVICE'))
+const depassementsConsolides = computed<any[]>(() => (suivi.value?.depassements || []).filter((d: any) => d.niveau === 'CONSOLIDE'))
+const montantDepassementConsolide = computed(() => somme(depassementsConsolides.value, 'montant'))
+const servicesEnDepassement = computed(() => services.value.filter((s: any) => s.serviceId !== null && Number(s.depassement) > 0))
+const nomEnveloppe = (d: any) => (d.niveau === 'CONSOLIDE' ? 'Budget consolidé' : d.serviceId === null ? 'Lignes générales' : d.serviceNom)
+function allerAuxDepassements() {
+  document.getElementById('bs-depassements')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 const classeTaux = (section: string, t: unknown) => (t !== null && t !== undefined && Number(t) > 100 && section !== 'PRODUITS' ? 'bs-defavorable' : '')
 const classeEcart = (section: string, v: number) => {
   const f = ecartFavorable(section, v)
@@ -276,7 +315,7 @@ const classeEcart = (section: string, v: number) => {
         </div>
         <div>
           <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
-          <span class="etat-print-header__doc">Budget prévisionnel {{ budget?.exercice }}</span>
+          <span class="etat-print-header__doc">Budget prévisionnel — {{ libellePeriodeBudget }}</span>
         </div>
       </div>
       <div class="etat-print-header__meta print-entete__meta">
@@ -297,7 +336,8 @@ const classeEcart = (section: string, v: number) => {
         <div style="min-width: 0">
           <h1 class="page-title">{{ budget.intitule }}</h1>
           <p class="page-sub">
-            {{ budget.reference }} · exercice {{ budget.exercice }}
+            {{ budget.reference }} · <v-icon icon="mdi-calendar-range" size="14" /> {{ libellePeriodeBudget }}<template v-if="!estAnnuel"> ({{ DUREES.find(d => d.value === budget.duree)?.title.split(' ')[0].toLowerCase() }})</template>
+            <template v-if="budget.parService"> · budget par service</template>
             <span v-if="budget.numeroRevision"> · révision n° {{ budget.numeroRevision }} de
               <NuxtLink :to="`/budgets/${budget.revisionDeId}`">{{ budget.revisionDeReference }}</NuxtLink></span>
           </p>
@@ -316,7 +356,7 @@ const classeEcart = (section: string, v: number) => {
         <v-btn v-if="estDfin && budget.statut === 'REJETE'" color="primary" variant="tonal" prepend-icon="mdi-undo" :loading="action === 'reprendre'" @click="transition('reprendre')">Reprendre en brouillon</v-btn>
         <v-btn v-if="estDfin && budget.statut === 'APPROUVE'" color="teal" prepend-icon="mdi-play" :loading="action === 'demarrer'" @click="actionAConfirmer = 'demarrer'">Mettre en exécution</v-btn>
         <v-btn v-if="estDfin && budget.statut === 'EN_EXECUTION'" color="indigo" variant="tonal" prepend-icon="mdi-file-replace-outline" :loading="action === 'reviser'" @click="transition('reviser')">Réviser</v-btn>
-        <v-btn v-if="estDfin && budget.statut === 'EN_EXECUTION' && budget.exercice < new Date().getFullYear()" color="brown" variant="tonal" prepend-icon="mdi-archive" :loading="action === 'cloturer'" @click="actionAConfirmer = 'cloturer'">Clôturer</v-btn>
+        <v-btn v-if="estDfin && budget.statut === 'EN_EXECUTION' && periodeTerminee" color="brown" variant="tonal" prepend-icon="mdi-archive" :loading="action === 'cloturer'" @click="actionAConfirmer = 'cloturer'">Clôturer</v-btn>
         <v-btn v-if="estDfin && (budget.statut === 'BROUILLON' || budget.statut === 'REJETE')" color="error" variant="text" prepend-icon="mdi-delete-outline" @click="confirmationSuppression = true">Supprimer</v-btn>
         <v-spacer />
         <v-btn variant="tonal" prepend-icon="mdi-printer" @click="imprimer">Imprimer</v-btn>
@@ -330,7 +370,8 @@ const classeEcart = (section: string, v: number) => {
           <div><span>Soumis</span><strong>{{ fmtDate(budget.dateSoumission) }}</strong></div>
           <div><span>Approuvé par</span><strong>{{ budget.approuveParNom || '—' }}</strong><small v-if="budget.dateApprobation">le {{ fmtDate(budget.dateApprobation) }}</small></div>
           <div><span>En exécution depuis</span><strong>{{ fmtDate(budget.dateExecution) }}</strong></div>
-          <div><span>Réalisé calculé au</span><strong>{{ fmtDate(suivi.calculeLe) }}</strong><small>{{ moisEcoules }} mois écoulé(s)</small></div>
+          <div><span>Réalisé calculé au</span><strong>{{ fmtDate(suivi.calculeLe) }}</strong><small>{{ moisEcoules }} mois écoulé(s) de l’exercice</small></div>
+          <div><span>Période couverte</span><strong>{{ libellePeriodeBudget }}</strong><small>{{ MOIS_LONGS[moisDebut - 1] }}<template v-if="moisFin !== moisDebut"> à {{ MOIS_LONGS[moisFin - 1].toLowerCase() }}</template> {{ budget.exercice }}</small></div>
         </div>
         <p v-if="budget.observation" class="bs-observation"><v-icon icon="mdi-text" size="16" /> {{ budget.observation }}</p>
         <v-alert v-if="budget.motifRejet" type="error" variant="tonal" density="compact" class="mt-3" icon="mdi-close-octagon-outline">
@@ -338,6 +379,19 @@ const classeEcart = (section: string, v: number) => {
         </v-alert>
         <v-alert v-for="(a, i) in suivi.avertissements" :key="i" type="warning" variant="tonal" density="compact" class="mt-2">{{ a }}</v-alert>
       </v-card>
+
+      <v-alert v-if="suivi.depassements?.length" type="error" variant="tonal" class="mb-4" icon="mdi-alert-octagon-outline" border="start">
+        <div class="font-weight-bold mb-1">Dépassement budgétaire</div>
+        <div v-if="montantDepassementConsolide > 0">
+          Budget consolidé : {{ fmtMontant(montantDepassementConsolide) }} USD de dépassement sur {{ depassementsConsolides.length }}
+          ligne{{ depassementsConsolides.length > 1 ? 's' : '' }} (réalisé + engagé au-delà du prévu de la période).
+        </div>
+        <div v-if="servicesEnDepassement.length">
+          Service{{ servicesEnDepassement.length > 1 ? 's' : '' }} en dépassement :
+          <template v-for="(sv, i) in servicesEnDepassement" :key="sv.serviceId">{{ i ? ', ' : '' }}<strong>{{ sv.nom }}</strong> ({{ sv.responsable }}, {{ fmtMontant(sv.depassement) }} USD)</template>.
+        </div>
+        <v-btn size="small" variant="text" color="error" class="mt-1 no-print" prepend-icon="mdi-arrow-down" @click="allerAuxDepassements">Voir le détail</v-btn>
+      </v-alert>
 
       <!-- Indicateurs -->
       <div class="bs-kpis mb-4">
@@ -356,6 +410,160 @@ const classeEcart = (section: string, v: number) => {
         </div>
       </div>
 
+      <!-- Exécution par service -->
+      <v-card v-if="services.length" class="classroom-card mb-4">
+        <div class="pa-4 pb-2 d-flex align-center flex-wrap ga-2">
+          <span class="bs-titre"><v-icon icon="mdi-account-group-outline" size="18" class="mr-1" />Exécution par service (dépenses, USD)</span>
+          <span class="text-caption text-medium-emphasis">Enveloppe de chaque service sur « {{ libellePeriodeBudget }} » ; cliquez sur un service pour ses lignes et ses notes de frais.</span>
+        </div>
+        <div class="bs-table-wrap">
+          <table class="bs-table bs-services">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Responsable</th>
+                <th class="num">Prévu</th>
+                <th class="num">Réalisé</th>
+                <th class="num">Engagé</th>
+                <th class="num">Disponible</th>
+                <th class="num">Exécution</th>
+                <th class="num">Non budgété</th>
+                <th class="num">Dépassement</th>
+                <th class="no-print" />
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="sv in services" :key="cleService(sv)">
+                <tr class="bs-service-ligne" :class="{ 'bs-ligne-depassement': Number(sv.depassement) > 0, 'bs-sous-total': sv.serviceId === null }"
+                  tabindex="0" role="button" :aria-expanded="serviceOuvert === cleService(sv)" @click="basculerService(sv)" @keydown.enter="basculerService(sv)">
+                  <td><strong>{{ sv.nom }}</strong><v-chip v-if="!sv.actif" size="x-small" variant="tonal" class="ml-1">désactivé</v-chip></td>
+                  <td>{{ sv.responsable || '—' }}</td>
+                  <td class="num">{{ fmtMontant(sv.prevu) }}</td>
+                  <td class="num">{{ fmtMontant(sv.realise) }}</td>
+                  <td class="num">{{ fmtMontant(sv.engage) }}</td>
+                  <td class="num" :class="Number(sv.disponible) < 0 ? 'bs-defavorable' : ''">{{ fmtMontant(sv.disponible) }}</td>
+                  <td class="num">
+                    <div class="bs-jauge"><v-progress-linear :model-value="Math.min(100, Number(sv.tauxExecution || 0))" :color="Number(sv.tauxExecution || 0) > 100 ? 'error' : 'primary'" height="6" rounded /></div>
+                    <span :class="Number(sv.tauxExecution || 0) > 100 ? 'bs-defavorable' : ''">{{ fmtTaux(sv.tauxExecution) }}</span>
+                  </td>
+                  <td class="num" :class="Number(sv.nonBudgete) > 0 ? 'bs-defavorable' : ''">{{ fmtMontant(sv.nonBudgete) }}</td>
+                  <td class="num" :class="Number(sv.depassement) > 0 ? 'bs-defavorable' : ''">
+                    <template v-if="Number(sv.depassement) > 0"><v-icon icon="mdi-alert-octagon" size="14" color="error" /> {{ fmtMontant(sv.depassement) }}</template>
+                    <template v-else>—</template>
+                  </td>
+                  <td class="no-print"><v-icon :icon="serviceOuvert === cleService(sv) ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="18" /></td>
+                </tr>
+                <tr v-if="serviceOuvert === cleService(sv)" class="bs-service-detail">
+                  <td colspan="10">
+                    <p v-if="!sv.lignes.length" class="text-caption mb-2">
+                      Aucune ligne de budget pour ce service : ses dépenses s’imputent sur les lignes générales, ou sont « non budgétées ».
+                    </p>
+                    <table v-else class="bs-table bs-table--interne">
+                      <thead>
+                        <tr><th>Compte</th><th>Libellé</th><th class="num">Prévu</th><th class="num">Réalisé</th><th class="num">Engagé</th><th class="num">Disponible</th><th class="num">Taux</th><th class="num">Dépassement</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="l in sv.lignes" :key="l.id" :class="{ 'bs-ligne-depassement': Number(l.depassement) > 0 }">
+                          <td class="mono">{{ l.compteNumero }}</td>
+                          <td>{{ l.compteLibelle }}<div v-if="l.commentaire" class="bs-commentaire">{{ l.commentaire }}</div></td>
+                          <td class="num">{{ fmtMontant(l.prevuAnnuel) }}</td>
+                          <td class="num">{{ fmtMontant(l.realiseAnnuel) }}</td>
+                          <td class="num">{{ fmtMontant(l.engageAnnuel) }}</td>
+                          <td class="num" :class="Number(l.disponibleAnnuel) < 0 && l.section !== 'PRODUITS' ? 'bs-defavorable' : ''">{{ fmtMontant(l.disponibleAnnuel) }}</td>
+                          <td class="num" :class="classeTaux(l.section, l.tauxExecution)">{{ fmtTaux(l.tauxExecution) }}</td>
+                          <td class="num" :class="Number(l.depassement) > 0 ? 'bs-defavorable' : ''">{{ Number(l.depassement) > 0 ? fmtMontant(l.depassement) : '—' }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <div v-if="sv.horsBudget.length" class="mt-3">
+                      <div class="bs-sous-titre text-error"><v-icon icon="mdi-alert-outline" size="15" /> Dépenses non budgétées pour ce service</div>
+                      <table class="bs-table bs-table--interne">
+                        <thead><tr><th>Compte</th><th>Libellé</th><th class="num">Réalisé</th><th class="num">Engagé</th></tr></thead>
+                        <tbody>
+                          <tr v-for="h in sv.horsBudget" :key="h.compteNumero">
+                            <td class="mono">{{ h.compteNumero }}</td>
+                            <td>{{ h.compteLibelle }}</td>
+                            <td class="num">{{ fmtMontant(h.realiseAnnuel) }}</td>
+                            <td class="num">{{ fmtMontant(h.engageAnnuel) }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p v-if="Number(sv.imputeGeneral) > 0" class="text-caption mt-2 mb-0">
+                      <v-icon icon="mdi-information-outline" size="14" /> {{ fmtMontant(sv.imputeGeneral) }} USD de dépenses du service sont imputés sur les lignes
+                      générales (le service n’a pas de ligne pour ces comptes) : ils ne comptent pas dans son enveloppe.
+                    </p>
+                    <div v-if="sv.notes.length" class="mt-3">
+                      <div class="bs-sous-titre">Notes de frais du service sur la période ({{ sv.notes.length }})</div>
+                      <table class="bs-table bs-table--interne">
+                        <thead><tr><th>Note</th><th>Objet</th><th class="num">Montant</th><th>Statut</th><th>Contrôle</th></tr></thead>
+                        <tbody>
+                          <tr v-for="n in sv.notes" :key="n.id">
+                            <td class="text-no-wrap"><NuxtLink :to="`/notes-frais/${n.id}`" @click.stop>{{ n.reference }}</NuxtLink></td>
+                            <td>{{ n.objet }}</td>
+                            <td class="num">{{ fmtMontant(n.montant) }} {{ n.devise }}</td>
+                            <td class="text-caption">{{ statutNoteMeta(n.statut).label }}</td>
+                            <td>
+                              <v-chip v-if="n.statutBudget" size="x-small" :color="statutControle(n.statutBudget).color" variant="tonal">{{ statutControle(n.statutBudget).label }}</v-chip>
+                              <span v-else class="text-caption text-medium-emphasis">—</span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <p class="bs-legende">
+          Le réalisé et l’engagé d’un service proviennent de ses notes de frais (payées : grand livre ; approuvées non payées : engagé).
+          Une dépense d’un service sur un compte qu’il n’a pas budgété s’impute sur la ligne générale du compte si elle existe, sinon elle
+          est « non budgétée ». Dépassement = dépassements de ses lignes (réalisé + engagé au-delà du prévu) + dépenses non budgétées.
+        </p>
+      </v-card>
+
+      <!-- Dépassements -->
+      <v-card v-if="suivi.depassements?.length" id="bs-depassements" class="classroom-card mb-4 bs-carte-depassements">
+        <div class="pa-4 pb-2 bs-titre text-error"><v-icon icon="mdi-alert-octagon-outline" size="18" class="mr-1" />Dépassements budgétaires de la période</div>
+        <div class="bs-table-wrap">
+          <table class="bs-table">
+            <thead>
+              <tr><th>Enveloppe</th><th>Compte</th><th>Libellé</th><th>Nature</th><th class="num">Prévu</th><th class="num">Réalisé</th><th class="num">Engagé</th><th class="num">Dépassement</th></tr>
+            </thead>
+            <tbody>
+              <tr v-if="depassementsServices.length" class="bs-section-ligne"><td colspan="8" style="border-left-color: #dc2626">Enveloppes des services</td></tr>
+              <tr v-for="(d, i) in depassementsServices" :key="`s-${i}`">
+                <td><strong>{{ nomEnveloppe(d) }}</strong><div v-if="d.responsable" class="bs-commentaire">{{ d.responsable }}</div></td>
+                <td class="mono">{{ d.compteNumero }}</td>
+                <td>{{ d.compteLibelle }}</td>
+                <td><v-chip size="x-small" :color="d.nature === 'NON_BUDGETE' ? 'warning' : 'error'" variant="tonal">{{ d.nature === 'NON_BUDGETE' ? 'Non budgété' : 'Dépassement' }}</v-chip></td>
+                <td class="num">{{ fmtMontant(d.prevu) }}</td>
+                <td class="num">{{ fmtMontant(d.realise) }}</td>
+                <td class="num">{{ fmtMontant(d.engage) }}</td>
+                <td class="num bs-defavorable">{{ fmtMontant(d.montant) }}</td>
+              </tr>
+              <tr v-if="depassementsConsolides.length" class="bs-section-ligne"><td colspan="8" style="border-left-color: #dc2626">Budget consolidé</td></tr>
+              <tr v-for="(d, i) in depassementsConsolides" :key="`c-${i}`">
+                <td><strong>Budget consolidé</strong></td>
+                <td class="mono">{{ d.compteNumero }}</td>
+                <td>{{ d.compteLibelle }}</td>
+                <td><v-chip size="x-small" color="error" variant="tonal">Dépassement</v-chip></td>
+                <td class="num">{{ fmtMontant(d.prevu) }}</td>
+                <td class="num">{{ fmtMontant(d.realise) }}</td>
+                <td class="num">{{ fmtMontant(d.engage) }}</td>
+                <td class="num bs-defavorable">{{ fmtMontant(d.montant) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="bs-legende">
+          Dépassement = réalisé + engagé − prévu sur la période, pour une dépense. « Non budgété » : dépense d’un service sur un compte
+          qu’aucune de ses lignes (ni ligne générale) ne couvre.
+        </p>
+      </v-card>
+
       <!-- Graphiques -->
       <v-card class="classroom-card pa-4 mb-4 bs-analyse">
         <div class="d-flex align-center flex-wrap ga-3 mb-3">
@@ -371,8 +579,8 @@ const classeEcart = (section: string, v: number) => {
             <div class="bs-graphe__zone" role="img" :aria-label="`Histogramme du prévu, du réalisé et de l’engagé par mois, section ${libelleSection(sectionGraphique)}`"><Bar :data="dataMensuel" :options="optsBarres" /></div>
           </div>
           <div class="bs-graphe">
-            <p class="bs-graphe__titre">Exécution cumulée depuis janvier</p>
-            <div class="bs-graphe__zone" role="img" :aria-label="`Courbes du prévu et du réalisé cumulés depuis janvier, section ${libelleSection(sectionGraphique)}`"><Line :data="dataCumul" :options="optsCourbe" /></div>
+            <p class="bs-graphe__titre">Exécution cumulée {{ estAnnuel ? 'depuis janvier' : 'sur la période' }}</p>
+            <div class="bs-graphe__zone" role="img" :aria-label="`Courbes du prévu et du réalisé cumulés ${estAnnuel ? 'depuis janvier' : 'sur la période'}, section ${libelleSection(sectionGraphique)}`"><Line :data="dataCumul" :options="optsCourbe" /></div>
           </div>
           <div class="bs-graphe">
             <p class="bs-graphe__titre">Répartition du prévu par nature SYSCOHADA</p>
@@ -389,24 +597,27 @@ const classeEcart = (section: string, v: number) => {
       <v-card class="classroom-card mb-4">
         <div class="d-flex align-center flex-wrap ga-3 pa-4 pb-2">
           <span class="bs-titre">Budget détaillé (USD)</span>
-          <v-btn-toggle v-model="periode" mandatory density="compact" color="primary" variant="outlined" class="no-print">
+          <v-btn-toggle v-if="estAnnuel" v-model="periode" mandatory density="compact" color="primary" variant="outlined" class="no-print">
             <v-btn v-for="p in PERIODES" :key="p.value" :value="p.value" size="small">{{ p.title }}</v-btn>
           </v-btn-toggle>
           <v-btn-toggle v-model="vue" mandatory density="compact" color="primary" variant="outlined" class="no-print">
             <v-btn v-for="v in VUES" :key="v.value" :value="v.value" size="small">{{ v.title }}</v-btn>
           </v-btn-toggle>
           <span class="bs-print-seul text-caption">
-            Découpage {{ PERIODES.find(p => p.value === periode)?.title.toLowerCase() }} · {{ VUES.find(v => v.value === vue)?.title }}
+            <template v-if="estAnnuel">Découpage {{ PERIODES.find(p => p.value === periode)?.title.toLowerCase() }} · </template>{{ VUES.find(v => v.value === vue)?.title }}
           </span>
         </div>
         <div v-if="xs" class="bs-cartes">
           <template v-for="b in blocs" :key="b.section.code">
             <div class="bs-cartes__section" :style="{ borderLeftColor: SECTIONS[b.section.code]?.color }">{{ b.section.libelle }}</div>
             <div v-for="l in b.natures.flatMap((n: any) => n.lignes)" :key="l.id" class="bs-carte">
-              <div class="bs-carte__tete"><span class="mono">{{ l.compteNumero }}</span> {{ l.compteLibelle }}</div>
+              <div class="bs-carte__tete"><span class="mono">{{ l.compteNumero }}</span> {{ l.compteLibelle }}
+                <v-chip v-if="Number(l.depassement) > 0" size="x-small" color="error" variant="flat" class="ml-1">Dépassement {{ fmtEntier(l.depassement) }}</v-chip>
+              </div>
+              <div v-if="l.services?.length" class="bs-commentaire"><v-icon icon="mdi-account-group-outline" size="11" /> {{ l.services.join(', ') }}</div>
               <div v-if="l.commentaire" class="bs-commentaire">{{ l.commentaire }}</div>
               <dl class="bs-carte__grille">
-                <div><dt>Prévu année</dt><dd>{{ fmtMontant(l.prevuAnnuel) }}</dd></div>
+                <div><dt>Prévu {{ motDuree }}</dt><dd>{{ fmtMontant(l.prevuAnnuel) }}</dd></div>
                 <div><dt>Réalisé</dt><dd>{{ fmtMontant(l.realiseAnnuel) }}</dd></div>
                 <div><dt>Engagé</dt><dd>{{ fmtMontant(l.engageAnnuel) }}</dd></div>
                 <div><dt>Disponible</dt><dd :class="Number(l.disponibleAnnuel) < 0 && l.section !== 'PRODUITS' ? 'bs-defavorable' : ''">{{ fmtMontant(l.disponibleAnnuel) }}</dd></div>
@@ -416,7 +627,7 @@ const classeEcart = (section: string, v: number) => {
             <div class="bs-carte bs-carte--total">
               <div class="bs-carte__tete">Total {{ b.section.libelle.toLowerCase() }}</div>
               <dl class="bs-carte__grille">
-                <div><dt>Prévu année</dt><dd>{{ fmtMontant(b.section.prevuAnnuel) }}</dd></div>
+                <div><dt>Prévu {{ motDuree }}</dt><dd>{{ fmtMontant(b.section.prevuAnnuel) }}</dd></div>
                 <div><dt>Réalisé</dt><dd>{{ fmtMontant(b.section.realiseAnnuel) }}</dd></div>
                 <div><dt>Disponible</dt><dd>{{ fmtMontant(disponible(b.section)) }}</dd></div>
                 <div><dt>Taux</dt><dd :class="classeTaux(b.section.code, b.section.tauxExecution)">{{ fmtTaux(b.section.tauxExecution) }}</dd></div>
@@ -431,7 +642,7 @@ const classeEcart = (section: string, v: number) => {
                 <th>Compte</th>
                 <th>Libellé</th>
                 <th v-for="c in colonnes" :key="c" class="num">{{ c }}</th>
-                <th class="num">Prévu année</th>
+                <th class="num">Prévu {{ motDuree }}</th>
                 <th class="num">Réalisé</th>
                 <th class="num">Engagé</th>
                 <th class="num">Disponible</th>
@@ -448,6 +659,8 @@ const classeEcart = (section: string, v: number) => {
                     <td class="mono">{{ l.compteNumero }}</td>
                     <td>
                       {{ l.compteLibelle }}
+                      <v-chip v-if="Number(l.depassement) > 0" size="x-small" color="error" variant="flat" class="ml-1">Dépassement {{ fmtEntier(l.depassement) }}</v-chip>
+                      <div v-if="l.services?.length" class="bs-commentaire"><v-icon icon="mdi-account-group-outline" size="11" /> {{ l.services.join(', ') }}</div>
                       <div v-if="l.commentaire" class="bs-commentaire">{{ l.commentaire }}</div>
                     </td>
                     <td v-for="(v, i) in serie(l)" :key="i" class="num" :class="vue === 'ecart' ? classeEcart(l.section, v) : ''">{{ fmtMontant(v) }}</td>
@@ -491,24 +704,44 @@ const classeEcart = (section: string, v: number) => {
           </table>
         </div>
         <p class="bs-legende">
-          Le réalisé provient du grand livre (pièces comptabilisées de l’exercice, hors à-nouveaux et clôture) ; l’engagé correspond
-          aux notes de frais approuvées non encore payées ; disponible = prévu − réalisé − engagé. Sur une charge, un écart positif
-          est un dépassement ; sur un produit, une recette supérieure à la prévision.
+          Budget consolidé (tous services confondus). Le réalisé provient du grand livre (pièces comptabilisées des mois de la période,
+          hors à-nouveaux et clôture) ; l’engagé correspond aux notes de frais approuvées non encore payées ; disponible = prévu − réalisé
+          − engagé. Sur une charge, un écart positif est un dépassement ; sur un produit, une recette supérieure à la prévision.
         </p>
+      </v-card>
+
+      <!-- Non rattaché à un service -->
+      <v-card v-if="suivi.nonRattache?.length" class="classroom-card mb-4">
+        <div class="pa-4 pb-2 bs-titre">Dépenses non rattachées à un service</div>
+        <p class="px-4 text-caption text-medium-emphasis">
+          Dépenses sans service passées sur des comptes que seuls des services ont budgétés : elles comptent dans le budget consolidé, mais
+          dans l’enveloppe d’aucun service (écritures hors note de frais, ou notes de frais sans service). Rattachez les notes à leur service.
+        </p>
+        <v-table density="compact">
+          <thead><tr><th>Compte</th><th>Libellé</th><th class="text-end">Réalisé (USD)</th></tr></thead>
+          <tbody>
+            <tr v-for="h in suivi.nonRattache" :key="h.compteNumero">
+              <td class="mono text-no-wrap">{{ h.compteNumero }}</td>
+              <td>{{ h.compteLibelle }}</td>
+              <td class="text-end text-no-wrap">{{ fmtMontant(h.realiseAnnuel) }}</td>
+            </tr>
+          </tbody>
+        </v-table>
       </v-card>
 
       <!-- Hors budget -->
       <v-card v-if="suivi.horsBudget.length" class="classroom-card mb-4">
         <div class="pa-4 pb-2 bs-titre">Dépenses et recettes hors budget</div>
-        <p class="px-4 text-caption text-medium-emphasis">Comptes mouvementés pendant l’exercice qu’aucune ligne du budget ne couvre.</p>
+        <p class="px-4 text-caption text-medium-emphasis">Comptes mouvementés ou engagés pendant la période qu’aucune ligne du budget ne couvre.</p>
         <v-table density="compact">
-          <thead><tr><th>Compte</th><th>Libellé</th><th>Section</th><th class="text-end">Réalisé (USD)</th></tr></thead>
+          <thead><tr><th>Compte</th><th>Libellé</th><th>Section</th><th class="text-end">Réalisé (USD)</th><th class="text-end">Engagé (USD)</th></tr></thead>
           <tbody>
             <tr v-for="h in suivi.horsBudget" :key="h.compteNumero">
               <td class="mono text-no-wrap">{{ h.compteNumero }}</td>
               <td>{{ h.compteLibelle }}</td>
               <td>{{ libelleSection(h.section) }}</td>
               <td class="text-end text-no-wrap">{{ fmtMontant(h.realiseAnnuel) }}</td>
+              <td class="text-end text-no-wrap">{{ fmtMontant(h.engageAnnuel) }}</td>
             </tr>
           </tbody>
         </v-table>
@@ -517,11 +750,12 @@ const classeEcart = (section: string, v: number) => {
       <v-card v-if="suivi.notesHorsBudget.length" class="classroom-card mb-4">
         <div class="pa-4 pb-2 bs-titre">Notes de frais hors budget ou en dépassement</div>
         <v-table density="compact">
-          <thead><tr><th>Note</th><th>Objet</th><th class="text-end">Montant</th><th>Contrôle</th><th>Justification</th><th>Statut</th></tr></thead>
+          <thead><tr><th>Note</th><th>Objet</th><th>Service</th><th class="text-end">Montant</th><th>Contrôle</th><th>Justification</th><th>Statut</th></tr></thead>
           <tbody>
             <tr v-for="n in suivi.notesHorsBudget" :key="n.id">
               <td class="text-no-wrap"><NuxtLink :to="`/notes-frais/${n.id}`">{{ n.reference }}</NuxtLink></td>
               <td>{{ n.objet }}</td>
+              <td class="text-caption">{{ n.serviceNom || '—' }}</td>
               <td class="text-end text-no-wrap">{{ fmtMontant(n.montant) }} {{ n.devise }}</td>
               <td><v-chip size="x-small" :color="statutControle(n.statutBudget).color" variant="tonal">{{ statutControle(n.statutBudget).label }}</v-chip></td>
               <td class="text-caption">{{ n.justification }}</td>
@@ -646,6 +880,15 @@ const classeEcart = (section: string, v: number) => {
 .bs-carte__grille dt { font-size: 0.68rem; color: #6b7280; font-weight: 400; }
 .bs-carte__grille dd { margin: 0; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
 .bs-signatures { display: none; }
+.bs-service-ligne { cursor: pointer; }
+.bs-service-ligne:hover td { background: #f8fafc; }
+.bs-service-ligne:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.bs-ligne-depassement td { background: #fef2f2; }
+.bs-service-detail > td { background: #fbfbff; padding: 10px 14px !important; }
+.bs-table--interne { font-size: 0.78rem; background: #fff; border: 1px solid #eef0f3; border-radius: 8px; }
+.bs-sous-titre { font-weight: 700; font-size: 0.8rem; margin-bottom: 4px; display: flex; gap: 4px; align-items: center; }
+.bs-jauge { width: 70px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+.bs-carte-depassements { border-left: 4px solid #dc2626; }
 .bs-print-seul { display: none; }
 
 @media (max-width: 960px) {

@@ -103,6 +103,7 @@ public final class AuditLibelles {
         r("POST", "/notes-frais/{}/observation", "Ajout d'une observation sur une note de frais");
         r("PUT", "/notes-frais/{}/comptes", "Modification des comptes d'imputation d'une note de frais");
         r("PUT", "/notes-frais/{}/objet", "Modification de l'objet d'une note de frais");
+        r("PUT", "/notes-frais/{}/service", "Rattachement d'une note de frais à un service budgétaire");
         r("PUT", "/notes-frais/{}/justification-budget", "Justification d'un dépassement de budget sur une note de frais");
         r("POST", "/notes-frais/{}/pieces-jointes", "Ajout d'une pièce jointe à une note de frais");
         r("DELETE", "/notes-frais/{}/pieces-jointes/{}", "Suppression d'une pièce jointe d'une note de frais");
@@ -120,6 +121,10 @@ public final class AuditLibelles {
         r("POST", "/budgets/{}/cloturer", "Clôture d'un budget");
         r("POST", "/budgets/{}/reprendre", "Reprise d'un budget");
         r("POST", "/budgets/{}/reviser", "Révision d'un budget");
+        r("POST", "/services-budgetaires", "Création d'un service budgétaire");
+        r("PUT", "/services-budgetaires/{}", "Modification d'un service budgétaire");
+        r("PATCH", "/services-budgetaires/{}/actif", "Activation ou désactivation d'un service budgétaire");
+        r("DELETE", "/services-budgetaires/{}", "Suppression d'un service budgétaire");
 
         // --- Comptabilité ----------------------------------------------------------------------------------------
         r("POST", "/comptabilite/pieces", "Saisie d'une pièce comptable");
