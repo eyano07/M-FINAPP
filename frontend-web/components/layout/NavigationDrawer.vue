@@ -65,6 +65,8 @@ const comptabiliteItems: NavItem[] = [
   // Balance de verification et Compte de resultat : accessibles au CAISSIER.
   { title: 'Balance de vérification', icon: 'mdi-table-check', to: '/comptabilite/balance-verification', module: 'COMPTABILITE', essentiel: true },
   { title: 'Livre-journal', icon: 'mdi-notebook-outline', to: '/comptabilite/livre-journal', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  // Comptabilite analytique de gestion (SYSCOHADA classe 9, comptes 92 a 99).
+  { title: 'Comptabilité analytique', icon: 'mdi-chart-tree', to: '/comptabilite/analytique', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
   { title: 'Compte de résultat', icon: 'mdi-finance', to: '/comptabilite/compte-resultat', module: 'COMPTABILITE', essentiel: true },
   // DA exclu explicitement de la consultation du Bilan.
   { title: 'Bilan', icon: 'mdi-scale-balance', to: '/comptabilite/bilan', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
