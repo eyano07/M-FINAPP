@@ -135,6 +135,7 @@ public final class AuditLibelles {
         r("PATCH", "/comptabilite/pieces/{}/solde-ouverture", "Marquage d'une pièce comptable comme solde d'ouverture");
         r("PUT", "/comptabilite/cloture", "Modification de la date de clôture comptable");
         r("POST", "/comptabilite/cloture/exercice", "Clôture de l'exercice comptable");
+        r("POST", "/comptabilite/analytique/comptes", "Création d'un sous-compte de comptabilité analytique");
         r("POST", "/comptabilite/etats-financiers/analyse-ia", "Analyse des états financiers par l'IA");
         r("POST", "/comptabilite/provisions", "Constitution d'une provision");
         r("POST", "/comptabilite/provisions/{}/reprendre", "Reprise d'une provision");

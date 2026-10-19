@@ -317,4 +317,38 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
         group by c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sb.id, sm.id)
     """)
     List<Object[]> mouvementsMensuelsBudgetaires(@Param("du") LocalDate du, @Param("au") LocalDate au);
+
+    /**
+     * Comptabilité analytique (SYSCOHADA classe 9, comptes 92 à 99) :
+     * mouvements agrégés par compte sur une période.
+     * Retourne [numero, totalDebit, totalCredit].
+     */
+    @Query("""
+        select c.numero, coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
+        from EcritureGrandLivre e
+        join e.compte c
+        left join e.piece p
+        where c.classe = 9 and c.numero >= '92' and c.numero < '9A'
+          and e.dateEcriture >= :du and e.dateEcriture <= :au
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+        group by c.numero
+    """)
+    List<Object[]> mouvementsAnalytiques(@Param("du") LocalDate du, @Param("au") LocalDate au);
+
+    /**
+     * Comptabilité analytique : cumuls débit/crédit antérieurs à {@code du}
+     * (report à nouveau), par compte 92 à 99.
+     * Retourne [numero, totalDebit, totalCredit].
+     */
+    @Query("""
+        select c.numero, coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
+        from EcritureGrandLivre e
+        join e.compte c
+        left join e.piece p
+        where c.classe = 9 and c.numero >= '92' and c.numero < '9A'
+          and e.dateEcriture < :du
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+        group by c.numero
+    """)
+    List<Object[]> soldesAnterieursAnalytiques(@Param("du") LocalDate du);
 }

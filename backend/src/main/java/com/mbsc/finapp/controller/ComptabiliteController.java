@@ -3,6 +3,8 @@ package com.mbsc.finapp.controller;
 import com.mbsc.finapp.dto.comptabilite.*;
 import com.mbsc.finapp.service.AnalyseFinanciereIaService;
 import com.mbsc.finapp.service.ClotureAnnuelleService;
+import com.mbsc.finapp.dto.admin.CompteResponse;
+import com.mbsc.finapp.service.ComptabiliteAnalytiqueService;
 import com.mbsc.finapp.service.ComptabiliteService;
 import com.mbsc.finapp.service.EtatsFinanciersExcelService;
 import com.mbsc.finapp.service.BalanceAgeeService;
@@ -35,6 +37,22 @@ public class ComptabiliteController {
     private final TvaService tvaService;
     private final SoldesIntermediairesService sigService;
     private final BalanceAgeeService balanceAgeeService;
+    private final ComptabiliteAnalytiqueService analytiqueService;
+
+    /** Comptabilité analytique (SYSCOHADA classe 9, comptes 92 à 99) : soldes sur la période. */
+    @GetMapping("/analytique")
+    public EtatAnalytiqueResponse etatAnalytique(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au) {
+        return analytiqueService.etat(du, au);
+    }
+
+    /** Crée un sous-compte analytique (ex. 94 + 11 = 9411). */
+    @PostMapping("/analytique/comptes")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CompteResponse creerSousCompteAnalytique(@Valid @RequestBody SousCompteAnalytiqueRequest req) {
+        return analytiqueService.creerSousCompte(req);
+    }
 
     @PostMapping("/pieces")
     @ResponseStatus(HttpStatus.CREATED)
