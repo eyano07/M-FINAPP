@@ -34,6 +34,10 @@ const estCaissier = computed(() =>
   auth.hasRole('CAISSIER') && !auth.hasAnyRole(['ADMIN', 'DFIN', 'DA', 'DG', 'LOGISTIQUE'])
 )
 
+// Raccourcis Vente / Caisse : proposés au caissier comme à l'administrateur
+// (le backend autorise les deux), donc utilisables sans compte Caissier.
+const peutOperer = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
+
 const notes = ref<Note[]>([])
 const tresorerie = ref(0)
 const tresorerieBanque = ref(0)
@@ -381,16 +385,40 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
         <h1 class="dash__title">{{ auth.user?.prenom || auth.user?.email }}</h1>
         <p class="dash__sub">Voici l'état de votre trésorerie en temps réel.</p>
       </div>
-      <v-btn
-        color="primary"
-        prepend-icon="mdi-plus"
-        rounded="lg"
-        elevation="0"
-        to="/notes-frais"
-        class="dash__cta"
-      >
-        Nouvelle note
-      </v-btn>
+      <div class="dash__actions">
+        <v-btn
+          v-if="peutOperer && permissions.peutVoir('VENTES')"
+          color="success"
+          prepend-icon="mdi-cart-outline"
+          rounded="lg"
+          elevation="0"
+          to="/ventes/nouvelle"
+          class="dash__cta"
+        >
+          Vente
+        </v-btn>
+        <v-btn
+          v-if="peutOperer && permissions.peutVoir('CAISSE')"
+          color="orange-darken-1"
+          prepend-icon="mdi-cash-register"
+          rounded="lg"
+          elevation="0"
+          to="/caisse"
+          class="dash__cta"
+        >
+          Caisse
+        </v-btn>
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-plus"
+          rounded="lg"
+          elevation="0"
+          to="/notes-frais"
+          class="dash__cta"
+        >
+          Nouvelle note
+        </v-btn>
+      </div>
     </header>
 
     <!-- ── Error ───────────────────────────────────────────── -->
@@ -571,6 +599,12 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   font-size: 0.875rem;
   color: #6b7280;
   margin: 0;
+}
+.dash__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 .dash__cta {
   margin-top: 4px;

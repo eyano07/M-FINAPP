@@ -25,7 +25,7 @@ const dialog = ref(false)
 const formRef = ref()
 const editId = ref<number | null>(null)
 
-const canWrite = computed(() => auth.hasAnyRole(['CAISSIER']))
+const canWrite = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
 
 const form = reactive({
   code: '',
