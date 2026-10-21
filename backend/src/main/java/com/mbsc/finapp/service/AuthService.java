@@ -33,6 +33,13 @@ public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
+    /**
+     * Identifiant inconnu ou mot de passe faux. Le message de Spring Security (« Bad credentials », en anglais, ou sa
+     * traduction selon la langue du navigateur) n'est jamais montré : l'écran de connexion affiche celui-ci. Il ne dit
+     * pas lequel des deux est faux, pour ne pas révéler si un identifiant existe.
+     */
+    static final String MESSAGE_IDENTIFIANTS_INCORRECTS = "Identifiant ou mot de passe incorrect.";
+
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final UserRepository userRepository;
@@ -66,7 +73,7 @@ public class AuthService {
             loginAttemptService.enregistrerEchec(request.email());
             log.warn("Echec de connexion pour {} : identifiants invalides", request.email());
             audit.authentification("CONNEXION", request.email(), null, false, "identifiants invalides");
-            throw ex;
+            throw new BadCredentialsException(MESSAGE_IDENTIFIANTS_INCORRECTS, ex);
         }
     }
 

@@ -12,7 +12,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * La connexion d'un compte desactive (a la main ou par la cascade des modules) dit « compte desactive » en
- * francais, et non le « User is disabled » de Spring ; un mauvais mot de passe garde son message habituel.
+ * francais, et non le « User is disabled » de Spring ; les refus ecrits par l'application sont transmis tels quels
+ * (le « Bad credentials » de Spring est traduit a la source : voir AuthServiceTest).
  */
 class GlobalExceptionHandlerCompteDesactiveTest {
 
@@ -29,10 +30,12 @@ class GlobalExceptionHandlerCompteDesactiveTest {
     }
 
     @Test
-    void les_autres_echecs_d_authentification_ne_changent_pas() {
-        ResponseEntity<Map<String, Object>> reponse = handler.handleAuth(new BadCredentialsException("Bad credentials"));
+    void les_refus_de_l_application_sont_transmis_tels_quels() {
+        // Trop de tentatives, jeton de rafraichissement invalide... : deja en francais, ecrits par AuthService.
+        ResponseEntity<Map<String, Object>> reponse = handler.handleAuth(
+            new BadCredentialsException("Trop de tentatives de connexion. Reessayez dans 5 minute(s)."));
 
         assertThat(reponse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(reponse.getBody().get("message")).isEqualTo("Bad credentials");
+        assertThat(reponse.getBody().get("message")).isEqualTo("Trop de tentatives de connexion. Reessayez dans 5 minute(s).");
     }
 }

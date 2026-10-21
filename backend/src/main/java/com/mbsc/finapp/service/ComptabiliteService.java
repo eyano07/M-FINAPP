@@ -42,6 +42,9 @@ public class ComptabiliteService {
 
     private static final Logger log = LoggerFactory.getLogger(ComptabiliteService.class);
 
+    /** Classe SYSCOHADA des engagements hors bilan et de la comptabilité analytique : hors du bilan et du résultat. */
+    private static final int CLASSE_HORS_BILAN = 9;
+
     private final PieceComptableRepository pieceRepository;
     private final EcritureGrandLivreRepository ecritureRepository;
     private final CompteOHADARepository compteRepository;
@@ -670,6 +673,10 @@ public class ComptabiliteService {
      * Bilan à une date : actif (solde débiteur des comptes ACTIF) face au
      * passif (solde créditeur des comptes PASSIF), le résultat net cumulé
      * étant intégré aux capitaux propres pour assurer l'équilibre.
+     *
+     * <p>Les comptes de la classe 9 (engagements hors bilan 90x, comptabilité analytique de gestion 92 à 99) n'ont pas
+     * de type et ne relèvent pas du bilan : ils en sont écartés, comme du compte de résultat et de la clôture annuelle.
+     * Ils figuraient à tort à l'actif (le type absent valait « ACTIF »).</p>
      */
     @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
@@ -691,7 +698,11 @@ public class ComptabiliteService {
             BigDecimal debit = nz((BigDecimal) row[4]);
             BigDecimal credit = nz((BigDecimal) row[5]);
 
-            switch (type == null ? TypeCompte.ACTIF : type) {
+            if (type == null || (classe != null && classe == CLASSE_HORS_BILAN)) {
+                continue;
+            }
+
+            switch (type) {
                 case ACTIF -> {
                     BigDecimal montant = debit.subtract(credit);
                     if (montant.signum() != 0) {
