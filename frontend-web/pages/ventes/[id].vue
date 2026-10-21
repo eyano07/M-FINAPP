@@ -52,7 +52,7 @@ const vente = ref<Vente | null>(null)
 const tauxChange = ref(1)
 const dateImpression = ref('')
 
-const canWrite = computed(() => auth.hasAnyRole(['CAISSIER']))
+const canWrite = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
 const peutValider = computed(() => canWrite.value && vente.value?.statut === 'BROUILLON')
 const peutAnnuler = computed(() => canWrite.value && vente.value?.statut === 'VALIDEE')
 // Une créance ne se règle que sur une vente à crédit validée et non encore soldée.

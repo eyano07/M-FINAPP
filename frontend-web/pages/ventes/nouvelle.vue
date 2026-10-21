@@ -55,6 +55,53 @@ const form = reactive({
   lignes: [{ articleId: null, quantite: 1, prixUnitaire: null }] as LigneForm[],
 })
 
+// ── Pavé numérique (tablette tactile) ────────────────────────────
+// Le pavé écrit dans le champ quantité / prix actif. `saisie` garde le texte
+// brut pour conserver un point final ("12.") que le nombre ne peut pas porter.
+type ChampLigne = 'quantite' | 'prixUnitaire'
+const champActif = ref<{ i: number; champ: ChampLigne } | null>(null)
+const saisie = ref('')
+// Sur écran tactile, le clavier du système est masqué : le pavé le remplace.
+const tactile = ref(false)
+onMounted(() => {
+  tactile.value = window.matchMedia?.('(pointer: coarse)').matches ?? false
+})
+
+function activerChamp(i: number, champ: ChampLigne) {
+  champActif.value = { i, champ }
+  const v = form.lignes[i][champ]
+  saisie.value = v == null ? '' : String(v)
+}
+function appliquerSaisie() {
+  const c = champActif.value
+  if (!c) return
+  form.lignes[c.i][c.champ] = saisie.value === '' || saisie.value === '.' ? null : Number(saisie.value)
+}
+function toucheNumerique(k: string) {
+  const c = champActif.value
+  if (!c) return
+  if (k === 'suivant') {
+    // quantité -> prix de la même ligne -> quantité de la ligne suivante
+    if (c.champ === 'quantite') activerChamp(c.i, 'prixUnitaire')
+    else if (c.i + 1 < form.lignes.length) activerChamp(c.i + 1, 'quantite')
+    else champActif.value = null
+    return
+  }
+  if (k === 'clear') saisie.value = ''
+  else if (k === 'back') saisie.value = saisie.value.slice(0, -1)
+  else if (k === '.') {
+    if (!saisie.value.includes('.')) saisie.value = (saisie.value || '0') + '.'
+  } else if (saisie.value === '0' && k !== '00') saisie.value = k
+  else if (saisie.value !== '' && saisie.value !== '0' || k !== '00') saisie.value += k
+  appliquerSaisie()
+}
+const libelleChamp = computed(() => {
+  const c = champActif.value
+  if (!c) return ''
+  const nom = c.champ === 'quantite' ? 'Quantité' : `Prix (${form.devise === 'USD' ? 'USD' : 'FC'})`
+  return `${nom} · ligne ${c.i + 1}`
+})
+
 async function charger() {
   loading.value = true
   erreur.value = ''
@@ -424,8 +471,9 @@ const contreValeur = computed(() => {
       </template>
     </v-card>
 
-    <!-- ── Lignes ──────────────────────────────────────────── -->
-    <v-card class="classroom-card pa-6 mb-4">
+    <!-- ── Lignes + pavé numérique ─────────────────────────── -->
+    <div class="vn-saisie">
+    <v-card class="classroom-card pa-6 mb-4 vn-saisie__lignes">
       <div class="d-flex align-center mb-3">
         <p class="vn-section mb-0">Articles vendus</p>
         <v-spacer />
@@ -455,6 +503,8 @@ const contreValeur = computed(() => {
           v-model.number="ligne.quantite"
           label="Quantité"
           type="number"
+          :inputmode="tactile ? 'none' : undefined"
+          @focus="activerChamp(i, 'quantite')"
           min="0.001"
           step="1"
           variant="outlined"
@@ -467,6 +517,8 @@ const contreValeur = computed(() => {
           v-model.number="ligne.prixUnitaire"
           :label="form.devise === 'USD' ? 'P.U. HT (USD)' : 'P.U. HT (FC)'"
           type="number"
+          :inputmode="tactile ? 'none' : undefined"
+          @focus="activerChamp(i, 'prixUnitaire')"
           min="0"
           :step="form.devise === 'USD' ? '0.01' : '1'"
           :prepend-inner-icon="form.devise === 'USD' ? 'mdi-currency-usd' : 'mdi-cash'"
@@ -516,6 +568,16 @@ const contreValeur = computed(() => {
         <div v-if="contreValeur && totaux.ttc" class="vn-contre-valeur">{{ contreValeur }}</div>
       </div>
     </v-card>
+
+    <aside class="vn-saisie__pave">
+      <VentesPaveNumerique
+        :titre="libelleChamp || 'Saisie du montant'"
+        :valeur="saisie"
+        :actif="!!champActif"
+        @touche="toucheNumerique"
+      />
+    </aside>
+    </div>
 
     <v-alert
       v-if="raisonsBlocage.length"
@@ -584,6 +646,12 @@ const contreValeur = computed(() => {
   margin: 0 0 12px;
 }
 
+.vn-saisie { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+.vn-saisie__pave { position: sticky; top: 76px; }
+@media (max-width: 700px) {
+  .vn-saisie { grid-template-columns: 1fr; }
+  .vn-saisie__pave { position: static; }
+}
 .vn-ligne {
   display: grid;
   grid-template-columns: 3fr 1fr 1.2fr 1.3fr auto;
