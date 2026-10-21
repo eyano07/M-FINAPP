@@ -158,6 +158,13 @@ public class NoteFrais {
     @ToString.Exclude
     private List<ObservationNote> observations = new ArrayList<>();
 
+    /** Retours de fonds demandes apres paiement (reductions de la note), du plus ancien au plus recent. */
+    @OneToMany(mappedBy = "note")
+    @OrderBy("dateDemande ASC, id ASC")
+    @Builder.Default
+    @ToString.Exclude
+    private List<RetourFondsNote> retoursFonds = new ArrayList<>();
+
     @OneToOne(mappedBy = "noteFrais", fetch = FetchType.LAZY)
     @ToString.Exclude
     private TransactionCaisse transaction;

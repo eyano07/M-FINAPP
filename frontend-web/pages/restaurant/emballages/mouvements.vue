@@ -65,6 +65,8 @@ const META_MVT: Record<string, { label: string; couleur: string; auto?: boolean;
   VENTE: { label: 'Vente', couleur: 'success', auto: true, sens: 1 },
   RETOUR_VENTE: { label: 'Vente annulée', couleur: 'grey', auto: true, sens: -1 },
   ACHAT: { label: 'Réception (consigne rendue)', couleur: 'orange', auto: true, sens: -1 },
+  // Note d'achat réduite après paiement : le fournisseur rend les vides des bouteilles reprises (RetourFondsService).
+  RETOUR_ACHAT: { label: 'Retour d\'achat (vides rendus)', couleur: 'teal', auto: true, sens: 1 },
   CASSE: { label: 'Casse — bouteille vide', couleur: 'error', sens: -1 },
   CASSE_PLEINE: { label: 'Casse — bouteille pleine', couleur: 'error', sens: -1, necessiteEntrepot: true },
   PERIME: { label: 'Boisson périmée', couleur: 'deep-orange', sens: 1, necessiteEntrepot: true },

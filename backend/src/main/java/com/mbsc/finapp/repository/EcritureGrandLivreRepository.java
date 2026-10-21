@@ -297,15 +297,17 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
      * annulerait le realise de l'annee).
      *
      * <p>Le service est celui de la note de frais que l'operation de tresorerie (caisse, banque, mobile money) a
-     * payee ; une ecriture sans note, ou d'une note sans service, n'en a pas.</p>
+     * payee — ou, pour un retour de fonds en caisse, celui de la note reduite (le retour diminue le realise du service
+     * qui avait engage la depense) ; une ecriture sans note, ou d'une note sans service, n'en a pas.</p>
      */
     @Query("""
-        select c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sb.id, sm.id),
+        select c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id),
                coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
         from EcritureGrandLivre e
         join e.compte c
         left join e.piece p
         left join e.transaction tc left join tc.noteFrais nc left join nc.service sc
+        left join tc.noteRetour nr left join nr.service sr
         left join e.transactionBancaire tb left join tb.noteFrais nb left join nb.service sb
         left join e.transactionMobileMoney tm left join tm.noteFrais nm left join nm.service sm
         where e.dateEcriture >= :du and e.dateEcriture <= :au
@@ -314,7 +316,7 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
                              and p.soldeOuverture = false
                              and p.reevaluationDevise = false
                              and (p.libelle is null or p.libelle not like 'Clôture de l''exercice%')))
-        group by c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sb.id, sm.id)
+        group by c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id)
     """)
     List<Object[]> mouvementsMensuelsBudgetaires(@Param("du") LocalDate du, @Param("au") LocalDate au);
 

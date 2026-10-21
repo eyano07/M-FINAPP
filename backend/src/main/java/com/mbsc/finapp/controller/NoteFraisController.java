@@ -15,9 +15,13 @@ import com.mbsc.finapp.dto.notes.ModifierServiceRequest;
 import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteRequest;
 import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteResponse;
 import com.mbsc.finapp.dto.notes.PrioriteRequest;
+import com.mbsc.finapp.dto.notes.PreparationRetourFondsResponse;
 import com.mbsc.finapp.dto.notes.RegleVisibiliteResponse;
+import com.mbsc.finapp.dto.notes.RetourFondsRequest;
+import com.mbsc.finapp.dto.notes.RetourFondsResponse;
 import com.mbsc.finapp.service.NoteFraisService;
 import com.mbsc.finapp.service.ParametresPrioriteNoteService;
+import com.mbsc.finapp.service.RetourFondsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -43,6 +47,7 @@ public class NoteFraisController {
 
     private final NoteFraisService service;
     private final ParametresPrioriteNoteService parametresPriorite;
+    private final RetourFondsService retourFonds;
 
     /**
      * Seuils de reserve de tresorerie par priorite (definis par le DA).
@@ -145,6 +150,25 @@ public class NoteFraisController {
     @PutMapping("/{id}/service")
     public NoteFraisDetailResponse modifierService(@PathVariable Long id, @RequestBody ModifierServiceRequest req) {
         return service.modifierService(id, req == null ? null : req.serviceId());
+    }
+
+    // ── Retour de fonds : l'emetteur reduit sa note payee, le caissier recoit l'argent (voir CaisseController) ──
+
+    /** Ce qu'il faut a la boite de dialogue de reduction (lignes reductibles, stock restant, demande en attente). */
+    @GetMapping("/{id}/retours-fonds/preparation")
+    public PreparationRetourFondsResponse preparerRetourFonds(@PathVariable Long id) {
+        return retourFonds.preparer(id);
+    }
+
+    @PostMapping("/{id}/retours-fonds")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RetourFondsResponse demanderRetourFonds(@PathVariable Long id, @Valid @RequestBody RetourFondsRequest req) {
+        return retourFonds.demander(id, req);
+    }
+
+    @PostMapping("/retours-fonds/{retourId}/annuler")
+    public RetourFondsResponse annulerRetourFonds(@PathVariable Long retourId) {
+        return retourFonds.annuler(retourId);
     }
 
     /** Correction du libelle (objet) par le DFIN lors de la verification (note SOUMISE). */

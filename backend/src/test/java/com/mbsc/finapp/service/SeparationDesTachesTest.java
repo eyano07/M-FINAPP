@@ -41,6 +41,7 @@ class SeparationDesTachesTest {
         reserveAuCaissier(BanqueService.class, "enregistrer", "payerNote");
         reserveAuCaissier(MobileMoneyService.class, "enregistrer", "payerNote");
         reserveAuCaissier(VenteService.class, "creer", "ajouterLigne", "valider", "reglerCreance", "reglerAdditionTable");
+        reserveAuCaissier(RetourFondsService.class, "valider", "refuser");   // l'argent d'une note reduite rentre en caisse
         reserveAuCaissier(SyncController.class, "batch");     // synchronisation des opérations du poste de caisse
     }
 

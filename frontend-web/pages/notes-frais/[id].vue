@@ -71,9 +71,14 @@ interface NoteDetail {
   lignes: LigneNoteFrais[]
   piecesJointes: PieceJointe[]
   observations: Observation[]
+  /** Retours de fonds demandés après paiement (réductions de la note), du plus ancien au plus récent. */
+  retoursFonds?: RetourFonds[]
+  /** Une demande attend l'argent à la caisse. */
+  retourEnAttente?: boolean
 }
 
 import { useDisplay } from 'vuetify'
+import type { RetourFonds } from '~/components/notes-frais/DetailRetourFonds.vue'
 
 const route = useRoute()
 const api = useApi()
@@ -171,6 +176,8 @@ const isDA = computed(() => auth.hasRole('DA'))
 // fait partie. Absent d'ici, il ne pouvait ni soumettre ni justifier une note restée en brouillon (échec de l'envoi
 // automatique depuis « Achat de boissons »), et le DFIN n'était jamais prévenu.
 const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']))
+// Rôles admis à émettre une note, administrateur compris (NoteFraisService.creer, RetourFondsService.EMETTEURS).
+const isCreateurOuAdmin = computed(() => isCreateur.value || auth.hasRole('ADMIN'))
 
 // Une note d'encaissement ne suit pas le circuit DFIN/DA : "Soumettre" ne
 // s'applique qu'au décaissement (isCreateur n'est qu'un contrôle de rôle,
@@ -216,6 +223,53 @@ const messageAucuneAction = computed(() => {
     return `Note validée par ${lDA.value}. En attente de transmission à la trésorerie par ${lDFIN.value}.`
   return 'Aucune action disponible pour votre rôle à ce stade.'
 })
+
+// ── Retour de fonds : l'émetteur réduit sa note payée, le caissier valide à la réception de l'argent ──
+// Seul l'émetteur de la note la réduit (RetourFondsService.exigerEmetteur) ; l'identifiant de connexion ne tient pas
+// compte de la casse (IdentifiantConnexion côté serveur).
+const estEmetteur = computed(() => {
+  const emetteur = note.value?.demandeurEmail?.toLowerCase()
+  return !!emetteur && emetteur === auth.user?.email?.toLowerCase()
+})
+const retourEnAttente = computed(() => (note.value?.retoursFonds || []).find(r => r.statut === 'EN_ATTENTE') || null)
+const retoursValides = computed(() => (note.value?.retoursFonds || []).filter(r => r.statut === 'VALIDE'))
+/** Total déjà rendu à la caisse : le montant payé à l'origine est le montant actuel de la note plus ce total. */
+const montantRendu = computed(() => retoursValides.value.reduce((s, r) => s + Number(r.montant || 0), 0))
+const peutReduire = computed(() => estEmetteur.value && isCreateurOuAdmin.value && !estEncaissement.value
+  && statut.value === 'PAYEE' && !categorieDrh.value && !retourEnAttente.value)
+const peutAnnulerRetour = computed(() => estEmetteur.value && isCreateurOuAdmin.value && !!retourEnAttente.value)
+const reductionOuverte = ref(false)
+const succes = ref('')
+
+function ouvrirReduction() {
+  erreur.value = ''
+  succes.value = ''
+  reductionOuverte.value = true
+}
+
+async function retourEnvoye(r: RetourFonds) {
+  succes.value = `Demande envoyée : ${fmtMontant(r.montant)} ${r.devise || ''} à remettre en espèces au caissier. `
+    + "La note sera réduite quand il aura validé la réception de l'argent."
+  await charger()
+}
+
+async function annulerRetour() {
+  const r = retourEnAttente.value
+  if (!r) return
+  if (!confirm(`Retirer la demande de retour de fonds de ${fmtMontant(r.montant)} ${r.devise || ''} ?`)) return
+  busy.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    await api(`/notes-frais/retours-fonds/${r.id}/annuler`, { method: 'POST' })
+    succes.value = 'Demande de retour de fonds retirée : la note reste inchangée.'
+    await charger()
+  } catch (e: any) {
+    erreur.value = e?.data?.message || "La demande n'a pas pu être retirée."
+  } finally {
+    busy.value = false
+  }
+}
 
 /**
  * Après une action de vérification/validation/transmission, enchaîne
@@ -633,6 +687,17 @@ const peutGererPieces = computed(() =>
       </template>
     </v-alert>
 
+    <v-alert v-if="succes" type="success" variant="tonal" rounded="lg" class="mb-4 nd-noprint" closable @click:close="succes = ''">
+      {{ succes }}
+    </v-alert>
+    <v-alert v-if="note && retourEnAttente" type="warning" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-cash-refund">
+      <strong>Retour de fonds en attente de la caisse :</strong>
+      {{ fmtMontant(retourEnAttente.montant) }} {{ note.devise || 'CDF' }} à remettre en espèces au caissier
+      (demande de {{ retourEnAttente.demandeurNom || '—' }}<template v-if="retourEnAttente.dateDemande"> du {{ fmtDate(retourEnAttente.dateDemande) }}</template>).
+      La note ne sera réduite qu'à la validation du caissier.
+      <nuxt-link v-if="auth.hasRole('CAISSIER')" to="/caisse" class="nd-lien-caisse">Recevoir à la caisse</nuxt-link>
+    </v-alert>
+
     <v-skeleton-loader v-if="loading" type="card, article" class="mt-4" />
 
     <div v-else-if="note" class="nd-layout">
@@ -720,6 +785,10 @@ const peutGererPieces = computed(() =>
                 :disabled="enregistrementObjet" title="Annuler" @click="annulerEditionObjet" />
             </div>
             <p class="nd-hero__montant">{{ montantFmt }}</p>
+            <p v-if="montantRendu > 0" class="nd-hero__rendu">
+              Payé à l'origine : {{ fmtMontant(note.montant + montantRendu) }} {{ note.devise || 'CDF' }}
+              · rendu à la caisse : {{ fmtMontant(montantRendu) }} {{ note.devise || 'CDF' }}
+            </p>
           </div>
         </div>
 
@@ -842,6 +911,18 @@ const peutGererPieces = computed(() =>
           <div class="nd-lignes-total">
             <span>Total</span>
             <strong>{{ montantFmt }}</strong>
+          </div>
+        </div>
+
+        <!-- Retours de fonds : réductions de la note après paiement. À l'impression, seuls les retours reçus par la
+             caisse figurent (ils expliquent l'écart avec le montant payé à l'origine). -->
+        <div v-if="note.retoursFonds?.length" class="nd-card" :class="{ 'nd-noprint': !retoursValides.length }">
+          <p class="nd-card__section-title">Retours de fonds ({{ note.retoursFonds.length }})</p>
+          <div class="nd-retours">
+            <NotesFraisDetailRetourFonds
+              v-for="r in note.retoursFonds" :key="r.id" :retour="r"
+              class="nd-retour" :class="{ 'nd-noprint': r.statut !== 'VALIDE' }"
+            />
           </div>
         </div>
 
@@ -1072,7 +1153,22 @@ const peutGererPieces = computed(() =>
                 Annuler la note
               </v-btn>
 
-              <div v-if="!peutSoumettre && !peutEncaisser && !peutVerifier && !peutValiderRejeter && !peutPrioriser && !peutTransmettre && !peutAnnuler"
+              <template v-if="peutReduire">
+                <p class="nd-hint-retour">
+                  Moins acheté ou dépensé que prévu ? Réduisez la note et rendez la différence en espèces à la caisse.
+                </p>
+                <v-btn color="teal" block rounded="lg" variant="tonal"
+                  prepend-icon="mdi-cash-refund" :disabled="busy" @click="ouvrirReduction">
+                  Réduire la note (retour de fonds)
+                </v-btn>
+              </template>
+
+              <v-btn v-if="peutAnnulerRetour" color="grey" block rounded="lg" variant="text"
+                prepend-icon="mdi-undo" :loading="busy" @click="annulerRetour">
+                Retirer la demande de retour
+              </v-btn>
+
+              <div v-if="!peutSoumettre && !peutEncaisser && !peutVerifier && !peutValiderRejeter && !peutPrioriser && !peutTransmettre && !peutAnnuler && !peutReduire && !peutAnnulerRetour"
                 class="nd-no-action">
                 <v-icon icon="mdi-lock-outline" size="20" color="#d1d5db" />
                 <p>{{ messageAucuneAction }}</p>
@@ -1082,6 +1178,15 @@ const peutGererPieces = computed(() =>
         </div>
       </div>
     </div>
+
+    <NotesFraisReductionNoteDialog
+      v-if="note"
+      v-model="reductionOuverte"
+      :note-id="note.id"
+      :reference="note.reference"
+      :devise="note.devise || 'CDF'"
+      @envoyee="retourEnvoye"
+    />
 
     <!-- Aperçu d'une pièce jointe : plein écran sur mobile (bouton "X" pour
          quitter), fenêtre centrée sur desktop — évite d'avoir à télécharger
@@ -1247,6 +1352,7 @@ const peutGererPieces = computed(() =>
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+.nd-hero__rendu { position: relative; margin: 4px 0 0; font-size: 0.8rem; color: rgba(255, 255, 255, 0.85); }
 
 /* ── Info card ───────────────────────────────────────────── */
 .nd-card {
@@ -1642,6 +1748,7 @@ const peutGererPieces = computed(() =>
     font-size: 1.35rem;
     letter-spacing: -0.5px;
   }
+  .nd-hero__rendu { color: var(--print-text, #111827) !important; font-size: 0.66rem; opacity: 0.85; }
   .nd-badge {
     font-size: 0.62rem;
     padding: 2px 10px;
@@ -1803,4 +1910,8 @@ const peutGererPieces = computed(() =>
 .nd-justif { margin-top: 6px; }
 .nd-justif--lecture p { margin: 4px 0 0; font-size: 0.85rem; color: #374151; white-space: pre-line; }
 .nd-hint-budget { font-size: 0.78rem; color: #b45309; margin: 0 0 6px; font-weight: 600; }
+.nd-hint-retour { font-size: 0.78rem; color: #0f766e; margin: 4px 0 0; }
+.nd-retours { padding: 8px 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+.nd-retour:not(:last-child) { padding-bottom: 12px; border-bottom: 1px solid #f3f4f6; }
+.nd-lien-caisse { margin-left: 6px; font-weight: 600; color: inherit; }
 </style>

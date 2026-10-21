@@ -7,7 +7,11 @@ import com.mbsc.finapp.dto.caisse.LigneBalanceResponse;
 import com.mbsc.finapp.dto.caisse.TransactionCaisseRequest;
 import com.mbsc.finapp.dto.caisse.TransactionCaisseResponse;
 import com.mbsc.finapp.dto.comptabilite.LivreJournalResponse;
+import com.mbsc.finapp.domain.enums.StatutRetourFonds;
+import com.mbsc.finapp.dto.notes.RefusRetourFondsRequest;
+import com.mbsc.finapp.dto.notes.RetourFondsResponse;
 import com.mbsc.finapp.service.CaisseService;
+import com.mbsc.finapp.service.RetourFondsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -26,6 +30,7 @@ import java.util.List;
 public class CaisseController {
 
     private final CaisseService service;
+    private final RetourFondsService retourFonds;
 
     @PostMapping("/transactions")
     @ResponseStatus(HttpStatus.CREATED)
@@ -70,6 +75,23 @@ public class CaisseController {
     @ResponseStatus(HttpStatus.CREATED)
     public TransactionCaisseResponse encaisserNote(@PathVariable Long noteId) {
         return service.encaisserNote(noteId);
+    }
+
+    // ── Retours de fonds : notes payees reduites par leur emetteur, argent a recevoir en especes ──
+
+    @GetMapping("/retours-fonds")
+    public List<RetourFondsResponse> retoursFonds(@RequestParam(required = false) StatutRetourFonds statut) {
+        return retourFonds.lister(statut);
+    }
+
+    @PostMapping("/retours-fonds/{id}/valider")
+    public RetourFondsResponse validerRetourFonds(@PathVariable Long id) {
+        return retourFonds.valider(id);
+    }
+
+    @PostMapping("/retours-fonds/{id}/refuser")
+    public RetourFondsResponse refuserRetourFonds(@PathVariable Long id, @Valid @RequestBody RefusRetourFondsRequest req) {
+        return retourFonds.refuser(id, req.motif());
     }
 
     @GetMapping("/grand-livre")

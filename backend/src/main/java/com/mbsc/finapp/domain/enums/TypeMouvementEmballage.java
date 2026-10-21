@@ -51,7 +51,12 @@ public enum TypeMouvementEmballage {
     /** Ecart d'inventaire en faveur du stock. */
     AJUSTEMENT_PLUS(1),
     /** Ecart d'inventaire en defaveur du stock. */
-    AJUSTEMENT_MOINS(-1);
+    AJUSTEMENT_MOINS(-1),
+    /**
+     * Retour de fonds sur un achat de boissons avec echange de consigne (note reduite apres paiement) : le fournisseur
+     * rend les vides des bouteilles non livrees ou reprises — le symetrique d'{@link #ACHAT}, +1 par bouteille.
+     */
+    RETOUR_ACHAT(1);
 
     private final int sens;
 
@@ -71,12 +76,12 @@ public enum TypeMouvementEmballage {
 
     /**
      * true pour un mouvement saisi a la main sur l'ecran des mouvements, donc
-     * annulable depuis cet ecran. VENTE, RETOUR_VENTE et ACHAT sont produits
-     * par la vente ou par le paiement d'une note d'achat, et ne s'annulent
-     * qu'avec l'operation qui les a produits.
+     * annulable depuis cet ecran. VENTE, RETOUR_VENTE, ACHAT et RETOUR_ACHAT
+     * sont produits par la vente, le paiement d'une note d'achat ou son retour
+     * de fonds, et ne s'annulent qu'avec l'operation qui les a produits.
      */
     public boolean estSaisieManuelle() {
-        return this != VENTE && this != RETOUR_VENTE && this != ACHAT;
+        return this != VENTE && this != RETOUR_VENTE && this != ACHAT && this != RETOUR_ACHAT;
     }
 
     /**

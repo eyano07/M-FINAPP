@@ -30,5 +30,9 @@ public enum TypeNotification {
     /** Budget mis en exécution : il contrôle désormais les notes de frais de sa période (DA, DG). */
     BUDGET_EN_EXECUTION,
     /** Note de frais validée par le DA alors qu'elle dépasse le budget, est hors budget ou sans budget (DFIN). */
-    BUDGET_DEPASSE
+    BUDGET_DEPASSE,
+    /** Retour de fonds recu par le caissier : la note payee est reduite (DFIN, comptable, DA, admin, bar/cuisine, emetteur). */
+    RETOUR_FONDS_VALIDE,
+    /** Retour de fonds refuse par le caissier (avec son motif) : l'emetteur est prevenu. */
+    RETOUR_FONDS_REFUSE
 }

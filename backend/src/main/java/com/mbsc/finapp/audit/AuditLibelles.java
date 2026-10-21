@@ -104,6 +104,10 @@ public final class AuditLibelles {
         r("PUT", "/notes-frais/{}/comptes", "Modification des comptes d'imputation d'une note de frais");
         r("PUT", "/notes-frais/{}/objet", "Modification de l'objet d'une note de frais");
         r("PUT", "/notes-frais/{}/service", "Rattachement d'une note de frais à un service budgétaire");
+        r("POST", "/notes-frais/{}/retours-fonds", "Demande de retour de fonds (réduction d'une note payée)");
+        r("POST", "/notes-frais/retours-fonds/{}/annuler", "Retrait d'une demande de retour de fonds");
+        r("POST", "/caisse/retours-fonds/{}/valider", "Réception d'un retour de fonds en caisse (note réduite)");
+        r("POST", "/caisse/retours-fonds/{}/refuser", "Refus d'un retour de fonds par la caisse");
         r("PUT", "/notes-frais/{}/justification-budget", "Justification d'un dépassement de budget sur une note de frais");
         r("POST", "/notes-frais/{}/pieces-jointes", "Ajout d'une pièce jointe à une note de frais");
         r("DELETE", "/notes-frais/{}/pieces-jointes/{}", "Suppression d'une pièce jointe d'une note de frais");

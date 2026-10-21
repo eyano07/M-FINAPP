@@ -1922,6 +1922,7 @@ public class RestaurantService {
             case VENTE -> "vente";
             case RETOUR_VENTE -> "retour de vente";
             case ACHAT -> "échange de consigne";
+            case RETOUR_ACHAT -> "retour d'achat (vides rendus par le fournisseur)";
         };
     }
 
@@ -2374,6 +2375,23 @@ public class RestaurantService {
                     : motif;
                 appliquerEtJournaliser(e, TypeMouvementEmballage.ACHAT, rendus, date, trace, null, auteur);
             });
+    }
+
+    /**
+     * Retour de fonds sur un achat de boissons avec échange de consigne (note réduite après paiement, voir
+     * {@code RetourFondsService}) : le fournisseur rend les vides des bouteilles non livrées ou reprises —
+     * le symétrique de {@link #enregistrerAchatVidesDepuisNoteFraisInterne}, +1 vide par bouteille. Sans
+     * conditionnement pour la boisson, rien à faire (aucun vide n'avait été rendu à l'achat).
+     */
+    @Transactional
+    public void enregistrerRetourVidesAchatInterne(Article articleBoisson, int quantiteBouteilles,
+                                                   LocalDate date, String motif, User auteur) {
+        if (quantiteBouteilles <= 0) {
+            return;
+        }
+        emballageRepository.findByArticleBoissonIdPourMiseAJour(articleBoisson.getId())
+            .ifPresent(e -> appliquerEtJournaliser(e, TypeMouvementEmballage.RETOUR_ACHAT, quantiteBouteilles,
+                date, motif, null, auteur));
     }
 
     /**

@@ -143,6 +143,74 @@ public class NotificationService {
     @Transactional
     public void notifierBudget(Collection<RoleType> roles, User aussi, User acteur, TypeNotification type,
                                String titre, String message, Budget budget) {
+        String lien = budget == null || budget.getId() == null ? "/budgets" : "/budgets/" + budget.getId();
+        for (User destinataire : destinataires(roles, aussi, acteur)) {
+            enregistrer(Notification.builder()
+                .destinataire(destinataire)
+                .type(type)
+                .titre(titre)
+                .message(message)
+                .lien(lien)
+                .budget(budget)
+                .lue(false)
+                .build());
+        }
+    }
+
+    /**
+     * Notifie, au sujet d'une note de frais, les utilisateurs actifs des roles donnes et {@code aussi} (par exemple
+     * l'emetteur de la note) : une seule notification par personne, jamais a l'auteur de l'action ({@code acteur}). Le
+     * lien mene a la page de la note.
+     */
+    @Transactional
+    public void notifierNote(Collection<RoleType> roles, User aussi, User acteur, TypeNotification type,
+                             String titre, String message, NoteFrais note) {
+        notifierNote(roles, aussi, acteur, type, titre, message, note, Map.of());
+    }
+
+    /**
+     * {@link #notifierNote(Collection, User, User, TypeNotification, String, String, NoteFrais)} etendue a des
+     * destinataires qui ne voient pas forcement la note : les utilisateurs actifs de chaque role de {@code autres} (par
+     * exemple le responsable bar, qui ne voit que ses propres notes) recoivent la meme notification, avec le lien associe a
+     * leur role (par exemple le stock du bar) — sauf s'ils la recoivent deja par {@code roles} ou {@code aussi}, avec le
+     * lien de la note. Toujours une seule notification par personne, jamais a l'acteur.
+     */
+    @Transactional
+    public void notifierNote(Collection<RoleType> roles, User aussi, User acteur, TypeNotification type,
+                             String titre, String message, NoteFrais note, Map<RoleType, String> autres) {
+        String lienNote = note == null || note.getId() == null ? "/notes-frais" : "/notes-frais/" + note.getId();
+        Map<Long, User> personnes = new LinkedHashMap<>();
+        Map<Long, String> liens = new LinkedHashMap<>();
+        for (User u : destinataires(roles, aussi, acteur)) {
+            personnes.put(u.getId(), u);
+            liens.put(u.getId(), lienNote);
+        }
+        for (Map.Entry<RoleType, String> e : autres.entrySet()) {
+            for (User u : userRepository.findByRoles_NomAndActifTrue(e.getKey())) {
+                if ((acteur == null || !u.getId().equals(acteur.getId())) && personnes.putIfAbsent(u.getId(), u) == null) {
+                    liens.put(u.getId(), e.getValue());
+                }
+            }
+        }
+        for (User destinataire : personnes.values()) {
+            enregistrer(Notification.builder()
+                .destinataire(destinataire)
+                .type(type)
+                .titre(titre)
+                .message(message)
+                .lien(liens.get(destinataire.getId()))
+                .noteFrais(note)
+                .lue(false)
+                .build());
+        }
+    }
+
+    /**
+     * Destinataires d'une notification de groupe : les utilisateurs actifs des roles donnes, plus {@code aussi} s'il est
+     * actif, chacun une seule fois (un compte qui cumule deux roles n'est pas notifie deux fois), sans l'auteur de
+     * l'action.
+     */
+    private Collection<User> destinataires(Collection<RoleType> roles, User aussi, User acteur) {
         Map<Long, User> destinataires = new LinkedHashMap<>();
         for (RoleType role : roles) {
             for (User u : userRepository.findByRoles_NomAndActifTrue(role)) {
@@ -155,18 +223,7 @@ public class NotificationService {
         if (acteur != null) {
             destinataires.remove(acteur.getId());
         }
-        String lien = budget == null || budget.getId() == null ? "/budgets" : "/budgets/" + budget.getId();
-        for (User destinataire : destinataires.values()) {
-            enregistrer(Notification.builder()
-                .destinataire(destinataire)
-                .type(type)
-                .titre(titre)
-                .message(message)
-                .lien(lien)
-                .budget(budget)
-                .lue(false)
-                .build());
-        }
+        return destinataires.values();
     }
 
     /**

@@ -39,6 +39,9 @@ const TYPE_META: Record<string, { icon: string; color: string }> = {
   BUDGET_REJETE:  { icon: 'mdi-close-octagon-outline', color: '#dc2626' },
   BUDGET_EN_EXECUTION: { icon: 'mdi-play-circle-outline', color: '#0d9488' },
   BUDGET_DEPASSE: { icon: 'mdi-alert-octagon-outline', color: '#dc2626' },
+  // Retour de fonds sur une note payée : reçu en caisse (note réduite), ou refusé par le caissier.
+  RETOUR_FONDS_VALIDE: { icon: 'mdi-cash-refund', color: '#0d9488' },
+  RETOUR_FONDS_REFUSE: { icon: 'mdi-cash-remove', color: '#dc2626' },
 }
 const typeMeta = (type: string) => TYPE_META[type] ?? { icon: 'mdi-bell-outline', color: '#6b7280' }
 
