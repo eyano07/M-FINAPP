@@ -28,7 +28,7 @@ const erreur = ref('')
 const ventes = ref<Vente[]>([])
 const tauxChange = ref(1)
 
-const canWrite = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['CAISSIER']))
 
 async function charger() {
   loading.value = true

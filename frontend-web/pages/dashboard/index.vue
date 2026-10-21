@@ -34,9 +34,9 @@ const estCaissier = computed(() =>
   auth.hasRole('CAISSIER') && !auth.hasAnyRole(['ADMIN', 'DFIN', 'DA', 'DG', 'LOGISTIQUE'])
 )
 
-// Raccourcis Vente / Caisse : proposés au caissier comme à l'administrateur
-// (le backend autorise les deux), donc utilisables sans compte Caissier.
-const peutOperer = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
+// Raccourcis Vente / Caisse : réservés au caissier. L'administrateur configure l'application mais ne vend ni n'encaisse
+// (séparation des tâches, voir SeparationDesTachesTest) : le serveur et les pages Caisse et Nouvelle vente le lui refusent.
+const peutOperer = computed(() => auth.hasRole('CAISSIER'))
 
 const notes = ref<Note[]>([])
 const tresorerie = ref(0)
