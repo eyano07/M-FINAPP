@@ -461,8 +461,8 @@ const LIBELLES_REGLEMENT: Record<string, string> = {
 }
 const nomClientChoisi = computed(() =>
   modeClient.value === 'REPERTOIRE'
-    ? (clients.value.find((c) => c.id === form.clientId)?.nom ?? '—')
-    : (form.clientNom || '—'))
+    ? (clients.value.find((c) => c.id === form.clientId)?.nom ?? '-')
+    : ((form.clientNom || '').trim() || '-'))
 async function confirmerCreationValidation() {
   await enregistrer(true)
   confirmationValidation.value = false
@@ -576,7 +576,7 @@ const contreValeur = computed(() => {
         density="comfortable"
         rounded="lg"
         clearable
-        hint="Facultatif : laissez vide pour une vente au comptoir"
+        hint="Facultatif : laissez vide pour une vente au comptoir (client « - »)"
         persistent-hint
         class="mb-4"
       />
@@ -584,7 +584,9 @@ const contreValeur = computed(() => {
         v-else
         v-model="form.clientNom"
         label="Nom du client"
-        placeholder="ex : Client comptoir"
+        placeholder="ex : Jean Mukendi"
+        hint="Facultatif : laissez vide, la vente portera « - »"
+        persistent-hint
         prepend-inner-icon="mdi-account-outline"
         variant="outlined"
         density="comfortable"

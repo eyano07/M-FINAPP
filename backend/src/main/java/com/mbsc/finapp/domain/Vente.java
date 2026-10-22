@@ -204,12 +204,15 @@ public class Vente {
         this.lignes.add(ligne);
     }
 
-    /** Libelle du client, quelle que soit la facon dont il a ete renseigne. */
+    /** Designation d'une vente sans client : un simple tiret (libelles, facture, recu, journal). */
+    public static final String CLIENT_NON_RENSEIGNE = "-";
+
+    /** Libelle du client, quelle que soit la facon dont il a ete renseigne ; « - » s'il ne l'a pas ete. */
     public String designationClient() {
         if (client != null) {
             return client.getNom();
         }
-        return clientNom == null || clientNom.isBlank() ? "Client comptoir" : clientNom;
+        return clientNom == null || clientNom.isBlank() ? CLIENT_NON_RENSEIGNE : clientNom.trim();
     }
 
     /**

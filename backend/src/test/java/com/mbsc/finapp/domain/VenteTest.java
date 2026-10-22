@@ -30,6 +30,16 @@ class VenteTest {
     }
 
     @Test
+    void uneVenteSansClientPorteUnTiret() {
+        // Demande de l'utilisateur : plus de « Client comptoir », un simple « - » dans les libellés, la facture et le journal.
+        assertThat(Vente.builder().build().designationClient()).isEqualTo("-");
+        assertThat(Vente.builder().clientNom("   ").build().designationClient()).isEqualTo("-");
+        assertThat(Vente.builder().clientNom(" Jean Mukendi ").build().designationClient()).isEqualTo("Jean Mukendi");
+        assertThat(Vente.builder().client(Client.builder().nom("Société Kasaï").build()).clientNom("ignoré").build()
+            .designationClient()).isEqualTo("Société Kasaï");
+    }
+
+    @Test
     void uneCreanceValideeResteAPayerJusquAuReglement() {
         assertThat(vente(StatutVente.VALIDEE, ModeReglement.CREDIT, null).estReglee()).isFalse();
         assertThat(vente(StatutVente.VALIDEE, ModeReglement.CREDIT, new PieceComptable()).estReglee()).isTrue();
