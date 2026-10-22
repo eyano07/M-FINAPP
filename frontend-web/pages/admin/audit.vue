@@ -370,7 +370,7 @@ async function demander(q?: string) {
 .au-detail { margin: 0; display: grid; gap: 8px; font-size: 0.86rem; }
 .au-detail div { display: flex; gap: 10px; }
 .au-detail dt { font-weight: 700; min-width: 90px; }
-.au-detail dd { margin: 0; word-break: break-all; }
+.au-detail dd { margin: 0; overflow-wrap: anywhere; }
 .au-aide { font-size: 0.78rem; color: #4b5563; margin: 0 0 10px; }
 .au-suggestions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .au-reponse { background: #f6f8f7; border-radius: 10px; padding: 14px 16px; }

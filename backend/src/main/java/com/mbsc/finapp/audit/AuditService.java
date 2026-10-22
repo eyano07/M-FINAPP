@@ -116,6 +116,25 @@ public class AuditService {
         enregistrer(m);
     }
 
+    /** Attribut de la requête où un service métier dépose le détail de son action pour le journal d'audit. */
+    public static final String ATTRIBUT_DETAIL = "mbsc.audit.detail";
+
+    /** Longueur maximale d'un détail métier dans le journal d'audit. */
+    static final int TAILLE_DETAIL = 500;
+
+    /**
+     * Joint un détail métier (note, montant, reçu, motif...) à la ligne d'audit de la requête en cours : sans lui, le
+     * journal ne garde que l'opération et l'identifiant de la ressource, et l'auditeur doit recouper à la main. Le dernier
+     * détail déposé l'emporte. Sans effet hors d'une requête HTTP (tâche planifiée, démarrage de l'application).
+     */
+    public static void detailler(String detail) {
+        RequestAttributes a = RequestContextHolder.getRequestAttributes();
+        if (a == null || detail == null || detail.isBlank()) return;
+        String d = detail.strip();
+        a.setAttribute(ATTRIBUT_DETAIL, d.length() > TAILLE_DETAIL ? d.substring(0, TAILLE_DETAIL - 1) + "…" : d,
+            RequestAttributes.SCOPE_REQUEST);
+    }
+
     public static String adresseIp(HttpServletRequest r) {
         String ip = r.getHeader("X-Real-IP");   // posé par nginx (écrase toute valeur fournie par le client)
         if (ip == null || ip.isBlank()) ip = r.getRemoteAddr();

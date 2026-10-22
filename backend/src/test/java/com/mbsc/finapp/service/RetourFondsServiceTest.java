@@ -1,5 +1,6 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.audit.AuditService;
 import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.Entrepot;
@@ -32,7 +33,10 @@ import com.mbsc.finapp.security.CurrentUserProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Method;
@@ -51,10 +55,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -171,7 +177,15 @@ class RetourFondsServiceTest {
         assertThat(lBiere.getQuantiteMarchandise()).isEqualByComparingTo("24");
         assertThat(note.getObservations()).singleElement()
             .satisfies(o -> assertThat(o.getCommentaire()).contains("Retour de fonds demandé").contains("Livraison incomplète"));
-        verifyNoInteractions(comptabilite, stockService, restaurantService, notifications);
+        verifyNoInteractions(comptabilite, stockService, restaurantService);
+        // La caisse, et elle seule, est prévenue : l'argent va lui être remis (lien vers la page Caisse, jamais l'émetteur).
+        ArgumentCaptor<String> message = ArgumentCaptor.forClass(String.class);
+        verify(notifications).notifierNote(eq(List.of()), isNull(), eq(emetteur), eq(TypeNotification.RETOUR_FONDS_A_RECEVOIR),
+            eq("Retour de fonds à recevoir"), message.capture(), eq(note), eq(java.util.Map.of(RoleType.CAISSIER, "/caisse")));
+        assertThat(message.getValue()).contains("NF-2026-000042").contains("95,20 USD à recevoir en espèces de Rita Kabila")
+            .contains("Papier 100,00 → 50,00").contains("Bière Simba 24 → 12").contains("Riz 12.5 → 10.25")
+            .contains("Motif : Livraison incomplète");
+        verifyNoMoreInteractions(notifications);
     }
 
     @Test
@@ -382,7 +396,67 @@ class RetourFondsServiceTest {
         when(currentUser.requireUser()).thenReturn(emetteur);
         service.annuler(7L);
         assertThat(retour.getStatut()).isEqualTo(StatutRetourFonds.ANNULE);
-        verifyNoInteractions(comptabilite, notifications);
+        verifyNoInteractions(comptabilite);
+        // Les caissiers, prévenus de la demande, savent qu'il n'y a plus rien à recevoir.
+        verify(notifications).notifierNote(eq(List.of()), isNull(), eq(emetteur), eq(TypeNotification.RETOUR_FONDS_RETIRE),
+            eq("Retour de fonds retiré"), org.mockito.ArgumentMatchers.contains("la demande de 95,20 USD a été retirée"), eq(note),
+            eq(java.util.Map.of(RoleType.CAISSIER, "/caisse")));
+    }
+
+    // ---------------------------------------------------------------------
+    // Journal d'audit : chaque action depose son detail metier
+    // ---------------------------------------------------------------------
+
+    private static String detailAudit(MockHttpServletRequest requete) {
+        return (String) requete.getAttribute(AuditService.ATTRIBUT_DETAIL);
+    }
+
+    @Test
+    void la_demande_et_la_reception_deposent_leur_detail_dans_le_journal_d_audit() {
+        MockHttpServletRequest requete = new MockHttpServletRequest();
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(requete));
+        try {
+            enAttente();
+            assertThat(detailAudit(requete)).startsWith("NF-2026-000042 — retour de 95,20 USD demandé (")
+                .contains("Bière Simba 24 → 12").endsWith("Motif : Livraison incomplète");
+
+            MockHttpServletRequest reception = new MockHttpServletRequest();
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(reception));
+            when(currentUser.requireUser()).thenReturn(caissier);
+            service.valider(7L);
+            assertThat(detailAudit(reception)).startsWith("NF-2026-000042 — 95,20 USD reçus en espèces, reçu REC-RETOUR (TRX-RETOUR)")
+                .contains("note 216,00 → 120,80 USD").contains("Riz 12.5 → 10.25");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void le_refus_depose_son_detail_dans_le_journal_d_audit() {
+        try {
+            enAttente();
+            MockHttpServletRequest refus = new MockHttpServletRequest();
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(refus));
+            when(currentUser.requireUser()).thenReturn(caissier);
+            service.refuser(7L, "Argent non remis");
+            assertThat(detailAudit(refus)).isEqualTo("NF-2026-000042 — 95,20 USD non reçus, retour refusé. Motif : Argent non remis");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void le_retrait_depose_son_detail_dans_le_journal_d_audit() {
+        try {
+            enAttente();
+            MockHttpServletRequest retrait = new MockHttpServletRequest();
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(retrait));
+            when(currentUser.requireUser()).thenReturn(emetteur);
+            service.annuler(7L);
+            assertThat(detailAudit(retrait)).isEqualTo("NF-2026-000042 — demande de retour de 95,20 USD retirée par l'émetteur");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     // ---------------------------------------------------------------------

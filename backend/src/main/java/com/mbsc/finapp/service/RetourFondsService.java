@@ -1,5 +1,6 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.audit.AuditService;
 import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.Entrepot;
@@ -52,6 +53,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Retour de fonds sur une note de frais deja payee : l'emetteur reduit sa note (montant d'une ligne, ou quantite d'un
@@ -69,6 +71,9 @@ import java.util.UUID;
  *   <li>notification du DFIN, du comptable, du DA, de l'administrateur, du responsable bar ou cuisine selon les articles,
  *       et de l'emetteur — jamais du caissier qui valide.</li>
  * </ol>
+ *
+ * <p>Les caissiers sont prevenus des la demande (l'argent est attendu a la caisse) et si l'emetteur la retire ; chaque
+ * action depose son detail metier (note, montant, lignes, recu, motif) dans le journal d'audit.</p>
  *
  * <p>Separation des taches : seul le CAISSIER recoit l'argent et valide, jamais l'ADMIN (voir SeparationDesTachesTest).</p>
  */
@@ -89,6 +94,8 @@ public class RetourFondsService {
     /** Liens des notifications du responsable bar (stock des boissons) et du responsable cuisine (provisions). */
     static final String LIEN_STOCK_BAR = "/restaurant/stock";
     static final String LIEN_STOCK_CUISINE = "/restaurant/provisions";
+    /** Lien des notifications des caissiers : la page Caisse, ou la demande attend dans « Retours de fonds a recevoir ». */
+    static final String LIEN_CAISSE = "/caisse";
 
     private final NoteFraisRepository noteRepository;
     private final RetourFondsNoteRepository retourRepository;
@@ -166,6 +173,14 @@ public class RetourFondsService {
         retour = retourRepository.save(retour);
         note.addObservation(observation(note, emetteur, "Retour de fonds demandé : " + montant(retour) + " à rendre à la caisse. "
             + "Motif : " + retour.getMotif()));
+        // La caisse est prevenue : l'argent va lui etre remis (lien vers la file « Retours de fonds a recevoir »).
+        notificationService.notifierNote(List.of(), null, emetteur, TypeNotification.RETOUR_FONDS_A_RECEVOIR,
+            "Retour de fonds à recevoir",
+            note.getReference() + " — " + note.getObjet() + " : " + montant(retour) + " à recevoir en espèces de "
+                + nom(emetteur) + " (" + detailLignes(retour) + "). Motif : " + retour.getMotif(),
+            note, Map.of(RoleType.CAISSIER, LIEN_CAISSE));
+        AuditService.detailler(note.getReference() + " — retour de " + montant(retour) + " demandé (" + detailLignes(retour)
+            + "). Motif : " + retour.getMotif());
         log.info("Retour de fonds demandé [note={}, montant={} {}, par={}]",
             note.getReference(), retour.getMontant(), note.getDevise(), emetteur.getEmail());
         return RetourFondsResponse.from(retour);
@@ -185,6 +200,13 @@ public class RetourFondsService {
         retour.setDateDecision(Instant.now());
         NoteFrais note = retour.getNote();
         note.addObservation(observation(note, emetteur, "Demande de retour de fonds retirée (" + montant(retour) + ")."));
+        // Les caissiers avaient ete prevenus de la demande : ils savent ainsi qu'il n'y a plus rien a recevoir.
+        notificationService.notifierNote(List.of(), null, emetteur, TypeNotification.RETOUR_FONDS_RETIRE,
+            "Retour de fonds retiré",
+            note.getReference() + " — " + note.getObjet() + " : la demande de " + montant(retour)
+                + " a été retirée par l'émetteur ; rien à recevoir.",
+            note, Map.of(RoleType.CAISSIER, LIEN_CAISSE));
+        AuditService.detailler(note.getReference() + " — demande de retour de " + montant(retour) + " retirée par l'émetteur");
         return RetourFondsResponse.from(retour);
     }
 
@@ -327,6 +349,10 @@ public class RetourFondsService {
                 + encaissement.getNumeroRecu() + ") ; la note passe de " + BudgetPdfService.montant(ancienMontantNote) + " à "
                 + BudgetPdfService.montant(note.getMontant()) + " " + note.getDevise() + ". Motif : " + retour.getMotif(),
             note, responsables);
+        AuditService.detailler(note.getReference() + " — " + montant(retour) + " reçus en espèces, reçu "
+            + encaissement.getNumeroRecu() + " (" + encaissement.getReference() + ") ; note "
+            + BudgetPdfService.montant(ancienMontantNote) + " → " + BudgetPdfService.montant(note.getMontant()) + " "
+            + note.getDevise() + " (" + detailLignes(retour) + ")");
         log.info("Retour de fonds reçu [note={}, montant={} {}, transaction={}, caissier={}]", note.getReference(),
             retour.getMontant(), note.getDevise(), encaissement.getReference(), caissier.getEmail());
         return RetourFondsResponse.from(retour);
@@ -353,6 +379,7 @@ public class RetourFondsService {
             "Retour de fonds refusé",
             note.getReference() + " — " + note.getObjet() + " : " + montant(retour) + " non reçus à la caisse. Motif : " + m,
             note);
+        AuditService.detailler(note.getReference() + " — " + montant(retour) + " non reçus, retour refusé. Motif : " + m);
         return RetourFondsResponse.from(retour);
     }
 
@@ -522,6 +549,31 @@ public class RetourFondsService {
 
     private static String montant(RetourFondsNote retour) {
         return BudgetPdfService.montant(retour.getMontant()) + " " + retour.getNote().getDevise();
+    }
+
+    /**
+     * Lignes reduites, avant → apres, pour les notifications et le journal d'audit : « Nkoyi Black 50 Cl 60 → 20 ;
+     * Rames de papier 100,00 → 60,00 » (quantite pour un achat de marchandise, montant HT sinon).
+     */
+    static String detailLignes(RetourFondsNote retour) {
+        return retour.getLignes().stream().map(lr -> {
+            LigneNoteFrais l = lr.getLigneNote();
+            String nom = l.getArticle() != null ? l.getArticle().getLibelle()
+                : l.getDescription() != null && !l.getDescription().isBlank() ? l.getDescription()
+                : l.getCompteImputation() != null ? l.getCompteImputation().getNumero() : "ligne " + l.getId();
+            return lr.getAncienneQuantite() != null && lr.getNouvelleQuantite() != null
+                ? nom + " " + quantite(lr.getAncienneQuantite()) + " → " + quantite(lr.getNouvelleQuantite())
+                : nom + " " + BudgetPdfService.montant(lr.getAncienMontant()) + " → " + BudgetPdfService.montant(lr.getNouveauMontant());
+        }).collect(Collectors.joining(" ; "));
+    }
+
+    /** Nom affiche d'un utilisateur (prenom et nom, sinon son identifiant). */
+    private static String nom(User u) {
+        if (u == null) {
+            return "l'émetteur";
+        }
+        String n = ((u.getPrenom() == null ? "" : u.getPrenom()) + " " + (u.getNom() == null ? "" : u.getNom())).trim();
+        return n.isEmpty() ? u.getEmail() : n;
     }
 
     private static String quantite(BigDecimal q) {

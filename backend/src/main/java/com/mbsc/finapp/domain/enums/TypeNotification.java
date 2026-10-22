@@ -31,6 +31,10 @@ public enum TypeNotification {
     BUDGET_EN_EXECUTION,
     /** Note de frais validée par le DA alors qu'elle dépasse le budget, est hors budget ou sans budget (DFIN). */
     BUDGET_DEPASSE,
+    /** Retour de fonds demande par l'emetteur d'une note payee : l'argent est attendu a la caisse (caissiers, lien vers la Caisse). */
+    RETOUR_FONDS_A_RECEVOIR,
+    /** Demande de retour de fonds retiree par l'emetteur avant la caisse : plus rien a recevoir (caissiers). */
+    RETOUR_FONDS_RETIRE,
     /** Retour de fonds recu par le caissier : la note payee est reduite (DFIN, comptable, DA, admin, bar/cuisine, emetteur). */
     RETOUR_FONDS_VALIDE,
     /** Retour de fonds refuse par le caissier (avec son motif) : l'emetteur est prevenu. */
