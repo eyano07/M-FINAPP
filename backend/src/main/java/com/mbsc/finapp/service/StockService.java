@@ -493,14 +493,28 @@ public class StockService {
      *        meme qu'une vente, seule la charge change de compte — voir
      *        {@code RestaurantService.compteChargePerte} et {@code compteSortiePlat}.
      *        Le compte de stock credite reste celui de l'article.
+     * @param ligneNoteOrigineId ligne de la note de frais dont la marchandise est rendue au fournisseur (retour
+     *        d'achat), ou {@code null}. Sert au seul suivi de gestion des lots : le lot de cette livraison diminue
+     *        d'abord, au lieu du plus ancien de l'article — voir {@code LotStockService.consommer}. Sans effet sur le
+     *        cout moyen ni sur les ecritures.
      */
-    public record SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose, CompteOHADA compteCharge) {
+    public record SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose, CompteOHADA compteCharge,
+                              Long ligneNoteOrigineId) {
         public SortieVente(Article article, BigDecimal quantite) {
-            this(article, quantite, null, null);
+            this(article, quantite, null, null, null);
         }
 
         public SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose) {
-            this(article, quantite, coutImpose, null);
+            this(article, quantite, coutImpose, null, null);
+        }
+
+        public SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose, CompteOHADA compteCharge) {
+            this(article, quantite, coutImpose, compteCharge, null);
+        }
+
+        /** Cette sortie rend au fournisseur une partie de la livraison payee par la ligne de note {@code ligneNoteId}. */
+        public SortieVente rendueSurLaLigne(Long ligneNoteId) {
+            return new SortieVente(article, quantite, coutImpose, compteCharge, ligneNoteId);
         }
     }
 
@@ -548,7 +562,8 @@ public class StockService {
         for (int i = 0; i < lignesSortie.size(); i++) {
             SortieVente demande = i < sorties.size() ? sorties.get(i) : null;
             appliquerLigne(saved, lignesSortie.get(i), ecrituresCompta,
-                demande == null ? null : demande.coutImpose(), demande == null ? null : demande.compteCharge());
+                demande == null ? null : demande.coutImpose(), demande == null ? null : demande.compteCharge(),
+                demande == null ? null : demande.ligneNoteOrigineId());
         }
         if (!ecrituresCompta.isEmpty()) {
             PieceComptable piece = comptabilite.creerPieceInterne(
@@ -625,9 +640,18 @@ public class StockService {
      * @param montantAchat prix HT seul, sans les frais — voir StockNiveau.valeurAchat
      * @param fournisseur  bénéficiaire de la note de frais (traçabilité du lot — voir
      *                     {@link LotStockService}), {@code null} si non applicable
+     * @param ligneNote    ligne de la note qui porte cet achat : le lot créé s'en souvient, pour qu'un retour de
+     *                     fonds rende cette livraison-là (voir {@code LotStockService.consommer}), {@code null}
+     *                     si non applicable
      */
     public record EntreeNoteFrais(Article article, Entrepot entrepot, BigDecimal quantite,
-                                  BigDecimal montant, BigDecimal montantAchat, String fournisseur) {}
+                                  BigDecimal montant, BigDecimal montantAchat, String fournisseur,
+                                  LigneNoteFrais ligneNote) {
+        public EntreeNoteFrais(Article article, Entrepot entrepot, BigDecimal quantite,
+                               BigDecimal montant, BigDecimal montantAchat, String fournisseur) {
+            this(article, entrepot, quantite, montant, montantAchat, fournisseur, null);
+        }
+    }
 
     /**
      * Entrée en stock issue d'un achat de marchandises réglé par note de
@@ -697,7 +721,7 @@ public class StockService {
             BigDecimal prixTransportUnite = e.quantite().signum() != 0
                 ? e.montant().subtract(e.montantAchat()).divide(e.quantite(), 6, RoundingMode.HALF_UP) : BigDecimal.ZERO;
             lotStock.enregistrerEntree(ligne.getArticle(), ligne.getEntrepotCible(), date, e.fournisseur(),
-                ligne.getQuantite(), prixAchatUnite, prixTransportUnite, ligne);
+                ligne.getQuantite(), prixAchatUnite, prixTransportUnite, ligne, e.ligneNote());
         }
         PieceComptable piece = comptabilite.creerPieceInterne(
             JournalComptable.STOCK, libelle, date, ecritures, auteur);
@@ -842,7 +866,7 @@ public class StockService {
 
     private void appliquerLigne(MouvementStock mouvement, LigneMouvementStock ligne,
                                 List<EcritureGrandLivre> ecrituresCompta) {
-        appliquerLigne(mouvement, ligne, ecrituresCompta, null, null);
+        appliquerLigne(mouvement, ligne, ecrituresCompta, null, null, null);
     }
 
     /**
@@ -855,10 +879,12 @@ public class StockService {
      *        {@link SortieVente#compteCharge}. Sans effet sur une entree, un
      *        transfert ou un ecart de valorisation (voir {@link #sortie}), qui
      *        reste entre les comptes de variation et de stock de l'article.
+     * @param ligneNoteOrigineId ligne de note dont la livraison est rendue au fournisseur, ou {@code null} — voir
+     *        {@link SortieVente}. Ne change que les lots touches par une SORTIE, jamais sa valeur ni ses ecritures.
      */
     private void appliquerLigne(MouvementStock mouvement, LigneMouvementStock ligne,
                                 List<EcritureGrandLivre> ecrituresCompta, BigDecimal coutImpose,
-                                CompteOHADA compteChargeImpose) {
+                                CompteOHADA compteChargeImpose, Long ligneNoteOrigineId) {
         Article article = ligne.getArticle();
         BigDecimal qte = ligne.getQuantite();
 
@@ -897,8 +923,9 @@ public class StockService {
                 ajouterEcriture(ecrituresCompta, compteChargeImpose != null ? compteChargeImpose : compteCharge(article),
                     montant, BigDecimal.ZERO, mouvement);
                 ajouterEcriture(ecrituresCompta, compteStock(article), BigDecimal.ZERO, montant, mouvement);
-                // Suivi de gestion : déplète les lots en FIFO ou au prorata (résultat sans emploi ici, pas de transfert derrière).
-                lotStock.consommer(article, source, qte, ligne);
+                // Suivi de gestion : déplète les lots en FIFO ou au prorata (résultat sans emploi ici, pas de transfert derrière) ;
+                // un retour d'achat vide d'abord le lot de la livraison rendue.
+                lotStock.consommer(article, source, qte, ligne, ligneNoteOrigineId);
             }
             case TRANSFERT -> {
                 Entrepot source = exigerEntrepot(ligne.getEntrepotSource(), "entrepôt source", mouvement);

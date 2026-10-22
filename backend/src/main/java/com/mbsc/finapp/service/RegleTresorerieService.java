@@ -255,7 +255,7 @@ public class RegleTresorerieService {
             // identique a celui debite au compte de stock, qui valorise
             // l'entree — la comptabilite et le stock restent en accord.
             if (ligne.isAchatMarchandise() && ligne.getArticle() != null && ligne.getEntrepot() != null) {
-                achats.add(new AchatAPorter(ligne.getArticle(), ligne.getEntrepot(), ligne.getQuantiteMarchandise(), montantHt));
+                achats.add(new AchatAPorter(ligne.getArticle(), ligne.getEntrepot(), ligne.getQuantiteMarchandise(), montantHt, ligne));
             } else if (ligne.isFraisApproche()) {
                 // Part HT seulement : une TVA sur le transport est récupérable,
                 // elle n'entre pas dans le coût des marchandises.
@@ -274,12 +274,14 @@ public class RegleTresorerieService {
             AchatAPorter a = achats.get(i);
             entreesStock.add(new StockService.EntreeNoteFrais(
                 a.article(), a.entrepot(), a.quantite(), a.montantHt().add(parts.get(i)), a.montantHt(),
-                note.getBeneficiaire()));
+                note.getBeneficiaire(), a.ligne()));
         }
         return new VentilationNote(lignesDebit, entreesStock);
     }
 
-    private record AchatAPorter(Article article, Entrepot entrepot, BigDecimal quantite, BigDecimal montantHt) {}
+    /** {@code ligne} : la ligne de note qui porte l'achat, que le lot créé en stock gardera en mémoire. */
+    private record AchatAPorter(Article article, Entrepot entrepot, BigDecimal quantite, BigDecimal montantHt,
+                                LigneNoteFrais ligne) {}
 
     /**
      * Part des frais d'approche revenant à chaque achat. Pour des boissons,

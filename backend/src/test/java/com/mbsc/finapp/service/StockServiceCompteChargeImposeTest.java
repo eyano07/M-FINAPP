@@ -4,7 +4,10 @@ import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.Entrepot;
+import com.mbsc.finapp.domain.LigneMouvementStock;
+import com.mbsc.finapp.domain.LigneNoteFrais;
 import com.mbsc.finapp.domain.MouvementStock;
+import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.StockNiveau;
 import com.mbsc.finapp.domain.enums.JournalComptable;
 import com.mbsc.finapp.domain.enums.TypeArticle;
@@ -24,7 +27,10 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,6 +43,7 @@ class StockServiceCompteChargeImposeTest {
 
     private StockService service;
     private ComptabiliteService comptabilite;
+    private LotStockService lotStock;
     private StockNiveau niveau;
 
     private final Entrepot bar = Entrepot.builder().id(1L).code("BAR").build();
@@ -58,6 +65,7 @@ class StockServiceCompteChargeImposeTest {
         Object[] arguments = Arrays.stream(constructeur.getParameterTypes()).map(t -> mock(t)).toArray();
         service = (StockService) constructeur.newInstance(arguments);
         comptabilite = trouver(arguments, ComptabiliteService.class);
+        lotStock = trouver(arguments, LotStockService.class);
         MouvementStockRepository mouvements = trouver(arguments, MouvementStockRepository.class);
         StockNiveauRepository niveaux = trouver(arguments, StockNiveauRepository.class);
 
@@ -104,5 +112,75 @@ class StockServiceCompteChargeImposeTest {
     void lesConstructeursCourtsNImposentAucunCompte() {
         assertThat(new StockService.SortieVente(coca, BigDecimal.ONE).compteCharge()).isNull();
         assertThat(new StockService.SortieVente(coca, BigDecimal.ONE, new BigDecimal("4")).compteCharge()).isNull();
+    }
+
+    @Test
+    void lesConstructeursCourtsNeDesignentAucuneLigneDeNote() {
+        assertThat(new StockService.SortieVente(coca, BigDecimal.ONE).ligneNoteOrigineId()).isNull();
+        assertThat(new StockService.SortieVente(coca, BigDecimal.ONE, new BigDecimal("4")).ligneNoteOrigineId()).isNull();
+        assertThat(new StockService.SortieVente(coca, BigDecimal.ONE, null, null).ligneNoteOrigineId()).isNull();
+    }
+
+    @Test
+    void rendueSurLaLigneNeChangeQueLaLigneDeNote() {
+        CompteOHADA compte = CompteOHADA.builder().numero("6276.1").build();
+        StockService.SortieVente rendue = new StockService.SortieVente(coca, new BigDecimal("2"), new BigDecimal("4"), compte)
+            .rendueSurLaLigne(55L);
+
+        assertThat(rendue.ligneNoteOrigineId()).isEqualTo(55L);
+        assertThat(rendue.article()).isSameAs(coca);
+        assertThat(rendue.quantite()).isEqualByComparingTo("2");
+        assertThat(rendue.coutImpose()).isEqualByComparingTo("4");
+        assertThat(rendue.compteCharge()).isSameAs(compte);
+    }
+
+    @Test
+    void laSortieDUnRetourDAchatDesigneLaLigneDeNoteAuxLotsSansChangerLesEcritures() {
+        // Mêmes écritures qu'une sortie ordinaire : la désignation ne sert qu'au suivi de gestion des lots.
+        assertThat(ecrituresDe(new StockService.SortieVente(coca, new BigDecimal("2")).rendueSurLaLigne(55L)))
+            .extracting(e -> e.getCompte().getNumero(), EcritureGrandLivre::getDebit, EcritureGrandLivre::getCredit)
+            .containsExactly(
+                tuple("60312", new BigDecimal("3.00"), BigDecimal.ZERO),
+                tuple("31112", BigDecimal.ZERO, new BigDecimal("3.00")));
+        assertThat(niveau.getQuantite()).isEqualByComparingTo("8");
+        verify(lotStock).consommer(eq(coca), eq(bar), eq(new BigDecimal("2")), any(LigneMouvementStock.class), eq(55L));
+    }
+
+    @Test
+    void uneSortieOrdinaireNeDesigneAucuneLigneDeNote() {
+        ecrituresDe(new StockService.SortieVente(coca, new BigDecimal("2")));
+
+        verify(lotStock).consommer(eq(coca), eq(bar), eq(new BigDecimal("2")), any(LigneMouvementStock.class), isNull());
+    }
+
+    @Test
+    void lEntreeParNoteDeFraisTransmetLaLigneDeLaNoteAuLot() {
+        when(comptabilite.creerPieceInterne(any(), anyString(), any(), anyList(), any()))
+            .thenReturn(PieceComptable.builder().reference("PC-STOCK").build());
+        LigneNoteFrais ligneNote = LigneNoteFrais.builder().id(55L).build();
+        LocalDate date = LocalDate.of(2026, 10, 22);
+
+        service.entreesDepuisNoteFraisInterne(date, "Paiement NF-2026-000011", List.of(
+                new StockService.EntreeNoteFrais(coca, bar, new BigDecimal("10"), new BigDecimal("15.00"),
+                    new BigDecimal("12.00"), "Dépôt Luwawa", ligneNote)),
+            PieceComptable.builder().reference("PC-REGLEMENT").build(), null);
+
+        verify(lotStock).enregistrerEntree(eq(coca), eq(bar), eq(date), eq("Dépôt Luwawa"), any(), any(), any(),
+            any(LigneMouvementStock.class), eq(ligneNote));
+    }
+
+    @Test
+    void lEntreeSansLigneDeNoteLaisseLeLotSansLien() {
+        when(comptabilite.creerPieceInterne(any(), anyString(), any(), anyList(), any()))
+            .thenReturn(PieceComptable.builder().reference("PC-STOCK").build());
+        LocalDate date = LocalDate.of(2026, 10, 22);
+
+        service.entreesDepuisNoteFraisInterne(date, "Paiement", List.of(
+                new StockService.EntreeNoteFrais(coca, bar, new BigDecimal("10"), new BigDecimal("15.00"),
+                    new BigDecimal("12.00"), "Dépôt")),
+            PieceComptable.builder().reference("PC-REGLEMENT").build(), null);
+
+        verify(lotStock).enregistrerEntree(eq(coca), eq(bar), eq(date), eq("Dépôt"), any(), any(), any(),
+            any(LigneMouvementStock.class), isNull());
     }
 }

@@ -255,6 +255,9 @@ class RetourFondsServiceTest {
             sorties.capture(), eq(caissier));
         assertThat(sorties.getValue()).extracting(s -> s.article().getCode(), s -> s.quantite().stripTrailingZeros().toPlainString())
             .containsExactly(org.assertj.core.groups.Tuple.tuple("BOI-001", "12"), org.assertj.core.groups.Tuple.tuple("PROV-001", "2.25"));
+        // Chaque sortie désigne la ligne de note rendue : c'est le lot de CETTE livraison qui diminue dans la page de stock
+        // (sans quoi le FIFO vide le plus ancien lot de l'article et la livraison retournée paraît inchangée).
+        assertThat(sorties.getValue()).extracting(StockService.SortieVente::ligneNoteOrigineId).containsExactly(102L, 103L);
 
         // 3. Vides : 12 bouteilles d'echange de consigne rendues par le fournisseur
         verify(restaurantService).enregistrerRetourVidesAchatInterne(eq(biere), eq(12), any(LocalDate.class), anyString(), eq(caissier));

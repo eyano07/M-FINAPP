@@ -278,8 +278,10 @@ public class RetourFondsService {
             .forEach(e -> {
                 Entrepot entrepot = e.getKey().getEntrepot();
                 entrepots.putIfAbsent(entrepot.getId(), entrepot);
+                // La sortie désigne la ligne de note rendue : c'est le lot de CETTE livraison qui diminue, pas le plus ancien
+                // de l'article (FIFO) — sinon la page de stock montre inchangé l'achat retourné.
                 sortiesParEntrepot.computeIfAbsent(entrepot.getId(), k -> new ArrayList<>())
-                    .add(new StockService.SortieVente(e.getKey().getArticle(), e.getValue()));
+                    .add(new StockService.SortieVente(e.getKey().getArticle(), e.getValue()).rendueSurLaLigne(e.getKey().getId()));
             });
         sortiesParEntrepot.forEach((entrepotId, sorties) ->
             stockService.enregistrerSortieVenteInterne(date, motifStock, entrepots.get(entrepotId), sorties, caissier));
