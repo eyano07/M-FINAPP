@@ -122,6 +122,16 @@ public class Vente {
     @ToString.Exclude
     private PieceComptable piece;
 
+    /**
+     * Piece du journal ANALYTIQUE qui reflete cette vente en classe 9 (chiffre d'affaires HT et cout des ventes par
+     * activite) — voir AnalytiqueVentesService. {@code null} tant qu'elle n'est pas refletee : la reprise faite au
+     * demarrage de l'application rattrape alors la vente.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "piece_analytique_id")
+    @ToString.Exclude
+    private PieceComptable pieceAnalytique;
+
     /** Mouvement de sortie de stock (cout des ventes), null pour une vente de services seuls. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "mouvement_id")

@@ -10,5 +10,7 @@ public enum JournalComptable {
     MOBILE_MONEY,
     ACHATS,
     VENTES,
-    STOCK
+    STOCK,
+    /** Comptabilité analytique (classe 9) : reflet automatique des ventes par activité, et saisies analytiques manuelles. */
+    ANALYTIQUE
 }

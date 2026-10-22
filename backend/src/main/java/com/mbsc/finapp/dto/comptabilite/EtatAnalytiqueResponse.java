@@ -13,5 +13,7 @@ public record EtatAnalytiqueResponse(
     BigDecimal totalMouvementCredit,
     BigDecimal totalSoldeDebiteur,
     BigDecimal totalSoldeCrediteur,
-    boolean equilibre
+    boolean equilibre,
+    /** Résultat par activité sur la période (ventes reflétées automatiquement), sans les activités sans mouvement. */
+    List<ResultatActiviteResponse> activites
 ) {}

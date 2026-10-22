@@ -80,6 +80,7 @@ const journalCouleur: Record<string, string> = {
   ACHATS: 'brown',
   STOCK: 'indigo',
   OPERATIONS_DIVERSES: 'orange',
+  ANALYTIQUE: 'purple',
 }
 </script>
 

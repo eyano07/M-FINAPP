@@ -1,9 +1,11 @@
 package com.mbsc.finapp.service;
 
 import com.mbsc.finapp.domain.CompteOHADA;
+import com.mbsc.finapp.domain.enums.ActiviteAnalytique;
 import com.mbsc.finapp.dto.admin.CompteResponse;
 import com.mbsc.finapp.dto.comptabilite.EtatAnalytiqueResponse;
 import com.mbsc.finapp.dto.comptabilite.LigneAnalytiqueResponse;
+import com.mbsc.finapp.dto.comptabilite.ResultatActiviteResponse;
 import com.mbsc.finapp.dto.comptabilite.SousCompteAnalytiqueRequest;
 import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EcritureGrandLivreRepository;
@@ -15,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -93,7 +96,33 @@ public class ComptabiliteAnalytiqueService {
         }
         return new EtatAnalytiqueResponse(du, au, lignes, totalDebit, totalCredit,
             netGlobalDebiteur, netGlobalCrediteur,
-            totalDebit.compareTo(totalCredit) == 0 && netGlobalDebiteur.compareTo(netGlobalCrediteur) == 0);
+            totalDebit.compareTo(totalCredit) == 0 && netGlobalDebiteur.compareTo(netGlobalCrediteur) == 0,
+            resultatsParActivite(mouvements));
+    }
+
+    /**
+     * Résultat de chaque activité sur la période, à partir des mouvements de ses comptes 98x1 (chiffre d'affaires) et 98x2
+     * (coût des ventes), sous-comptes éventuels compris. Les activités sans résultat sur la période (aucun mouvement, ou
+     * ventes annulées dans la période) sont omises.
+     */
+    static List<ResultatActiviteResponse> resultatsParActivite(Map<String, BigDecimal[]> mouvements) {
+        List<ResultatActiviteResponse> activites = new ArrayList<>();
+        for (ActiviteAnalytique a : ActiviteAnalytique.values()) {
+            BigDecimal[] ca = cumul(a.compteChiffreAffaires(), mouvements);
+            BigDecimal[] co = cumul(a.compteCout(), mouvements);
+            BigDecimal chiffreAffaires = ca[1].subtract(ca[0]);
+            BigDecimal cout = co[0].subtract(co[1]);
+            // Sans mouvement, ou ventes toutes annulees dans la periode (vente et contre-passation se compensent).
+            if (chiffreAffaires.signum() == 0 && cout.signum() == 0) {
+                continue;
+            }
+            BigDecimal marge = chiffreAffaires.subtract(cout);
+            BigDecimal taux = chiffreAffaires.signum() > 0
+                ? marge.multiply(BigDecimal.valueOf(100)).divide(chiffreAffaires, 1, RoundingMode.HALF_UP)
+                : null;
+            activites.add(new ResultatActiviteResponse(a.name(), a.libelle(), a.compte(), chiffreAffaires, cout, marge, taux));
+        }
+        return activites;
     }
 
     /**

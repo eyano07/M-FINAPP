@@ -18,6 +18,7 @@ const journaux = [
   { title: 'Opérations diverses', value: 'OPERATIONS_DIVERSES' },
   { title: 'Achats', value: 'ACHATS' },
   { title: 'Ventes', value: 'VENTES' },
+  { title: 'Analytique (classe 9)', value: 'ANALYTIQUE' },
 ]
 
 const LIBELLE_OUVERTURE = "Solde d'ouverture"

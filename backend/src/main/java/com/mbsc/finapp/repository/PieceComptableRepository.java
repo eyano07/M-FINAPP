@@ -32,7 +32,7 @@ public interface PieceComptableRepository extends JpaRepository<PieceComptable, 
      * Pieces que l'ecran Comptabilite ne peut pas extourner seules — voir
      * ComptabiliteService.annuler : celles d'un mouvement de stock (stock,
      * achat d'une reception, ecart d'annulation), d'une vente (vente,
-     * reglement, reevaluation) ou d'une operation de tresorerie. Une seule
+     * reglement, reevaluation, reflet analytique) ou d'une operation de tresorerie. Une seule
      * requete pour toute la liste des pieces, plutot qu'une verification par
      * piece.
      */
@@ -43,6 +43,7 @@ public interface PieceComptableRepository extends JpaRepository<PieceComptable, 
         union select piece_id from ventes where piece_id is not null
         union select piece_reglement_id from ventes where piece_reglement_id is not null
         union select piece_reevaluation_id from ventes where piece_reevaluation_id is not null
+        union select piece_analytique_id from ventes where piece_analytique_id is not null
         union select piece_id from grand_livre
               where piece_id is not null
                 and (transaction_id is not null or transaction_bancaire_id is not null

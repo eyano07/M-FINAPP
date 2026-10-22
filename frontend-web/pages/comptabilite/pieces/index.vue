@@ -63,6 +63,8 @@ const journalLabel: Record<string, string> = {
   MOBILE_MONEY: 'Mobile Money',
   ACHATS: 'Achats',
   VENTES: 'Ventes',
+  STOCK: 'Stock',
+  ANALYTIQUE: 'Analytique',
 }
 
 async function charger() {

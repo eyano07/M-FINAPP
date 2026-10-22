@@ -72,6 +72,7 @@ public class VenteService {
     private final TableRestaurantRepository tableRestaurantRepository;
     private final CompteOHADARepository compteRepository;
     private final ComptabiliteService comptabilite;
+    private final AnalytiqueVentesService analytique;
     private final StockService stockService;
     // Consigne des emballages : la vente d'une boisson alimente le stock de
     // bouteilles vides. Dependance a sens unique (RestaurantService ne connait
@@ -312,6 +313,10 @@ public class VenteService {
             construireEcrituresVente(vente),
             auteur));
 
+        // 3 bis. Comptabilité analytique (classe 9) : chiffre d'affaires HT et coût des ventes reflétés par activité. Ne
+        //        bloque jamais la vente — voir AnalytiqueVentesService.
+        analytique.refleterInterne(vente, auteur);
+
         vente.setStatut(StatutVente.VALIDEE);
         // Facture normalisee DGI : enregistree ici, transmise au dispositif apres le commit (sans jamais bloquer la vente).
         factureNormalisee.surVenteValidee(vente);
@@ -336,6 +341,8 @@ public class VenteService {
         if (vente.getPiece() != null) {
             comptabilite.annulerInterne(vente.getPiece().getId(), auteur);
         }
+        // Miroir de l'étape 3 bis de valider() : le reflet analytique est contre-passé avec la pièce de vente.
+        analytique.annulerRefletInterne(vente, auteur);
         stockService.annulerMouvementInterne(vente.getMouvement(), auteur);
         // Miroir de l'étape 2 bis de valider() : les camions cédés reviennent
         // en stock et redeviennent vendables.

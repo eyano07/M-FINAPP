@@ -75,6 +75,29 @@ class ComptabiliteAnalytiqueServiceTest {
     }
 
     @Test
+    void etat_resultatParActivite_chiffreAffairesCoutMargeEtTaux() {
+        EtatAnalytiqueResponse etat = ComptabiliteAnalytiqueService.construireEtat(DU, AU,
+            List.of(compte(1, "98", "Comptes de résultats")), Map.of(),
+            Map.of("9811", m(0, 1000), "98111", m(0, 100), "9812", m(600, 0),   // Bar : CA 1 100 (sous-compte compris), coût 600
+                   "9851", m(0, 200),                                         // Services : CA 200, sans coût
+                   "9821", m(50, 50), "9822", m(30, 30),                      // Cuisine : vente annulée dans la période
+                   "927", m(1300, 0), "926", m(0, 600)));                     // réfléchis : ne sont pas des activités
+
+        assertThat(etat.activites()).extracting(a -> a.activite(), a -> a.compteNumero(), a -> a.chiffreAffaires().toPlainString(),
+                a -> a.coutDesVentes().toPlainString(), a -> a.marge().toPlainString(), a -> a.tauxMarge() == null ? null : a.tauxMarge().toPlainString())
+            .containsExactly(
+                org.assertj.core.groups.Tuple.tuple("BAR", "981", "1100", "600", "500", "45.5"),
+                org.assertj.core.groups.Tuple.tuple("SERVICES", "985", "200", "0", "200", "100.0"));
+        assertThat(etat.activites().get(0).libelle()).isEqualTo("Bar (boissons)");
+    }
+
+    @Test
+    void etat_sansVenteAucuneActivite() {
+        EtatAnalytiqueResponse etat = ComptabiliteAnalytiqueService.construireEtat(DU, AU, List.of(), Map.of(), Map.of("9411", m(5, 0)));
+        assertThat(etat.activites()).isEmpty();
+    }
+
+    @Test
     void etat_desequilibreSignale() {
         EtatAnalytiqueResponse etat = ComptabiliteAnalytiqueService.construireEtat(DU, AU,
             List.of(compte(1, "94", "Comptes de coûts")), Map.of(), Map.of("94", m(50, 0)));
