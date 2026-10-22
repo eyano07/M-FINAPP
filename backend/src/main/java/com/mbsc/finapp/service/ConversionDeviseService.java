@@ -139,6 +139,60 @@ public class ConversionDeviseService {
             : montant.multiply(taux).setScale(2, RoundingMode.HALF_UP);  // USD -> FC
     }
 
+    /**
+     * Devise dans laquelle un etat (journal, rapport) est AFFICHE : les montants de la devise de base sont convertis une
+     * fois pour toutes au meme taux, arrondis par ligne (francs sans decimale, dollars a 2 decimales) ; l'appelant
+     * additionne ensuite les montants deja convertis, pour que les colonnes de l'etat s'additionnent exactement.
+     * La comptabilite, elle, reste tenue dans la devise de base.
+     *
+     * @param taux     francs pour 1 dollar, {@code null} quand la devise affichee est la devise de base
+     * @param dateTaux jour pour lequel le taux a ete resolu ({@code null} sans conversion)
+     */
+    public record Affichage(Devise devise, BigDecimal taux, LocalDate dateTaux) {
+
+        public static Affichage base() {
+            return new Affichage(DEVISE_BASE, null, null);
+        }
+
+        public boolean estConvertie() {
+            return devise != DEVISE_BASE;
+        }
+
+        public BigDecimal convertir(BigDecimal montantBase) {
+            if (montantBase == null || !estConvertie()) {
+                return montantBase;
+            }
+            BigDecimal brut = DEVISE_BASE == Devise.USD
+                ? montantBase.multiply(taux)                                  // USD -> FC
+                : montantBase.divide(taux, 6, RoundingMode.HALF_UP);          // FC -> USD
+            return brut.setScale(devise == Devise.CDF ? 0 : 2, RoundingMode.HALF_UP);
+        }
+    }
+
+    /**
+     * Devise d'affichage d'un etat arrete a {@code jusquAu} : le taux retenu est celui en vigueur ce jour-la (pas plus
+     * tard qu'aujourd'hui : un taux saisi a l'avance ne s'applique pas encore), de sorte qu'un rapport d'un mois passe
+     * est converti au taux de ce mois et non a celui du jour.
+     *
+     * @throws IllegalStateException si une conversion est demandee mais qu'aucun taux n'est defini
+     */
+    @Transactional(readOnly = true)
+    public Affichage affichage(Devise devise, LocalDate jusquAu) {
+        Devise d = devise == null ? DEVISE_BASE : devise;
+        if (d == DEVISE_BASE) {
+            return Affichage.base();
+        }
+        LocalDate aujourdhui = LocalDate.now();
+        LocalDate jour = jusquAu == null || jusquAu.isAfter(aujourdhui) ? aujourdhui : jusquAu;
+        BigDecimal taux = tauxALaDate(jour);
+        if (taux == null || taux.signum() <= 0) {
+            String unite = d == Devise.CDF ? "FC" : d.name();
+            throw new IllegalStateException("Aucun taux de change n'est défini : impossible d'afficher en " + unite
+                + ". Demandez à un administrateur d'enregistrer le taux du jour, ou affichez en " + DEVISE_BASE + ".");
+        }
+        return new Affichage(d, taux, jour);
+    }
+
     /** Operation inverse de {@code versBase} : de la devise de base vers une devise etrangere. */
     public BigDecimal depuisBase(BigDecimal montantBase, Devise cible, BigDecimal taux) {
         if (montantBase == null || cible == null || cible == DEVISE_BASE

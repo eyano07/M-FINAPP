@@ -2,7 +2,10 @@ package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.caisse.AchatMarchandiseRequest;
 import com.mbsc.finapp.dto.caisse.ReglementCamionsRequest;
+import com.mbsc.finapp.domain.enums.Devise;
+import com.mbsc.finapp.domain.enums.PeriodeRapport;
 import com.mbsc.finapp.dto.caisse.EcritureResponse;
+import com.mbsc.finapp.dto.caisse.RapportCaisseResponse;
 import com.mbsc.finapp.dto.caisse.LigneBalanceResponse;
 import com.mbsc.finapp.dto.caisse.TransactionCaisseRequest;
 import com.mbsc.finapp.dto.caisse.TransactionCaisseResponse;
@@ -11,6 +14,7 @@ import com.mbsc.finapp.domain.enums.StatutRetourFonds;
 import com.mbsc.finapp.dto.notes.RefusRetourFondsRequest;
 import com.mbsc.finapp.dto.notes.RetourFondsResponse;
 import com.mbsc.finapp.service.CaisseService;
+import com.mbsc.finapp.service.RapportCaisseService;
 import com.mbsc.finapp.service.RetourFondsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +35,7 @@ public class CaisseController {
 
     private final CaisseService service;
     private final RetourFondsService retourFonds;
+    private final RapportCaisseService rapportCaisse;
 
     @PostMapping("/transactions")
     @ResponseStatus(HttpStatus.CREATED)
@@ -108,11 +113,26 @@ public class CaisseController {
         return service.balance();
     }
 
+    /** Journal de caisse ; {@code devise} : USD (devise de base, par defaut) ou CDF (converti au taux du dernier jour). */
     @GetMapping("/journal")
     public LivreJournalResponse journal(
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
-        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
+        @RequestParam(required = false) Devise devise
     ) {
-        return service.journal(du, au);
+        return service.journal(du, au, devise);
+    }
+
+    /**
+     * Rapport de caisse du jour, de la semaine ou du mois qui contient {@code date} (aujourd'hui par defaut), dans la
+     * devise demandee (USD par defaut) : voir {@code RapportCaisseService}.
+     */
+    @GetMapping("/rapport")
+    public RapportCaisseResponse rapport(
+        @RequestParam PeriodeRapport periode,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+        @RequestParam(required = false) Devise devise
+    ) {
+        return rapportCaisse.rapport(periode, date, devise);
     }
 }

@@ -37,6 +37,21 @@ public record PieceResponse(
     /** true si la pièce mouvemente au moins un compte de trésorerie (classe 5). */
     boolean tresorerie
 ) {
+    /**
+     * Copie de la piece avec ses montants convertis par {@code conversion} (affichage dans une autre devise). Les totaux
+     * sont recalcules sur les lignes DEJA converties, pour que les colonnes de la piece s'additionnent exactement ; sans
+     * lignes, on convertit les totaux enregistres.
+     */
+    public PieceResponse enDevise(java.util.function.UnaryOperator<BigDecimal> conversion) {
+        List<LigneEcritureResponse> converties = lignes.stream().map(l -> l.enDevise(conversion)).toList();
+        BigDecimal debit = converties.isEmpty() ? conversion.apply(totalDebit)
+            : converties.stream().map(LigneEcritureResponse::debit).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal credit = converties.isEmpty() ? conversion.apply(totalCredit)
+            : converties.stream().map(LigneEcritureResponse::credit).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new PieceResponse(id, reference, datePiece, journal, libelle, statut, soldeOuverture, debit, credit,
+            createdByEmail, createdAt, pieceOrigineId, converties, extournable, comptabilisable, tresorerie);
+    }
+
     public static PieceResponse from(PieceComptable p) {
         return from(p, true);
     }

@@ -50,6 +50,7 @@ class SeparationDesTachesTest {
         for (String lecture : List.of("listerTransactions", "journal")) {
             assertEquals(true, regle(CaisseService.class, lecture).contains("ADMIN"), "CaisseService." + lecture);
         }
+        assertEquals(true, regle(RapportCaisseService.class, "rapport").contains("ADMIN"), "rapport de caisse : consultation seule");
         assertEquals(true, regle(BanqueService.class, "journal").contains("ADMIN"));
         assertEquals(true, regle(MobileMoneyService.class, "journal").contains("ADMIN"));
         assertEquals(true, regle(VenteService.class, "lister").contains("ADMIN"));

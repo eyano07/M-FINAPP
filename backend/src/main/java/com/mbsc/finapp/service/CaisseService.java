@@ -10,6 +10,7 @@ import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.TransactionCaisse;
 import com.mbsc.finapp.domain.User;
+import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.JournalComptable;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
 import com.mbsc.finapp.domain.enums.RoleType;
@@ -715,16 +716,24 @@ public class CaisseService {
      * journal : une pièce issue d'un import ou saisie manuellement peut
      * mouvementer la caisse sans jamais porter le journal CAISSE — elle
      * doit tout de même apparaître ici.</p>
+     *
+     * <p>Affiché dans la devise demandée : USD (devise de base) par défaut, ou CDF. La conversion est faite ici, une fois,
+     * au taux du dernier jour de la période ({@link ConversionDeviseService#affichage}) : chaque ligne est arrondie, puis
+     * les totaux des pièces et du journal sont recalculés sur les lignes converties.</p>
+     *
+     * <p>Une seule méthode porte ce nom : {@code SeparationDesTachesTest} relit sa règle {@code @PreAuthorize} par son nom.</p>
      */
     @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
-    public LivreJournalResponse journal(LocalDate du, LocalDate au) {
+    public LivreJournalResponse journal(LocalDate du, LocalDate au, Devise devise) {
         LocalDate debut = du != null ? du : LocalDate.of(2000, 1, 1);
         LocalDate fin = au != null ? au : LocalDate.now();
+        ConversionDeviseService.Affichage affichage = conversionDevise.affichage(devise, fin);
 
         List<PieceResponse> pieces = pieceRepository.livreJournalParCompte(EcritureComptableService.COMPTE_CAISSE, debut, fin)
             .stream()
             .map(PieceResponse::from)
+            .map(p -> affichage.estConvertie() ? p.enDevise(affichage::convertir) : p)
             .toList();
 
         BigDecimal totalDebit = BigDecimal.ZERO;
@@ -733,7 +742,7 @@ public class CaisseService {
             totalDebit = totalDebit.add(p.totalDebit() != null ? p.totalDebit() : BigDecimal.ZERO);
             totalCredit = totalCredit.add(p.totalCredit() != null ? p.totalCredit() : BigDecimal.ZERO);
         }
-        return new LivreJournalResponse(debut, fin, pieces, totalDebit, totalCredit);
+        return new LivreJournalResponse(debut, fin, pieces, totalDebit, totalCredit, affichage.devise(), affichage.taux());
     }
 
     // ---------------------------------------------------------------------

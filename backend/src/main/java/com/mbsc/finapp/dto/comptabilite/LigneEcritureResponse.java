@@ -19,6 +19,12 @@ public record LigneEcritureResponse(
     LocalDate dateEcriture,
     BigDecimal tauxApplique
 ) {
+    /** Copie de la ligne avec ses montants convertis (affichage dans une autre devise). */
+    public LigneEcritureResponse enDevise(java.util.function.UnaryOperator<BigDecimal> conversion) {
+        return new LigneEcritureResponse(id, compteNumero, compteLibelle, conversion.apply(debit), conversion.apply(credit),
+            libelle, dateEcriture, tauxApplique);
+    }
+
     public static LigneEcritureResponse from(EcritureGrandLivre e) {
         var compte = e.getCompte();
         return new LigneEcritureResponse(

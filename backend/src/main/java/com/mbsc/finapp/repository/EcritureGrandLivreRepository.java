@@ -136,6 +136,43 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
                                                  @Param("au") LocalDate au);
 
     /**
+     * Mouvements d'un compte (préfixe) sur une période avec tout ce que le rapport de caisse affiche — pièce, opération de
+     * caisse (reçu, horodatage) et son caissier — en une seule requête (pas de N+1 sur un mois de mouvements). Hors
+     * brouillons, comme {@link #grandLivreParCompte}.
+     */
+    @Query("""
+        select e from EcritureGrandLivre e
+        join fetch e.compte c
+        left join fetch e.piece p
+        left join fetch e.transaction t
+        left join fetch t.caissier
+        where c.numero like :prefixe%
+          and e.dateEcriture >= :du
+          and e.dateEcriture <= :au
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+        order by e.dateEcriture asc, e.id asc
+    """)
+    List<EcritureGrandLivre> mouvementsDeCaisse(@Param("prefixe") String prefixe,
+                                                @Param("du") LocalDate du,
+                                                @Param("au") LocalDate au);
+
+    /** Lignes, avec leur compte, des pièces données : les contreparties des mouvements de caisse. */
+    @Query("""
+        select e from EcritureGrandLivre e
+        join fetch e.compte
+        where e.piece.id in :pieceIds
+    """)
+    List<EcritureGrandLivre> lignesDesPieces(@Param("pieceIds") java.util.Collection<Long> pieceIds);
+
+    /** Lignes, avec leur compte, des opérations de caisse données (écritures anciennes, sans pièce). */
+    @Query("""
+        select e from EcritureGrandLivre e
+        join fetch e.compte
+        where e.transaction.id in :transactionIds
+    """)
+    List<EcritureGrandLivre> lignesDesTransactions(@Param("transactionIds") java.util.Collection<Long> transactionIds);
+
+    /**
      * Cumul débit/crédit avant la date de début (report à nouveau).
      * Retourne [totalDebit, totalCredit].
      */
