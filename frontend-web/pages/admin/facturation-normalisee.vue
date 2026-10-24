@@ -183,16 +183,16 @@ const fmtMontant = (n: number, d: string) => `${Number(n).toLocaleString('fr-FR'
 
       <v-card v-if="aRegulariser.length" class="classroom-card pa-5">
         <h2 class="fn-titre">Factures à régulariser</h2>
-        <v-table density="compact">
+        <v-table density="compact" class="table-cartes">
           <thead><tr><th>Vente</th><th>Client</th><th class="text-right">Montant</th><th>Statut</th><th>Tentatives</th><th>Motif</th></tr></thead>
           <tbody>
             <tr v-for="f in aRegulariser" :key="f.id">
               <td><NuxtLink :to="`/ventes/${f.venteId}`">{{ f.venteReference }}</NuxtLink> <small v-if="f.type === 'AVOIR'">(avoir)</small></td>
-              <td>{{ f.clientNom }}</td>
-              <td class="text-right">{{ fmtMontant(f.totalTtc, f.devise) }}</td>
-              <td><v-chip size="x-small" :color="f.statut === 'REJETEE' ? 'error' : 'warning'" variant="tonal">{{ f.statut === 'REJETEE' ? 'Refusée' : 'En attente' }}</v-chip></td>
-              <td>{{ f.tentatives }}<small v-if="f.prochaineTentative"> · prochaine {{ fmtDate(f.prochaineTentative) }}</small></td>
-              <td>{{ f.derniereErreur }}</td>
+              <td data-label="Client">{{ f.clientNom }}</td>
+              <td class="text-right cellule-montant" data-label="Montant">{{ fmtMontant(f.totalTtc, f.devise) }}</td>
+              <td data-label="Statut"><v-chip size="x-small" :color="f.statut === 'REJETEE' ? 'error' : 'warning'" variant="tonal">{{ f.statut === 'REJETEE' ? 'Refusée' : 'En attente' }}</v-chip></td>
+              <td data-label="Tentatives">{{ f.tentatives }}<small v-if="f.prochaineTentative"> · prochaine {{ fmtDate(f.prochaineTentative) }}</small></td>
+              <td class="cellule-large" data-label="Motif">{{ f.derniereErreur || '—' }}</td>
             </tr>
           </tbody>
         </v-table>

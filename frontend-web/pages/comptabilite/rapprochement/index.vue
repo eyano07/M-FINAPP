@@ -13,6 +13,7 @@ interface LigneSaisie { dateOperation: string, libelle: string, reference: strin
 
 const api = useApi()
 const auth = useAuthStore()
+const grandEcran = useGrandEcran()
 const peutEcrire = computed(() => auth.hasAnyRole(['ADMIN', 'DFIN', 'COMPTABLE', 'CAISSIER']))
 
 const annee = ref(new Date().getFullYear())
@@ -196,6 +197,36 @@ async function enregistrer() {
           </tbody>
         </table>
       </div>
+
+      <!-- Téléphone et tablette : une carte par compte, les 12 mois en tuiles -->
+      <div class="rb-cartes">
+        <div v-for="e in etablissements" :key="e.id" class="rb-carte">
+          <div class="rb-carte__tete">
+            <strong>{{ e.nom }}</strong>
+            <span>{{ e.type === 'BANQUE' ? 'Banque' : 'Mobile money' }} · {{ e.compteNumero }} · {{ e.devise }}</span>
+          </div>
+          <div class="rb-carte__mois">
+            <template v-for="(m, i) in MOIS" :key="m">
+              <NuxtLink v-if="releve(e.id, i + 1)" :to="`/comptabilite/rapprochement/${releve(e.id, i + 1)!.id}`"
+                class="rb-tuile" :class="releve(e.id, i + 1)!.statut === 'VALIDE' ? 'rb-tuile--ok' : 'rb-tuile--cours'"
+                :title="releve(e.id, i + 1)!.statut === 'VALIDE' ? `${m} : rapproché et validé` : `${m} : ${releve(e.id, i + 1)!.nombreLignesNonPointees} opération(s) à pointer`">
+                <span class="rb-tuile__etat">
+                  <v-icon :icon="releve(e.id, i + 1)!.statut === 'VALIDE' ? 'mdi-check-decagram' : 'mdi-progress-clock'" size="16" />
+                  <b v-if="releve(e.id, i + 1)!.statut !== 'VALIDE'">{{ releve(e.id, i + 1)!.nombreLignesNonPointees }}</b>
+                </span>
+                <span class="rb-tuile__mois">{{ m }}</span>
+              </NuxtLink>
+              <button v-else-if="peutEcrire && i + 1 <= moisCourant" type="button" class="rb-tuile rb-tuile--vide"
+                :aria-label="`Créer le relevé ${m} ${annee} de ${e.nom}`" @click="ouvrir(e.id, i + 1)">
+                <span class="rb-tuile__etat"><v-icon icon="mdi-plus" size="16" /></span>
+                <span class="rb-tuile__mois">{{ m }}</span>
+              </button>
+              <span v-else class="rb-tuile rb-tuile--futur"><span class="rb-tuile__etat">·</span><span class="rb-tuile__mois">{{ m }}</span></span>
+            </template>
+          </div>
+        </div>
+        <p v-if="!etablissements.length" class="rb-vide">Aucun compte de banque ni de mobile money : créez-les dans Administration › Établissements.</p>
+      </div>
       <p class="rb-legende">
         <span><v-icon icon="mdi-check-decagram" size="14" color="success" /> Rapproché et validé</span>
         <span><v-icon icon="mdi-progress-clock" size="14" color="warning" /> En cours (nombre d'opérations à pointer)</span>
@@ -203,7 +234,7 @@ async function enregistrer() {
     </v-card>
 
     <!-- Nouveau relevé -->
-    <v-dialog v-model="dialogue" max-width="1100" scrollable :persistent="extraction || enregistrement">
+    <v-dialog v-model="dialogue" max-width="1100" scrollable :fullscreen="!grandEcran" :persistent="extraction || enregistrement">
       <v-card>
         <v-card-title class="d-flex align-center">
           <v-icon icon="mdi-file-upload-outline" class="mr-2" /> Nouveau relevé
@@ -245,8 +276,8 @@ async function enregistrer() {
           <template v-else>
             <v-alert v-for="(a, i) in avertissements" :key="i" type="warning" variant="tonal" density="compact" class="mb-2">{{ a }}</v-alert>
             <v-row dense class="mt-1">
-              <v-col cols="6" md="3"><v-text-field v-model.number="form.soldeOuverture" type="number" :label="`Solde d'ouverture (${etabChoisi?.devise || ''}) *`" /></v-col>
-              <v-col cols="6" md="3"><v-text-field v-model.number="form.soldeCloture" type="number" :label="`Solde de clôture (${etabChoisi?.devise || ''}) *`" /></v-col>
+              <v-col cols="12" sm="6" md="3"><v-text-field v-model.number="form.soldeOuverture" type="number" :label="`Solde d'ouverture (${etabChoisi?.devise || ''}) *`" /></v-col>
+              <v-col cols="12" sm="6" md="3"><v-text-field v-model.number="form.soldeCloture" type="number" :label="`Solde de clôture (${etabChoisi?.devise || ''}) *`" /></v-col>
               <v-col cols="12" md="6" class="d-flex align-center">
                 <span class="rb-controle" :class="ecartReleve === 0 ? 'rb-controle--ok' : 'rb-controle--ko'">
                   Ouverture + entrées − sorties − clôture = {{ fmtMontant(ecartReleve) }}
@@ -254,7 +285,19 @@ async function enregistrer() {
                 </span>
               </v-col>
             </v-row>
-            <div class="rb-table-wrap">
+            <div v-if="!grandEcran" class="rb-saisie-cartes">
+              <CommunLigneSaisie v-for="(l, i) in lignes" :key="i" :numero="i + 1" etiquette="Opération" @retirer="lignes.splice(i, 1)">
+                <v-text-field v-model="l.libelle" label="Libellé" variant="outlined" density="compact" hide-details class="ls-large" />
+                <v-text-field v-model="l.dateOperation" type="date" label="Date" variant="outlined" density="compact" hide-details />
+                <v-text-field v-model="l.reference" label="Référence" variant="outlined" density="compact" hide-details />
+                <v-text-field v-model.number="l.entree" type="number" min="0" step="0.01" label="Entrée" variant="outlined" density="compact" hide-details />
+                <v-text-field v-model.number="l.sortie" type="number" min="0" step="0.01" label="Sortie" variant="outlined" density="compact" hide-details />
+              </CommunLigneSaisie>
+              <p class="rb-saisie-total">
+                {{ lignes.length }} opération(s) · Entrées <strong>{{ fmtMontant(totalEntrees) }}</strong> · Sorties <strong>{{ fmtMontant(totalSorties) }}</strong>
+              </p>
+            </div>
+            <div v-else class="rb-table-wrap rb-table-wrap--saisie">
               <table class="rb-saisie">
                 <thead>
                   <tr><th>Date</th><th>Libellé</th><th>Référence</th><th class="num">Entrée</th><th class="num">Sortie</th><th /></tr>
@@ -289,6 +332,32 @@ async function enregistrer() {
 
 <style scoped>
 .rb-table-wrap { overflow-x: auto; }
+.rb-cartes { display: none; }
+.rb-saisie-total { margin: 4px 2px 0; font-size: 0.82rem; color: #4b5563; }
+
+/* Téléphone et tablette : les cartes par compte remplacent la grille de 13 colonnes. */
+@media screen and (max-width: 959px) {
+  .rb-table-wrap:not(.rb-table-wrap--saisie) { display: none; }
+  .rb-cartes { display: grid; gap: 12px; padding: 12px; grid-template-columns: minmax(0, 1fr); }
+  .rb-carte { padding: 12px; border: 1px solid #e8ecef; border-left: 4px solid var(--color-primary); border-radius: 14px; background: #fff; }
+  .rb-carte__tete strong { display: block; font-size: 0.95rem; }
+  .rb-carte__tete span { display: block; margin-top: 2px; font-size: 0.78rem; color: #4b5563; overflow-wrap: anywhere; }
+  .rb-carte__mois { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+  .rb-tuile {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-height: 56px; padding: 6px 4px; border: none; border-radius: 12px; text-decoration: none; font: inherit; cursor: pointer;
+  }
+  .rb-tuile__etat { display: inline-flex; align-items: center; gap: 3px; font-size: 0.8rem; font-weight: 700; }
+  .rb-tuile__mois { font-size: 0.7rem; font-weight: 600; }
+  .rb-tuile--ok { background: #dcfce7; color: #15803d; }
+  .rb-tuile--cours { background: #fef3c7; color: #92400e; }
+  .rb-tuile--vide { background: #f3f4f6; color: #6b7280; }
+  .rb-tuile--futur { background: #fafafa; color: #d1d5db; cursor: default; }
+}
+@media screen and (min-width: 600px) and (max-width: 959px) {
+  .rb-cartes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rb-carte__mois { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
 .rb-table { width: 100%; border-collapse: collapse; min-width: 860px; }
 .rb-table th { font-size: 0.72rem; color: #4b5563; text-transform: uppercase; padding: 10px 6px; text-align: left; background: #f8fafc; }
 .rb-table td { border-top: 1px solid #f1f2f4; padding: 8px 6px; }

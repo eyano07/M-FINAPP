@@ -172,7 +172,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
     </div>
 
     <!-- ── Filtres ───────────────────────────────────────────── -->
-    <div class="d-flex ga-3 mt-4 mb-2 flex-wrap align-end">
+    <div class="d-flex ga-3 mt-4 mb-2 flex-wrap align-end vte-filtres">
       <v-text-field v-model="filtreDu" type="date" label="Du" variant="outlined" density="comfortable" rounded="lg" hide-details style="max-width: 170px" />
       <v-text-field v-model="filtreAu" type="date" label="Au" variant="outlined" density="comfortable" rounded="lg" hide-details style="max-width: 170px" />
       <v-text-field v-model="filtreTable" label="Table" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 140px" />
@@ -253,10 +253,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 
 .vte-stats {
   display: grid;
@@ -286,6 +283,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 .vte-stat--nb  .vte-stat__icon { background: #dbeafe; color: #2563eb; }
 .vte-stat__label { font-size: 0.78rem; color: #9ca3af; margin-bottom: 2px; }
 .vte-stat__value { font-size: 1.1rem; font-weight: 700; color: #111827; }
+
+/* Sur tablette les quatre filtres à texte se serraient à 84 px (« Réf… ») : 130 px au moins, ils passent à la ligne sinon. */
+.vte-filtres > .v-input { min-width: 130px; }
 
 .vte-empty {
   display: flex;

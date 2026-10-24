@@ -224,16 +224,17 @@ function supprimerTableSelectionnee() {
 // ── Glisser pour déplacer ─────────────────────────────────────────────────
 let drag: { index: number; startX: number; startY: number; origX: number; origY: number } | null = null
 
-function demarrerDeplacement(e: MouseEvent, i: number) {
+function demarrerDeplacement(e: PointerEvent, i: number) {
   // Toujours selectionner (le responsable restaurant doit pouvoir choisir une
   // table pour en changer le statut), meme s'il ne peut pas la deplacer.
   selectionIndex.value = i
   if (!canWrite.value) return
   drag = { index: i, startX: e.clientX, startY: e.clientY, origX: tablesEnCours.value[i].posX, origY: tablesEnCours.value[i].posY }
-  window.addEventListener('mousemove', surDeplacement)
-  window.addEventListener('mouseup', arreterDeplacement)
+  window.addEventListener('pointermove', surDeplacement)
+  window.addEventListener('pointerup', arreterDeplacement)
+  window.addEventListener('pointercancel', arreterDeplacement)
 }
-function surDeplacement(e: MouseEvent) {
+function surDeplacement(e: PointerEvent) {
   if (!drag) return
   const t = tablesEnCours.value[drag.index]
   t.posX = aimanter(Math.max(0, drag.origX + (e.clientX - drag.startX)))
@@ -242,22 +243,24 @@ function surDeplacement(e: MouseEvent) {
 }
 function arreterDeplacement() {
   drag = null
-  window.removeEventListener('mousemove', surDeplacement)
-  window.removeEventListener('mouseup', arreterDeplacement)
+  window.removeEventListener('pointermove', surDeplacement)
+  window.removeEventListener('pointerup', arreterDeplacement)
+  window.removeEventListener('pointercancel', arreterDeplacement)
 }
 
 // ── Poignées pour redimensionner ──────────────────────────────────────────
 const TAILLE_MIN = 40
 let resize: { index: number; coin: string; startX: number; startY: number; orig: TableItem } | null = null
 
-function demarrerRedimension(e: MouseEvent, i: number, coin: string) {
+function demarrerRedimension(e: PointerEvent, i: number, coin: string) {
   if (!canWrite.value) return
   selectionIndex.value = i
   resize = { index: i, coin, startX: e.clientX, startY: e.clientY, orig: { ...tablesEnCours.value[i] } }
-  window.addEventListener('mousemove', surRedimension)
-  window.addEventListener('mouseup', arreterRedimension)
+  window.addEventListener('pointermove', surRedimension)
+  window.addEventListener('pointerup', arreterRedimension)
+  window.addEventListener('pointercancel', arreterRedimension)
 }
-function surRedimension(e: MouseEvent) {
+function surRedimension(e: PointerEvent) {
   if (!resize) return
   const dx = e.clientX - resize.startX
   const dy = e.clientY - resize.startY
@@ -288,15 +291,18 @@ function surRedimension(e: MouseEvent) {
 }
 function arreterRedimension() {
   resize = null
-  window.removeEventListener('mousemove', surRedimension)
-  window.removeEventListener('mouseup', arreterRedimension)
+  window.removeEventListener('pointermove', surRedimension)
+  window.removeEventListener('pointerup', arreterRedimension)
+  window.removeEventListener('pointercancel', arreterRedimension)
 }
 
 onBeforeUnmount(() => {
-  window.removeEventListener('mousemove', surDeplacement)
-  window.removeEventListener('mouseup', arreterDeplacement)
-  window.removeEventListener('mousemove', surRedimension)
-  window.removeEventListener('mouseup', arreterRedimension)
+  window.removeEventListener('pointermove', surDeplacement)
+  window.removeEventListener('pointerup', arreterDeplacement)
+  window.removeEventListener('pointercancel', arreterDeplacement)
+  window.removeEventListener('pointermove', surRedimension)
+  window.removeEventListener('pointerup', arreterRedimension)
+  window.removeEventListener('pointercancel', arreterRedimension)
 })
 
 async function enregistrerPlan() {
@@ -582,7 +588,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
       </div>
 
       <div class="plan-layout">
-      <div class="plan-salle" @mousedown.self="selectionIndex = null">
+      <div class="plan-salle" @pointerdown.self="selectionIndex = null">
         <div
           v-for="(t, i) in tablesEnCours" :key="i"
           class="table-item"
@@ -590,9 +596,10 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
             'table-item--ronde': t.forme === 'ROND',
             'table-item--selected': i === selectionIndex,
             'table-item--occupee': t.occupee,
+            'table-item--deplacable': canWrite,
           }"
           :style="{ left: t.posX + 'px', top: t.posY + 'px', width: t.largeur + 'px', height: t.hauteur + 'px' }"
-          @mousedown="demarrerDeplacement($event, i)"
+          @pointerdown="demarrerDeplacement($event, i)"
         >
           <img
             v-for="(c, ci) in positionsChaises(t)" :key="ci"
@@ -614,10 +621,10 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
             title="Commande payée"
           />
           <template v-if="i === selectionIndex && canWrite">
-            <span class="poignee poignee--nw" @mousedown.stop="demarrerRedimension($event, i, 'nw')" />
-            <span class="poignee poignee--ne" @mousedown.stop="demarrerRedimension($event, i, 'ne')" />
-            <span class="poignee poignee--sw" @mousedown.stop="demarrerRedimension($event, i, 'sw')" />
-            <span class="poignee poignee--se" @mousedown.stop="demarrerRedimension($event, i, 'se')" />
+            <span class="poignee poignee--nw" @pointerdown.stop="demarrerRedimension($event, i, 'nw')" />
+            <span class="poignee poignee--ne" @pointerdown.stop="demarrerRedimension($event, i, 'ne')" />
+            <span class="poignee poignee--sw" @pointerdown.stop="demarrerRedimension($event, i, 'sw')" />
+            <span class="poignee poignee--se" @pointerdown.stop="demarrerRedimension($event, i, 'se')" />
           </template>
         </div>
         <p v-if="!tablesEnCours.length" class="plan-salle__vide">
@@ -885,6 +892,8 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
   user-select: none;
 }
 .table-item--ronde { border-radius: 50%; }
+/* Au doigt, glisser une table (modification du plan) ne doit pas faire défiler la page. */
+.table-item--deplacable { touch-action: none; }
 .table-item--selected {
   border-color: #1d4ed8;
   box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.25);
@@ -976,6 +985,14 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
 .poignee--ne { top: -7px; right: -7px; cursor: nesw-resize; }
 .poignee--sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
 .poignee--se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+@media (pointer: coarse) {
+  /* Au doigt : poignées de 26 px (au lieu de 14 px) autour de chaque coin. */
+  .poignee { width: 26px; height: 26px; touch-action: none; }
+  .poignee--nw { top: -13px; left: -13px; }
+  .poignee--ne { top: -13px; right: -13px; }
+  .poignee--sw { bottom: -13px; left: -13px; }
+  .poignee--se { bottom: -13px; right: -13px; }
+}
 
 /* ── Recapitulatif de l'addition (a l'ecran, dans le dialog) ────────── */
 .addition-recap { max-height: 320px; overflow-y: auto; }

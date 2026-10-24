@@ -302,7 +302,7 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
       <v-card v-if="rapport.periode !== 'JOUR' && rapport.jours.length" class="classroom-card mb-4 rc-section">
         <v-card-title class="rc-titre"><v-icon icon="mdi-calendar-range" color="primary" /> Résumé par jour</v-card-title>
         <v-divider />
-        <v-table density="compact" class="table-impression-compacte">
+        <v-table density="compact" class="table-impression-compacte table-cartes">
           <thead>
             <tr>
               <th>Jour</th>
@@ -315,19 +315,19 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
           <tbody>
             <tr v-for="j in rapport.jours" :key="j.date">
               <td class="text-capitalize">{{ fmtJourSemaine(j.date) }}</td>
-              <td class="text-right text-no-wrap">{{ j.nombreEntrees ? fmt(j.entrees) : '—' }}</td>
-              <td class="text-right text-no-wrap">{{ j.nombreSorties ? fmt(j.sorties) : '—' }}</td>
-              <td class="text-right text-no-wrap" :class="j.net < 0 ? 'rc-negatif' : ''">{{ fmt(j.net) }}</td>
-              <td class="text-right text-no-wrap font-weight-medium">{{ fmt(j.soldeCloture) }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Entrées">{{ j.nombreEntrees ? fmt(j.entrees) : '—' }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Sorties">{{ j.nombreSorties ? fmt(j.sorties) : '—' }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Variation" :class="j.net < 0 ? 'rc-negatif' : ''">{{ fmt(j.net) }}</td>
+              <td class="text-right text-no-wrap font-weight-medium cellule-montant" data-label="Solde en fin de journée">{{ fmt(j.soldeCloture) }}</td>
             </tr>
           </tbody>
           <tfoot>
             <tr class="font-weight-bold">
               <td>Total</td>
-              <td class="text-right text-no-wrap">{{ fmt(rapport.totalEntrees) }}</td>
-              <td class="text-right text-no-wrap">{{ fmt(rapport.totalSorties) }}</td>
-              <td class="text-right text-no-wrap">{{ fmt(rapport.totalEntrees - rapport.totalSorties) }}</td>
-              <td class="text-right text-no-wrap">{{ fmt(rapport.soldeCloture) }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Entrées">{{ fmt(rapport.totalEntrees) }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Sorties">{{ fmt(rapport.totalSorties) }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Variation">{{ fmt(rapport.totalEntrees - rapport.totalSorties) }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Solde en fin de journée">{{ fmt(rapport.soldeCloture) }}</td>
             </tr>
           </tfoot>
         </v-table>
@@ -346,7 +346,7 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
             <span class="font-weight-bold">{{ fmt(bloc.total) }}</span>
           </v-card-title>
           <v-divider />
-          <v-table density="compact" class="table-impression-compacte">
+          <v-table density="compact" class="table-impression-compacte table-cartes">
             <thead>
               <tr>
                 <th>Date</th>
@@ -362,26 +362,26 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
                   {{ fmtDate(m.date) }}
                   <div v-if="m.heure" class="rc-secondaire">{{ fmtHeure(m.heure) }}</div>
                 </td>
-                <td class="text-no-wrap">
+                <td class="text-no-wrap cellule-titre">
                   <span class="font-weight-medium">{{ m.pieceReference || '—' }}</span>
                   <v-chip v-if="m.annulee" size="x-small" color="error" variant="tonal" class="ml-1">Annulée</v-chip>
                   <div v-if="m.numeroRecu" class="rc-secondaire">{{ m.numeroRecu }}</div>
                 </td>
-                <td>
+                <td class="cellule-large">
                   {{ m.libelle || '—' }}
                   <div v-if="m.caissierNom" class="rc-secondaire">{{ m.caissierNom }}</div>
                 </td>
-                <td>
+                <td data-label="Contrepartie">
                   {{ contrepartie(m) }}
                   <div v-if="m.autresComptes" class="rc-secondaire">+ {{ m.autresComptes }}</div>
                 </td>
-                <td class="text-right text-no-wrap font-weight-medium">{{ fmt(m.montant) }}</td>
+                <td class="text-right text-no-wrap font-weight-medium cellule-montant" data-label="Montant">{{ fmt(m.montant) }}</td>
               </tr>
             </tbody>
             <tfoot>
               <tr class="font-weight-bold">
                 <td colspan="4">{{ bloc.libelleTotal }}</td>
-                <td class="text-right text-no-wrap">{{ fmt(bloc.total) }}</td>
+                <td class="text-right text-no-wrap cellule-montant" data-label="Total">{{ fmt(bloc.total) }}</td>
               </tr>
             </tfoot>
           </v-table>
@@ -392,7 +392,7 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
       <v-card v-if="rapport.natures.length" class="classroom-card mb-4 rc-section">
         <v-card-title class="rc-titre"><v-icon icon="mdi-shape-outline" color="deep-purple" /> Résumé par nature</v-card-title>
         <v-divider />
-        <v-table density="compact" class="table-impression-compacte">
+        <v-table density="compact" class="table-impression-compacte table-cartes">
           <thead>
             <tr>
               <th>Compte</th>
@@ -405,18 +405,18 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
           <tbody>
             <tr v-for="n in rapport.natures" :key="n.compteNumero">
               <td class="font-weight-medium">{{ n.compteNumero || '—' }}</td>
-              <td>{{ n.compteNumero ? (n.compteLibelle || '') : 'Sans contrepartie identifiée' }}</td>
-              <td class="text-right">{{ n.nombre }}</td>
-              <td class="text-right text-no-wrap">{{ n.entrees ? fmt(n.entrees) : '—' }}</td>
-              <td class="text-right text-no-wrap">{{ n.sorties ? fmt(n.sorties) : '—' }}</td>
+              <td class="cellule-titre">{{ n.compteNumero ? (n.compteLibelle || '') : 'Sans contrepartie identifiée' }}</td>
+              <td class="text-right" data-label="Mouvements">{{ n.nombre }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Entrées">{{ n.entrees ? fmt(n.entrees) : '—' }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Sorties">{{ n.sorties ? fmt(n.sorties) : '—' }}</td>
             </tr>
           </tbody>
           <tfoot>
             <tr class="font-weight-bold">
               <td colspan="2">Total</td>
-              <td class="text-right">{{ rapport.entrees.length + rapport.sorties.length }}</td>
-              <td class="text-right text-no-wrap">{{ fmt(rapport.totalEntrees) }}</td>
-              <td class="text-right text-no-wrap">{{ fmt(rapport.totalSorties) }}</td>
+              <td class="text-right" data-label="Mouvements">{{ rapport.entrees.length + rapport.sorties.length }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Entrées">{{ fmt(rapport.totalEntrees) }}</td>
+              <td class="text-right text-no-wrap cellule-montant" data-label="Sorties">{{ fmt(rapport.totalSorties) }}</td>
             </tr>
           </tfoot>
         </v-table>
@@ -440,9 +440,6 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .rc-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .rc-controles { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .rc-navigation { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }

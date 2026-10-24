@@ -969,9 +969,6 @@ const contreValeur = computed(() => {
 
 <style scoped>
 .vn-page { max-width: 1100px; margin: 0 auto; padding-bottom: 48px; }
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .vn-taux {
   font-size: 0.78rem;
   background: #ede9fe;
@@ -1086,6 +1083,10 @@ const contreValeur = computed(() => {
   font-weight: 600;
   color: #111827;
   font-variant-numeric: tabular-nums;
+}
+@media screen and (max-width: 599px) {
+  .vn-billet-ligne { flex-wrap: wrap; }
+  .vn-billet-ligne .vn-billet-total { flex: 1 1 100%; text-align: right; }
 }
 .vn-hint { font-size: 0.75rem; color: #6b7280; margin: 4px 0 0 16px; }
 

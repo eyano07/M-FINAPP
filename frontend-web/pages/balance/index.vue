@@ -381,9 +381,10 @@ function toggleDevise() {
   font-size: 0.875rem;
   color: #374151;
   padding: 0 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Le libellé du compte passe à la ligne : il ne doit jamais être coupé par « … ». */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
 }
 .bal-table__amount {
   text-align: right;
@@ -461,5 +462,19 @@ function toggleDevise() {
   font-size: 1rem;
   font-weight: 700;
   color: rgba(255,255,255,0.80);
+}
+
+/* Téléphone : la ligne de compte tient sur deux lignes (compte et montant, puis le libellé en entier), plutôt que trois colonnes étroites. */
+@media screen and (max-width: 599px) {
+  .bal-table__head { display: none; }
+  .bal-table__row {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'code montant' 'libelle libelle';
+    gap: 4px 12px;
+    padding: 10px 16px;
+  }
+  .bal-table__row .bal-table__code { grid-area: code; }
+  .bal-table__row .bal-table__amount { grid-area: montant; }
+  .bal-table__row .bal-table__label { grid-area: libelle; padding: 0; }
 }
 </style>

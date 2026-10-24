@@ -899,4 +899,10 @@ async function enregistrer() {
 @media (max-width: 900px) {
   .eb-mois { grid-template-columns: repeat(4, minmax(70px, 1fr)) !important; }
 }
+/* Téléphone et tablette : la grille défile de côté, mais le compte reste figé à gauche (et plus étroit) pour rester lisible. */
+@media screen and (max-width: 959px) {
+  .eb-col-compte { min-width: 190px; }
+  .eb-table th:first-child, .eb-table td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; box-shadow: 1px 0 0 #eef0f2; }
+  .eb-table thead th:first-child, .eb-table tfoot td:first-child, .eb-detail td:first-child { background: #fafbfc; }
+}
 </style>

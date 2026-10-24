@@ -63,6 +63,11 @@ const entetesGroupes = computed<EnteteGroupe[]>(() => MODULES.map((m) => {
   if (m.module === 'DRH_PRESENCES' || m.module === 'DRH_PAIE' || m.module === 'DRH_MISSIONS') return { type: 'skip' }
   return { type: 'aucun' }
 }))
+// Téléphone et tablette : un rôle à la fois (la grille de ~16 colonnes n'y est pas lisible).
+const roleChoisi = ref('')
+const rolesChoix = computed(() => ROLES.map(r => ({ title: rolesStore.libelle(r.role), value: r.role })))
+watchEffect(() => { if (!roleChoisi.value && ROLES.length) roleChoisi.value = ROLES[0].role })
+
 const NIVEAUX = [
   { value: 'AUCUN', label: 'Aucun accès' },
   { value: 'LECTURE', label: 'Lecture seule' },
@@ -182,7 +187,30 @@ async function modifier(role: string, module: string, niveau: string) {
 
     <v-skeleton-loader v-if="loading" type="table" />
 
-    <div v-else class="perm-scroll">
+    <!-- Téléphone et tablette : le rôle choisi, puis une ligne par module avec son niveau d'accès -->
+    <div v-if="!loading" class="perm-mobile">
+      <v-select
+        v-model="roleChoisi" :items="rolesChoix" label="Rôle" variant="outlined" density="comfortable" rounded="lg" hide-details
+        prepend-inner-icon="mdi-account-key-outline"
+      />
+      <ul class="perm-liste">
+        <li v-for="m in MODULES" :key="m.module" class="perm-ligne">
+          <span class="perm-ligne__module">{{ m.label }}</span>
+          <select
+            class="perm-select"
+            :class="`perm-select--${(cellule(roleChoisi, m.module)?.niveau ?? 'AUCUN').toLowerCase()}`"
+            :value="cellule(roleChoisi, m.module)?.niveau ?? 'AUCUN'"
+            :disabled="enregistrement === `${roleChoisi}|${m.module}`"
+            :aria-label="`${m.label} : niveau d'accès du rôle`"
+            @change="modifier(roleChoisi, m.module, ($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="n in NIVEAUX" :key="n.value" :value="n.value">{{ n.label }}</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+
+    <div v-if="!loading" class="perm-scroll">
       <table class="perm-grid">
         <thead>
           <tr>
@@ -272,4 +300,21 @@ async function modifier(role: string, module: string, niveau: string) {
 .perm-select--aucun { color: #9ca3af; border-color: #f0f0f0; }
 .perm-select--lecture { color: #0891b2; border-color: #cffafe; background: #ecfeff; }
 .perm-select--ecriture { color: var(--color-primary); border-color: var(--color-primary-light); background: var(--color-primary-lighter); }
+
+.perm-mobile { display: none; }
+@media screen and (max-width: 959px) {
+  .perm-scroll { display: none; }
+  .perm-mobile { display: block; }
+  .perm-liste { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+  .perm-ligne {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 12px; background: #fff; border: 1px solid #eef0f2; border-radius: 12px;
+  }
+  .perm-ligne__module { flex: 1 1 auto; min-width: 0; font-size: 0.9rem; font-weight: 600; color: #111827; overflow-wrap: anywhere; }
+  .perm-ligne .perm-select { flex: 0 0 168px; width: 168px; min-width: 0; min-height: 44px; font-size: 16px; }
+}
+@media screen and (max-width: 599px) {
+  .perm-ligne { flex-wrap: wrap; }
+  .perm-ligne .perm-select { flex: 1 1 100%; width: 100%; }
+}
 </style>

@@ -239,27 +239,27 @@ async function demander(q?: string) {
     <v-card class="classroom-card pa-0 mt-4">
       <v-skeleton-loader v-if="chargement && !resultat" type="table" />
       <div v-else-if="resultat" class="au-table-wrap">
-        <v-table density="compact" hover>
+        <v-table density="compact" hover class="table-cartes">
           <thead>
             <tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Ressource</th><th>Résultat</th><th>Terminal</th><th>IP</th></tr>
           </thead>
           <tbody>
             <tr v-for="(e, i) in resultat.evenements" :key="i" class="au-ligne" @click="detail = e">
               <td class="text-no-wrap">{{ fmtDate(e.horodatage) }}</td>
-              <td>{{ e.email || '—' }}<small v-if="e.roles?.length" class="au-roles"> {{ e.roles.join(', ') }}</small></td>
-              <td class="au-cell-action">
+              <td data-label="Utilisateur">{{ e.email || '—' }}<small v-if="e.roles?.length" class="au-roles"> {{ e.roles.join(', ') }}</small></td>
+              <td class="au-cell-action cellule-large">
                 <div class="au-action">{{ e.libelle }}</div>
                 <div class="au-tech">
                   <v-chip size="x-small" variant="tonal" :color="couleurOperation(e.operation)">{{ e.operation }}</v-chip>
                   {{ e.module || 'authentification' }}
                 </div>
               </td>
-              <td>{{ e.ressourceId ? '#' + e.ressourceId : '' }}</td>
-              <td><v-chip size="x-small" :color="e.reussi ? 'success' : 'error'" variant="tonal">{{ e.reussi ? 'OK' : 'Échec' }}{{ e.statut ? ' ' + e.statut : '' }}</v-chip></td>
-              <td class="text-no-wrap" :class="{ 'text-medium-emphasis': e.terminal === 'Inconnu' }" :title="e.agent || 'En-tête du navigateur non enregistré'">
+              <td data-label="Ressource">{{ e.ressourceId ? '#' + e.ressourceId : '—' }}</td>
+              <td data-label="Résultat"><v-chip size="x-small" :color="e.reussi ? 'success' : 'error'" variant="tonal">{{ e.reussi ? 'OK' : 'Échec' }}{{ e.statut ? ' ' + e.statut : '' }}</v-chip></td>
+              <td class="text-no-wrap" data-label="Terminal" :class="{ 'text-medium-emphasis': e.terminal === 'Inconnu' }" :title="e.agent || 'En-tête du navigateur non enregistré'">
                 <v-icon :icon="iconeTerminal(e.terminal)" size="16" class="mr-1" />{{ e.terminal }}<small v-if="systemeConnu(e)" class="au-roles"> {{ e.systeme }}</small>
               </td>
-              <td>{{ e.ip }}</td>
+              <td data-label="IP">{{ e.ip }}</td>
             </tr>
             <tr v-if="!resultat.evenements.length"><td colspan="7" class="text-center text-medium-emphasis py-6">Aucune action sur cette période avec ces filtres.</td></tr>
           </tbody>
@@ -352,7 +352,8 @@ async function demander(q?: string) {
 .au-graphes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 .au-titre { font-size: 0.95rem; font-weight: 700; margin: 0 0 8px; }
 .au-barre { display: grid; grid-template-columns: minmax(90px, 1.2fr) 2fr auto; gap: 8px; align-items: center; font-size: 0.78rem; margin-bottom: 5px; cursor: pointer; }
-.au-barre__lib { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Le libellé de la barre (utilisateur, module...) passe à la ligne : il ne doit pas être coupé par « … ». */
+.au-barre__lib { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
 .au-barre__fond { background: #eef2f1; border-radius: 4px; height: 10px; display: block; }
 .au-barre__val { display: block; height: 10px; border-radius: 4px; background: var(--color-primary, #15803d); }
 .au-barre__val--b { background: #2563eb; }

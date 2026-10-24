@@ -581,7 +581,7 @@ function fmtDate(iso: string) {
           label="Fournisseur (bénéficiaire du paiement) *"
           variant="outlined"
           density="comfortable"
-          class="champ-fournisseur"
+          class="champ-fournisseur champ-entier"
         />
         <v-text-field
           v-model.number="form.fraisApproche"
@@ -592,7 +592,7 @@ function fmtDate(iso: string) {
           persistent-hint
           variant="outlined"
           density="comfortable"
-          class="champ-frais"
+          class="champ-frais champ-entier"
         />
       </div>
 
@@ -606,7 +606,7 @@ function fmtDate(iso: string) {
       />
 
       <v-file-input
-        label="Facture proforma ou justificatif (facultatif)"
+        label="Justificatif ou proforma (facultatif)"
         accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
         variant="outlined"
         density="comfortable"
@@ -688,8 +688,8 @@ function fmtDate(iso: string) {
 .panier-ligne__titre { font-size: 0.875rem; font-weight: 600; color: #111827; margin: 0; }
 .panier-ligne__detail { font-size: 0.75rem; color: #6b7280; margin: 2px 0 0; }
 .panier-ligne__montant { font-size: 0.875rem; font-weight: 600; color: #374151; white-space: nowrap; }
-.champ-fournisseur { flex: 2 1 260px; }
-.champ-frais { flex: 1 1 200px; }
+.champ-fournisseur { flex: 2 1 340px; }
+.champ-frais { flex: 1 1 270px; }
 .panier-frais {
   display: flex;
   justify-content: space-between;

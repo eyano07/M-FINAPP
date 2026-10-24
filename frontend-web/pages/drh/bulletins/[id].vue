@@ -314,9 +314,6 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .calc-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
 
 .etat-bloc { margin-bottom: 20px; }
@@ -405,6 +402,20 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
   color: #9ca3af;
 }
 .bp-footer__sep { margin: 0 6px; }
+
+/* Écran étroit (jamais à l'impression) : une colonne, le net à payer empilé. */
+@media screen and (max-width: 959px) {
+  .bp-info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  .bp-cols { grid-template-columns: minmax(0, 1fr); }
+  .bp-info-card { padding: 14px 16px; }
+}
+@media screen and (max-width: 599px) {
+  .bp-info-grid { grid-template-columns: minmax(0, 1fr); }
+  .bp-net { flex-direction: column; gap: 10px; padding: 14px 16px; }
+  .bp-net__sep { width: auto; height: 1px; }
+  .bp-net__value { font-size: 1.25rem; }
+  .bp-info-item strong { overflow-wrap: anywhere; }
+}
 
 @media print {
   /* Hauteur imprimable A4 (297mm) moins les marges @page (10mm haut/bas,

@@ -156,16 +156,16 @@ function fmt(v: number) {
         <h2 class="text-h6 mb-4">{{ editId ? 'Modifier' : 'Nouveau' }} trajet</h2>
         <v-select v-model="form.vehiculeId" :items="vehiculeItems" label="Véhicule" variant="outlined" density="comfortable" class="mb-3" />
         <v-row>
-          <v-col cols="6"><v-text-field v-model="form.origine" label="Origine" variant="outlined" density="comfortable" /></v-col>
-          <v-col cols="6"><v-text-field v-model="form.destination" label="Destination" variant="outlined" density="comfortable" /></v-col>
+          <v-col cols="12" sm="6"><v-text-field v-model="form.origine" label="Origine" variant="outlined" density="comfortable" /></v-col>
+          <v-col cols="12" sm="6"><v-text-field v-model="form.destination" label="Destination" variant="outlined" density="comfortable" /></v-col>
         </v-row>
         <v-row>
-          <v-col cols="6"><v-text-field v-model="form.dateDepart" label="Départ" type="datetime-local" variant="outlined" density="comfortable" /></v-col>
-          <v-col cols="6"><v-text-field v-model="form.dateArrivee" label="Arrivée" type="datetime-local" variant="outlined" density="comfortable" /></v-col>
+          <v-col cols="12" sm="6"><v-text-field v-model="form.dateDepart" label="Départ" type="datetime-local" variant="outlined" density="comfortable" /></v-col>
+          <v-col cols="12" sm="6"><v-text-field v-model="form.dateArrivee" label="Arrivée" type="datetime-local" variant="outlined" density="comfortable" /></v-col>
         </v-row>
         <v-row>
-          <v-col cols="6"><v-text-field v-model.number="form.distanceKm" label="Distance (km)" type="number" variant="outlined" density="comfortable" /></v-col>
-          <v-col cols="6"><v-select v-model="form.statut" :items="statuts" label="Statut" variant="outlined" density="comfortable" /></v-col>
+          <v-col cols="12" sm="6"><v-text-field v-model.number="form.distanceKm" label="Distance (km)" type="number" variant="outlined" density="comfortable" /></v-col>
+          <v-col cols="12" sm="6"><v-select v-model="form.statut" :items="statuts" label="Statut" variant="outlined" density="comfortable" /></v-col>
         </v-row>
         <div class="d-flex justify-end ga-3 mt-2">
           <v-btn variant="text" @click="dialog = false">Annuler</v-btn>

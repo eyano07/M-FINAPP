@@ -266,11 +266,11 @@ const fmtUSD = (fc?: number) =>
           <v-text-field v-model="filtreRecherche" label="Rechercher (code, libellé)" variant="outlined"
             density="comfortable" hide-details prepend-inner-icon="mdi-magnify" clearable />
         </v-col>
-        <v-col cols="6" md="4">
+        <v-col cols="12" sm="6" md="4">
           <v-select v-model="filtreType" :items="[{ title: 'Tous les types', value: 'TOUS' }, ...typesPresents]"
             label="Type" variant="outlined" density="comfortable" hide-details />
         </v-col>
-        <v-col cols="6" md="3">
+        <v-col cols="12" sm="6" md="3">
           <v-select v-model="filtreStatut" :items="[
             { title: 'Tous statuts', value: 'TOUS' },
             { title: 'Actifs', value: 'ACTIFS' },

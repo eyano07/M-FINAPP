@@ -239,9 +239,6 @@ const benefice = computed(() => (etat.value?.resultatNet ?? 0) >= 0)
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
 .kpi-value { font-size: 1.25rem; font-weight: 700; margin-top: 4px; }
 </style>

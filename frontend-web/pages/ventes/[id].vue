@@ -635,7 +635,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 
       <!-- ── Lignes ──────────────────────────────────────────── -->
       <v-card class="classroom-card mb-4">
-        <v-table density="comfortable">
+        <v-table density="comfortable" class="table-cartes">
           <thead>
             <tr>
               <th>Article</th>
@@ -650,18 +650,18 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
           <tbody>
             <tr v-for="l in vente.lignes" :key="l.id">
               <td><code class="text-caption">{{ l.articleCode }}</code></td>
-              <td>
+              <td class="cellule-large">
                 {{ l.designation }}
                 <span v-if="l.type === 'SERVICE'" class="vd-badge-service">service</span>
               </td>
-              <td class="text-right">{{ fmtQte(l.quantite) }}</td>
-              <td class="text-right">{{ fmtUSD(l.prixUnitaire) }}</td>
-              <td class="text-right">{{ fmtUSD(l.montantHt) }}</td>
-              <td v-if="!sansTva" class="text-right">
+              <td class="text-right cellule-montant" data-label="Qté">{{ fmtQte(l.quantite) }}</td>
+              <td class="text-right cellule-montant" :data-label="sansTva ? 'P.U.' : 'P.U. HT'">{{ fmtUSD(l.prixUnitaire) }}</td>
+              <td class="text-right cellule-montant" :data-label="sansTva ? 'Montant' : 'Montant HT'">{{ fmtUSD(l.montantHt) }}</td>
+              <td v-if="!sansTva" class="text-right cellule-montant" data-label="TVA">
                 <span v-if="l.soumisTva">{{ fmtUSD(l.montantTva) }}</span>
                 <span v-else class="text-medium-emphasis">exonéré</span>
               </td>
-              <td v-if="!sansTva" class="text-right font-weight-medium">{{ fmtUSD(l.montantTtc) }}</td>
+              <td v-if="!sansTva" class="text-right font-weight-medium cellule-montant" data-label="Total TTC">{{ fmtUSD(l.montantTtc) }}</td>
             </tr>
           </tbody>
         </v-table>
@@ -1017,6 +1017,11 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 .vd-fiscal__liste div { display: flex; gap: 8px; }
 .vd-fiscal__liste dt { font-weight: 700; min-width: 110px; }
 .vd-fiscal__liste dd { margin: 0; word-break: break-all; }
+@media screen and (max-width: 599px) {
+  .vd-fiscal__liste { grid-template-columns: minmax(0, 1fr); }
+  .vd-fiscal__liste div { flex-wrap: wrap; gap: 2px 8px; }
+  .vd-fiscal__liste dt { min-width: 0; }
+}
 .vd-print-fiscal { display: none; }
 @media print {
   .vd-print-fiscal { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; padding: 8px 10px; border: 1px solid #999; font-size: 9pt; }
@@ -1028,7 +1033,6 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .page-title { font-size: 1.4rem; font-weight: 700; color: #111827; margin: 0; display: flex; align-items: center; flex-wrap: wrap; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 
 .vd-section {
   font-size: 0.72rem;
@@ -1108,6 +1112,11 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
   font-weight: 600;
   color: #111827;
   font-variant-numeric: tabular-nums;
+}
+
+@media screen and (max-width: 599px) {
+  .vd-billet-ligne { flex-wrap: wrap; }
+  .vd-billet-ligne .vd-billet-total { flex: 1 1 100%; text-align: right; }
 }
 
 .vd-lien { font-size: 0.82rem; color: #374151; display: flex; align-items: center; }

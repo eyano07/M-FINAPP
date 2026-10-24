@@ -337,9 +337,6 @@ function libelleJour(j: number): string {
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .fiche-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .fiche-table th { text-align: left; padding: 8px; font-size: 0.7rem; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
 .fiche-table td { padding: 10px 8px; border-bottom: 1px solid #f3f4f6; }

@@ -249,7 +249,7 @@ const headers = [
       <v-card class="classroom-card pa-4 mb-4">
         <div class="ana-titre">Résultat par activité</div>
         <div v-if="etat.activites.length" class="ana-activites">
-          <table class="ana-table">
+          <table class="ana-table table-cartes">
             <thead>
               <tr>
                 <th>Activité</th>
@@ -262,19 +262,19 @@ const headers = [
             <tbody>
               <tr v-for="a in etat.activites" :key="a.activite">
                 <td><span class="compte__num">{{ a.compteNumero }}</span> {{ a.libelle }}</td>
-                <td class="num">{{ fmtUSD(a.chiffreAffaires) }}</td>
-                <td class="num">{{ fmtUSD(a.coutDesVentes) }}</td>
-                <td class="num" :class="a.marge < 0 ? 'text-error' : 'text-success'"><strong>{{ fmtUSD(a.marge) }}</strong></td>
-                <td class="num">{{ fmtTaux(a.tauxMarge) }}</td>
+                <td class="num" data-label="Chiffre d'affaires HT">{{ fmtUSD(a.chiffreAffaires) }}</td>
+                <td class="num" data-label="Coût des ventes">{{ fmtUSD(a.coutDesVentes) }}</td>
+                <td class="num" data-label="Marge" :class="a.marge < 0 ? 'text-error' : 'text-success'"><strong>{{ fmtUSD(a.marge) }}</strong></td>
+                <td class="num" data-label="Taux de marge">{{ fmtTaux(a.tauxMarge) }}</td>
               </tr>
             </tbody>
             <tfoot v-if="etat.activites.length > 1">
               <tr>
                 <td>Total</td>
-                <td class="num">{{ fmtUSD(totalActivites.ca) }}</td>
-                <td class="num">{{ fmtUSD(totalActivites.cout) }}</td>
-                <td class="num">{{ fmtUSD(totalActivites.marge) }}</td>
-                <td class="num">{{ fmtTaux(totalActivites.taux) }}</td>
+                <td class="num" data-label="Chiffre d'affaires HT">{{ fmtUSD(totalActivites.ca) }}</td>
+                <td class="num" data-label="Coût des ventes">{{ fmtUSD(totalActivites.cout) }}</td>
+                <td class="num" data-label="Marge">{{ fmtUSD(totalActivites.marge) }}</td>
+                <td class="num" data-label="Taux de marge">{{ fmtTaux(totalActivites.taux) }}</td>
               </tr>
             </tfoot>
           </table>
@@ -354,6 +354,7 @@ const headers = [
 .ana-info { font-size: 0.875rem; }
 .ana-titre { font-weight: 700; margin-bottom: 12px; }
 .ana-activites { overflow-x: auto; }
+@media screen and (max-width: 959px) { .ana-activites { overflow: visible; } .ana-activites .ana-table { min-width: 0; } }
 .ana-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 560px; }
 .ana-table th { text-align: left; font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; padding: 8px; border-bottom: 1px solid #e5e7eb; }
 .ana-table td { padding: 8px; border-bottom: 1px solid #f3f4f6; }

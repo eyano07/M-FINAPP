@@ -1349,17 +1349,7 @@ const fmtTaux = computed(() =>
   margin: 4px 0 10px;
 }
 
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .taux-badge {
   font-size: 0.78rem;
   background: var(--color-primary-lighter);
@@ -1447,6 +1437,14 @@ const fmtTaux = computed(() =>
   color: #111827;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+/* Téléphone et tablette : l'objet s'affiche en entier ; le montant et « Payer » passent sous le texte, sur toute la largeur. */
+@media screen and (max-width: 959px) {
+  .caisse-note { flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; }
+  .caisse-note .caisse-note__objet { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+  .caisse-note .caisse-note__main { flex: 1 1 100%; }
+  .caisse-note .caisse-note__montant { flex: 1 1 auto; font-size: 1.05rem; }
+  .caisse-note .v-btn { flex: 0 0 auto; }
 }
 
 /* ── Retours de fonds à recevoir ─────────────────────────────────── */
