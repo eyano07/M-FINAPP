@@ -244,6 +244,16 @@ const aideConservation = computed(() => {
   return `Une production d'aujourd'hui expire le ${jour} ; le lendemain, les portions non vendues sont périmées.`
 })
 
+/** Recherche du sélecteur de plat : même règle que la liste (code, libellé du plat, ingrédients). */
+function filtrePlat(_valeur: unknown, requete: string, item?: { raw: Recette }): boolean {
+  const r = item?.raw
+  return !!r && correspondRecherche([r.platCode, r.platLibelle, ...r.lignes.flatMap(l => [l.provisionCode, l.provisionLibelle])], requete)
+}
+function sousTitrePlat(r: Recette): string {
+  const n = r.lignes.length
+  return `${r.platCode} · ${n ? `${n} ingrédient${n > 1 ? 's' : ''}` : 'sans fiche'}${r.dureeConservationJours != null ? ` · conservation ${r.dureeConservationJours} j` : ''}`
+}
+
 function choisirPlat(platId: number) {
   if (platId === platSelectionneId.value) return
   if (modifie.value && !confirm('Les modifications non enregistrées de cette fiche seront perdues. Continuer ?')) {
@@ -355,6 +365,25 @@ const fmtQte = (n?: number | null) =>
     </v-card>
 
     <div v-else class="fiche-layout">
+      <!-- ── Sélecteur de plat (téléphone et tablette) : un champ compact à la place du panneau de 280 px ── -->
+      <v-autocomplete
+        :model-value="platSelectionneId"
+        :items="recettes"
+        item-title="platLibelle"
+        item-value="platId"
+        :custom-filter="filtrePlat"
+        label="Plat"
+        prepend-inner-icon="mdi-silverware-fork-knife"
+        placeholder="Rechercher un plat ou un ingrédient…"
+        variant="outlined" density="comfortable" rounded="lg" hide-details no-data-text="Aucune fiche ne correspond à votre recherche."
+        class="fiche-selecteur"
+        @update:model-value="(id: number | null) => id !== null && choisirPlat(id)"
+      >
+        <template #item="{ props, item }">
+          <v-list-item v-bind="props" :title="item.raw.platLibelle" :subtitle="sousTitrePlat(item.raw)" />
+        </template>
+      </v-autocomplete>
+
       <!-- ── Liste des plats ──────────────────────────────── -->
       <v-card class="classroom-card fiche-plats">
         <div class="fiche-plats__recherche">
@@ -441,14 +470,17 @@ const fmtQte = (n?: number | null) =>
           {{ canWrite ? 'Cliquez sur « Ingrédient » pour composer la fiche.' : '' }}
         </p>
 
-        <div v-for="(l, i) in lignesEnCours" :key="i" class="fiche-ligne">
+        <CommunLigneSaisie
+          v-for="(l, i) in lignesEnCours" :key="i" :numero="i + 1" etiquette="Ingrédient" :lecture="!canWrite"
+          @retirer="supprimerLigne(i)"
+        >
           <v-autocomplete
             v-model="l.provisionId"
             :items="provisionsOptions"
             label="Provision"
             variant="outlined" density="compact" hide-details
             :readonly="!canWrite"
-            class="fiche-ligne__provision"
+            class="ls-large"
             @update:model-value="modifie = true"
           />
           <v-text-field
@@ -456,16 +488,14 @@ const fmtQte = (n?: number | null) =>
             type="number" label="Quantité" min="0" step="0.001"
             variant="outlined" density="compact" hide-details
             :readonly="!canWrite"
-            class="fiche-ligne__qte"
+            class="ls-court"
             @update:model-value="modifie = true"
           />
-          <span class="fiche-ligne__cout">{{ ligneChiffree(l) ? fmtUSD(coutLigne(l)) : '—' }}</span>
-          <v-btn
-            v-if="canWrite"
-            icon="mdi-close" size="x-small" variant="text" title="Retirer"
-            @click="supprimerLigne(i)"
-          />
-        </div>
+          <div class="ls-court fiche-ligne__cout">
+            <span class="fiche-ligne__cout-etiquette">Coût</span>
+            <span class="fiche-ligne__cout-valeur">{{ ligneChiffree(l) ? fmtUSD(coutLigne(l)) : '—' }}</span>
+          </div>
+        </CommunLigneSaisie>
 
         <v-divider class="my-4" />
 
@@ -524,6 +554,7 @@ const fmtQte = (n?: number | null) =>
 
 <style scoped>
 .fiche-layout { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.fiche-selecteur { display: none; }
 .fiche-plats { flex: 0 0 280px; max-height: 620px; display: flex; flex-direction: column; overflow: hidden; }
 .fiche-plats__recherche { flex: 0 0 auto; padding: 10px 10px 4px; }
 .fiche-plats__liste { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
@@ -531,24 +562,12 @@ const fmtQte = (n?: number | null) =>
 .fiche-sans { color: #b45309; font-weight: 600; }
 
 .fiche-conservation { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.fiche-conservation__champ { flex: 0 0 250px; }
+.fiche-conservation__champ { flex: 0 0 300px; }
 .fiche-conservation__aide { flex: 1 1 260px; min-width: 0; }
 
-.fiche-ligne {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-}
-.fiche-ligne__provision { flex: 1 1 240px; min-width: 0; }
-.fiche-ligne__qte { flex: 0 0 120px; }
-.fiche-ligne__cout {
-  flex: 0 0 100px;
-  text-align: right;
-  font-size: 0.8125rem;
-  color: #6b7280;
-  white-space: nowrap;
-}
+/* Coût d'un ingrédient : valeur seule alignée à droite sur PC, tuile « Coût » sur téléphone. */
+.fiche-ligne__cout { align-self: center; text-align: right; font-size: 0.8125rem; color: #6b7280; white-space: nowrap; }
+.fiche-ligne__cout-etiquette { display: none; }
 
 .fiche-total {
   display: flex;
@@ -560,4 +579,23 @@ const fmtQte = (n?: number | null) =>
 }
 .fiche-total strong { font-size: 1.15rem; color: var(--color-primary); }
 .fiche-total--secondaire { font-size: 0.8125rem; color: #6b7280; }
+
+/* Téléphone et tablette : le sélecteur remplace la liste, la fiche prend toute la largeur. */
+@media screen and (max-width: 959px) {
+  .fiche-layout { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 12px; }
+  .fiche-selecteur { display: block; }
+  .fiche-plats { display: none; }
+  .fiche-detail { flex: 1 1 auto; width: 100%; }
+  .fiche-ligne__cout {
+    display: flex; flex-direction: column; justify-content: center; text-align: left;
+    padding: 6px 12px 7px; background: #f6f8fa; border-radius: 10px;
+  }
+  .fiche-ligne__cout-etiquette {
+    display: block; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #94a3b8;
+  }
+  .fiche-ligne__cout-valeur { font-size: 1rem; font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }
+}
+@media screen and (max-width: 599px) {
+  .fiche-conservation__champ { flex: 1 1 100%; }
+}
 </style>

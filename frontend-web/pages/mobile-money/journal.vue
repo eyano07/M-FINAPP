@@ -89,77 +89,30 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
     </v-card>
 
     <template v-if="journal">
-      <v-row class="mb-4">
-        <v-col cols="6" md="4">
-          <v-card class="classroom-card pa-4 text-center">
-            <div class="kpi-label">Pièces</div>
-            <div class="kpi-value">{{ journal.pieces.length }}</div>
-          </v-card>
-        </v-col>
-        <v-col cols="6" md="4">
-          <v-card class="classroom-card pa-4 text-center">
-            <div class="kpi-label">Total débit (USD)</div>
-            <div class="kpi-value">{{ fmtUSD(journal.totalDebit) }}</div>
-          </v-card>
-        </v-col>
-        <v-col cols="6" md="4">
-          <v-card class="classroom-card pa-4 text-center">
-            <div class="kpi-label">Total crédit (USD)</div>
-            <div class="kpi-value">{{ fmtUSD(journal.totalCredit) }}</div>
-          </v-card>
-        </v-col>
-      </v-row>
+      <div class="kpi-grid">
+        <v-card class="classroom-card pa-4 text-center">
+          <div class="kpi-label">Pièces</div>
+          <div class="kpi-value">{{ journal.pieces.length }}</div>
+        </v-card>
+        <v-card class="classroom-card pa-4 text-center">
+          <div class="kpi-label">Total débit (USD)</div>
+          <div class="kpi-value">{{ fmtUSD(journal.totalDebit) }}</div>
+        </v-card>
+        <v-card class="classroom-card pa-4 text-center">
+          <div class="kpi-label">Total crédit (USD)</div>
+          <div class="kpi-value">{{ fmtUSD(journal.totalCredit) }}</div>
+        </v-card>
+      </div>
 
       <v-card v-if="journal.pieces.length === 0" class="classroom-card pa-8 text-center">
         <v-icon icon="mdi-cellphone" size="42" color="grey" class="mb-2" />
         <div class="text-medium-emphasis">Aucune écriture mobile money sur cette période.</div>
       </v-card>
 
-      <v-expansion-panels v-else variant="accordion" class="journal-panels">
-        <v-expansion-panel v-for="p in journal.pieces" :key="p.id" elevation="0" class="classroom-card mb-2">
-          <v-expansion-panel-title>
-            <div class="d-flex align-center flex-wrap ga-3" style="width: 100%">
-              <span class="font-weight-bold">{{ p.reference }}</span>
-              <span class="text-medium-emphasis">{{ fmtDate(p.datePiece) }}</span>
-              <span class="text-truncate flex-1-1">{{ p.libelle }}</span>
-              <v-chip v-if="p.statut === 'ANNULEE'" size="small" color="error" variant="tonal">Annulée</v-chip>
-              <span class="font-weight-medium">{{ fmtUSD(p.totalDebit) }}</span>
-            </div>
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
-            <v-table density="compact">
-              <thead>
-                <tr>
-                  <th>Compte</th>
-                  <th>Libellé</th>
-                  <th class="text-right">Débit</th>
-                  <th class="text-right">Crédit</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(l, i) in p.lignes" :key="i">
-                  <td>
-                    <span class="font-weight-medium">{{ l.compteNumero }}</span>
-                    <span class="text-medium-emphasis"> — {{ l.compteLibelle }}</span>
-                  </td>
-                  <td>{{ l.libelle }}</td>
-                  <td class="text-right">{{ l.debit ? fmtUSD(l.debit) : '—' }}</td>
-                  <td class="text-right">{{ l.credit ? fmtUSD(l.credit) : '—' }}</td>
-                </tr>
-              </tbody>
-            </v-table>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
+      <CommunPiecesJournal v-else :pieces="journal.pieces" :fmt="fmtUSD" />
     </template>
   </div>
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.25rem; font-weight: 700; color: #111827; margin-top: 4px; }
-.journal-panels :deep(.v-expansion-panel) { border-radius: 12px !important; }
 </style>

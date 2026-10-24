@@ -1,11 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ roles: ['ADMIN'] })
 
-import { useDisplay } from 'vuetify'
-
-const { width } = useDisplay()
-const esMobile = computed(() => width.value < 600)
-
 interface UserRow {
   id: number
   nom: string
@@ -39,6 +34,13 @@ const saving = ref(false)
 const erreur = ref('')
 const succes = ref('')
 const users = ref<UserRow[]>([])
+
+// ── Recherche : nom, prénom, identifiant, téléphone, fonction, affectation, adresse de notification et rôles ─────────
+const recherche = ref('')
+const usersFiltres = computed(() => users.value.filter(u => correspondRecherche(
+  [u.nomComplet, u.prenom, u.nom, u.email, u.telephone, u.emailNotification, u.fonction, u.affectation,
+    ...u.roles, ...u.roles.map(r => rolesStore.libelle(r)), u.actif ? 'actif' : 'inactif'],
+  recherche.value)))
 
 // ── Dialog ─────────────────────────────────────────────────────────────────
 const dialog = ref(false)
@@ -221,7 +223,21 @@ const roleColor: Record<string, string> = {
       Les comptes qui n'ont que ces rôles sont désactivés et masqués ; ils reviennent avec le module (Administration › Modules).
     </v-alert>
 
-    <!-- ── Tableau ───────────────────────────────────────────────────── -->
+    <!-- ── Recherche ─────────────────────────────────────────────────── -->
+    <div class="usr-recherche">
+      <v-text-field
+        v-model="recherche"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="Nom, identifiant, rôle, fonction…"
+        aria-label="Rechercher un utilisateur"
+        clearable hide-details
+        variant="outlined" density="comfortable" rounded="lg"
+        class="usr-recherche__champ"
+      />
+      <span v-if="users.length" class="usr-recherche__compteur">{{ usersFiltres.length }} sur {{ users.length }}</span>
+    </div>
+
+    <!-- ── Tableau (PC) et cartes (téléphone, tablette) ──────────────── -->
     <div class="usr-card">
       <div v-if="loading" class="usr-loading">
         <v-progress-circular indeterminate color="primary" size="28" />
@@ -232,7 +248,13 @@ const roleColor: Record<string, string> = {
         <p>Aucun utilisateur trouvé.</p>
       </div>
 
-      <div v-else-if="!esMobile" class="usr-table-scroll">
+      <div v-else-if="usersFiltres.length === 0" class="usr-empty">
+        <v-icon icon="mdi-account-search-outline" size="40" color="#d1d5db" />
+        <p>Aucun utilisateur ne correspond à « {{ recherche }} ».</p>
+      </div>
+
+      <template v-else>
+      <div class="usr-table-scroll tableau-fixe">
       <table class="usr-table">
         <thead>
           <tr>
@@ -244,7 +266,7 @@ const roleColor: Record<string, string> = {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="u in users" :key="u.id" :class="{ 'usr-row--inactive': !u.actif }">
+          <tr v-for="u in usersFiltres" :key="u.id" :class="{ 'usr-row--inactive': !u.actif }">
             <td>
               <div class="usr-name-cell">
                 <div class="usr-avatar" :style="{ background: u.actif ? 'var(--color-primary-light)' : '#f3f4f6', color: u.actif ? 'var(--color-primary)' : '#9ca3af' }">
@@ -289,9 +311,9 @@ const roleColor: Record<string, string> = {
       </table>
       </div>
 
-      <!-- ── Cartes (mobile) ──────────────────────────────────── -->
-      <div v-else class="usr-cards">
-        <div v-for="u in users" :key="u.id" class="usr-card-item" :class="{ 'usr-card-item--inactive': !u.actif }">
+      <!-- ── Cartes (téléphone, tablette) ─────────────────────── -->
+      <div class="usr-cards">
+        <div v-for="u in usersFiltres" :key="u.id" class="usr-card-item" :class="{ 'usr-card-item--inactive': !u.actif }">
           <div class="usr-card-item__top">
             <div class="usr-avatar" :style="{ background: u.actif ? 'var(--color-primary-light)' : '#f3f4f6', color: u.actif ? 'var(--color-primary)' : '#9ca3af' }">
               {{ (u.prenom?.[0] ?? '') + (u.nom?.[0] ?? '') }}
@@ -330,6 +352,7 @@ const roleColor: Record<string, string> = {
           </div>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- ── Dialog ────────────────────────────────────────────────────── -->
@@ -483,6 +506,11 @@ const roleColor: Record<string, string> = {
 }
 .usr-new-btn:hover { background: var(--color-primary-dark); }
 
+/* ── Recherche ───────────────────────────────────────────────────────────── */
+.usr-recherche { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.usr-recherche__champ { flex: 1 1 320px; max-width: 520px; }
+.usr-recherche__compteur { flex: 0 0 auto; font-size: 0.8125rem; color: #6b7280; white-space: nowrap; }
+
 /* ── Table card ──────────────────────────────────────────────────────────── */
 .usr-card {
   background: #fff; border: 1px solid #f0f0f0; border-radius: 18px;
@@ -497,6 +525,7 @@ const roleColor: Record<string, string> = {
 
 /* ── Table ───────────────────────────────────────────────────────────────── */
 .usr-table-scroll { overflow-x: auto; }
+.usr-cards { display: none; }
 .usr-table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 0.875rem; }
 .usr-table thead tr {
   border-bottom: 1px solid #f3f4f6;
@@ -563,10 +592,28 @@ const roleColor: Record<string, string> = {
 .usr-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Cartes (mobile) ─────────────────────────────────────────────────────── */
-.usr-cards { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+/* Sous 960 px : les cartes remplacent le tableau, posées sur le fond de la page (1 colonne, 2 sur tablette). */
+@media screen and (max-width: 959px) {
+  .usr-card { background: transparent; border: 0; border-radius: 0; overflow: visible; }
+  .usr-table-scroll { display: none; }
+  .usr-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  /* Plus spécifiques que les règles de base écrites plus bas dans la feuille (même poids : l'ordre déciderait). */
+  .usr-head-actions .usr-new-btn, .usr-head-actions .usr-refresh-btn { height: 44px; }
+  .usr-head-actions .usr-refresh-btn { width: 44px; }
+  .usr-cards .usr-card-item__btn { height: 44px; }
+  .usr-loading, .usr-empty { background: #fff; border: 1px solid #f0f0f0; border-radius: 16px; }
+}
+@media screen and (min-width: 600px) and (max-width: 959px) {
+  .usr-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media screen and (max-width: 599px) {
+  .usr-recherche { flex-wrap: wrap; gap: 6px; }
+  .usr-recherche__champ { flex: 1 1 100%; max-width: none; }
+  .usr-form-row { grid-template-columns: 1fr; }
+}
 
 .usr-card-item {
-  background: #fff; border: 1px solid #eef0f2; border-left: 3px solid var(--color-primary); border-radius: 16px;
+  background: #fff; border: 1px solid #eef0f2; border-left: 4px solid var(--color-primary); border-radius: 16px;
   padding: 14px 16px; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: box-shadow 0.15s;
 }

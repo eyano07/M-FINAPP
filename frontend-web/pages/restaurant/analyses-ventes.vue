@@ -71,25 +71,25 @@ const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
 
 /** Bornes de la période choisie, calculées côté client à partir d'une date de référence. */
 function calculerPeriode(type: TypePeriode, refIso: string): { du: string; au: string } {
-  const ref = new Date(refIso + 'T00:00:00')
+  const base = new Date(refIso + 'T00:00:00')
   if (type === 'SEMAINE') {
-    const jourIso = (ref.getDay() + 6) % 7 // 0 = lundi
-    const lundi = new Date(ref); lundi.setDate(ref.getDate() - jourIso)
+    const jourIso = (base.getDay() + 6) % 7 // 0 = lundi
+    const lundi = new Date(base); lundi.setDate(base.getDate() - jourIso)
     const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
     return { du: iso(lundi), au: iso(dimanche) }
   }
   if (type === 'MOIS') {
-    return { du: iso(new Date(ref.getFullYear(), ref.getMonth(), 1)), au: iso(new Date(ref.getFullYear(), ref.getMonth() + 1, 0)) }
+    return { du: iso(new Date(base.getFullYear(), base.getMonth(), 1)), au: iso(new Date(base.getFullYear(), base.getMonth() + 1, 0)) }
   }
   if (type === 'TRIMESTRE') {
-    const t = Math.floor(ref.getMonth() / 3)
-    return { du: iso(new Date(ref.getFullYear(), t * 3, 1)), au: iso(new Date(ref.getFullYear(), t * 3 + 3, 0)) }
+    const t = Math.floor(base.getMonth() / 3)
+    return { du: iso(new Date(base.getFullYear(), t * 3, 1)), au: iso(new Date(base.getFullYear(), t * 3 + 3, 0)) }
   }
   if (type === 'SEMESTRE') {
-    const s = ref.getMonth() < 6 ? 0 : 1
-    return { du: iso(new Date(ref.getFullYear(), s * 6, 1)), au: iso(new Date(ref.getFullYear(), s * 6 + 6, 0)) }
+    const s = base.getMonth() < 6 ? 0 : 1
+    return { du: iso(new Date(base.getFullYear(), s * 6, 1)), au: iso(new Date(base.getFullYear(), s * 6 + 6, 0)) }
   }
-  return { du: `${ref.getFullYear()}-01-01`, au: `${ref.getFullYear()}-12-31` }
+  return { du: `${base.getFullYear()}-01-01`, au: `${base.getFullYear()}-12-31` }
 }
 const periode = computed(() => calculerPeriode(typePeriode.value, dateReference.value))
 const periodeLabel = computed(() => {
@@ -123,6 +123,26 @@ const fmtUSD = (montant: number) =>
     : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(montant)
 const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n || 0)
 const fmtPct = (n: number) => `${n >= 0 ? '' : ''}${n.toFixed(1)} %`
+
+// ── Tableaux (cartes à tuiles sous 960 px : voir assets/styles/responsive.scss) ───────────────────────────────
+const ENTETES_MARGE = [
+  { title: 'Article', key: 'libelle', sortable: false },
+  { title: 'Type', key: 'type', sortable: false },
+  { title: 'Catégorie', key: 'categorie', sortable: false },
+  { title: 'Qté', key: 'quantiteVendue', align: 'end', sortable: false },
+  { title: 'CA', key: 'chiffreAffaires', align: 'end', sortable: false },
+  { title: 'Coût', key: 'cout', align: 'end', sortable: false },
+  { title: 'Marge', key: 'marge', align: 'end', sortable: false },
+  { title: 'Marge %', key: 'margePourcentage', align: 'end', sortable: false },
+] as const
+const ENTETES_CATEGORIE = [
+  { title: 'Catégorie', key: 'categorie', sortable: false },
+  { title: 'Type', key: 'type', sortable: false },
+  { title: 'Qté', key: 'quantiteVendue', align: 'end', sortable: false },
+  { title: 'CA', key: 'chiffreAffaires', align: 'end', sortable: false },
+  { title: 'Coût', key: 'cout', align: 'end', sortable: false },
+  { title: 'Marge', key: 'marge', align: 'end', sortable: false },
+] as const
 
 // ── Classements ───────────────────────────────────────────────────────────
 const meilleuresVentes = computed(() =>
@@ -234,7 +254,7 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
         <h1 class="page-title">Analyses des ventes</h1>
         <p class="page-sub">Meilleures ventes, marge par article et tendance — {{ periodeLabel }}</p>
       </div>
-      <div class="d-flex ga-2 flex-wrap">
+      <div class="av-filtres">
         <!-- Densité par défaut = 48 px, la hauteur des champs voisins (« comfortable » ne donne que 40 px). -->
         <v-btn-toggle v-model="deviseAffichage" mandatory variant="outlined" rounded="lg">
           <v-btn value="CDF" size="small">FC</v-btn>
@@ -243,11 +263,11 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
         <v-select
           v-model="typePeriode" :items="TYPES_PERIODE" item-title="label" item-value="value"
           label="Période" variant="outlined" density="comfortable" rounded="lg" hide-details
-          style="max-width: 160px"
+          class="av-champ"
         />
         <v-text-field
           v-model="dateReference" type="date" label="Date de référence" variant="outlined"
-          density="comfortable" rounded="lg" hide-details style="max-width: 170px"
+          density="comfortable" rounded="lg" hide-details class="av-champ"
         />
       </div>
     </div>
@@ -311,51 +331,43 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
 
       <v-card class="classroom-card mb-5">
         <div class="av-card-head">Top 10 — Marge par article (dividende)</div>
-        <v-table density="comfortable">
-          <thead>
-            <tr>
-              <th>Article</th><th>Type</th><th>Catégorie</th>
-              <th class="text-end">Qté</th><th class="text-end">CA</th><th class="text-end">Coût</th>
-              <th class="text-end">Marge</th><th class="text-end">Marge %</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="a in parMarge" :key="a.articleId">
-              <td>{{ a.code }} — {{ a.libelle }}</td>
-              <td><v-chip size="x-small" variant="tonal" :color="a.type === 'PLAT' ? 'deep-orange' : 'indigo'">{{ a.type === 'PLAT' ? 'Plat' : 'Boisson' }}</v-chip></td>
-              <td class="text-medium-emphasis">{{ a.categorie }}</td>
-              <td class="text-end">{{ fmtNb(a.quantiteVendue) }}</td>
-              <td class="text-end">{{ fmtUSD(a.chiffreAffaires) }}</td>
-              <td class="text-end text-medium-emphasis">{{ fmtUSD(a.cout) }}</td>
-              <td class="text-end font-weight-bold" :class="a.marge >= 0 ? 'text-success' : 'text-error'">{{ fmtUSD(a.marge) }}</td>
-              <td class="text-end">{{ fmtPct(a.margePourcentage) }}</td>
-            </tr>
-            <tr v-if="!parMarge.length"><td colspan="8" class="text-center text-medium-emphasis py-6">Aucune donnée sur cette période.</td></tr>
-          </tbody>
-        </v-table>
+        <v-data-table
+          :headers="ENTETES_MARGE" :items="parMarge" item-value="articleId" density="comfortable"
+          :items-per-page="-1" hide-default-footer class="av-table sans-tri"
+        >
+          <template #item.libelle="{ item }">{{ item.code }} — {{ item.libelle }}</template>
+          <template #item.type="{ item }">
+            <v-chip size="x-small" variant="tonal" :color="item.type === 'PLAT' ? 'deep-orange' : 'indigo'">{{ item.type === 'PLAT' ? 'Plat' : 'Boisson' }}</v-chip>
+          </template>
+          <template #item.categorie="{ item }"><span class="text-medium-emphasis">{{ item.categorie }}</span></template>
+          <template #item.quantiteVendue="{ item }">{{ fmtNb(item.quantiteVendue) }}</template>
+          <template #item.chiffreAffaires="{ item }">{{ fmtUSD(item.chiffreAffaires) }}</template>
+          <template #item.cout="{ item }"><span class="text-medium-emphasis">{{ fmtUSD(item.cout) }}</span></template>
+          <template #item.marge="{ item }">
+            <span class="font-weight-bold" :class="item.marge >= 0 ? 'text-success' : 'text-error'">{{ fmtUSD(item.marge) }}</span>
+          </template>
+          <template #item.margePourcentage="{ item }">{{ fmtPct(item.margePourcentage) }}</template>
+          <template #no-data><div class="text-center text-medium-emphasis py-6">Aucune donnée sur cette période.</div></template>
+        </v-data-table>
       </v-card>
 
       <v-card class="classroom-card">
         <div class="av-card-head">Détail par catégorie</div>
-        <v-table density="comfortable">
-          <thead>
-            <tr>
-              <th>Catégorie</th><th>Type</th>
-              <th class="text-end">Qté</th><th class="text-end">CA</th><th class="text-end">Coût</th><th class="text-end">Marge</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="c in analyse.parCategorie" :key="c.type + c.categorie">
-              <td>{{ c.categorie }}</td>
-              <td><v-chip size="x-small" variant="tonal" :color="c.type === 'PLAT' ? 'deep-orange' : 'indigo'">{{ c.type === 'PLAT' ? 'Plat' : 'Boisson' }}</v-chip></td>
-              <td class="text-end">{{ fmtNb(c.quantiteVendue) }}</td>
-              <td class="text-end">{{ fmtUSD(c.chiffreAffaires) }}</td>
-              <td class="text-end text-medium-emphasis">{{ fmtUSD(c.cout) }}</td>
-              <td class="text-end font-weight-bold" :class="c.marge >= 0 ? 'text-success' : 'text-error'">{{ fmtUSD(c.marge) }}</td>
-            </tr>
-            <tr v-if="!analyse.parCategorie.length"><td colspan="6" class="text-center text-medium-emphasis py-6">Aucune donnée sur cette période.</td></tr>
-          </tbody>
-        </v-table>
+        <v-data-table
+          :headers="ENTETES_CATEGORIE" :items="analyse.parCategorie" :item-value="(c: CategorieStat) => c.type + c.categorie"
+          density="comfortable" :items-per-page="-1" hide-default-footer class="av-table sans-tri"
+        >
+          <template #item.type="{ item }">
+            <v-chip size="x-small" variant="tonal" :color="item.type === 'PLAT' ? 'deep-orange' : 'indigo'">{{ item.type === 'PLAT' ? 'Plat' : 'Boisson' }}</v-chip>
+          </template>
+          <template #item.quantiteVendue="{ item }">{{ fmtNb(item.quantiteVendue) }}</template>
+          <template #item.chiffreAffaires="{ item }">{{ fmtUSD(item.chiffreAffaires) }}</template>
+          <template #item.cout="{ item }"><span class="text-medium-emphasis">{{ fmtUSD(item.cout) }}</span></template>
+          <template #item.marge="{ item }">
+            <span class="font-weight-bold" :class="item.marge >= 0 ? 'text-success' : 'text-error'">{{ fmtUSD(item.marge) }}</span>
+          </template>
+          <template #no-data><div class="text-center text-medium-emphasis py-6">Aucune donnée sur cette période.</div></template>
+        </v-data-table>
       </v-card>
     </template>
   </div>
@@ -363,9 +375,10 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
 
 <style scoped>
 .av-page { max-width: 1280px; margin: 0 auto; padding-bottom: 48px; }
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
+
+.av-filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.av-champ { flex: 1 1 150px; max-width: 200px; }
+@media screen and (max-width: 599px) { .av-champ { max-width: none; } }
 
 .av-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .av-kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: #f9fafb; }
@@ -377,16 +390,22 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
 .av-kpi__val { display: block; font-size: 1.05rem; font-weight: 800; letter-spacing: -0.4px; }
 .av-kpi__lbl { display: block; font-size: 0.72rem; font-weight: 500; opacity: 0.8; }
 
-.av-charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-.av-chart { background: #fff; border: 1px solid #f0f0f0; border-radius: 16px; padding: 16px 18px 20px; }
+.av-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.av-chart { min-width: 0; background: #fff; border: 1px solid #f0f0f0; border-radius: 16px; padding: 16px 18px 20px; }
 .av-chart--wide { grid-column: 1 / -1; }
 .av-chart__title { font-size: 0.8rem; font-weight: 700; color: #374151; margin: 0 0 12px; display: flex; align-items: center; }
-.av-chart__body { height: 260px; position: relative; }
+.av-chart__body { height: 260px; min-width: 0; position: relative; }
 .av-chart__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.82rem; }
-@media (max-width: 900px) { .av-charts { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .av-charts { grid-template-columns: minmax(0, 1fr); } }
+@media screen and (max-width: 599px) {
+  .av-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .av-kpi { flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px; }
+  .av-kpi__val { white-space: nowrap; }
+}
 
 .av-card-head {
   font-size: 0.8rem; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
   color: #6b7280; padding: 16px 20px 12px;
 }
+@media screen and (max-width: 959px) { .av-card-head { padding: 4px 4px 10px; } }
 </style>
