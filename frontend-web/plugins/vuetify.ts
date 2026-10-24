@@ -1,6 +1,7 @@
 import { createVuetify } from 'vuetify'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
 import { fr } from 'vuetify/locale'
+import { classerCellule } from '~/utils/classerCellule'
 
 /**
  * Theme MBSC - clone visuel Google Classroom.
@@ -65,13 +66,14 @@ export default defineNuxtPlugin((nuxtApp) => {
       VAppBar: {
         flat: true,
       },
-      // Sous 600px (telephones), chaque ligne se replie en carte
-      // libelle/valeur au lieu d'un tableau large illisible — comportement
-      // natif de Vuetify, jamais active jusqu'ici sur aucun des tableaux
-      // de l'appli (17 v-data-table). Applique une fois ici plutot que
-      // repete sur chaque page.
+      // Sous 960px (telephones et tablettes en portrait), chaque ligne se replie en carte a tuiles au lieu d'un tableau large :
+      // comportement natif de Vuetify (mode « mobile » des v-data-table, 49 tableaux dans 45 pages), applique une fois ici plutot
+      // que repete sur chaque page. `cellProps` range chaque cellule dans un role (identifiant, puce de statut, libelle, chiffre
+      // cle, action...) d'apres sa colonne : voir utils/classerCellule.ts et assets/styles/responsive.scss. Au-dela de 960px, ce
+      // sont de vrais tableaux a en-tete fixe (meme fichier de styles).
       VDataTable: {
-        mobileBreakpoint: 'sm',
+        mobileBreakpoint: 'md',
+        cellProps: classerCellule,
       },
     },
   })

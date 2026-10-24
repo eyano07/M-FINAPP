@@ -194,8 +194,11 @@ function onClick() {
   letter-spacing: 0.2px;
 }
 
+.stat-card__body { min-width: 0; }
 .stat-card__value {
-  font-size: 1.85rem;
+  /* Fluide : 1.85rem sur grand écran, plus petit quand la carte est étroite, sans jamais couper le montant. */
+  font-size: clamp(1.3rem, 5.6vw, 1.85rem);
+  white-space: nowrap;
   font-weight: 800;
   color: var(--stat-value-color);
   letter-spacing: -1px;

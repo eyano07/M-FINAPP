@@ -270,6 +270,8 @@ export const useAuthStore = defineStore('auth', {
       // du precedent (navigateTo() est une navigation cote client, elle ne
       // reinitialise pas les stores Pinia comme le ferait un rechargement).
       usePermissionsStore().reinitialiser()
+      // Idem pour les préférences d'affichage (enregistrées sur le compte, rechargées à la prochaine ouverture de session).
+      usePreferencesStore().reinitialiser()
     },
 
     hasRole(role: string): boolean {

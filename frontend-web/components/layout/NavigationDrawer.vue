@@ -633,4 +633,10 @@ function lignes(g: NavGroup): LigneMenu[] {
   border-top: 1px solid #f3f4f6;
   margin: 0 -10px;
 }
+
+/* Menu ouvert au doigt (téléphone, tablette) : rubriques et liens d'au moins 44 px de haut. */
+@media screen and (max-width: 959px) {
+  .modern-drawer__group-toggle,
+  .modern-drawer__item { min-height: 44px; }
+}
 </style>

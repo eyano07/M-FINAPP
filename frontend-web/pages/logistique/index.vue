@@ -5,7 +5,7 @@
 // d'agregation dedie cote backend : les KPI/graphiques sont calcules ici a
 // partir des listes existantes (/logistique/stock, /mouvements, /articles,
 // /entrepots), a l'image du tableau de bord principal (pages/dashboard).
-definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN'] })
+definePageMeta({ titre: 'Tableau de bord', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN'] })
 
 import { Bar, Doughnut } from 'vue-chartjs'
 

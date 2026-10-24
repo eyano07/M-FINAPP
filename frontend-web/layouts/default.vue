@@ -15,7 +15,8 @@ const drawer = ref(!mobile.value)
     <LayoutNavigationDrawer v-model="drawer" />
 
     <v-main style="background: #f8f9fa;">
-      <v-container fluid class="pa-6">
+      <!-- Marges de page : 12 px (téléphone), 16 px (tablette), 24 px (PC). -->
+      <v-container fluid class="pa-3 pa-sm-4 pa-md-6">
         <slot />
       </v-container>
     </v-main>

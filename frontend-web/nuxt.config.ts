@@ -32,6 +32,7 @@ export default defineNuxtConfig({
     '@mdi/font/css/materialdesignicons.min.css',
     'vuetify/styles',
     '~/assets/styles/classroom.scss',
+    '~/assets/styles/responsive.scss',
   ],
 
   vite: {

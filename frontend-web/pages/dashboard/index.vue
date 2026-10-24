@@ -8,7 +8,7 @@ import { Bar, Line, Pie, Doughnut, Radar, Scatter, Bubble } from 'vue-chartjs'
 // LOGISTIQUE non plus : son tableau de bord est /logistique (voir
 // NavigationDrawer.vue) - celui-ci n'a rien de pertinent pour son metier
 // (tresorerie, budgets, notes de frais).
-definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE'] })
+definePageMeta({ titre: 'Tableau de bord', roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE'] })
 
 interface Note {
   id: number

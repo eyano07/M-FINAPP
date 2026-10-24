@@ -11,14 +11,44 @@ const { logout } = useAuth()
 const notif = useNotificationsStore()
 const parametresStore = useParametresStore()
 const rolesStore = useRolesStore()
+const route = useRoute()
+
+// Titre de la page (barre sous 960 px). Ordre : titre posé par la page (usePageTitle) > `definePageMeta({ titre })` > titre
+// `h1` que la page affiche elle-même (lu dans le DOM : une seule source, aucun titre à répéter dans chaque page).
+const titreExplicite = usePageTitle()
+const titreH1 = ref('')
+let observateur: MutationObserver | undefined
+let lecturePlanifiee = 0
+function lireTitreH1() {
+  const h1 = document.querySelector('.v-main h1.page-title') ?? document.querySelector('.v-main h1')
+  titreH1.value = (h1?.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+function planifierLecture() {
+  if (lecturePlanifiee) return
+  lecturePlanifiee = requestAnimationFrame(() => { lecturePlanifiee = 0; lireTitreH1() })
+}
+const titrePage = computed(() => {
+  const explicite = titreExplicite.value.chemin === route.path ? titreExplicite.value.titre : ''
+  return explicite || (route.meta.titre as string | undefined) || titreH1.value
+})
+watch(() => route.path, () => nextTick(lireTitreH1))
 
 onMounted(() => {
   notif.charger()
   notif.connecter()
   parametresStore.charger()
+  usePreferencesStore().charger()
+  lireTitreH1()
+  const principal = document.querySelector('.v-main')
+  if (principal) {
+    observateur = new MutationObserver(planifierLecture)
+    observateur.observe(principal, { childList: true, subtree: true, characterData: true })
+  }
 })
 onUnmounted(() => {
   notif.deconnecter()
+  observateur?.disconnect()
+  if (lecturePlanifiee) cancelAnimationFrame(lecturePlanifiee)
 })
 
 const TYPE_META: Record<string, { icon: string; color: string }> = {
@@ -82,13 +112,25 @@ async function ouvrirNotification(n: NotificationItem) {
       <span class="modern-appbar__name">{{ parametresStore.parametres.nom }}</span>
     </div>
 
-    <v-spacer />
+    <!-- Téléphone et tablette (< 960 px) : le titre de la page, sous une miniature du logo et du nom de l'entreprise. -->
+    <div class="modern-appbar__page" :class="{ 'modern-appbar__page--sans-titre': !titrePage }">
+      <span class="modern-appbar__marque">
+        <span class="modern-appbar__logo modern-appbar__logo--mini" :class="{ 'modern-appbar__logo--image': parametresStore.parametres.logoUrl }">
+          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="">
+          <v-icon v-else icon="mdi-finance" size="10" color="white" />
+        </span>
+        <span class="modern-appbar__marque-nom">{{ parametresStore.parametres.nom }}</span>
+      </span>
+      <span v-if="titrePage" class="modern-appbar__titre" aria-hidden="true">{{ titrePage }}</span>
+    </div>
 
-    <v-btn icon variant="text" size="small" aria-label="Aide" class="modern-appbar__action">
+    <v-spacer class="modern-appbar__espace" />
+
+    <v-btn icon variant="text" size="small" aria-label="Aide" class="modern-appbar__action modern-appbar__action--pc">
       <v-icon icon="mdi-help-circle-outline" size="20" />
     </v-btn>
 
-    <v-btn icon variant="text" size="small" aria-label="Parametres" class="modern-appbar__action" to="/profil">
+    <v-btn icon variant="text" size="small" aria-label="Parametres" class="modern-appbar__action modern-appbar__action--pc" to="/profil">
       <v-icon icon="mdi-cog-outline" size="20" />
     </v-btn>
 
@@ -232,6 +274,71 @@ async function ouvrirNotification(n: NotificationItem) {
   color: #9ca3af !important;
 }
 
+/* Titre de la page : visible seulement sous 960 px (téléphone et tablette) ; au-dessus, la marque reste à gauche
+   et le grand titre est dans la page. */
+.modern-appbar__page { display: none; }
+@media screen and (max-width: 959px) {
+  .modern-appbar__brand,
+  .modern-appbar__action--pc,
+  .modern-appbar__espace { display: none !important; }
+
+  .modern-appbar__page {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    margin-left: 2px;
+  }
+  .modern-appbar__marque {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+  }
+  .modern-appbar__logo--mini { width: 14px; height: 14px; border-radius: 4px; }
+  .modern-appbar__logo--mini img { padding: 1px; }
+  .modern-appbar__marque-nom {
+    font-size: 0.64rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: #9ca3af;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .modern-appbar__titre {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.1px;
+    color: #111827;
+  }
+  /* Titre pas encore connu (page qui se charge) : la marque garde sa taille habituelle. */
+  .modern-appbar__page--sans-titre .modern-appbar__marque { gap: 10px; }
+  .modern-appbar__page--sans-titre .modern-appbar__logo--mini { width: 30px; height: 30px; border-radius: 8px; }
+  .modern-appbar__page--sans-titre .modern-appbar__logo--mini img { padding: 3px; }
+  .modern-appbar__page--sans-titre .modern-appbar__marque-nom {
+    font-size: 0.9375rem;
+    font-weight: 400;
+    letter-spacing: -0.1px;
+    text-transform: none;
+    color: #374151;
+  }
+
+  /* Cibles tactiles de 44 px. */
+  .modern-appbar .modern-appbar__action { width: 44px !important; height: 44px !important; }
+  .modern-appbar .modern-appbar__avatar { width: 40px; height: 40px; margin-left: 4px; margin-right: 4px; }
+}
+
 .modern-appbar__avatar {
   display: inline-flex;
   align-items: center;
@@ -257,8 +364,8 @@ async function ouvrirNotification(n: NotificationItem) {
   background: #fff;
   border: 1px solid #f0f0f0;
   border-radius: 14px;
-  width: 340px;
-  max-height: 420px;
+  width: min(340px, calc(100vw - 16px));
+  max-height: min(420px, calc(100dvh - 80px));
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0,0,0,0.10);
