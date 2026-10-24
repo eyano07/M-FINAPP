@@ -74,6 +74,15 @@ public class User {
     @Builder.Default
     private int versionJetons = 0;
 
+    /**
+     * Vrai tant que l'utilisateur n'a pas remplace le mot de passe provisoire choisi par l'administrateur (creation du
+     * compte, ou mot de passe redefini) : seuls la connexion et le changement de mot de passe lui sont ouverts (V131,
+     * voir {@code MotDePasseProvisoireFilter}).
+     */
+    @Column(name = "doit_changer_mot_de_passe", nullable = false)
+    @Builder.Default
+    private boolean doitChangerMotDePasse = false;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "user_roles",

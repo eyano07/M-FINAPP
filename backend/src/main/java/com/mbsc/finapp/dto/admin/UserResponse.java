@@ -20,6 +20,8 @@ public record UserResponse(
     String fonction,
     String affectation,
     boolean actif,
+    /** Vrai tant que l'utilisateur n'a pas remplace le mot de passe choisi par l'administrateur (V131). */
+    boolean motDePasseProvisoire,
     List<String> roles,
     /** Roles dont les droits d'origine viennent d'etre poses a cette occasion (vide ailleurs). */
     List<String> droitsParDefaut
@@ -49,6 +51,7 @@ public record UserResponse(
             u.getFonction(),
             u.getAffectation(),
             u.isActif(),
+            u.isDoitChangerMotDePasse(),
             roles,
             List.of()
         );
@@ -56,7 +59,8 @@ public record UserResponse(
 
     /** Meme vue, signalant les roles qui n'avaient aucun droit et ont recu ceux d'origine. */
     public UserResponse avecDroitsParDefaut(List<RoleType> rolesAvecDroitsPoses) {
-        return new UserResponse(id, nom, prenom, email, telephone, emailNotification, fonction, affectation, actif, roles,
+        return new UserResponse(id, nom, prenom, email, telephone, emailNotification, fonction, affectation, actif,
+            motDePasseProvisoire, roles,
             rolesAvecDroitsPoses.stream().map(Enum::name).toList());
     }
 }

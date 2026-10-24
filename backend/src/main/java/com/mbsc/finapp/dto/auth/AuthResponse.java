@@ -16,6 +16,9 @@ public record AuthResponse(
         String prenom,
         String telephone,
         String photoUrl,
-        Set<String> roles
+        Set<String> roles,
+        /** Vrai tant que le mot de passe provisoire choisi par l'administrateur n'a pas ete remplace (V131) : l'ecran
+         *  bloque alors l'utilisateur sur la page de changement de mot de passe. */
+        boolean doitChangerMotDePasse
     ) {}
 }

@@ -6,6 +6,8 @@ import { usePermissionsStore, type ModuleMetier, type NiveauPermission } from '~
  * Les pages publiques sont definies dans PUBLIC_ROUTES.
  */
 const PUBLIC_ROUTES = ['/login']
+/** Page où reste un utilisateur au mot de passe provisoire (voir AuthUser.doitChangerMotDePasse). */
+const PAGE_MOT_DE_PASSE = '/changer-mot-de-passe'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore()
@@ -19,6 +21,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (!auth.isAuthenticated && !isPublic) {
     return navigateTo('/login')
+  }
+
+  // Mot de passe provisoire (choisi par l'administrateur) : l'utilisateur reste sur la page de changement tant qu'il
+  // ne l'a pas remplacé ; rien d'autre n'est chargé (le serveur refuserait de toute façon : 403 MOT_DE_PASSE_A_CHANGER).
+  if (auth.isAuthenticated && auth.user?.doitChangerMotDePasse) {
+    return to.path === PAGE_MOT_DE_PASSE ? undefined : navigateTo(PAGE_MOT_DE_PASSE)
+  }
+  if (to.path === PAGE_MOT_DE_PASSE) {
+    return navigateTo(auth.isAuthenticated ? auth.homeRoute : '/login')
   }
 
   if (auth.isAuthenticated && to.path === '/login') {

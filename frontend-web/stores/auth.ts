@@ -42,6 +42,12 @@ export interface AuthUser {
   telephone?: string | null
   photoUrl?: string | null
   roles: string[]
+  /**
+   * Mot de passe provisoire choisi par l'administrateur (création du compte ou mot de passe redéfini) : tant qu'il
+   * n'est pas remplacé, l'utilisateur reste sur la page /changer-mot-de-passe (voir middleware/auth.global.ts) et le
+   * serveur refuse le reste (403 MOT_DE_PASSE_A_CHANGER).
+   */
+  doitChangerMotDePasse?: boolean
 }
 
 interface AuthState {

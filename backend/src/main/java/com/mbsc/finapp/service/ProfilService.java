@@ -100,7 +100,13 @@ public class ProfilService {
         if (!passwordEncoder.matches(req.ancienMotDePasse(), u.getMotDePasse())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mot de passe actuel incorrect.");
         }
+        if (req.nouveauMotDePasse().equals(req.ancienMotDePasse())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Le nouveau mot de passe doit être différent de l'actuel.");
+        }
         u.setMotDePasse(passwordEncoder.encode(req.nouveauMotDePasse()));
+        // Mot de passe provisoire (choisi par l'administrateur) remplace : le compte est debloque.
+        u.setDoitChangerMotDePasse(false);
         // Toutes les sessions sont fermées, celle-ci comprise : l'écran
         // renvoie à la connexion avec le nouveau mot de passe.
         u.revoquerJetons();

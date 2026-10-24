@@ -55,6 +55,8 @@ public class AuthController {
         body.put("roles", principal.getAuthorities().stream()
             .map(a -> a.getAuthority().replace("ROLE_", ""))
             .collect(Collectors.toSet()));
+        // Mot de passe provisoire (V131) : l'ecran garde l'utilisateur sur la page de changement de mot de passe.
+        body.put("doitChangerMotDePasse", user.isDoitChangerMotDePasse());
         return ResponseEntity.ok(body);
     }
 }

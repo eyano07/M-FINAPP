@@ -11,6 +11,8 @@ const error = ref('')
 const showPassword = ref(false)
 
 const { login } = useAuth()
+// Retour de la page « Choisissez votre mot de passe » (mot de passe provisoire remplacé) : on se reconnecte.
+const motDePasseChange = useRoute().query.motDePasse === 'change'
 const parametresStore = useParametresStore()
 onMounted(() => { parametresStore.charger() })
 
@@ -83,6 +85,16 @@ async function submit() {
           </p>
         </header>
 
+        <v-alert
+          v-if="motDePasseChange && !error"
+          type="success"
+          variant="tonal"
+          density="compact"
+          rounded="lg"
+          class="mb-6"
+        >
+          Mot de passe enregistré : connectez-vous avec votre nouveau mot de passe.
+        </v-alert>
         <v-alert
           v-if="error"
           type="error"

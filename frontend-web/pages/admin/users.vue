@@ -12,6 +12,8 @@ interface UserRow {
   affectation: string | null
   roles: string[]
   actif: boolean
+  /** Mot de passe choisi par l'administrateur, pas encore remplacé par l'utilisateur (V131). */
+  motDePasseProvisoire?: boolean
   nomComplet?: string
   /** Rôles qui n'avaient aucun droit et ont reçu ceux d'origine à cette occasion. */
   droitsParDefaut?: string[]
@@ -39,7 +41,8 @@ const users = ref<UserRow[]>([])
 const recherche = ref('')
 const usersFiltres = computed(() => users.value.filter(u => correspondRecherche(
   [u.nomComplet, u.prenom, u.nom, u.email, u.telephone, u.emailNotification, u.fonction, u.affectation,
-    ...u.roles, ...u.roles.map(r => rolesStore.libelle(r)), u.actif ? 'actif' : 'inactif'],
+    ...u.roles, ...u.roles.map(r => rolesStore.libelle(r)), u.actif ? 'actif' : 'inactif',
+    u.motDePasseProvisoire ? 'mot de passe provisoire' : ''],
   recherche.value)))
 
 // ── Dialog ─────────────────────────────────────────────────────────────────
@@ -288,6 +291,9 @@ const roleColor: Record<string, string> = {
                 <span class="usr-status-dot" />
                 {{ u.actif ? 'Actif' : 'Inactif' }}
               </span>
+              <span v-if="u.motDePasseProvisoire" class="usr-provisoire-chip" title="L'utilisateur doit encore choisir son propre mot de passe (à sa prochaine connexion)">
+                <v-icon icon="mdi-lock-clock" size="13" /> Mot de passe provisoire
+              </span>
             </td>
             <td>
               <div class="usr-actions">
@@ -327,6 +333,9 @@ const roleColor: Record<string, string> = {
               {{ u.actif ? 'Actif' : 'Inactif' }}
             </span>
           </div>
+          <span v-if="u.motDePasseProvisoire" class="usr-provisoire-chip usr-provisoire-chip--carte">
+            <v-icon icon="mdi-lock-clock" size="13" /> Mot de passe provisoire : à changer à la prochaine connexion
+          </span>
 
           <div class="usr-roles usr-card-item__roles">
             <span v-for="r in u.roles" :key="r" class="usr-role-chip" :style="{ background: roleColor[r] + '1a', color: roleColor[r] }">
@@ -449,6 +458,12 @@ const roleColor: Record<string, string> = {
               type="password"
               hide-details="auto"
             />
+            <p class="usr-hint usr-hint--mdp">
+              <v-icon icon="mdi-information-outline" size="14" />
+              {{ editMode
+                ? 'Si vous le renseignez, ce mot de passe sera provisoire : l\'utilisateur devra le changer à sa prochaine connexion.'
+                : 'Mot de passe provisoire : l\'utilisateur devra le changer à sa première connexion.' }}
+            </p>
           </div>
 
           <div class="usr-field">
@@ -575,6 +590,19 @@ const roleColor: Record<string, string> = {
 .usr-status-chip--on  .usr-status-dot  { background: var(--color-primary); }
 .usr-status-chip--off { background: #f3f4f6; color: #9ca3af; }
 .usr-status-chip--off .usr-status-dot { background: #9ca3af; }
+
+/* mot de passe provisoire (V131) */
+.usr-provisoire-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 6px;
+  font-size: 0.72rem; font-weight: 600; padding: 3px 9px;
+  border-radius: 100px;
+  background: #fff7ed; color: #c2410c;
+  white-space: nowrap;
+}
+.usr-provisoire-chip--carte { margin: 8px 0 0; white-space: normal; }
+/* spécificité > .usr-hint (déclarée plus bas, marge négative) */
+.usr-hint.usr-hint--mdp { display: flex; align-items: flex-start; gap: 6px; margin: 6px 0 0; color: #b45309; }
 
 /* actions */
 .usr-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }

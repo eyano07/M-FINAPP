@@ -264,6 +264,8 @@ public class AdminService {
             .fonction(videEnNull(req.fonction()))
             .affectation(videEnNull(req.affectation()))
             .actif(true)
+            // Mot de passe choisi par l'administrateur : l'utilisateur le remplace par le sien a sa premiere connexion.
+            .doitChangerMotDePasse(true)
             .roles(roles)
             .build();
         return avecDroitsParDefaut(userRepository.save(u), etat);
@@ -312,6 +314,11 @@ public class AdminService {
             // Mot de passe réinitialisé : les sessions ouvertes avec l'ancien
             // (y compris par un tiers qui le connaissait) sont fermées.
             u.revoquerJetons();
+            // Mot de passe connu de l'administrateur : provisoire, a remplacer a la prochaine connexion — sauf pour
+            // son propre compte (il vient de choisir ce mot de passe pour lui-meme).
+            if (!u.getId().equals(currentUser.requireUser().getId())) {
+                u.setDoitChangerMotDePasse(true);
+            }
         }
         u.setTelephone(videEnNull(req.telephone()));
         u.setEmailNotification(emailNotification(req.emailNotification()));

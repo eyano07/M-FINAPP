@@ -28,6 +28,12 @@ export function useApi() {
       }
     },
     async onResponseError({ response }) {
+      // Mot de passe provisoire : le serveur n'ouvre que le changement de mot de passe (MotDePasseProvisoireFilter).
+      if (response.status === 403 && import.meta.client && (response._data as { code?: string } | undefined)?.code === 'MOT_DE_PASSE_A_CHANGER') {
+        if (auth.user) auth.user = { ...auth.user, doitChangerMotDePasse: true }
+        await navigateTo('/changer-mot-de-passe')
+        return
+      }
       if (response.status !== 401 || !import.meta.client) {
         return
       }

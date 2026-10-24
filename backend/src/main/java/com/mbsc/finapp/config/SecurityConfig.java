@@ -5,6 +5,7 @@ import com.mbsc.finapp.security.JwtAuthEntryPoint;
 import com.mbsc.finapp.security.JwtAuthenticationFilter;
 import com.mbsc.finapp.audit.AuditFilter;
 import com.mbsc.finapp.security.ModuleAccessFilter;
+import com.mbsc.finapp.security.MotDePasseProvisoireFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -36,6 +37,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ModuleAccessFilter moduleAccessFilter;
+    private final MotDePasseProvisoireFilter motDePasseProvisoireFilter;
     private final com.mbsc.finapp.audit.AuditFilter auditFilter;
     private final JwtAuthEntryPoint jwtAuthEntryPoint;
     private final AppUserDetailsService userDetailsService;
@@ -86,7 +88,9 @@ public class SecurityConfig {
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(auditFilter, JwtAuthenticationFilter.class)
-            .addFilterAfter(moduleAccessFilter, AuditFilter.class);
+            // Mot de passe provisoire (V131) : avant tout acces aux modules, seuls le profil et le changement de mot de passe.
+            .addFilterAfter(motDePasseProvisoireFilter, AuditFilter.class)
+            .addFilterAfter(moduleAccessFilter, MotDePasseProvisoireFilter.class);
 
         return http.build();
     }
