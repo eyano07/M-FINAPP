@@ -2,7 +2,12 @@
 <!--
   Journalisation : configuration par defaut de Spring Boot (console) + journal d'AUDIT dans un fichier a part.
   Le journal d'audit (logger "AUDIT") ecrit une ligne JSON par action d'utilisateur dans audit.log, avec rotation
-  quotidienne et conservation de 2555 jours (7 ans). Il n'apparait pas dans la console (additivity=false).
+  quotidienne (archives audit-AAAA-MM-JJ.log.gz). Il n'apparait pas dans la console (additivity=false).
+
+  LE JOURNAL D'AUDIT NE SE SUPPRIME JAMAIS : c'est la memoire du systeme depuis sa creation. Aucune limite de
+  conservation (ni maxHistory, ni totalSizeCap, ni nettoyage au demarrage) : un fichier d'archive ne disparait pas,
+  quel que soit son age. Il vit dans le volume « backend_logs » (/app/data/logs), qui survit aux redemarrages et
+  aux mises a jour. Voir JournalAuditPersistanceTest, qui fait echouer le build si l'une de ces regles est retiree.
 -->
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
@@ -17,7 +22,8 @@
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <fileNamePattern>${AUDIT_DIR}/audit-%d{yyyy-MM-dd}.log.gz</fileNamePattern>
-            <maxHistory>2555</maxHistory>
+            <!-- Conservation ILLIMITEE : pas de maxHistory, pas de totalSizeCap, jamais de nettoyage. -->
+            <cleanHistoryOnStart>false</cleanHistoryOnStart>
         </rollingPolicy>
     </appender>
 

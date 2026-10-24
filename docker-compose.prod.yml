@@ -65,8 +65,13 @@ services:
       APP_IA_ENABLED: ${IA_ENABLED:-true}
       APP_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       APP_OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5}
+      # Journal d'audit (audit.log et ses archives audit-AAAA-MM-JJ.log.gz) : la memoire du systeme, JAMAIS supprime.
+      APP_AUDIT_DIR: /app/data/logs
     volumes:
       - backend_uploads:/app/data/uploads
+      # Le journal d'audit vit dans ce volume : il survit aux redemarrages, aux mises a jour et aux changements
+      # d'image. Ne jamais le supprimer (« docker compose down -v », « docker volume rm » le detruiraient).
+      - backend_logs:/app/data/logs
     expose: ["8080"]
     networks: [mbsc-net]
     logging: *journaux
@@ -108,6 +113,7 @@ services:
 volumes:
   db_data:
   backend_uploads:
+  backend_logs:   # journal d'audit : a conserver et a sauvegarder, jamais a supprimer
 
 networks:
   mbsc-net:

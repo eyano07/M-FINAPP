@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Sauvegarde la base de donnees (pg_dump, format custom, verifiee) et les fichiers televerses
-# (pieces jointes, logo, photos), puis supprime les sauvegardes de plus de 14 jours.
+# Sauvegarde la base de donnees (pg_dump, format custom, verifiee), les fichiers televerses (pieces
+# jointes, logo, photos) et le JOURNAL D'AUDIT (jamais supprime), puis supprime les sauvegardes de base et de fichiers de plus de 14 jours.
 #
 # Usage : ./sauvegarder.sh [--garder JOURS] [--avant-restauration | --avant-mise-a-jour]
 # Dossier : ./sauvegardes (ou MBSC_SAUVEGARDES=/autre/chemin), lisible par son proprietaire seulement.
@@ -52,8 +52,25 @@ else
   avertir "le service backend n'existe pas : fichiers televerses non sauvegardes."
 fi
 
-# Retention : les sauvegardes de plus de JOURS jours sont supprimees (celles prises avant une
-# restauration ou une mise a jour comprises : elles ont servi a leur retour arriere).
+# Journal d'audit (audit.log et ses archives audit-AAAA-MM-JJ.log.gz) : la memoire du systeme depuis sa creation. Copie a part,
+# lue dans le volume du service backend. Ces archives (journal-audit_*) ne sont JAMAIS supprimees : la retention ci-dessous ne les
+# concerne pas, et aucune commande de ce script ne touche au journal lui-meme.
+if [ -n "$(docker compose ps -q backend 2>/dev/null)" ]; then
+  tmp_audit=$(mktemp -d)
+  docker compose cp backend:/app/data/logs/. "$tmp_audit" >/dev/null 2>&1 || true
+  if [ -n "$(find "$tmp_audit" -type f -print -quit)" ]; then
+    AUDIT_F="$DOSSIER/journal-audit_${ETIQUETTE}${H}.tar.gz"
+    tar -czf "$AUDIT_F" -C "$tmp_audit" .
+    chmod 600 "$AUDIT_F"
+    printf "Journal d'audit : %s (%s fichier(s), %s) - a conserver, jamais supprime\n" "$AUDIT_F" "$(find "$tmp_audit" -type f | wc -l)" "$(du -h "$AUDIT_F" | cut -f1)"
+  else
+    avertir "aucun fichier de journal d'audit lu dans le service backend : rien n'a ete copie."
+  fi
+  rm -rf "$tmp_audit"
+fi
+
+# Retention : les sauvegardes de base et de fichiers de plus de JOURS jours sont supprimees (celles prises avant une
+# restauration ou une mise a jour comprises : elles ont servi a leur retour arriere). JAMAIS le journal d'audit.
 find "$DOSSIER" -maxdepth 1 -type f \( -name 'base_*.dump' -o -name 'fichiers_*.tar.gz' \) -mtime +"$JOURS" -print -delete | sed 's/^/Supprime (ancienne) : /'
 printf '%s sauvegarde(s) de base conservee(s) dans %s ; espace libre sur le disque : %s\n' \
   "$(find "$DOSSIER" -maxdepth 1 -type f -name 'base_*.dump' | wc -l)" "$DOSSIER" "$(df -h --output=avail "$DOSSIER" | tail -1 | tr -d ' ')"

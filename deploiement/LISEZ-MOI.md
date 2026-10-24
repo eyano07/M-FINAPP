@@ -8,7 +8,7 @@ configuration et les scripts. Le site sera joignable sur **http://ADRESSE-DU-SER
 |---|---|
 | `installer.sh` | installation, à lancer **une seule fois** |
 | `definir-admin.sh` | (re)définit l'e-mail et le mot de passe de l'administrateur |
-| `sauvegarder.sh` | sauvegarde la base et les fichiers téléversés |
+| `sauvegarder.sh` | sauvegarde la base, les fichiers téléversés et le journal d'audit |
 | `restaurer-base.sh` | restaure une sauvegarde |
 | `mettre-a-jour.sh` | installe une nouvelle version (livraison `--mise-a-jour`) |
 | `.env` | secrets du serveur (mots de passe, clé des sessions) — **confidentiel** |
@@ -88,7 +88,7 @@ Ouvrez `http://ADRESSE-DU-SERVEUR:9090` et connectez-vous avec le compte adminis
 
 ## 6. Sauvegardes et mises à jour
 
-**Sauvegarde** (base + fichiers téléversés, sauvegardes de plus de 14 jours supprimées) :
+**Sauvegarde** (base + fichiers téléversés + journal d'audit ; les sauvegardes de base et de fichiers de plus de 14 jours sont supprimées, **jamais** le journal d'audit) :
 
 ```bash
 cd /opt/mbsc && ./sauvegarder.sh                # dossier : /opt/mbsc/sauvegardes/
@@ -102,6 +102,13 @@ Une sauvegarde qui reste **sur** le serveur ne protège pas d'une panne du serve
 
 **Mettre à jour** (nouvelle version du logiciel) : sur l'ordinateur de développement, `deploiement/preparer-livraison.sh --mise-a-jour`, puis
 `scp -r livraison-maj/. utilisateur@serveur:/opt/mbsc/` (cela ne touche ni `.env`, ni la base, ni les sauvegardes) et, sur le serveur, `./mettre-a-jour.sh`. La base est migrée automatiquement ; une sauvegarde complète est prise avant.
+
+**Journal d'audit — il ne se supprime jamais.** `audit.log` et ses archives quotidiennes `audit-AAAA-MM-JJ.log.gz` sont la mémoire du système depuis sa création (qui a fait quoi, quand, d'où). Ils vivent dans le volume Docker `backend_logs` (dossier `/app/data/logs` du serveur) : ils survivent aux redémarrages, aux mises à jour et aux changements d'image, et **aucune durée de conservation** ne les supprime. Règles à respecter :
+
+- ne jamais lancer `docker compose down -v`, `docker volume rm` ou `docker system prune --volumes` : ils détruiraient le volume ;
+- `./sauvegarder.sh` en prend une copie à chaque passage (`sauvegardes/journal-audit_*.tar.gz`), qui n'est **jamais** effacée par la rotation des sauvegardes : recopiez ces fichiers ailleurs avec le reste de `sauvegardes/` ;
+- une installation plus ancienne, dont le journal était encore dans le conteneur, est migrée **automatiquement** par `./mettre-a-jour.sh` : le journal est d'abord copié hors du conteneur (`sauvegardes/journal-audit_avant-volume_*`, à conserver), puis remis dans le volume avant le démarrage de la nouvelle version ;
+- pour consulter le journal sur le serveur : `docker compose exec backend ls -la /app/data/logs`.
 
 ## 7. HTTPS plus tard (quand vous aurez un nom de domaine)
 
