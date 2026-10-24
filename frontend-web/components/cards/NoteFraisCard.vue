@@ -202,6 +202,10 @@ const montantFmt = computed(() =>
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* Téléphone et tablette : l'objet s'affiche en entier (un libellé ne doit pas être coupé). */
+@media screen and (max-width: 959px) {
+  .nfc__objet { display: block; -webkit-line-clamp: unset; overflow: visible; overflow-wrap: anywhere; }
+}
 
 .nfc__montant {
   font-size: 1.2rem;

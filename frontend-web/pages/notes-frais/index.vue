@@ -130,6 +130,14 @@ function effacerPeriode() {
 
 onMounted(charger)
 onMounted(chargerRegleVisibilite)
+
+// ── Affichage : cartes ou tableau (PC), choix enregistré sur le compte ─────────────────────────────────────
+// Sous 960 px (téléphone, tablette) la page n'affiche que les cartes.
+const prefs = usePreferencesStore()
+prefs.hydrater()
+const grandEcran = useGrandEcran()
+const affichage = computed(() => (grandEcran.value ? prefs.valeur('notes.affichage', 'CARTES') : 'CARTES'))
+const choisirAffichage = (mode: 'CARTES' | 'TABLEAU') => prefs.definir('notes.affichage', mode)
 watch(filterStatut, charger)
 watch([dateDu, dateAu], charger)
 // Recherche : une courte pause dans la frappe avant d'interroger le serveur.
@@ -436,7 +444,8 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
       </p>
     </header>
 
-    <!-- ── Onglets Décaissement / Encaissement ─────────────── -->
+    <!-- ── Onglets Décaissement / Encaissement, et bascule Cartes / Tableau (PC) ─────────────── -->
+    <div class="nf-barre">
     <div class="nf-sens-tabs">
       <button
         class="nf-sens-tab"
@@ -454,6 +463,22 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
         <v-icon icon="mdi-cash-plus" size="17" class="mr-1" />
         Encaissement
       </button>
+    </div>
+
+    <div v-if="grandEcran" class="nf-affichage" role="group" aria-label="Mode d'affichage des notes">
+      <button
+        type="button" class="nf-affichage__btn" :class="{ 'nf-affichage__btn--actif': affichage === 'CARTES' }"
+        :aria-pressed="affichage === 'CARTES'" title="Afficher les notes en cartes" @click="choisirAffichage('CARTES')"
+      >
+        <v-icon icon="mdi-view-grid-outline" size="17" /><span>Cartes</span>
+      </button>
+      <button
+        type="button" class="nf-affichage__btn" :class="{ 'nf-affichage__btn--actif': affichage === 'TABLEAU' }"
+        :aria-pressed="affichage === 'TABLEAU'" title="Afficher les notes en tableau" @click="choisirAffichage('TABLEAU')"
+      >
+        <v-icon icon="mdi-table" size="17" /><span>Tableau</span>
+      </button>
+    </div>
     </div>
 
     <!-- ── Mini stats strip ────────────────────────────────── -->
@@ -558,7 +583,13 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
     </v-alert>
 
     <!-- ── Cards grid ──────────────────────────────────────── -->
-    <v-skeleton-loader v-if="loading" type="card, card, card" />
+    <v-skeleton-loader v-if="loading || !prefs.connu" type="card, card, card" />
+
+    <NotesFraisTableauNotesFrais
+      v-else-if="notesFiltrees.length > 0 && affichage === 'TABLEAU'"
+      :notes="notesFiltrees"
+      @ouvrir="(id: number) => navigateTo(`/notes-frais/${id}`)"
+    />
 
     <div v-else-if="notesFiltrees.length > 0" class="nf-grid">
       <CardsNoteFraisCard
@@ -805,14 +836,24 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 }
 
 /* ── Onglets sens (Décaissement / Encaissement) ─────────────── */
+.nf-barre { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .nf-sens-tabs {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
   background: #f3f4f6;
   border-radius: 12px;
-  margin-bottom: 20px;
 }
+
+/* Bascule Cartes / Tableau (PC) */
+.nf-affichage { display: inline-flex; gap: 2px; padding: 3px; background: #f3f4f6; border-radius: 12px; }
+.nf-affichage__btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border: none; border-radius: 9px; background: transparent;
+  font: inherit; font-size: 0.82rem; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.15s;
+}
+.nf-affichage__btn:hover { color: #374151; }
+.nf-affichage__btn--actif { background: #fff; color: var(--color-primary); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
 .nf-sens-tab {
   display: inline-flex;
   align-items: center;
@@ -913,7 +954,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
    desordonne) alors qu'une grille a colonnes egales donne des rangees
    symetriques, plus lisibles sur un petit ecran. "Tous" reste a part, en
    pleine largeur, car c'est un reset plutot qu'un statut parmi d'autres. */
-@media (max-width: 640px) {
+@media screen and (max-width: 959px) {
   .nf-filter { flex-wrap: wrap; overflow-x: visible; }
   .nf-filter__chips { flex-wrap: wrap; width: 100%; gap: 8px; }
   .nf-filter__chip--tous { width: 100%; text-align: center; }
@@ -948,6 +989,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   .nf-periode__input { width: 100%; }
   .nf-periode__actions { display: contents; }
   .nf-periode__actions .nf-filter__chip { width: 100%; text-align: center; justify-content: center; }
+
 }
 
 /* ── Grid ────────────────────────────────────────────────── */
@@ -1176,4 +1218,20 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 }
 .nf-btn--ghost:hover { background: #f9fafb; }
 .nf-btn--ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Téléphone : surcharges placées APRÈS les règles de base de la recherche (même spécificité, l'ordre décide). */
+@media (max-width: 640px) {
+  /* Recherche : le libellé au-dessus, puis les trois champs pleine largeur (et non décalés à droite de l'étiquette). */
+  .nf-filter--recherche { margin-top: 0; }
+  .nf-recherche__body { flex: 1 1 100%; flex-direction: column; align-items: stretch; }
+  .nf-recherche__input { flex: 0 0 auto; width: 100%; }
+  .nf-periode__input { padding: 10px 12px; }
+
+  /* Information sous le titre : elle passe à la ligne au lieu de sortir de l'écran. */
+  .nf-header__hint { flex: 1 1 100%; white-space: normal; align-items: flex-start; }
+
+  /* Pied des boîtes de dialogue : l'action principale en haut, pleine largeur, puis les autres (ordre inversé de la rangée). */
+  .nf-dialog__footer { flex-direction: column-reverse; align-items: stretch; padding: 14px 16px; }
+  .nf-dialog__footer > .v-btn, .nf-dialog__footer > .nf-btn { width: 100%; justify-content: center; }
+}
 </style>

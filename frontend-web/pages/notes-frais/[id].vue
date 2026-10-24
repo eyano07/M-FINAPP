@@ -89,6 +89,8 @@ const parametresStore = useParametresStore()
 onMounted(() => { parametresStore.charger() })
 
 const note = ref<NoteDetail | null>(null)
+// Barre d'application (téléphone) : la référence de la note, pas son objet (long) que la page affiche en grand titre.
+usePageTitle(() => (note.value ? `Note ${note.value.reference}` : 'Note de frais'))
 const loading = ref(false)
 const busy = ref(false)
 const erreur = ref('')
