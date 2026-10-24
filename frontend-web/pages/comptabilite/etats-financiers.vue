@@ -230,7 +230,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
           </tbody>
           <tfoot>
             <tr>
-              <td colspan="2">Totaux</td>
+              <td colspan="2" class="cellule-titre">Totaux</td>
               <td class="num" data-label="Débit">{{ fmt(balance.totalDebit) }}</td>
               <td class="num" data-label="Crédit">{{ fmt(balance.totalCredit) }}</td>
               <td class="num" data-label="Solde débiteur">{{ fmt(balance.totalSoldeDebiteur) }}</td>

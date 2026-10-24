@@ -413,7 +413,7 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
           </tbody>
           <tfoot>
             <tr class="font-weight-bold">
-              <td colspan="2">Total</td>
+              <td colspan="2" class="cellule-titre">Total</td>
               <td class="text-right" data-label="Mouvements">{{ rapport.entrees.length + rapport.sorties.length }}</td>
               <td class="text-right text-no-wrap cellule-montant" data-label="Entrées">{{ fmt(rapport.totalEntrees) }}</td>
               <td class="text-right text-no-wrap cellule-montant" data-label="Sorties">{{ fmt(rapport.totalSorties) }}</td>
