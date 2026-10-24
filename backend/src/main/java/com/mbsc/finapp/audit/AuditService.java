@@ -31,7 +31,8 @@ public class AuditService {
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Pattern PARAM_SENSIBLE = Pattern.compile("(?i)^(token|access_?token|refresh_?token|password|mot_?de_?passe|cle|secret|jeton|key)$");
-    private static final List<String> EXCLUS = List.of("/auth", "/notifications", "/health", "/actuator");
+    // « /profil/preferences » : un réglage d'affichage (cartes ou tableau) n'est pas une action métier, il ne doit pas remplir le journal.
+    private static final List<String> EXCLUS = List.of("/auth", "/notifications", "/health", "/actuator", "/profil/preferences");
     /** Taille maximale de l'en-tête User-Agent conservé (assez pour garder « Mobile », placé après le navigateur). */
     private static final int TAILLE_AGENT = 300;
 

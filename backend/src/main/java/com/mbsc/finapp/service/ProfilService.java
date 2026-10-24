@@ -1,9 +1,11 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.PreferenceUtilisateur;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.dto.profil.ChangerMotDePasseRequest;
 import com.mbsc.finapp.dto.profil.ProfilResponse;
 import com.mbsc.finapp.dto.profil.ProfilUpdateRequest;
+import com.mbsc.finapp.repository.PreferenceUtilisateurRepository;
 import com.mbsc.finapp.repository.UserRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Auto-service du profil : chaque utilisateur consulte/modifie ses propres
@@ -36,6 +40,44 @@ public class ProfilService {
     private final CurrentUserProvider currentUser;
     private final StorageService storage;
     private final PasswordEncoder passwordEncoder;
+    private final PreferenceUtilisateurRepository preferences;
+
+    /**
+     * Preferences d'affichage que l'utilisateur peut enregistrer sur son compte : cle -> valeurs admises. Toute autre cle ou
+     * valeur est refusee (400) et rien n'est stocke : la table ne sert pas de fourre-tout.
+     */
+    static final Map<String, Set<String>> PREFERENCES_AUTORISEES = Map.of(
+        // Page « Notes de frais » sur PC : cartes ou tableau.
+        "notes.affichage", Set.of("CARTES", "TABLEAU"));
+
+    /** Preferences de l'appelant (jamais celles d'un autre utilisateur) : cle -> valeur. */
+    @Transactional(readOnly = true)
+    public Map<String, String> preferences() {
+        User u = currentUser.requireUser();
+        Map<String, String> resultat = new TreeMap<>();
+        for (PreferenceUtilisateur p : preferences.findByUserId(u.getId())) {
+            resultat.put(p.getCle(), p.getValeur());
+        }
+        return resultat;
+    }
+
+    /** Cree ou met a jour une preference de l'appelant (une seule ligne par cle) et renvoie toutes ses preferences. */
+    @Transactional
+    public Map<String, String> definirPreference(String cle, String valeur) {
+        Set<String> admises = PREFERENCES_AUTORISEES.get(cle);
+        if (admises == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Préférence inconnue.");
+        }
+        if (!admises.contains(valeur)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Valeur invalide pour cette préférence.");
+        }
+        User u = currentUser.requireUser();
+        PreferenceUtilisateur p = preferences.findByUserIdAndCle(u.getId(), cle)
+            .orElseGet(() -> PreferenceUtilisateur.builder().user(u).cle(cle).build());
+        p.setValeur(valeur);
+        preferences.save(p);
+        return preferences();
+    }
 
     @Transactional(readOnly = true)
     public ProfilResponse obtenir() {

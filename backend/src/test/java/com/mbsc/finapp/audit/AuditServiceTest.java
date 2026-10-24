@@ -19,6 +19,10 @@ class AuditServiceTest {
         assertFalse(AuditService.aTracer("POST", "/auth/refresh"));
         assertFalse(AuditService.aTracer("POST", "/notifications/lire-tout"));
         assertTrue(AuditService.aTracer("POST", "/authentification-x"));
+        // Un réglage d'affichage n'est pas une action métier ; les autres écritures du profil restent tracées.
+        assertFalse(AuditService.aTracer("PUT", "/profil/preferences"));
+        assertTrue(AuditService.aTracer("PUT", "/profil"));
+        assertTrue(AuditService.aTracer("PUT", "/profil/mot-de-passe"));
     }
 
     @Test
