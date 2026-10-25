@@ -127,6 +127,65 @@ HTTP_PORT=9090                        # un port que l'autre instance n'utilise p
 
 Elle a sa propre base, ses propres mots de passe et ses propres fichiers : rien ne passe de l'une à l'autre. **Toutes les commandes se lancent depuis son dossier** (`cd /root/M-FINAPP-test` avant `docker compose ...` ou un script) : lancées depuis le dossier de l'autre instance, elles agiraient sur l'autre instance.
 
+## 9. Serveur local (réseau de l'entreprise) synchronisé avec le serveur en ligne
+
+But : ne plus être bloqué par les coupures d'Internet. Un **serveur local**, installé sur une machine du réseau de
+l'entreprise, devient le **serveur principal** : on y travaille même sans Internet. Dès que la connexion revient, il
+recopie tout vers le **serveur en ligne**, qui devient une **copie consultable** pour les utilisateurs à distance.
+
+Sur la copie en ligne, on peut **consulter** toutes les données et faire quelques actions, mises en attente puis appliquées
+au serveur local à la synchronisation suivante :
+- **créer une note de frais**, avec ses pièces jointes et sa soumission ; elle reçoit sa référence NF-… sur le serveur local ;
+- **soumettre** un brouillon ;
+- **vérifier** et **transmettre** (DFIN) ;
+- **valider**, **rejeter**, ajouter une **observation** ou fixer la **priorité** (DA) ;
+- pour l'administrateur, **désactiver ou réactiver un compte** : effet immédiat en ligne.
+
+Une action est refusée si la note a changé entre-temps sur le serveur local, et son auteur est prévenu par une
+notification. Tout le reste (paiements, caisse, comptabilité, ventes, stocks…) se fait sur le serveur local.
+
+**Installer le serveur local** : sur une machine du réseau (Linux avec Docker, allumée pendant les heures de travail),
+suivez les étapes 1 à 4 ci-dessus avec la livraison **de la même version** que le serveur en ligne (base vierge). Les
+postes du réseau ouvrent l'application à l'adresse de cette machine (ex. `http://192.168.1.20:9090`).
+
+**Relier les deux serveurs** (menu Administration › Serveur local et synchronisation) :
+1. sur le **serveur en ligne** : « Ce serveur est le serveur en ligne », puis « Générer une clé d'appairage » ; copiez
+   la clé. Elle n'est affichée qu'une fois ; en générer une autre annule la précédente ;
+2. sur le **serveur local** : « Ce serveur est le serveur local » ; saisissez l'adresse du serveur en ligne (ex.
+   `https://erp.exemple.com` ou `http://192.0.2.10:9090`) et la clé ; « Enregistrer », puis « Tester la connexion ».
+   Pour changer plus tard la seule adresse, laissez le champ de la clé vide : la clé enregistrée est gardée ;
+3. toujours sur le serveur local : « Activer le mode local ». Le serveur en ligne passe aussitôt en copie. Le serveur
+   local **remplace ses données** par celles du serveur en ligne (données, pièces jointes, numérotation), puis devient le
+   serveur principal. Les comptes étant remplacés eux aussi, la page de connexion s'affiche en cours de route :
+   connectez-vous avec votre identifiant et votre mot de passe **du serveur en ligne** ; la page de synchronisation
+   montre ensuite le résultat ;
+4. ressaisissez sur le serveur local ce qui est propre à chaque serveur : clés de l'IA, messagerie et facture normalisée.
+
+Ensuite, la synchronisation est automatique (toutes les 30 secondes quand le serveur en ligne répond). Une pastille dans
+la barre du serveur local indique « Synchronisé » ou « Hors connexion — N changements en attente ». Le bouton
+« Synchroniser maintenant » force un passage.
+
+**Sécurité** : la clé signe chaque échange (HMAC) et ne circule jamais. Un appel non signé, rejoué ou d'un autre
+appairage est refusé. Le serveur local appelle toujours le serveur en ligne : aucun port n'est à ouvrir vers le réseau de
+l'entreprise. Préférez une adresse en **https** : en http, les données circulent en clair.
+
+**Mettre à jour** : les **deux serveurs avec la même livraison**. Pendant qu'ils ont des versions différentes, la
+synchronisation se met en pause, sans rien perdre. Après la mise à jour, le serveur local compare les deux bases et
+recopie tout s'il trouve un écart.
+
+**Journal d'audit** : chaque serveur garde le sien, qui ne se supprime jamais. Le serveur local en envoie en plus une
+copie au serveur en ligne : ses lignes portent `"serveur":"local"`.
+
+**Revenir à un seul serveur** :
+- **serveur local en état de marche** : sur le serveur local, « Désactiver le mode local ». Une dernière synchronisation
+  complète est faite, puis le serveur en ligne redevient principal et le serveur local passe en lecture seule ;
+- **panne durable du serveur local** : sur le serveur en ligne, « Reprendre la main ». Il redevient principal avec les
+  données reçues jusque-là. Le serveur local, s'il revient, passe en lecture seule : jamais deux serveurs principaux.
+
+**Relier de nouveau un ancien serveur local** (après l'un de ces deux cas) : sur le serveur en ligne, générez une
+nouvelle clé ; sur l'ancien serveur local, saisissez-la, « Tester la connexion », puis « Réactiver le mode local ». Comme
+à la première activation, ses données sont remplacées par celles du serveur en ligne.
+
 ## Dépannage
 
 | Symptôme | Que faire |
@@ -138,3 +197,6 @@ Elle a sa propre base, ses propres mots de passe et ses propres fichiers : rien 
 | Port 9090 déjà utilisé | choisir un autre port : `HTTP_PORT=...` dans `.env`, `docker compose up -d`, adapter `CORS_ORIGINS` et le pare-feu |
 | Disque plein | `docker system df` ; les journaux des conteneurs tournent (10 Mo × 5) ; réduire la durée de conservation : `./sauvegarder.sh --garder 7` |
 | Redémarrage du serveur | tout redémarre seul (`restart: unless-stopped`) |
+| Serveur local « Hors connexion » | vérifier Internet sur la machine locale, puis « Tester la connexion » (Administration › Serveur local et synchronisation) ; rien n'est perdu en attendant |
+| « Versions différentes » entre les deux serveurs | mettre à jour le serveur en retard avec la même livraison que l'autre |
+| « Horloges décalées » | remettre à l'heure le serveur local (et activer la synchronisation de l'heure, `timedatectl set-ntp true`) |
