@@ -15,6 +15,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /** La tâche planifiée ne laisse jamais une erreur remonter, et fait signaler au responsable l'échec d'un retrait automatique. */
 class PlatsPerimesPlanificateurTest {
@@ -25,7 +26,7 @@ class PlatsPerimesPlanificateurTest {
     @BeforeEach
     void preparer() {
         service = mock(PlatsPerimesAutomatiqueService.class);
-        planificateur = new PlatsPerimesPlanificateur(service);
+        planificateur = new PlatsPerimesPlanificateur(service, mock(InstanceService.class));
     }
 
     @Test

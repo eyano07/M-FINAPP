@@ -872,11 +872,11 @@ public class NoteFraisService {
     // Pieces jointes (PDF / image)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
-    @Transactional
-    public NoteFraisDetailResponse ajouterPieceJointe(Long id, MultipartFile fichier) {
-        NoteFrais note = chargerVisible(id);
-
+    /**
+     * Controles d'une piece jointe (presence, taille, format) : aussi appliques a l'avance par la copie en ligne d'un
+     * serveur local, qui garde les fichiers d'une nouvelle note jusqu'a sa creation par le serveur local.
+     */
+    public static void verifierPieceJointe(MultipartFile fichier) {
         if (fichier == null || fichier.isEmpty()) {
             throw new IllegalArgumentException("Le fichier est vide ou absent");
         }
@@ -888,6 +888,15 @@ public class NoteFraisService {
             throw new IllegalArgumentException(
                 "Type de fichier non autorise. Formats acceptes : PDF, JPEG, PNG, WEBP, GIF");
         }
+    }
+
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
+    @Transactional
+    public NoteFraisDetailResponse ajouterPieceJointe(Long id, MultipartFile fichier) {
+        NoteFrais note = chargerVisible(id);
+
+        verifierPieceJointe(fichier);
+        String type = fichier.getContentType();
 
         String cheminStockage = storage.enregistrer("notes-frais/" + note.getId(), fichier);
         User auteur = currentUser.requireUser();

@@ -19,6 +19,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Droits d'origine des roles et leur pose a la creation d'un utilisateur : un
@@ -103,7 +104,7 @@ class DroitsParDefautTest {
 
     private final RolePermissionRepository repository = mock(RolePermissionRepository.class);
     private final PermissionService service = new PermissionService(
-        mock(ModuleConfigRepository.class), repository, mock(CurrentUserProvider.class));
+        mock(ModuleConfigRepository.class), repository, mock(CurrentUserProvider.class), mock(InstanceService.class));
 
     @Test
     void un_role_sans_aucune_ligne_recoit_ses_droits_d_origine() {

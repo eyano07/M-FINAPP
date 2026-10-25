@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Au demarrage, met les comptes en conformite avec l'etat des modules : un module deja desactive (avant que la
@@ -23,9 +24,14 @@ public class ComptesModulesAuDemarrage implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(ComptesModulesAuDemarrage.class);
 
     private final SynchronisationComptesModules synchronisation;
+    private final InstanceService instance;
 
     @Override
     public void run(ApplicationArguments args) {
+        // Copie en ligne (ou ancien serveur local) : rien n'est ecrit ici, les donnees viennent du serveur principal (V132).
+        if (instance.lectureSeule()) {
+            return;
+        }
         try {
             SynchronisationComptesModules.Resultat resultat = synchronisation.reconcilier();
             if (resultat.vide()) {

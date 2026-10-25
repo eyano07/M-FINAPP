@@ -38,5 +38,9 @@ public enum TypeNotification {
     /** Retour de fonds recu par le caissier : la note payee est reduite (DFIN, comptable, DA, admin, bar/cuisine, emetteur). */
     RETOUR_FONDS_VALIDE,
     /** Retour de fonds refuse par le caissier (avec son motif) : l'emetteur est prevenu. */
-    RETOUR_FONDS_REFUSE
+    RETOUR_FONDS_REFUSE,
+    /** Action faite sur la copie en ligne (validation, nouvelle note...) appliquee par le serveur local : son auteur est prevenu. */
+    ACTION_EN_LIGNE_APPLIQUEE,
+    /** Action faite sur la copie en ligne refusee par le serveur local (note changee entre-temps, droits...) : son auteur est prevenu. */
+    ACTION_EN_LIGNE_REFUSEE
 }

@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * L'etat effectif d'un module (lui-meme ET son parent actifs) existe trois fois dans le code : ici, dans
@@ -94,7 +95,7 @@ class EtatModulesTest {
         User admin = User.builder().id(1L).roles(Set.of(Role.builder().nom(RoleType.ADMIN).build())).build();
         when(utilisateur.requirePrincipal()).thenReturn(new UserPrincipal(admin));
         when(utilisateur.requireUser()).thenReturn(admin);
-        PermissionService permissions = new PermissionService(repository, mock(RolePermissionRepository.class), utilisateur);
+        PermissionService permissions = new PermissionService(repository, mock(RolePermissionRepository.class), utilisateur, mock(InstanceService.class));
         Map<ModuleMetier, ModuleConfig> courant = new EnumMap<>(ModuleMetier.class);
         when(repository.findById(any())).thenAnswer(i -> Optional.ofNullable(courant.get((ModuleMetier) i.getArgument(0))));
 

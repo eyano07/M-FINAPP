@@ -29,7 +29,9 @@ public final class AuditModele {
     public record Evenement(Instant horodatage, String type, Long utilisateurId, String email, List<String> roles,
                             String ip, String module, String operation, String ressourceId, String methode,
                             String chemin, String requete, Integer statut, boolean reussi, Long dureeMs, String detail,
-                            String agent, String terminal, String systeme, String libelle) {}
+                            String agent, String terminal, String systeme, String libelle,
+                            /** « local » pour une ligne recopiee du journal du serveur local (V133), sinon null. */
+                            String serveur) {}
 
     public record Compte(String cle, long total, long echecs) {}
 

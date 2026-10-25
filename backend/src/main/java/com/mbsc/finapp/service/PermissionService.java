@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Resolution des droits d'acces aux modules metier desactivables, a partir
@@ -40,6 +41,8 @@ public class PermissionService {
     private final ModuleConfigRepository moduleConfigRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final CurrentUserProvider currentUser;
+    /** Copie en ligne ou ancien serveur local (V132) : aucun module au-dessus de LECTURE. */
+    private final InstanceService instance;
 
     /** Les roles de l'utilisateur courant (entite metier, pas les autorites Spring). */
     private List<RoleType> mesRoles() {
@@ -68,6 +71,12 @@ public class PermissionService {
     }
 
     private NiveauPermission niveauEffectif(ModuleMetier module) {
+        NiveauPermission niveau = niveauSelonRoles(module);
+        // Serveur en lecture seule (copie en ligne d'un serveur local, ancien serveur local) : on consulte, on ne saisit pas.
+        return niveau == NiveauPermission.ECRITURE && instance.lectureSeule() ? NiveauPermission.LECTURE : niveau;
+    }
+
+    private NiveauPermission niveauSelonRoles(ModuleMetier module) {
         // Un module desactive coupe l'acces pour tout le monde, ADMIN inclus :
         // c'est une action deliberee de l'administrateur, pas une
         // mauvaise config accidentelle a compenser. /admin/modules reste

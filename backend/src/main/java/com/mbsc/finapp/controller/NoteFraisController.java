@@ -22,6 +22,9 @@ import com.mbsc.finapp.dto.notes.RetourFondsResponse;
 import com.mbsc.finapp.service.NoteFraisService;
 import com.mbsc.finapp.service.ParametresPrioriteNoteService;
 import com.mbsc.finapp.service.RetourFondsService;
+import com.mbsc.finapp.domain.enums.TypeActionDistante;
+import com.mbsc.finapp.service.instance.ActionsDistantesService;
+import com.mbsc.finapp.service.instance.InstanceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -48,6 +51,18 @@ public class NoteFraisController {
     private final NoteFraisService service;
     private final ParametresPrioriteNoteService parametresPriorite;
     private final RetourFondsService retourFonds;
+    /** Copie en ligne d'un serveur local (V133) : les actions du circuit y sont mises en attente, puis relayees. */
+    private final InstanceService instance;
+    private final ActionsDistantesService relais;
+
+    /** Sur la copie en ligne : action mise en attente (202), sinon executee ici. */
+    private ResponseEntity<NoteFraisDetailResponse> relayerOu(Long id, TypeActionDistante type, Object corps,
+                                                             java.util.function.Supplier<NoteFraisDetailResponse> ici) {
+        if (instance.estMiroir()) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(relais.enregistrerActionNote(id, type, corps));
+        }
+        return ResponseEntity.ok(ici.get());
+    }
 
     /**
      * Seuils de reserve de tresorerie par priorite (definis par le DA).
@@ -181,45 +196,45 @@ public class NoteFraisController {
     // --- Transitions de workflow -----------------------------------------
 
     @PostMapping("/{id}/soumettre")
-    public NoteFraisDetailResponse soumettre(@PathVariable Long id,
-                                             @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
-        return service.soumettre(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> soumettre(@PathVariable Long id,
+            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.SOUMETTRE, action, () -> service.soumettre(id, action));
     }
 
     @PostMapping("/{id}/verifier")
-    public NoteFraisDetailResponse verifier(@PathVariable Long id,
-                                            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
-        return service.verifier(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> verifier(@PathVariable Long id,
+            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.VERIFIER, action, () -> service.verifier(id, action));
     }
 
     @PostMapping("/{id}/valider")
-    public NoteFraisDetailResponse valider(@PathVariable Long id,
-                                           @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
-        return service.valider(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> valider(@PathVariable Long id,
+            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.VALIDER, action, () -> service.valider(id, action));
     }
 
     @PostMapping("/{id}/rejeter")
-    public NoteFraisDetailResponse rejeter(@PathVariable Long id,
-                                           @Valid @RequestBody ActionWorkflowRequest action) {
-        return service.rejeter(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> rejeter(@PathVariable Long id,
+            @Valid @RequestBody ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.REJETER, action, () -> service.rejeter(id, action));
     }
 
     @PostMapping("/{id}/transmettre")
-    public NoteFraisDetailResponse transmettre(@PathVariable Long id,
-                                               @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
-        return service.transmettre(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> transmettre(@PathVariable Long id,
+            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.TRANSMETTRE, action, () -> service.transmettre(id, action));
     }
 
     @PostMapping("/{id}/priorite")
-    public NoteFraisDetailResponse definirPriorite(@PathVariable Long id,
-                                                   @Valid @RequestBody PrioriteRequest req) {
-        return service.definirPriorite(id, req);
+    public ResponseEntity<NoteFraisDetailResponse> definirPriorite(@PathVariable Long id,
+            @Valid @RequestBody PrioriteRequest req) {
+        return relayerOu(id, TypeActionDistante.PRIORITE, req, () -> service.definirPriorite(id, req));
     }
 
     @PostMapping("/{id}/observation")
-    public NoteFraisDetailResponse ajouterObservation(@PathVariable Long id,
-                                                      @Valid @RequestBody ActionWorkflowRequest action) {
-        return service.ajouterObservation(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> ajouterObservation(@PathVariable Long id,
+            @Valid @RequestBody ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.OBSERVATION, action, () -> service.ajouterObservation(id, action));
     }
 
     @PostMapping("/{id}/annuler")

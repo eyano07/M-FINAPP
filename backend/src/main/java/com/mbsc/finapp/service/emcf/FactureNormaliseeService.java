@@ -27,6 +27,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Facture normalisée DGI : enregistre chaque vente validée (et chaque avoir d'annulation) dans le registre, la
@@ -52,11 +53,14 @@ public class FactureNormaliseeService {
     private final NotificationService notifications;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
+    private final InstanceService instance;
 
     public FactureNormaliseeService(FactureNormaliseeRepository repository, VenteRepository ventes,
                                     ParametresEmcfService parametres, ParametresEntrepriseService entreprise,
                                     FactureNormaliseeMapper mapper, EmcfSimulateur simulateur, EmcfHttpClient http,
-                                    NotificationService notifications, ObjectMapper json, PlatformTransactionManager tm) {
+                                    NotificationService notifications, ObjectMapper json, PlatformTransactionManager tm,
+                                    InstanceService instance) {
+        this.instance = instance;
         this.repository = repository;
         this.ventes = ventes;
         this.parametres = parametres;
@@ -228,6 +232,9 @@ public class FactureNormaliseeService {
     /** Retransmet les factures en attente dont le délai est écoulé (aussi les avoirs, même module désactivé). */
     @Scheduled(fixedDelay = 60_000L, initialDelay = 60_000L)
     public void retransmettreEnAttente() {
+        if (instance.lectureSeule()) {   // copie en ligne : seul le serveur principal parle a la DGI
+            return;
+        }
         List<Long> ids;
         try {
             ids = tx.execute(s -> repository.aRetransmettre(Instant.now(), PageRequest.of(0, 20)).stream()

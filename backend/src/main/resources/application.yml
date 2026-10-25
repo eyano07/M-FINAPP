@@ -36,6 +36,13 @@ spring:
     baseline-on-migrate: true
     locations: classpath:db/migration
 
+  task:
+    scheduling:
+      pool:
+        # Plusieurs taches planifiees (synchronisation du serveur local, plats perimes, facture normalisee) : un cycle
+        # de synchronisation long (resynchronisation complete) ne doit pas retarder les autres.
+        size: 3
+
   servlet:
     multipart:
       max-file-size: 20MB
@@ -77,6 +84,11 @@ app:
     # l'administrateur (Restaurant > Parametres). Par defaut toutes les 30 minutes, la premiere 5 minutes apres le demarrage.
     intervalle-ms: ${APP_PLATS_PERIMES_INTERVALLE_MS:1800000}
     delai-initial-ms: ${APP_PLATS_PERIMES_DELAI_INITIAL_MS:300000}
+  replication:
+    # Serveur local (mode local) : cycle de synchronisation avec le serveur en ligne (envoi des changements, fichiers,
+    # journal d'audit, validations faites en ligne). Sans effet sur un serveur en ligne.
+    intervalle-ms: ${APP_REPLICATION_INTERVALLE_MS:30000}
+    delai-initial-ms: ${APP_REPLICATION_DELAI_INITIAL_MS:20000}
   security:
     login-max-attempts: ${APP_LOGIN_MAX_ATTEMPTS:5}
     login-lock-minutes: ${APP_LOGIN_LOCK_MINUTES:15}

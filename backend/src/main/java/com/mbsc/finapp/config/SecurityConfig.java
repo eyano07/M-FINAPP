@@ -6,6 +6,8 @@ import com.mbsc.finapp.security.JwtAuthenticationFilter;
 import com.mbsc.finapp.audit.AuditFilter;
 import com.mbsc.finapp.security.ModuleAccessFilter;
 import com.mbsc.finapp.security.MotDePasseProvisoireFilter;
+import com.mbsc.finapp.security.CleReplicationFilter;
+import com.mbsc.finapp.security.MiroirLectureSeuleFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -38,6 +40,8 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ModuleAccessFilter moduleAccessFilter;
     private final MotDePasseProvisoireFilter motDePasseProvisoireFilter;
+    private final CleReplicationFilter cleReplicationFilter;
+    private final MiroirLectureSeuleFilter miroirLectureSeuleFilter;
     private final com.mbsc.finapp.audit.AuditFilter auditFilter;
     private final JwtAuthEntryPoint jwtAuthEntryPoint;
     private final AppUserDetailsService userDetailsService;
@@ -87,9 +91,13 @@ public class SecurityConfig {
             })
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            // Appels entre serveurs (/replication/**) : signes avec la cle d'appairage, sans compte utilisateur (V132).
+            .addFilterBefore(cleReplicationFilter, JwtAuthenticationFilter.class)
             .addFilterAfter(auditFilter, JwtAuthenticationFilter.class)
+            // Serveur en lecture seule (copie en ligne d'un serveur local, ancien serveur local : V132) : saisies refusees (423).
+            .addFilterAfter(miroirLectureSeuleFilter, AuditFilter.class)
             // Mot de passe provisoire (V131) : avant tout acces aux modules, seuls le profil et le changement de mot de passe.
-            .addFilterAfter(motDePasseProvisoireFilter, AuditFilter.class)
+            .addFilterAfter(motDePasseProvisoireFilter, MiroirLectureSeuleFilter.class)
             .addFilterAfter(moduleAccessFilter, MotDePasseProvisoireFilter.class);
 
         return http.build();

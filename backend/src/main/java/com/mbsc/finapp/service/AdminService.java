@@ -375,9 +375,24 @@ public class AdminService {
     public UserResponse toggleActif(Long id) {
         User u = userRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur introuvable."));
+        return definirActif(id, !u.isActif());
+    }
+
+    /**
+     * Active ou désactive un utilisateur (ADMIN) : état voulu plutôt que bascule, pour qu'une désactivation faite sur la
+     * copie en ligne d'un serveur local, appliquée ensuite par celui-ci, ne s'inverse jamais si elle arrive deux fois.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public UserResponse definirActif(Long id, boolean actif) {
+        User u = userRepository.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur introuvable."));
         EtatModules etat = rolesDisponibles.etat();
         exigerCompteVisible(u, etat);
-        u.setActif(!u.isActif());
+        if (u.isActif() == actif) {
+            return UserResponse.from(u, role -> ModulesDesRoles.estDisponible(role, etat::estActif));
+        }
+        u.setActif(actif);
         if (!u.isActif()) {
             // Un compte désactivé perd immédiatement l'accès : ses jetons
             // (accès et rafraîchissement) ne sont plus acceptés.

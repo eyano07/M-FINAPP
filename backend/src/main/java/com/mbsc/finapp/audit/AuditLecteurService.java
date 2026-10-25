@@ -201,7 +201,7 @@ public class AuditLecteurService {
                 txt(n, "ip"), module, operation, txt(n, "ressourceId"), methode, chemin,
                 requete, n.hasNonNull("statut") ? n.get("statut").asInt() : null, reussi,
                 n.hasNonNull("dureeMs") ? n.get("dureeMs").asLong() : null, detail,
-                agent, terminal.type(), terminal.systeme(), libelle);
+                agent, terminal.type(), terminal.systeme(), libelle, txt(n, "serveur"));
         } catch (Exception e) {
             return null;
         }

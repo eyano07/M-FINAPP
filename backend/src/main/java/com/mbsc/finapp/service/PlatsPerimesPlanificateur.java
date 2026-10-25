@@ -8,6 +8,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Tâche planifiée des plats périmés : toutes les 30 minutes, elle retire du stock les portions périmées ou prévient qu'il y en
@@ -27,11 +28,15 @@ public class PlatsPerimesPlanificateur {
     private static final int LONGUEUR_CAUSE = 200;
 
     private final PlatsPerimesAutomatiqueService service;
+    private final InstanceService instance;
 
     /** Toutes les 30 minutes, la première 5 minutes après le démarrage ; réglable par {@code app.plats-perimes.*} (application.yml). */
     @Scheduled(fixedDelayString = "${app.plats-perimes.intervalle-ms:1800000}",
                initialDelayString = "${app.plats-perimes.delai-initial-ms:300000}")
     public void verifier() {
+        if (instance.lectureSeule()) {   // copie en ligne : le retrait se fait sur le serveur principal, puis arrive par la synchronisation
+            return;
+        }
         LocalDate jour = LocalDate.now();
         try {
             PlatsPerimesAutomatiqueService.Issue issue = service.traiter(jour);

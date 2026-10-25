@@ -24,6 +24,8 @@ import com.mbsc.finapp.dto.parametrage.RolePermissionResponse;
 import com.mbsc.finapp.domain.enums.ModuleMetier;
 import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.service.AdminService;
+import com.mbsc.finapp.service.instance.ActionsDistantesService;
+import com.mbsc.finapp.service.instance.InstanceService;
 import com.mbsc.finapp.service.ModuleConfigService;
 import com.mbsc.finapp.service.ParametresEntrepriseService;
 import com.mbsc.finapp.service.ImportJournalService;
@@ -53,6 +55,9 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminService service;
+    /** Copie en ligne d'un serveur local (V133) : l'activation d'un compte y est immediate puis relayee. */
+    private final InstanceService instance;
+    private final ActionsDistantesService relais;
     private final TauxTvaService tauxTvaService;
     private final ParametresEntrepriseService parametresService;
     private final ModuleConfigService moduleConfigService;
@@ -120,7 +125,8 @@ public class AdminController {
     /** Active ou désactive un utilisateur (ADMIN). */
     @PatchMapping("/admin/users/{id}/actif")
     public UserResponse toggleActif(@PathVariable Long id) {
-        return service.toggleActif(id);
+        // Copie en ligne : effet immediat ici (connexion bloquee), puis applique par le serveur local.
+        return instance.estMiroir() ? relais.enregistrerActivation(id) : service.toggleActif(id);
     }
 
     /** Taux de change actuel + historique (tout utilisateur authentifie). */

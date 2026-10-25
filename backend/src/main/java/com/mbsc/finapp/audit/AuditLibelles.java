@@ -52,6 +52,15 @@ public final class AuditLibelles {
         r("DELETE", "/admin/ia/{}/cle", "Retrait de la clé de l'IA ({0})");
         r("POST", "/admin/ia/{}/tester", "Test de la clé de l'IA ({0})");
         r("POST", "/admin/import/journal/correction", "Génération d'un fichier de journal corrigé (rien n'est écrit)");
+        r("POST", "/actions-distantes/notes", "Note de frais créée sur la copie en ligne (créée par le serveur local à la synchronisation)");
+        r("POST", "/admin/instance/cle-appairage", "Génération d'une clé d'appairage (serveur en ligne)");
+        r("PUT", "/admin/instance/serveur-distant", "Saisie de l'adresse du serveur en ligne et de la clé d'appairage (serveur local)");
+        r("POST", "/admin/instance/tester", "Test de la connexion au serveur en ligne");
+        r("POST", "/admin/instance/activer-mode-local", "Activation du mode local (données reprises du serveur en ligne)");
+        r("POST", "/admin/instance/desactiver-mode-local", "Désactivation du mode local (le serveur en ligne redevient principal)");
+        r("POST", "/admin/instance/synchroniser", "Synchronisation immédiate avec le serveur en ligne");
+        r("POST", "/admin/instance/resynchroniser", "Resynchronisation complète du serveur en ligne");
+        r("POST", "/admin/instance/reprendre-la-main", "Reprise de la main par le serveur en ligne (appairage révoqué)");
         r("POST", "/admin/import/journal/correction-auto", "Correction automatique d'un fichier de journal (comptes manquants créés)");
         r("PUT", "/admin/mail", "Modification des paramètres de messagerie (e-mails)");
         r("DELETE", "/admin/mail/mot-de-passe", "Retrait du mot de passe de la messagerie");

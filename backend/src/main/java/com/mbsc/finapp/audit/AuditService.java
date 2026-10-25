@@ -32,9 +32,19 @@ public class AuditService {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Pattern PARAM_SENSIBLE = Pattern.compile("(?i)^(token|access_?token|refresh_?token|password|mot_?de_?passe|cle|secret|jeton|key)$");
     // « /profil/preferences » : un réglage d'affichage (cartes ou tableau) n'est pas une action métier, il ne doit pas remplir le journal.
-    private static final List<String> EXCLUS = List.of("/auth", "/notifications", "/health", "/actuator", "/profil/preferences");
+    // « /replication » : appels entre serveurs (lots de synchronisation toutes les 30 s), tracés à part par la synchronisation.
+    private static final List<String> EXCLUS = List.of("/auth", "/notifications", "/health", "/actuator", "/profil/preferences",
+        "/replication");
     /** Taille maximale de l'en-tête User-Agent conservé (assez pour garder « Mobile », placé après le navigateur). */
     private static final int TAILLE_AGENT = 300;
+
+    /** Serveur local (V133) : copie de chaque ligne pour le serveur en ligne. Facultatif (absent des tests unitaires). */
+    private com.mbsc.finapp.service.instance.CopieAuditServeurLocal copieServeurLocal;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setCopieServeurLocal(com.mbsc.finapp.service.instance.CopieAuditServeurLocal copie) {
+        this.copieServeurLocal = copie;
+    }
 
     /** Action HTTP à tracer : modifie des données, hors rafraîchissement de jeton, notifications et supervision. */
     public static boolean aTracer(String methode, String chemin) {
@@ -90,13 +100,30 @@ public class AuditService {
         return s.length() > 300 ? s.substring(0, 300) : s;
     }
 
+    /**
+     * Serveur en ligne (V133) : recopie une ligne du journal d'audit du serveur local, telle quelle, marquee
+     * {@code "serveur":"local"} (copie hors site du journal du serveur principal, jamais supprimee).
+     */
+    public void recopierDuServeurLocal(String ligneJson) {
+        try {
+            Map<String, Object> ligne = JSON.readValue(ligneJson, new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() {});
+            ligne.put("serveur", "local");
+            AUDIT.info(JSON.writeValueAsString(ligne));
+        } catch (Exception e) {
+            log.warn("Ligne d'audit du serveur local illisible, recopiee brute : {}", e.toString());
+            AUDIT.info(ligneJson);
+        }
+    }
+
     /** Écrit une ligne d'audit. Ne lève jamais d'exception : l'audit ne doit pas casser l'action de l'utilisateur. */
     public void enregistrer(Map<String, Object> champs) {
         try {
             Map<String, Object> ligne = new LinkedHashMap<>();
             ligne.put("horodatage", Instant.now().toString());
             ligne.putAll(champs);
-            AUDIT.info(JSON.writeValueAsString(ligne));
+            String texte = JSON.writeValueAsString(ligne);
+            AUDIT.info(texte);
+            if (copieServeurLocal != null) copieServeurLocal.noter(texte);
         } catch (Exception e) {
             log.warn("Ecriture du journal d'audit impossible : {}", e.toString());
         }

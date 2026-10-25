@@ -60,7 +60,8 @@ public class MotDePasseProvisoireFilter extends OncePerRequestFilter {
         }
         if (HttpMethod.GET.matches(methode)) {
             return chemin.equals("/profil") || chemin.equals("/profil/photo") || chemin.equals("/parametres")
-                || chemin.equals("/parametres/logo") || chemin.equals("/health");
+                || chemin.equals("/parametres/logo") || chemin.equals("/health")
+                || chemin.equals("/instance/etat");   // la page explique ou changer le mot de passe sur une copie en ligne
         }
         return chemin.equals("/profil/mot-de-passe") && HttpMethod.PUT.matches(methode);
     }

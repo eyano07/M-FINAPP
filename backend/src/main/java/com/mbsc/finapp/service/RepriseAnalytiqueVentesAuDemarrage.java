@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Au démarrage de l'application, reflète en comptabilité analytique les ventes validées qui ne le sont pas encore : celles
@@ -19,9 +20,14 @@ public class RepriseAnalytiqueVentesAuDemarrage {
     private static final Logger log = LoggerFactory.getLogger(RepriseAnalytiqueVentesAuDemarrage.class);
 
     private final AnalytiqueVentesService analytique;
+    private final InstanceService instance;
 
     @EventListener(ApplicationReadyEvent.class)
     public void reprendre() {
+        // Copie en ligne (ou ancien serveur local) : rien n'est ecrit ici, les donnees viennent du serveur principal (V132).
+        if (instance.lectureSeule()) {
+            return;
+        }
         try {
             analytique.reprendreVentesSansReflet();
         } catch (RuntimeException e) {
