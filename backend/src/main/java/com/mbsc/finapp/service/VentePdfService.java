@@ -72,7 +72,7 @@ public class VentePdfService {
     @Transactional(readOnly = true)
     public Document generer(Long venteId, FactureNormalisee.Type type) {
         Vente vente = ventes.findById(venteId).orElseThrow(() -> RessourceIntrouvableException.of("Vente", venteId));
-        FactureNormalisee f = factures.findByVenteIdAndType(venteId, type).orElse(null);
+        FactureNormalisee f = factures.findByVenteIdAndTypeAndRetourIsNull(venteId, type).orElse(null);
         if (type == FactureNormalisee.Type.AVOIR && f == null) {
             throw new RessourceIntrouvableException("Aucun avoir pour cette vente.");
         }

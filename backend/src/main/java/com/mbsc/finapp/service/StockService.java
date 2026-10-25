@@ -57,6 +57,8 @@ public class StockService {
     private final CamionMineraiRepository camionRepository;
     private final MouvementEmballageRepository mouvementEmballageRepository;
     private final SortiePlatRepository sortiePlatRepository;
+    private final com.mbsc.finapp.repository.SortieBoissonRepository sortieBoissonRepository;
+    private final com.mbsc.finapp.repository.LigneRetourVenteRepository ligneRetourVenteRepository;
     private final ComptabiliteService comptabilite;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
@@ -133,6 +135,12 @@ public class StockService {
         article.setCategorie(categorieApplicable ? req.categorie().trim() : null);
         // La société (brasserie, fabricant, fournisseur) n'a de sens que pour une boisson de la carte.
         article.setSociete(type == TypeArticle.BOISSON && StringUtils.hasText(req.societe()) ? req.societe().trim() : null);
+        // Consignée ou non : propre aux boissons ; absent de la requête, l'état actuel est gardé (V134).
+        if (type != TypeArticle.BOISSON) {
+            article.setSansConsigne(false);
+        } else if (req.sansConsigne() != null) {
+            article.setSansConsigne(req.sansConsigne());
+        }
         article.setPrixVente(req.prixVente());
         article.setPrixAchat(req.prixAchat());
         article.setSoumisTva(req.soumisTva() == null || req.soumisTva());
@@ -384,6 +392,18 @@ public class StockService {
             throw new IllegalStateException(
                 "Le mouvement " + mouvement.getReference() + " est une sortie de plat (perte, cadeau...) : "
                 + "annulez-la depuis l'écran Sorties de plats du restaurant.");
+        }
+        if (sortieBoissonRepository.existsByMouvementStockId(mouvement.getId())) {
+            throw new IllegalStateException(
+                "Le mouvement " + mouvement.getReference() + " est la perte d'une boisson sans consigne : "
+                + "annulez-la depuis les mouvements de bouteilles vides du restaurant.");
+        }
+        // La remise en stock d'un retour remboursé : annulée seule, le client resterait remboursé d'une marchandise
+        // qui n'existe plus en stock.
+        if (ligneRetourVenteRepository.existsByMouvementStockId(mouvement.getId())) {
+            throw new IllegalStateException(
+                "Le mouvement " + mouvement.getReference() + " est la remise en stock d'un retour de vente remboursé : "
+                + "il ne s'annule pas seul.");
         }
     }
 

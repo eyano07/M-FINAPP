@@ -108,6 +108,12 @@ public class ReferenceGenerator {
         return format("VTE", "seq_vente");
     }
 
+    /** Reference d'un retour de vente rembourse : RV-AAAA-NNNNNN (V134). */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public String pourRetourVente() {
+        return format("RV", "seq_retour_vente");
+    }
+
     /** Reference d'une provision : PROV-AAAA-NNNNNN. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public String pourProvision() {

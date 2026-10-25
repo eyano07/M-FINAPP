@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mbsc.finapp.domain.Client;
 import com.mbsc.finapp.domain.FactureNormalisee;
 import com.mbsc.finapp.domain.GroupeTaxeDgi;
+import com.mbsc.finapp.domain.LigneRetourVente;
 import com.mbsc.finapp.domain.LigneVente;
+import com.mbsc.finapp.domain.RetourVente;
 import com.mbsc.finapp.domain.ParametresEntreprise;
 import com.mbsc.finapp.domain.Vente;
 import com.mbsc.finapp.domain.enums.Devise;
@@ -100,6 +102,40 @@ class FactureNormaliseeMapperTest {
         EmcfDemande d = mapper.construire(f, entreprise("A123"), groupes);
         assertEquals("FA", d.type());
         assertEquals("UID-1", d.origineUid());
+    }
+
+    @Test
+    void avoirPartielDUnRetourNePorteQueLaPartRendue() {
+        LigneVente plat = ligne("Plat", "100.00", "16.00", true, null);
+        LigneVente eau = ligne("Eau", "50.00", "0.00", false, null);
+        FactureNormalisee facture = facture(null, plat, eau);
+        RetourVente retour = RetourVente.builder().reference("RV-2026-000003").vente(facture.getVente())
+            .montantHt(new BigDecimal("50.00")).montantTva(new BigDecimal("8.00")).montantTtc(new BigDecimal("58.00")).build();
+        retour.addLigne(LigneRetourVente.builder().ligneVente(plat).quantite(BigDecimal.ONE)
+            .montantHt(new BigDecimal("50.00")).montantTva(new BigDecimal("8.00")).build());
+        FactureNormalisee avoir = FactureNormalisee.builder().vente(facture.getVente()).retour(retour).type(FactureNormalisee.Type.AVOIR)
+            .origine(FactureNormalisee.builder().uid("UID-9").build()).build();
+
+        EmcfDemande d = mapper.construire(avoir, entreprise("A123"), groupes);
+
+        assertEquals("FA", d.type());
+        assertEquals("RV-2026-000003", d.reference());
+        assertEquals("UID-9", d.origineUid());
+        assertEquals(1, d.lignes().size());
+        assertEquals(BigDecimal.ONE, d.lignes().get(0).quantite());
+        assertEquals(new BigDecimal("58.00"), d.lignes().get(0).montantTtc());
+        assertEquals(new BigDecimal("50.00"), d.totalHt());
+        assertEquals(new BigDecimal("58.00"), d.totalTtc());
+    }
+
+    @Test
+    void unAvoirAttendQueLaFactureDOrigineSoitCertifiee() {
+        FactureNormalisee f = facture(null, ligne("Plat", "100.00", "16.00", true, null));
+        f.setType(FactureNormalisee.Type.AVOIR);
+        f.setOrigine(FactureNormalisee.builder().build());
+        ErreurEmcf e = assertThrows(ErreurEmcf.class, () -> mapper.construire(f, entreprise("A123"), groupes));
+        assertTrue(e.retentable());
+        assertTrue(e.getMessage().contains("pas encore certifiée"));
     }
 
     @Test

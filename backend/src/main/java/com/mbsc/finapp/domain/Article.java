@@ -108,6 +108,15 @@ public class Article {
     @Column(name = "duree_conservation_jours")
     private Integer dureeConservationJours;
 
+    /**
+     * BOISSON seulement : true pour une boisson sans consigne (whisky, vin, champagne, jus en carton...) dont on ne gere pas
+     * les bouteilles vides : pas de conditionnement, achat par carton ou a l'unite sans echange de consigne, vente sans
+     * vide (V134). Une boisson consignee (biere, sucrerie en casier) a un conditionnement et un stock de vides.
+     */
+    @Column(name = "sans_consigne", nullable = false)
+    @Builder.Default
+    private boolean sansConsigne = false;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean actif = true;

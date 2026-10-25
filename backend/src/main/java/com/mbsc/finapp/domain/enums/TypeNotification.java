@@ -42,5 +42,13 @@ public enum TypeNotification {
     /** Action faite sur la copie en ligne (validation, nouvelle note...) appliquee par le serveur local : son auteur est prevenu. */
     ACTION_EN_LIGNE_APPLIQUEE,
     /** Action faite sur la copie en ligne refusee par le serveur local (note changee entre-temps, droits...) : son auteur est prevenu. */
-    ACTION_EN_LIGNE_REFUSEE
+    ACTION_EN_LIGNE_REFUSEE,
+    /** Retour d'une vente payee demande par le caissier : le responsable du bar, de la cuisine ou du restaurant decide. */
+    RETOUR_VENTE_A_APPROUVER,
+    /** Retour de vente approuve par le responsable : le caissier peut rembourser le client (caissiers, demandeur). */
+    RETOUR_VENTE_APPROUVE,
+    /** Retour de vente refuse par le responsable (avec son motif) : caissiers et demandeur. */
+    RETOUR_VENTE_REFUSE,
+    /** Retour de vente rembourse par le caissier : responsables du bar, de la cuisine ou du restaurant. */
+    RETOUR_VENTE_REMBOURSE
 }

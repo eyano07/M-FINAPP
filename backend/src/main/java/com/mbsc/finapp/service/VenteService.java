@@ -9,6 +9,7 @@ import com.mbsc.finapp.dto.vente.VenteRequest;
 import com.mbsc.finapp.dto.vente.VenteResponse;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
+import com.mbsc.finapp.audit.AuditService;
 import com.mbsc.finapp.dto.vente.ReglerCreanceRequest;
 import com.mbsc.finapp.repository.ArticleRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
@@ -88,6 +89,9 @@ public class VenteService {
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     private final EcritureGrandLivreRepository ecritureRepository;
+    /** Commandes en attente : ce qu'elles ont commande est mis de cote (V134). */
+    private final ReservationStockService reservations;
+    private final com.mbsc.finapp.repository.RetourVenteRepository retourVenteRepository;
 
     // ---------------------------------------------------------------------
     // Consultation
@@ -183,6 +187,10 @@ public class VenteService {
                 .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId())));
         }
 
+        // Ce qui est commandé est mis de côté jusqu'à la validation : rien ne peut sortir de ce que d'autres commandes
+        // en attente ont déjà réservé (V134).
+        reservations.exigerDisponibles(quantitesParArticle(vente.getLignes()), vente.getEntrepot(), null);
+
         // Totaux indicatifs tant que la vente est en brouillon ; ils sont
         // recalculés (et figés avec le taux) à la validation.
         calculerTotaux(vente, tauxTvaService.tauxALaDate(date));
@@ -223,8 +231,69 @@ public class VenteService {
                 .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId())));
         }
 
+        // La commande garde ce qu'elle avait déjà mis de côté : seul l'article ajouté se contrôle, pour tout ce que la
+        // commande en demande désormais (V134).
+        Article ajoute = ligne.getArticle();
+        reservations.exigerDisponible(ajoute, vente.getEntrepot(), quantitesParArticle(vente.getLignes()).entrySet().stream()
+            .filter(e -> e.getKey().getId().equals(ajoute.getId())).map(Map.Entry::getValue).findFirst().orElse(BigDecimal.ZERO),
+            vente.getId());
+
         calculerTotaux(vente, tauxTvaService.tauxALaDate(vente.getDateVente()));
         log.info("Ligne ajoutee [vente={}, article={}]", vente.getReference(), req.articleId());
+        return VenteResponse.from(vente);
+    }
+
+    /**
+     * Retour d'un article commandé avant paiement : retire une ligne d'une commande en attente (BROUILLON), ou en réduit
+     * la quantité. Ce qu'elle mettait de côté redevient disponible ; rien n'avait été comptabilisé (V134).
+     *
+     * @param quantite quantité rendue ; absente, toute la ligne
+     */
+    @PreAuthorize("hasRole('CAISSIER')")
+    @Transactional
+    public VenteResponse retirerLigne(Long id, Long ligneId, BigDecimal quantite) {
+        Vente vente = charger(id);
+        if (vente.getStatut() != StatutVente.BROUILLON) {
+            throw new TransitionInvalideException("Seule une commande en attente (BROUILLON) perd une ligne (état actuel : "
+                + vente.getStatut() + ") : une vente validée se rend par un retour avec remboursement.");
+        }
+        LigneVente ligne = vente.getLignes().stream().filter(l -> l.getId().equals(ligneId)).findFirst()
+            .orElseThrow(() -> RessourceIntrouvableException.of("LigneVente", ligneId));
+        BigDecimal rendue = quantite == null ? ligne.getQuantite() : quantite;
+        if (rendue.signum() <= 0 || rendue.compareTo(ligne.getQuantite()) > 0) {
+            throw new IllegalArgumentException("La quantité rendue de « " + ligne.getDesignation() + " » doit être comprise "
+                + "entre 0 et " + ligne.getQuantite().stripTrailingZeros().toPlainString() + ".");
+        }
+        boolean toute = rendue.compareTo(ligne.getQuantite()) == 0;
+        if (toute) {
+            vente.getLignes().remove(ligne);
+        } else {
+            ligne.setQuantite(ligne.getQuantite().subtract(rendue));
+        }
+        calculerTotaux(vente, tauxTvaService.tauxALaDate(vente.getDateVente()));
+        String detail = "Commande " + vente.getReference() + " : " + rendue.stripTrailingZeros().toPlainString() + " × "
+            + ligne.getDesignation() + " rendu(s) avant paiement" + (toute ? " (ligne retirée)" : "") + ".";
+        AuditService.detailler(detail);
+        log.info("Ligne rendue avant paiement [vente={}, ligne={}, quantite={}]", vente.getReference(), ligneId, rendue);
+        return VenteResponse.from(vente);
+    }
+
+    /**
+     * Abandonne une commande en attente (BROUILLON) : elle passe ANNULEE sans aucune écriture (rien n'avait été
+     * comptabilisé), et tout ce qu'elle mettait de côté redevient disponible (V134).
+     */
+    @PreAuthorize("hasRole('CAISSIER')")
+    @Transactional
+    public VenteResponse abandonner(Long id) {
+        Vente vente = charger(id);
+        if (vente.getStatut() != StatutVente.BROUILLON) {
+            throw new TransitionInvalideException("Seule une commande en attente (BROUILLON) peut être abandonnée (état "
+                + "actuel : " + vente.getStatut() + ").");
+        }
+        vente.setStatut(StatutVente.ANNULEE);
+        AuditService.detailler("Commande " + vente.getReference() + " abandonnée avant paiement (" + vente.getLignes().size()
+            + " ligne(s), rien de comptabilisé).");
+        log.info("Commande abandonnee [ref={}]", vente.getReference());
         return VenteResponse.from(vente);
     }
 
@@ -267,6 +336,10 @@ public class VenteService {
         // 1 ter. Plats périmés : les portions dont la date d'expiration est passée ne se vendent plus (voir
         //        RestaurantService.exigerPlatsNonPerimesInterne) ; les portions encore bonnes se vendent normalement.
         restaurantService.exigerPlatsNonPerimesInterne(vente);
+
+        // 1 quater. Stock mis de côté : la commande peut prendre ce qu'elle avait réservé, jamais ce que d'autres
+        //           commandes en attente ont réservé (V134).
+        reservations.exigerDisponibles(quantitesParArticle(vente.getLignes()), vente.getEntrepot(), vente.getId());
 
         // 2. Sortie de stock des articles stockés : décrément au CMP + pièce
         //    STOCK (coût des ventes). La garde de stock insuffisant s'applique
@@ -336,6 +409,16 @@ public class VenteService {
             throw new TransitionInvalideException(
                 "Seule une vente VALIDEE peut etre annulee (etat actuel : " + vente.getStatut() + ")");
         }
+        // Une part déjà rendue et remboursée serait extournée une seconde fois par l'annulation complète (V134).
+        if (retourVenteRepository.existsByVenteIdAndStatutIn(id, java.util.EnumSet.of(StatutRetourVente.REMBOURSE))) {
+            throw new TransitionInvalideException("La vente " + vente.getReference() + " a déjà un retour remboursé : "
+                + "rendez le reste par un retour avec remboursement plutôt que d'annuler la vente.");
+        }
+        if (retourVenteRepository.existsByVenteIdAndStatutIn(id,
+            java.util.EnumSet.of(StatutRetourVente.DEMANDE, StatutRetourVente.APPROUVE))) {
+            throw new TransitionInvalideException("Une demande de retour est en cours sur la vente " + vente.getReference()
+                + " : retirez-la ou faites-la refuser avant d'annuler la vente.");
+        }
         User auteur = currentUser.requireUser();
 
         if (vente.getPiece() != null) {
@@ -395,7 +478,8 @@ public class VenteService {
         List<Vente> creances = venteRepository.findActivesByTableIdIn(List.of(tableId)).stream()
             .filter(v -> v.getStatut() == StatutVente.VALIDEE
                 && v.getModeReglement() == ModeReglement.CREDIT
-                && v.getPieceReglement() == null)
+                && v.getPieceReglement() == null
+                && ttcRestantDu(v).signum() > 0)
             .toList();
         if (creances.isEmpty()) {
             throw new IllegalStateException("Aucune commande a regler pour cette table.");
@@ -448,6 +532,14 @@ public class VenteService {
             montantDu = BigDecimal.ZERO;
         }
         montantDu = montantDu.add(vente.getEcartLatentCumule());
+        // Un retour remboursé sur la créance (vente à crédit pas encore réglée) l'a déjà diminuée, par sa propre pièce
+        // (C 4111) : on ne la réclame plus au client (V134).
+        for (RetourVente retour : retourVenteRepository.remboursementsSurCreance(vente.getId())) {
+            BigDecimal solde = ecritureRepository.soldePourPieceEtCompte(retour.getPiece().getId(), COMPTE_CLIENTS);
+            if (solde != null) {
+                montantDu = montantDu.add(solde);
+            }
+        }
         if (montantDu.signum() <= 0) {
             throw new IllegalStateException(
                 "Aucune creance exigible trouvee pour la vente " + vente.getReference() + ".");
@@ -464,7 +556,7 @@ public class VenteService {
                     "Aucun taux de change applicable au " + dateReglement
                     + " : impossible d'encaisser une creance en " + vente.getDevise() + ".");
             }
-            montantEncaisse = conversionDevise.enDeviseBase(vente.getTotalTtc(), vente.getDevise(), tauxReglement).montantBase();
+            montantEncaisse = conversionDevise.enDeviseBase(ttcRestantDu(vente), vente.getDevise(), tauxReglement).montantBase();
         }
 
         String libelle = "Reglement creance " + vente.getReference() + " - " + vente.designationClient();
@@ -654,6 +746,26 @@ public class VenteService {
     private Vente charger(Long id) {
         return venteRepository.findWithLignesById(id)
             .orElseThrow(() -> RessourceIntrouvableException.of("Vente", id));
+    }
+
+    /** Quantité totale par article (une commande peut citer deux fois le même article). */
+    static Map<Article, BigDecimal> quantitesParArticle(List<LigneVente> lignes) {
+        Map<Long, Article> articles = new LinkedHashMap<>();
+        Map<Long, BigDecimal> quantites = new LinkedHashMap<>();
+        for (LigneVente l : lignes) {
+            articles.putIfAbsent(l.getArticle().getId(), l.getArticle());
+            quantites.merge(l.getArticle().getId(), l.getQuantite(), BigDecimal::add);
+        }
+        Map<Article, BigDecimal> parArticle = new LinkedHashMap<>();
+        quantites.forEach((id, q) -> parArticle.put(articles.get(id), q));
+        return parArticle;
+    }
+
+    /** TTC d'une vente à crédit qui reste dû : son total moins les retours remboursés sur sa créance (V134). */
+    private BigDecimal ttcRestantDu(Vente vente) {
+        BigDecimal rendu = retourVenteRepository.remboursementsSurCreance(vente.getId()).stream()
+            .map(RetourVente::getMontantTtc).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return vente.getTotalTtc().subtract(rendu);
     }
 
     /**

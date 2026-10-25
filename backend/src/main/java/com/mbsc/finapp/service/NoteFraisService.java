@@ -600,6 +600,11 @@ public class NoteFraisService {
             // L'echange de consigne n'a de sens que pour une boisson consignee :
             // une provision n'a jamais de conditionnement, la verification serait
             // un faux refus sans rapport avec sa propre nature.
+            if (type == TypeArticle.BOISSON && ligne.isEchangeConsigne() && ligne.getArticle().isSansConsigne()) {
+                throw new IllegalArgumentException(
+                    "« " + ligne.getArticle().getLibelle() + " » est une boisson sans consigne : son achat ne rend pas de "
+                        + "bouteilles vides (décochez l'échange de consigne)");
+            }
             if (type == TypeArticle.BOISSON && ligne.isEchangeConsigne()
                 && !emballageBoissonRepository.existsByArticleBoissonId(ligne.getArticle().getId())) {
                 throw new IllegalArgumentException(

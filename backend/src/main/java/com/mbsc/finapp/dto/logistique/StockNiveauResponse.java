@@ -20,8 +20,19 @@ public record StockNiveauResponse(
     /** Prix d'achat moyen hors frais : coutMoyen le complète des frais d'approche. */
     BigDecimal prixAchatMoyen,
     BigDecimal stockMin,
-    boolean sousSeuil
+    boolean sousSeuil,
+    /** Quantité mise de côté par les commandes en attente (ventes BROUILLON, V134) ; 0 hors carte du restaurant. */
+    BigDecimal quantiteReservee,
+    /** Ce qui peut encore être vendu ou sorti : quantité moins le réservé. */
+    BigDecimal quantiteDisponible
 ) {
+    /** La même ligne, avec ce que les commandes en attente ont mis de côté. */
+    public StockNiveauResponse avecReserve(BigDecimal reserve) {
+        BigDecimal r = reserve == null ? BigDecimal.ZERO : reserve;
+        return new StockNiveauResponse(articleId, articleCode, articleLibelle, uniteMesure, entrepotId, entrepotCode, quantite,
+            valeurTotale, coutMoyen, valeurAchat, prixAchatMoyen, stockMin, sousSeuil, r, quantite.subtract(r));
+    }
+
     public static StockNiveauResponse from(StockNiveau n) {
         var art = n.getArticle();
         var ent = n.getEntrepot();
@@ -53,7 +64,9 @@ public record StockNiveauResponse(
             valeurAchat,
             prixAchat,
             stockMin,
-            qte.compareTo(stockMin) < 0
+            qte.compareTo(stockMin) < 0,
+            BigDecimal.ZERO,
+            qte
         );
     }
 }

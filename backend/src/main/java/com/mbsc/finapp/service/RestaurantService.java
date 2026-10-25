@@ -15,6 +15,7 @@ import com.mbsc.finapp.domain.MouvementStock;
 import com.mbsc.finapp.domain.ParametresRestaurant;
 import com.mbsc.finapp.domain.Production;
 import com.mbsc.finapp.domain.SalleRestaurant;
+import com.mbsc.finapp.domain.SortieBoisson;
 import com.mbsc.finapp.domain.SortiePlat;
 import com.mbsc.finapp.domain.SortieProvision;
 import com.mbsc.finapp.domain.StockGrandLivre;
@@ -60,6 +61,8 @@ import com.mbsc.finapp.dto.restaurant.RecetteResponse;
 import com.mbsc.finapp.dto.restaurant.RetraitPerimesRequest;
 import com.mbsc.finapp.dto.restaurant.SalleRequest;
 import com.mbsc.finapp.dto.restaurant.SalleResponse;
+import com.mbsc.finapp.dto.restaurant.SortieBoissonRequest;
+import com.mbsc.finapp.dto.restaurant.SortieBoissonResponse;
 import com.mbsc.finapp.dto.restaurant.SortiePlatRequest;
 import com.mbsc.finapp.dto.restaurant.SortiePlatResponse;
 import com.mbsc.finapp.dto.restaurant.TableRequest;
@@ -172,6 +175,10 @@ public class RestaurantService {
     private final LotStockRepository lotStockRepository;
     /** Sorties de plats hors vente (périmé, renversé, offert...) — voir {@link #enregistrerSortiePlat}. */
     private final SortiePlatRepository sortiePlatRepository;
+    /** Pertes des boissons sans consigne (V134). */
+    private final com.mbsc.finapp.repository.SortieBoissonRepository sortieBoissonRepository;
+    /** Stock mis de côté par les commandes en attente : on ne le perd ni ne l'offre (V134). */
+    private final ReservationStockService reservations;
     /** Verrou des retraits de plats périmés (voir {@link #retirerPlatsPerimesInterne}). */
     private final ParametresRestaurantRepository parametresRestaurantRepository;
 
@@ -276,7 +283,7 @@ public class RestaurantService {
             genererCompteDedie(estPlat ? RACINE_COMPTE_CHARGE_PLAT : RACINE_COMPTE_CHARGE_BOISSON, RoleCompteArticle.VARIATION, req).getNumero(),
             genererCompteDedie(estPlat ? RACINE_COMPTE_PRODUIT_PLAT : RACINE_COMPTE_PRODUIT_BOISSON, RoleCompteArticle.PRODUIT, req).getNumero(),
             genererCompteDedie(RACINE_COMPTE_ACHAT_MARCHANDISE, RoleCompteArticle.ACHAT, req).getNumero(),
-            req.prixVente(), req.prixAchat(), req.minerais(), req.soumisTva(), req.stockMin(), req.actif()
+            req.prixVente(), req.prixAchat(), req.minerais(), req.soumisTva(), req.stockMin(), req.actif(), req.sansConsigne()
         );
         ArticleResponse cree = stockService.creerArticleInterne(reqAvecComptes);
         log.info("Article de carte créé [code={}, type={}]", cree.code(), cree.type());
@@ -305,7 +312,26 @@ public class RestaurantService {
     public ArticleResponse modifierArticleCarte(Long id, ArticleRequest req) {
         exigerTypeCarte(req.type());
         Article existant = exigerArticleDeLaCarte(id);
+        if (existant.getType() == TypeArticle.BOISSON && Boolean.TRUE.equals(req.sansConsigne()) && !existant.isSansConsigne()) {
+            retirerConditionnementInutilise(existant);
+        }
         return stockService.modifierArticleInterne(id, completerParLExistant(existant, req));
+    }
+
+    /**
+     * Une boisson qui devient « sans consigne » n'a plus de casier : un conditionnement jamais utilisé (aucun vide en stock,
+     * aucun mouvement) se retire tout seul ; sinon on refuse, son historique de vides devant rester lisible (V134).
+     */
+    private void retirerConditionnementInutilise(Article boisson) {
+        emballageRepository.findByArticleBoissonId(boisson.getId()).ifPresent(e -> {
+            if (e.getBouteillesVides() > 0 || mouvementRepository.existsByEmballageId(e.getId())) {
+                throw new IllegalArgumentException("« " + boisson.getLibelle() + " » a déjà un casier (" + e.getCode() + ") et "
+                    + "un historique de bouteilles vides : elle reste consignée. Une boisson sans consigne (whisky, vin, jus en "
+                    + "carton…) se crée sans casier.");
+            }
+            emballageRepository.delete(e);
+            log.info("Conditionnement {} retiré : la boisson {} devient sans consigne", e.getCode(), boisson.getCode());
+        });
     }
 
     /**
@@ -331,7 +357,8 @@ public class RestaurantService {
             req.minerais() != null ? req.minerais() : a.isMinerais(),
             req.soumisTva() != null ? req.soumisTva() : a.isSoumisTva(),
             req.stockMin() != null ? req.stockMin() : a.getStockMin(),
-            req.actif() != null ? req.actif() : a.isActif()
+            req.actif() != null ? req.actif() : a.isActif(),
+            req.sansConsigne() != null ? req.sansConsigne() : a.isSansConsigne()
         );
     }
 
@@ -404,8 +431,10 @@ public class RestaurantService {
             .filter(a -> perimetre.autorise(a.getType()))
             .map(Article::getId)
             .collect(java.util.stream.Collectors.toSet());
+        Map<Long, Map<Long, BigDecimal>> reserve = reservations.reservations();
         return stockService.etatStockInterne().stream()
             .filter(s -> idsCarte.contains(s.articleId()))
+            .map(s -> s.avecReserve(reserve.getOrDefault(s.articleId(), Map.of()).getOrDefault(s.entrepotId(), BigDecimal.ZERO)))
             .toList();
     }
 
@@ -1215,7 +1244,7 @@ public class RestaurantService {
             genererCompteDedie(RACINE_COMPTE_CHARGE_PROVISION, RoleCompteArticle.VARIATION, req).getNumero(),
             req.compteProduitNumero(),
             genererCompteDedie(RACINE_COMPTE_ACHAT_PROVISION, RoleCompteArticle.ACHAT, req).getNumero(),
-            req.prixVente(), req.prixAchat(), req.minerais(), req.soumisTva(), req.stockMin(), req.actif()
+            req.prixVente(), req.prixAchat(), req.minerais(), req.soumisTva(), req.stockMin(), req.actif(), null
         );
         ArticleResponse cree = stockService.creerArticleInterne(reqAvecComptes);
         log.info("Provision créée [code={}]", cree.code());
@@ -1578,6 +1607,11 @@ public class RestaurantService {
     @PreAuthorize(ECRITURE_CUISINE)
     @Transactional
     public SortiePlatResponse enregistrerSortiePlat(SortiePlatRequest req) {
+        Article plat = articleRepository.findById(req.articleId())
+            .orElseThrow(() -> RessourceIntrouvableException.of("Article", req.articleId()));
+        Entrepot entrepot = entrepotRepository.findById(req.entrepotId())
+            .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
+        reservations.exigerDisponible(plat, entrepot, req.quantite(), null);
         return sortiePlat(req, currentUser.requireUser());
     }
 
@@ -1655,6 +1689,83 @@ public class RestaurantService {
     }
 
     // ---------------------------------------------------------------------
+    // Pertes des boissons sans consigne (V134)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Perte d'une boisson sans consigne (casse, péremption, cadeau) : la boisson sort du stock au coût moyen, sur le compte
+     * de la même perte d'une boisson consignée (casse : compte de la boisson ; périmée : 6031.2 ; offerte : 6276.1). Aucun
+     * vide : ces boissons n'en ont pas. Une boisson consignée se déclare, elle, par les mouvements de vides (sa bouteille
+     * suit). Ce que des commandes en attente ont mis de côté ne se perd pas.
+     */
+    @PreAuthorize(ECRITURE_BAR)
+    @Transactional
+    public SortieBoissonResponse enregistrerSortieBoisson(SortieBoissonRequest req) {
+        Article boisson = articleRepository.findById(req.articleId())
+            .orElseThrow(() -> RessourceIntrouvableException.of("Article", req.articleId()));
+        if (boisson.getType() != TypeArticle.BOISSON) {
+            throw new IllegalArgumentException("L'article " + boisson.getCode() + " n'est pas une boisson.");
+        }
+        if (!boisson.isSansConsigne()) {
+            throw new IllegalArgumentException("« " + boisson.getLibelle() + " » est une boisson consignée : déclarez sa perte "
+                + "par un mouvement de bouteilles vides (casse d'une pleine, périmée, offerte), qui gère aussi sa bouteille.");
+        }
+        Entrepot entrepot = entrepotRepository.findById(req.entrepotId())
+            .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
+        reservations.exigerDisponible(boisson, entrepot, req.quantite(), null);
+        User auteur = currentUser.requireUser();
+        LocalDate date = req.dateSortie() == null ? LocalDate.now() : req.dateSortie();
+        String precision = req.precision() == null || req.precision().isBlank() ? null : req.precision().trim();
+        String libelle = req.motif().libelle() + " — " + boisson.getLibelle() + (precision != null ? " (" + precision + ")" : "");
+        MouvementStock mouvement = stockService.enregistrerSortieVenteInterne(date, libelleMouvement(libelle), entrepot,
+            List.of(new StockService.SortieVente(boisson, req.quantite(), null, comptePerte(req.motif().equivalentConsigne()))),
+            auteur);
+        BigDecimal valeur = mouvement.getLignes().stream()
+            .map(LigneMouvementStock::getMontant)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        SortieBoisson sortie = sortieBoissonRepository.save(SortieBoisson.builder()
+            .article(boisson)
+            .entrepot(entrepot)
+            .mouvementStock(mouvement)
+            .quantite(req.quantite())
+            .motif(req.motif())
+            .precisionMotif(precision)
+            .dateSortie(date)
+            .valeur(valeur)
+            .createdBy(auteur)
+            .build());
+        log.info("Perte de boisson sans consigne enregistrée [boisson={}, qte={}, motif={}, valeur={}, mouvement={}]",
+            boisson.getCode(), req.quantite(), req.motif(), valeur, mouvement.getReference());
+        return SortieBoissonResponse.from(sortie);
+    }
+
+    @PreAuthorize(LECTURE_BAR)
+    @Transactional(readOnly = true)
+    public List<SortieBoissonResponse> listerSortiesBoissons(LocalDate du, LocalDate au) {
+        LocalDate debut = du != null ? du : LocalDate.of(2000, 1, 1);
+        LocalDate fin = au != null ? au : LocalDate.of(2999, 12, 31);
+        return sortieBoissonRepository.rechercher(debut, fin).stream().map(SortieBoissonResponse::from).toList();
+    }
+
+    /** Annule une perte saisie par erreur : la boisson revient en stock au coût auquel elle était sortie, pièce extournée. */
+    @PreAuthorize(ECRITURE_BAR)
+    @Transactional
+    public SortieBoissonResponse annulerSortieBoisson(Long id) {
+        SortieBoisson sortie = sortieBoissonRepository.findById(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("SortieBoisson", id));
+        if (sortie.isAnnulee()) {
+            throw new TransitionInvalideException("Cette perte de boisson est déjà annulée.");
+        }
+        User auteur = currentUser.requireUser();
+        stockService.annulerMouvementInterne(sortie.getMouvementStock(), auteur);
+        sortie.setAnnulee(true);
+        sortie.setAnnuleeLe(java.time.Instant.now());
+        sortie.setAnnuleePar(auteur);
+        log.info("Perte de boisson annulée [id={}, mouvement={}]", id, sortie.getMouvementStock().getReference());
+        return SortieBoissonResponse.from(sortie);
+    }
+
+    // ---------------------------------------------------------------------
     // Emballages : conditionnement et stock de vides
     // ---------------------------------------------------------------------
 
@@ -1705,6 +1816,11 @@ public class RestaurantService {
         if (boisson.getType() != TypeArticle.BOISSON) {
             throw new IllegalArgumentException(
                 "L'article " + boisson.getCode() + " n'est pas une boisson : il ne peut pas porter un conditionnement");
+        }
+        if (boisson.isSansConsigne()) {
+            throw new IllegalArgumentException("« " + boisson.getLibelle() + " » est une boisson sans consigne : elle n'a pas "
+                + "de casier ni de bouteilles vides. Si ses bouteilles doivent être gérées, rendez-la « consignée » sur sa fiche "
+                + "(Carte) avant de créer son casier.");
         }
         e.setCode(req.code());
         e.setLibelle(req.libelle());
@@ -1767,6 +1883,7 @@ public class RestaurantService {
             }
             Entrepot entrepot = entrepotRepository.findById(req.entrepotId())
                 .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId()));
+            reservations.exigerDisponible(e.getArticleBoisson(), entrepot, BigDecimal.valueOf(req.quantite()), null);
             CompteOHADA compteCharge = comptePerte(req.type());
             String motifLibelle = switch (req.type()) {
                 case PERIME -> "Boisson périmée";
@@ -2433,6 +2550,25 @@ public class RestaurantService {
                     appliquerEtJournaliser(e, TypeMouvementEmballage.RETOUR_VENTE, reprise,
                         vente.getDateVente(), "Annulation vente " + vente.getReference(), vente, auteur);
                 }));
+    }
+
+    /**
+     * Retour remboursé d'une boisson consignée remise en stock pleine : la bouteille n'a pas été vidée, on reprend le vide
+     * que la vente avait fait entrer (RETOUR_VENTE). Plafonné au stock de vides, comme l'annulation d'une vente. Sans effet
+     * pour une boisson sans conditionnement (V134).
+     */
+    @Transactional
+    public void reprendreVidesSurRetourInterne(Article boisson, BigDecimal quantite, LocalDate date, String motif, Vente vente,
+                                               User auteur) {
+        if (boisson == null || boisson.getType() != TypeArticle.BOISSON) {
+            return;
+        }
+        emballageRepository.findByArticleBoissonIdPourMiseAJour(boisson.getId()).ifPresent(e -> {
+            int reprise = plafonner(bouteilles(quantite), e.getBouteillesVides());
+            if (reprise > 0) {
+                appliquerEtJournaliser(e, TypeMouvementEmballage.RETOUR_VENTE, reprise, date, motif, vente, auteur);
+            }
+        });
     }
 
     /**

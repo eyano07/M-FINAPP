@@ -25,6 +25,8 @@ import com.mbsc.finapp.dto.restaurant.RetraitPerimesRequest;
 import com.mbsc.finapp.dto.restaurant.RestaurantAnalyseIaResponse;
 import com.mbsc.finapp.dto.restaurant.SalleRequest;
 import com.mbsc.finapp.dto.restaurant.SalleResponse;
+import com.mbsc.finapp.dto.restaurant.SortieBoissonRequest;
+import com.mbsc.finapp.dto.restaurant.SortieBoissonResponse;
 import com.mbsc.finapp.dto.restaurant.SortiePlatRequest;
 import com.mbsc.finapp.dto.restaurant.SortiePlatResponse;
 import com.mbsc.finapp.dto.restaurant.StatutTableRequest;
@@ -37,6 +39,9 @@ import com.mbsc.finapp.service.RestaurantAnalyseIaService;
 import com.mbsc.finapp.service.RestaurantService;
 import com.mbsc.finapp.service.VenteService;
 import jakarta.validation.Valid;
+import com.mbsc.finapp.dto.vente.DecisionRetourRequest;
+import com.mbsc.finapp.dto.vente.RetourVenteResponse;
+import com.mbsc.finapp.service.RetourVenteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -64,6 +69,7 @@ public class RestaurantController {
 
     private final RestaurantService service;
     private final VenteService venteService;
+    private final RetourVenteService retoursVentes;
     private final RestaurantAnalyseIaService analyseIaService;
 
     // ── Tableau de bord ───────────────────────────────────────────────────
@@ -393,6 +399,47 @@ public class RestaurantController {
     @PostMapping("/plats/sorties/{id}/annuler")
     public SortiePlatResponse annulerSortiePlat(@PathVariable Long id) {
         return service.annulerSortiePlat(id);
+    }
+
+    // ── Pertes des boissons sans consigne (casse, périmée, offerte : V134) ──
+
+    @GetMapping("/boissons/sorties")
+    public List<SortieBoissonResponse> listerSortiesBoissons(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        return service.listerSortiesBoissons(du, au);
+    }
+
+    /** Sortie au coût moyen, au compte de la perte (casse : compte de la boisson ; périmée 6031.2 ; offerte 6276.1). */
+    @PostMapping("/boissons/sorties")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SortieBoissonResponse enregistrerSortieBoisson(@Valid @RequestBody SortieBoissonRequest req) {
+        return service.enregistrerSortieBoisson(req);
+    }
+
+    /** Remet la boisson en stock et extourne la pièce ; la perte reste dans l'historique, annulée. */
+    @PostMapping("/boissons/sorties/{id}/annuler")
+    public SortieBoissonResponse annulerSortieBoisson(@PathVariable Long id) {
+        return service.annulerSortieBoisson(id);
+    }
+
+    // ── Retours de ventes payées à approuver par les responsables (V134) ──
+
+    @GetMapping("/retours-ventes")
+    public List<RetourVenteResponse> listerRetoursVentes() {
+        return retoursVentes.listerPourResponsable();
+    }
+
+    @PostMapping("/retours-ventes/{id}/approuver")
+    public RetourVenteResponse approuverRetourVente(@PathVariable Long id,
+                                                    @Valid @RequestBody(required = false) DecisionRetourRequest req) {
+        return retoursVentes.approuver(id, req);
+    }
+
+    @PostMapping("/retours-ventes/{id}/refuser")
+    public RetourVenteResponse refuserRetourVente(@PathVariable Long id, @Valid @RequestBody DecisionRetourRequest req) {
+        return retoursVentes.refuser(id, req);
     }
 
     /** Annule une réception directe ou une sortie de provision saisie par erreur. */

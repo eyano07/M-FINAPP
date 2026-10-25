@@ -181,6 +181,11 @@ public final class AuditLibelles {
         r("POST", "/ventes/{}/valider", "Validation d'une vente");
         r("POST", "/ventes/{}/annuler", "Annulation d'une vente");
         r("POST", "/ventes/{}/regler", "Règlement d'une vente à crédit");
+        r("POST", "/ventes/{}/lignes/{}/retirer", "Retour d'un article commandé avant paiement");
+        r("POST", "/ventes/{}/abandonner", "Abandon d'une commande en attente");
+        r("POST", "/ventes/{}/retours", "Demande de retour d'une vente payée");
+        r("POST", "/ventes/retours/{}/rembourser", "Remboursement d'un retour de vente");
+        r("POST", "/ventes/retours/{}/annuler", "Retrait d'une demande de retour de vente");
         r("POST", "/ventes/{}/facture-normalisee/retransmettre", "Retransmission d'une facture normalisée (DGI)");
         r("POST", "/clients", "Création d'un client");
         r("PUT", "/clients/{}", "Modification d'un client");
@@ -256,6 +261,10 @@ public final class AuditLibelles {
         r("POST", "/restaurant/plats/perimes/retirer", "Retrait du stock des plats périmés");
         r("POST", "/restaurant/plats/sorties", "Enregistrement d'une sortie de plats");
         r("POST", "/restaurant/plats/sorties/{}/annuler", "Annulation d'une sortie de plats");
+        r("POST", "/restaurant/boissons/sorties", "Perte d'une boisson sans consigne");
+        r("POST", "/restaurant/boissons/sorties/{}/annuler", "Annulation de la perte d'une boisson sans consigne");
+        r("POST", "/restaurant/retours-ventes/{}/approuver", "Accord du responsable sur un retour de vente");
+        r("POST", "/restaurant/retours-ventes/{}/refuser", "Refus du responsable sur un retour de vente");
         r("POST", "/restaurant/productions", "Enregistrement d'une production de plats");
         r("POST", "/restaurant/productions/{}/annuler", "Annulation d'une production de plats");
         r("POST", "/restaurant/provisions", "Création d'une provision (matière première)");

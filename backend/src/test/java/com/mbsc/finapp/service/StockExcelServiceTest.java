@@ -75,7 +75,7 @@ class StockExcelServiceTest {
     private static StockNiveauResponse niveau(String code, String libelle, String unite, String entrepot,
                                               String quantite, String cmp, String valeur, String stockMin, boolean sousSeuil) {
         return new StockNiveauResponse(1L, code, libelle, unite, 1L, entrepot,
-            d(quantite), d(valeur), d(cmp), d(valeur), d(cmp), d(stockMin), sousSeuil);
+            d(quantite), d(valeur), d(cmp), d(valeur), d(cmp), d(stockMin), sousSeuil, java.math.BigDecimal.ZERO, d(quantite));
     }
 
     // ---------------------------------------------------------------------

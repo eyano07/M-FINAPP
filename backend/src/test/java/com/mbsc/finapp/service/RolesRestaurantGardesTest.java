@@ -50,9 +50,10 @@ class RolesRestaurantGardesTest {
         "suggererCodeProvision", "creerProvision", "modifierProvision", "annulerMouvementProvision",
         "enregistrerSortieProvision", "enregistrerSortiePlat", "annulerSortiePlat");
     private static final List<String> BAR_LECTURE = List.of(
-        "listerLotsBoissons", "listerEmballages", "listerMouvements", "tableauBord");
+        "listerLotsBoissons", "listerEmballages", "listerMouvements", "tableauBord", "listerSortiesBoissons");
     private static final List<String> BAR_ECRITURE = List.of(
-        "creerEmballage", "modifierEmballage", "enregistrerMouvement", "annulerMouvementEmballage");
+        "creerEmballage", "modifierEmballage", "enregistrerMouvement", "annulerMouvementEmballage",
+        "enregistrerSortieBoisson", "annulerSortieBoisson");
     private static final List<String> PARTAGEES = List.of(
         "listerCarte", "etatStockCarte", "listerEntrepots");
     private static final List<String> SALLES_ET_TABLES = List.of(

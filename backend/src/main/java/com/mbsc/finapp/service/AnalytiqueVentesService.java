@@ -4,8 +4,10 @@ import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.LigneMouvementStock;
+import com.mbsc.finapp.domain.LigneRetourVente;
 import com.mbsc.finapp.domain.LigneVente;
 import com.mbsc.finapp.domain.PieceComptable;
+import com.mbsc.finapp.domain.RetourVente;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.Vente;
 import com.mbsc.finapp.domain.enums.ActiviteAnalytique;
@@ -228,6 +230,97 @@ public class AnalytiqueVentesService {
         PieceComptable piece = comptabilite.creerPieceInterne(JournalComptable.ANALYTIQUE, "Analytique — vente " + ref, date,
             ecritures, auteur);
         log.info("Vente {} reflétée en analytique [pièce={}, CA={}, coût={}]", ref, piece.getReference(),
+            reflet.totalChiffreAffaires(), reflet.totalCouts());
+        return piece;
+    }
+
+    /**
+     * Reflet inverse de la part rendue d'une vente (retour remboursé, V134) : le chiffre d'affaires HT rendu et le coût des
+     * marchandises remises en stock, par activité, passés en sens inverse du reflet de la vente. N'écrit rien et ne lève rien
+     * si le reflet est impossible : le remboursement se fait quand même.
+     *
+     * @return la pièce analytique, ou {@code null}
+     */
+    @Transactional
+    public PieceComptable refleterRetourInterne(RetourVente retour, User auteur) {
+        try {
+            return creerRefletRetour(retour, auteur);
+        } catch (RuntimeException e) {
+            log.warn("Reflet analytique du retour {} impossible : {}", retour.getReference(), e.getMessage());
+            return null;
+        }
+    }
+
+    private PieceComptable creerRefletRetour(RetourVente retour, User auteur) {
+        List<AnalytiqueVentesCalcul.LigneVue> lignes = new ArrayList<>();
+        List<AnalytiqueVentesCalcul.Cout> couts = new ArrayList<>();
+        for (LigneRetourVente l : retour.getLignes()) {
+            Article article = l.getLigneVente().getArticle();
+            if (article != null && article.getCompteProduit() != null) {
+                lignes.add(new AnalytiqueVentesCalcul.LigneVue(ActiviteAnalytique.de(article), article.getCompteProduit().getId(),
+                    l.getMontantHt()));
+            }
+            if (l.getMouvementStock() != null) {
+                l.getMouvementStock().getLignes().stream()
+                    .filter(s -> s.getArticle() != null && s.getMontant() != null)
+                    .forEach(s -> couts.add(new AnalytiqueVentesCalcul.Cout(ActiviteAnalytique.de(s.getArticle()), s.getMontant())));
+            }
+        }
+        Set<Long> comptesProduits = new LinkedHashSet<>();
+        lignes.forEach(l -> comptesProduits.add(l.compteProduitId()));
+        // Le remboursement débite les comptes de produit : ce sont ces débits, en devise de base, qui se reflètent.
+        List<AnalytiqueVentesCalcul.CreditProduit> rendus = retour.getPiece() == null ? List.of() : retour.getPiece().getLignes().stream()
+            .filter(e -> e.getCompte() != null && comptesProduits.contains(e.getCompte().getId())
+                && e.getDebit() != null && e.getDebit().signum() > 0)
+            .map(e -> new AnalytiqueVentesCalcul.CreditProduit(e.getCompte().getId(), e.getDebit()))
+            .toList();
+        AnalytiqueVentesCalcul.Reflet reflet = AnalytiqueVentesCalcul.calculer(lignes, rendus, couts);
+        if (reflet.estVide()) {
+            return null;
+        }
+        LocalDate date = retour.getDateRemboursement() != null ? retour.getDateRemboursement() : LocalDate.now();
+        LocalDate cloture = periodeService.dateCloture();
+        if (cloture != null && !date.isAfter(cloture)) {
+            log.warn("Reflet analytique du retour {} impossible : sa date ({}) est dans une période clôturée (au {}).",
+                retour.getReference(), date, cloture);
+            return null;
+        }
+        Map<String, CompteOHADA> comptes = new LinkedHashMap<>();
+        List<String> numeros = new ArrayList<>();
+        if (!reflet.chiffreAffaires().isEmpty()) {
+            numeros.add(COMPTE_PRODUITS_REFLECHIS);
+            reflet.chiffreAffaires().keySet().forEach(a -> numeros.add(a.compteChiffreAffaires()));
+        }
+        if (!reflet.couts().isEmpty()) {
+            numeros.add(COMPTE_CHARGES_REFLECHIES);
+            reflet.couts().keySet().forEach(a -> numeros.add(a.compteCout()));
+        }
+        for (String numero : numeros) {
+            CompteOHADA compte = compteRepository.findByNumero(numero).orElse(null);
+            if (compte == null || !compte.isActif() || !compte.isImputable()) {
+                log.warn("Reflet analytique du retour {} impossible : le compte {} est inutilisable.", retour.getReference(), numero);
+                return null;
+            }
+            comptes.put(numero, compte);
+        }
+        String ref = retour.getReference() + " (vente " + retour.getVente().getReference() + ")";
+        BigDecimal taux = retour.getVente().getTauxJournalier();
+        List<EcritureGrandLivre> ecritures = new ArrayList<>();
+        if (!reflet.chiffreAffaires().isEmpty()) {
+            reflet.chiffreAffaires().forEach((a, m) -> ecritures.add(ecriture(comptes.get(a.compteChiffreAffaires()), m,
+                BigDecimal.ZERO, "Chiffre d'affaires HT rendu " + a.libelle() + " — retour " + ref, taux)));
+            ecritures.add(ecriture(comptes.get(COMPTE_PRODUITS_REFLECHIS), BigDecimal.ZERO, reflet.totalChiffreAffaires(),
+                "Produits réfléchis rendus — retour " + ref, taux));
+        }
+        if (!reflet.couts().isEmpty()) {
+            ecritures.add(ecriture(comptes.get(COMPTE_CHARGES_REFLECHIES), reflet.totalCouts(), BigDecimal.ZERO,
+                "Charges réfléchies rendues — retour " + ref, taux));
+            reflet.couts().forEach((a, m) -> ecritures.add(ecriture(comptes.get(a.compteCout()), BigDecimal.ZERO, m,
+                "Coût des ventes rendu " + a.libelle() + " — retour " + ref, taux)));
+        }
+        PieceComptable piece = comptabilite.creerPieceInterne(JournalComptable.ANALYTIQUE, "Analytique — retour " + ref, date,
+            ecritures, auteur);
+        log.info("Retour {} reflété en analytique [pièce={}, CA rendu={}, coût rendu={}]", ref, piece.getReference(),
             reflet.totalChiffreAffaires(), reflet.totalCouts());
         return piece;
     }

@@ -27,6 +27,9 @@ import java.math.BigDecimal;
  *                          restaurant, ignoree pour tout autre type.
  * @param societe           societe du produit (brasserie, fabricant ou fournisseur) ;
  *                          facultative, retenue uniquement pour une BOISSON.
+ * @param sansConsigne      BOISSON seulement : true pour une boisson sans consigne (whisky,
+ *                          vin, jus en carton...), sans casier ni bouteilles vides (V134) ;
+ *                          absent a la modification, la valeur actuelle est gardee.
  */
 public record ArticleRequest(
     @NotBlank String code,
@@ -45,5 +48,6 @@ public record ArticleRequest(
     Boolean minerais,
     Boolean soumisTva,
     @PositiveOrZero BigDecimal stockMin,
-    Boolean actif
+    Boolean actif,
+    Boolean sansConsigne
 ) {}

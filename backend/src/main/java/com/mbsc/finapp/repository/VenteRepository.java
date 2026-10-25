@@ -202,4 +202,40 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
         order by v.dateVente
     """)
     List<LigneVente> ligneVentesCartePeriode(@Param("du") LocalDate du, @Param("au") LocalDate au);
+
+    // ---------------------------------------------------------------------
+    // Commandes en attente (ventes BROUILLON) : stock mis de cote (V134)
+    // ---------------------------------------------------------------------
+
+    /** Quantite qu'immobilisent les commandes en attente pour cet article dans cet entrepot, hors une vente donnee. */
+    @Query("""
+        select coalesce(sum(l.quantite), 0) from LigneVente l
+        where l.vente.statut = com.mbsc.finapp.domain.enums.StatutVente.BROUILLON
+          and l.vente.entrepot.id = :entrepotId
+          and l.article.id = :articleId
+          and l.vente.id <> :venteExclue
+    """)
+    java.math.BigDecimal quantiteReservee(@Param("articleId") Long articleId, @Param("entrepotId") Long entrepotId,
+                                          @Param("venteExclue") Long venteExclue);
+
+    /** References des commandes en attente qui immobilisent cet article (pour le dire au caissier). */
+    @Query("""
+        select distinct l.vente.reference from LigneVente l
+        where l.vente.statut = com.mbsc.finapp.domain.enums.StatutVente.BROUILLON
+          and l.vente.entrepot.id = :entrepotId
+          and l.article.id = :articleId
+          and l.vente.id <> :venteExclue
+        order by l.vente.reference
+    """)
+    List<String> referencesReservant(@Param("articleId") Long articleId, @Param("entrepotId") Long entrepotId,
+                                     @Param("venteExclue") Long venteExclue);
+
+    /** Tout le stock mis de cote : [id de l'article, id de l'entrepot, quantite]. */
+    @Query("""
+        select l.article.id, l.vente.entrepot.id, sum(l.quantite) from LigneVente l
+        where l.vente.statut = com.mbsc.finapp.domain.enums.StatutVente.BROUILLON
+          and l.vente.entrepot is not null
+        group by l.article.id, l.vente.entrepot.id
+    """)
+    List<Object[]> reservations();
 }

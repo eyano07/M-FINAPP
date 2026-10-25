@@ -13,7 +13,11 @@ public interface FactureNormaliseeRepository extends JpaRepository<FactureNormal
 
     List<FactureNormalisee> findByVenteIdOrderByIdAsc(Long venteId);
 
-    Optional<FactureNormalisee> findByVenteIdAndType(Long venteId, FactureNormalisee.Type type);
+    /** Facture de la vente ou avoir de son annulation complète (uniques par vente) : jamais un avoir partiel de retour. */
+    Optional<FactureNormalisee> findByVenteIdAndTypeAndRetourIsNull(Long venteId, FactureNormalisee.Type type);
+
+    /** Avoir partiel d'un retour remboursé (V134). */
+    Optional<FactureNormalisee> findByRetourId(Long retourId);
 
     @Query("select f from FactureNormalisee f where f.statut = com.mbsc.finapp.domain.FactureNormalisee$Statut.EN_ATTENTE "
         + "and (f.prochaineTentative is null or f.prochaineTentative <= :maintenant) order by f.id")

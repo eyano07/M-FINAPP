@@ -70,4 +70,7 @@ public interface MouvementEmballageRepository extends JpaRepository<MouvementEmb
         order by m.dateMouvement desc, m.id desc
     """)
     List<MouvementEmballage> rechercherPeriode(LocalDate du, LocalDate au);
+
+    /** true si ce conditionnement a deja un historique de vides (il ne se retire plus, V134). */
+    boolean existsByEmballageId(Long emballageId);
 }
