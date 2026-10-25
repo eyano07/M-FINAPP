@@ -141,8 +141,12 @@ public class InstantaneService {
     /**
      * Applique un instantane (gzip) en remplacement complet des tables recopiees, dans une seule transaction : tout ou
      * rien. Refuse un instantane d'une autre version du schema ou qui ne cite pas exactement les memes tables.
+     *
+     * @param fusionner vrai pour la resynchronisation d'une copie en ligne (elle garde ce qu'elle ecrit elle-meme : session
+     *                  des comptes, activations en attente, notifications lues) ; faux pour l'activation du mode local
+     *                  (tout ce qui est ici est remplace)
      */
-    public Bilan importer(InputStream entree) {
+    public Bilan importer(InputStream entree, boolean fusionner) {
         return txEcriture.execute(s -> {
             try {
                 BufferedReader r = new BufferedReader(new InputStreamReader(new GZIPInputStream(entree, 64 * 1024),
@@ -152,7 +156,6 @@ public class InstantaneService {
                 applicateur.preparerRemplacement();
                 String courante = null;
                 Set<String> vues = new HashSet<>();
-                long lignes = 0;
                 List<String> chemins = List.of();
                 Map<String, Long> sequences = new LinkedHashMap<>();
                 boolean fin = false;
@@ -170,7 +173,6 @@ public class InstantaneService {
                             }
                         }
                         case "table" -> {
-                            if (courante != null) lignes += terminer(courante);
                             courante = noeud.path("nom").asText();
                             schema.table(courante);
                             vues.add(courante);
@@ -192,7 +194,6 @@ public class InstantaneService {
                         default -> throw new IllegalStateException("Instantané mal formé (élément « " + type + " »).");
                     }
                 }
-                if (courante != null) lignes += terminer(courante);
                 if (!fin) {
                     throw new IllegalStateException("Instantané incomplet (transfert interrompu) : rien n'a été modifié.");
                 }
@@ -201,6 +202,7 @@ public class InstantaneService {
                     manquantes.removeAll(vues);
                     throw new IllegalStateException("Instantané incomplet : tables absentes " + manquantes + ".");
                 }
+                long lignes = applicateur.remplacerToutes(fusionner);
                 applicateur.alignerSequences(sequences);
                 log.info("Instantane applique : {} table(s), {} ligne(s), {} fichier(s) cite(s)", vues.size(), lignes, chemins.size());
                 return new Bilan(vues.size(), lignes, chemins);
@@ -226,11 +228,5 @@ public class InstantaneService {
         for (Map<String, Object> lien : liens) {
             jdbc.update("update " + lien.get("tab") + " set " + ReplicationSchema.ident((String) lien.get("col")) + " = null");
         }
-    }
-
-    private long terminer(String table) {
-        long n = applicateur.remplacer(table);
-        jdbc.update("delete from _replication_transit where nom_table = ?", table);
-        return n;
     }
 }

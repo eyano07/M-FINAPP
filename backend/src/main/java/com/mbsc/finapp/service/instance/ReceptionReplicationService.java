@@ -175,7 +175,7 @@ public class ReceptionReplicationService {
     /** Resynchronisation complete : l'instantane du serveur local remplace toutes les donnees recopiees ici. */
     public ResultatLot resynchroniser(byte[] gzip) {
         exigerMiroir();
-        InstantaneService.Bilan bilan = instantane.importer(new ByteArrayInputStream(gzip));
+        InstantaneService.Bilan bilan = instantane.importer(new ByteArrayInputStream(gzip), true);
         instance.noterSucces();
         tracer("RESYNCHRONISATION", "Resynchronisation complète depuis le serveur local : " + bilan.tables() + " table(s), "
             + bilan.lignes() + " ligne(s).");

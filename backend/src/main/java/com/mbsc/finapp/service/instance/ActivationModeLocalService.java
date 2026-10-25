@@ -7,6 +7,8 @@ import com.mbsc.finapp.security.CurrentUserProvider;
 import com.mbsc.finapp.service.StorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.NestedExceptionUtils;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -134,7 +136,7 @@ public class ActivationModeLocalService {
                 }
             }
             try (InputStream in = flux.body()) {
-                bilan = instantane.importer(in);
+                bilan = instantane.importer(in, false);
             }
             importe = true;
 
@@ -173,7 +175,9 @@ public class ActivationModeLocalService {
                 progression.debut(), Instant.now());
             log.info("Mode local actif");
         } catch (Exception e) {
-            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            // Une erreur SQL arrive enveloppee avec toute la requete : seule la cause (message de la base) parle a l'administrateur.
+            Throwable cause = e instanceof DataAccessException ? NestedExceptionUtils.getMostSpecificCause(e) : e;
+            String message = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
             log.error("Activation du mode local en echec : {}", message, e);
             if (appaire && !bascule) {
                 try {

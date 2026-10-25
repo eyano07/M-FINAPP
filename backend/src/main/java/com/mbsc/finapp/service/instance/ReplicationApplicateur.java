@@ -80,10 +80,10 @@ public class ReplicationApplicateur {
     }
 
     // ---------------------------------------------------------------------
-    // Instantane : remplacement complet d'une table (ce qui n'y est pas est supprime)
+    // Instantane et resynchronisation : remplacement complet de toutes les tables
     // ---------------------------------------------------------------------
 
-    /** Prepare le remplacement d'une table : zone de transit temporaire (supprimee a la fin de la transaction). */
+    /** Prepare le remplacement : zone de transit temporaire (supprimee a la fin de la transaction). */
     public void preparerRemplacement() {
         jdbc.execute("create temp table if not exists _replication_transit (nom_table text not null, ligne jsonb not null) "
             + "on commit drop");
@@ -98,27 +98,57 @@ public class ReplicationApplicateur {
     }
 
     /**
-     * Remplace le contenu de la table par les lignes en transit : supprime d'abord ce qui n'y figure pas (par cle
-     * primaire : ainsi un compte ou un compte comptable de meme email ou numero, mais d'identifiant different, ne gene
-     * pas), puis insere ou met a jour les autres (avec les fusions particulieres). Renvoie le nombre de lignes en transit.
+     * Remplace le contenu de TOUTES les tables recopiees par les lignes en transit : tout est supprime puis insere dans la
+     * meme transaction. Un remplacement ligne a ligne (« insert ... on conflict (cle primaire) do update ») ne convient
+     * pas : deux bases nees separement peuvent donner les memes identifiants a des lignes differentes (ex. les numeros de
+     * comptes comptables), et la mise a jour d'une ligne viole alors une contrainte d'unicite tant que l'autre ligne n'a
+     * pas encore change de valeur. Table par table, les enfants sont supprimes avant leurs parents (les suppressions en
+     * cascade n'ont plus rien a faire) et les parents inseres avant leurs enfants ; les cles etrangeres sont differees
+     * ({@link #differerContraintes}) et controlees a la fin.
+     *
+     * @param fusionner garde ce que la copie en ligne ecrit elle-meme (voir l'en-tete de classe) : a demander pour la
+     *                  resynchronisation d'une copie, pas pour l'activation du mode local (les donnees d'ici sont jetees)
+     * @return le nombre de lignes inserees
      */
-    public long remplacer(String table) {
-        ReplicationSchema.Table t = schema.table(table);
-        String nom = "public." + ReplicationSchema.ident(table);
-        String cleTransit = t.cle().stream()
-            .map(c -> "'" + c.replace("'", "''") + "', s.ligne -> '" + c.replace("'", "''") + "'")
-            .collect(Collectors.joining(", ", "jsonb_build_object(", ")"));
-        String cleCible = t.cle().stream()
-            .map(c -> "'" + c.replace("'", "''") + "', to_jsonb(x." + ReplicationSchema.ident(c) + ")")
-            .collect(Collectors.joining(", ", "jsonb_build_object(", ")"));
-        jdbc.update("delete from " + nom + " x where not exists (select 1 from _replication_transit s where s.nom_table = ? "
-            + "and " + cleTransit + " = " + cleCible + ")", table);
+    public long remplacerToutes(boolean fusionner) {
+        List<String> parentsDabord = schema.ordreParentsDabord();
+        jdbc.execute("create index _replication_transit_nom on _replication_transit (nom_table)");
+        boolean avecFusion = fusionner && schema.tables().containsKey("users") && schema.tables().containsKey("notifications");
+        if (avecFusion) {
+            jdbc.execute("create temp table _fusion_users on commit drop as select id, version_jetons, mot_de_passe from public.users");
+            jdbc.execute("create temp table _fusion_notifications on commit drop as select id from public.notifications where lue");
+        }
+        for (int i = parentsDabord.size() - 1; i >= 0; i--) {
+            jdbc.update("delete from public." + ReplicationSchema.ident(parentsDabord.get(i)));
+        }
+        long total = 0;
+        for (String nom : parentsDabord) {
+            total += inserer(nom);
+        }
+        if (avecFusion) {
+            restaurerFusions();
+        }
+        return total;
+    }
+
+    private long inserer(String nomTable) {
+        ReplicationSchema.Table t = schema.table(nomTable);
+        String nom = "public." + ReplicationSchema.ident(nomTable);
         String colonnes = t.colonnes().stream().map(ReplicationSchema::ident).collect(Collectors.joining(", "));
         String selection = t.colonnes().stream().map(c -> "r." + ReplicationSchema.ident(c)).collect(Collectors.joining(", "));
-        jdbc.update("insert into " + nom + " as cible (" + colonnes + ") select " + selection + " from _replication_transit s, "
-            + "jsonb_populate_record(null::" + nom + ", s.ligne) r where s.nom_table = ? " + surConflit(t), table);
-        Long n = jdbc.queryForObject("select count(*) from _replication_transit where nom_table = ?", Long.class, table);
-        return n == null ? 0 : n;
+        return jdbc.update("insert into " + nom + " (" + colonnes + ") select " + selection + " from _replication_transit s, "
+            + "jsonb_populate_record(null::" + nom + ", s.ligne) r where s.nom_table = ?", nomTable);
+    }
+
+    /** Memes fusions que {@link #fusion} pour les lignes recopiees une a une, appliquees apres un remplacement complet. */
+    private void restaurerFusions() {
+        jdbc.update("update public.users u set version_jetons = f.version_jetons "
+            + "+ case when f.mot_de_passe is distinct from u.mot_de_passe then 1 else 0 end from _fusion_users f where f.id = u.id");
+        jdbc.update("update public.users u set actif = (select (a.contenu ->> 'actif')::boolean from public.actions_distantes a "
+            + "where a.type = 'ACTIVER_UTILISATEUR' and a.statut = 'EN_ATTENTE' and a.cible_id = u.id "
+            + "order by a.cree_le desc limit 1) where exists (select 1 from public.actions_distantes a "
+            + "where a.type = 'ACTIVER_UTILISATEUR' and a.statut = 'EN_ATTENTE' and a.cible_id = u.id)");
+        jdbc.update("update public.notifications n set lue = true from _fusion_notifications f where f.id = n.id and not n.lue");
     }
 
     // ---------------------------------------------------------------------

@@ -3,10 +3,14 @@ package com.mbsc.finapp.service.instance;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Tables recopiees du serveur local vers le serveur en ligne, lues dans le catalogue PostgreSQL : colonnes ecrivables
@@ -30,6 +34,7 @@ public class ReplicationSchema {
 
     private final JdbcTemplate jdbc;
     private volatile Map<String, Table> cache;
+    private volatile List<String> ordreCache;
 
     public ReplicationSchema(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -48,6 +53,56 @@ public class ReplicationSchema {
     /** Relit le catalogue (apres une migration ou la pose des declencheurs). */
     public void oublier() {
         cache = null;
+        ordreCache = null;
+    }
+
+    /**
+     * Tables recopiees, les tables referencees avant celles qui les referencent (cles etrangeres) : l'ordre d'insertion
+     * d'un remplacement complet ; l'ordre inverse est celui de la suppression (les enfants d'abord, pour que les
+     * suppressions en cascade n'aient plus rien a faire).
+     */
+    public List<String> ordreParentsDabord() {
+        List<String> o = ordreCache;
+        if (o == null) {
+            Map<String, Set<String>> parents = new LinkedHashMap<>();
+            for (String nom : tables().keySet()) parents.put(nom, new TreeSet<>());
+            for (Map<String, Object> l : jdbc.queryForList(
+                "select e.relname as enfant, p.relname as parent from pg_constraint c "
+                    + "join pg_class e on e.oid = c.conrelid join pg_class p on p.oid = c.confrelid "
+                    + "join pg_namespace n on n.oid = c.connamespace "
+                    + "where n.nspname = 'public' and c.contype = 'f' and c.conrelid <> c.confrelid")) {
+                Set<String> liste = parents.get((String) l.get("enfant"));
+                if (liste != null && parents.containsKey((String) l.get("parent"))) liste.add((String) l.get("parent"));
+            }
+            o = ordonner(parents);
+            ordreCache = o;
+        }
+        return o;
+    }
+
+    /**
+     * Tri topologique : chaque table apres ses parents (alphabetique a egalite). Les tables prises dans un cycle de cles
+     * etrangeres (hors auto-reference) viennent en dernier ; les cles etrangeres etant differees, leur ordre est sans
+     * consequence pour l'insertion.
+     */
+    static List<String> ordonner(Map<String, ? extends Collection<String>> parents) {
+        List<String> ordre = new ArrayList<>();
+        Set<String> faits = new HashSet<>();
+        boolean progres = true;
+        while (faits.size() < parents.size() && progres) {
+            progres = false;
+            for (Map.Entry<String, ? extends Collection<String>> e : parents.entrySet()) {
+                if (!faits.contains(e.getKey()) && faits.containsAll(e.getValue())) {
+                    ordre.add(e.getKey());
+                    faits.add(e.getKey());
+                    progres = true;
+                }
+            }
+        }
+        for (String nom : parents.keySet()) {
+            if (faits.add(nom)) ordre.add(nom);
+        }
+        return List.copyOf(ordre);
     }
 
     /**
