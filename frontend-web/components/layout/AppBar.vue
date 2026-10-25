@@ -93,6 +93,10 @@ const TYPE_META: Record<string, { icon: string; color: string }> = {
   // Action faite sur la copie en ligne (validation, nouvelle note...) appliquée ou refusée par le serveur local.
   ACTION_EN_LIGNE_APPLIQUEE: { icon: 'mdi-cloud-check-outline', color: '#0d9488' },
   ACTION_EN_LIGNE_REFUSEE: { icon: 'mdi-cloud-alert-outline', color: '#dc2626' },
+  RETOUR_VENTE_A_APPROUVER: { icon: 'mdi-keyboard-return', color: '#d97706' },
+  RETOUR_VENTE_APPROUVE: { icon: 'mdi-check-decagram-outline', color: '#2563eb' },
+  RETOUR_VENTE_REFUSE: { icon: 'mdi-close-octagon-outline', color: '#dc2626' },
+  RETOUR_VENTE_REMBOURSE: { icon: 'mdi-cash-refund', color: '#0d9488' },
 }
 const typeMeta = (type: string) => TYPE_META[type] ?? { icon: 'mdi-bell-outline', color: '#6b7280' }
 

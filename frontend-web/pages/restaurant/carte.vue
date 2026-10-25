@@ -25,6 +25,8 @@ interface ArticleCarte {
   soumisTva: boolean
   stockMin: number
   actif: boolean
+  /** Boisson sans consigne (whisky, vin, jus en carton…) : pas de casier ni de bouteilles vides (V134). */
+  sansConsigne?: boolean
 }
 
 const api = useApi()
@@ -97,6 +99,7 @@ const form = reactive({
   soumisTva: true,
   stockMin: 0,
   actif: true,
+  sansConsigne: false,
 })
 
 /** Équivalent indicatif dans l'autre devise, au taux du jour — n'influence ni la saisie ni l'enregistrement. */
@@ -197,7 +200,7 @@ function ouvrirCreation(type: 'PLAT' | 'BOISSON') {
     type, categorie: null, societe: '',
     compteStockNumero: d.stock, compteChargeNumero: d.charge, compteProduitNumero: d.produit,
     compteAchatNumero: d.achat,
-    devisePrixVente: 'CDF', prixVenteSaisi: null, soumisTva: true, stockMin: 0, actif: true,
+    devisePrixVente: 'CDF', prixVenteSaisi: null, soumisTva: true, stockMin: 0, actif: true, sansConsigne: false,
   })
   erreur.value = ''
   dialog.value = true
@@ -224,6 +227,7 @@ function ouvrirEdition(a: ArticleCarte) {
     soumisTva: a.soumisTva,
     stockMin: a.stockMin,
     actif: a.actif,
+    sansConsigne: !!a.sansConsigne,
   })
   erreur.value = ''
   dialog.value = true
@@ -314,6 +318,8 @@ async function enregistrer() {
       soumisTva: form.soumisTva,
       stockMin: form.stockMin,
       actif: form.actif,
+      // Consignée ou non : propre aux boissons (V134).
+      sansConsigne: form.type === 'BOISSON' ? form.sansConsigne : null,
     }
     if (editId.value) {
       await api(`/restaurant/carte/${editId.value}`, { method: 'PUT', body })
@@ -511,6 +517,7 @@ async function confirmerSuppression() {
         </template>
         <template #item.categorie="{ item }">
           <v-chip v-if="item.categorie" color="indigo" variant="tonal" size="small">{{ item.categorie }}</v-chip>
+          <v-chip v-if="item.type === 'BOISSON' && item.sansConsigne" color="teal" variant="tonal" size="small" class="ml-1">Sans consigne</v-chip>
           <span v-else class="text-medium-emphasis">—</span>
         </template>
         <!-- Un nom très long (100 caractères permis) est tronqué à l'affichage pour ne pas élargir le tableau ; le nom complet apparaît au survol. -->
@@ -631,6 +638,19 @@ async function confirmerSuppression() {
           />
         </template>
         <v-text-field v-model="form.uniteMesure" label="Unité (portion, bouteille...)" variant="outlined" density="comfortable" class="mb-3" />
+        <template v-if="form.type === 'BOISSON'">
+          <p class="carte-consigne__titre">Bouteilles vides</p>
+          <v-btn-toggle v-model="form.sansConsigne" mandatory color="primary" variant="outlined" rounded="lg" density="comfortable"
+            class="mb-1 w-100">
+            <v-btn :value="false" prepend-icon="mdi-bottle-wine-outline" class="flex-1-1">Consignée</v-btn>
+            <v-btn :value="true" prepend-icon="mdi-glass-tulip" class="flex-1-1">Sans consigne</v-btn>
+          </v-btn-toggle>
+          <p class="text-caption text-medium-emphasis mb-3">
+            {{ form.sansConsigne
+              ? 'Whisky, vin, champagne, jus en carton… : on ne gère pas les bouteilles vides. Achat par carton ou à l\'unité, sans échange de consigne.'
+              : 'Bière, sucrerie en casier… : chaque bouteille vendue revient en vides, l\'achat de casiers rend des vides (casier à définir dans Emballages).' }}
+          </p>
+        </template>
         <v-combobox
           v-model="form.categorie"
           :items="categoriesSuggerees"
@@ -718,4 +738,10 @@ async function confirmerSuppression() {
 .rst-stat--boissons { background: linear-gradient(135deg,#eef2ff,#e0e7ff); color: #4338ca; }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
+.carte-consigne__titre {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  margin: 0 0 4px;
+}
 </style>

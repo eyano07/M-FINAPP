@@ -201,6 +201,8 @@ const restaurantItems: NavEntree[] = [
       { title: 'Bouteilles vides', icon: 'mdi-bottle-wine-outline', to: '/restaurant/emballages', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
       { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/restaurant/emballages/mouvements', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
       { title: 'Achat de boissons', icon: 'mdi-truck-delivery-outline', to: '/restaurant/receptions', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_BAR },
+      // Whisky, vin, jus en carton… : pas de bouteilles vides, leurs pertes ont leur propre écran (V134).
+      { title: 'Pertes sans consigne', icon: 'mdi-glass-tulip', to: '/restaurant/pertes-boissons', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
     ],
   },
   {
@@ -212,6 +214,8 @@ const restaurantItems: NavEntree[] = [
       { title: 'Provisions (consolidé)', icon: 'mdi-view-list-outline', to: '/restaurant/provisions/consolide', module: 'RESTAURANT', roles: ROLES_STOCK_CUISINE },
     ],
   },
+  // Retours de ventes payées demandés par la caisse : le responsable du bar, de la cuisine ou du restaurant décide (V134).
+  { title: 'Retours de ventes', icon: 'mdi-keyboard-return', to: '/restaurant/retours', module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_BAR', 'RESP_CUISINE'] },
   { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/restaurant/parametres', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },
 ]
 

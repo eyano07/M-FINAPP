@@ -692,7 +692,8 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
               </v-chip>
             </button>
             <p v-if="c.statut === 'BROUILLON'" class="commande-brouillon">
-              Brouillon : pas encore validée, donc pas encaissée. Le caissier la valide pour l'encaisser.
+              En attente : pas encore validée, donc pas encaissée ; ce qu'elle commande est mis de côté pour cette table.
+              Le caissier la valide pour l'encaisser, ou y retire un article rendu.
             </p>
             <div v-if="commandeOuverteId === c.id" class="commande-detail">
               <div v-for="(l, li) in c.lignes" :key="li" class="commande-detail__ligne">
@@ -702,6 +703,10 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
               <p v-if="!c.lignes.length" class="text-caption text-medium-emphasis ma-0">
                 Détail indisponible.
               </p>
+              <v-btn v-if="peutEncaisser" size="small" variant="tonal" color="primary" class="mt-2" prepend-icon="mdi-open-in-new"
+                :to="`/ventes/${c.id}`">
+                {{ c.statut === 'BROUILLON' ? 'Gérer la commande (retirer, valider…)' : 'Ouvrir la vente (retour…)' }}
+              </v-btn>
             </div>
           </div>
 

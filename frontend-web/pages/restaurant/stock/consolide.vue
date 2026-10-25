@@ -33,6 +33,9 @@ interface StockNiveau {
   prixAchatMoyen: number
   stockMin: number
   sousSeuil: boolean
+  /** Mis de côté par les commandes en attente (V134) : ne se vend ni ne se perd tant qu'elles attendent. */
+  quantiteReservee?: number
+  quantiteDisponible?: number
 }
 interface ArticleCarte { id: number; type: 'PLAT' | 'BOISSON' }
 type TypeArticle = 'PLAT' | 'BOISSON'
@@ -209,6 +212,8 @@ function fraisApproche(item: { coutMoyen: number; prixAchatMoyen: number }): num
           { title: 'Type', key: 'type' },
           { title: 'Entrepôt', key: 'entrepotCode' },
           { title: 'Quantité', key: 'quantite', align: 'end' },
+          { title: 'Réservé', key: 'quantiteReservee', align: 'end' },
+          { title: 'Disponible', key: 'quantiteDisponible', align: 'end' },
           { title: 'Transport et manutention', key: 'fraisApprocheUnitaire', align: 'end', sortable: false },
           { title: 'Coût moyen', key: 'coutMoyen', align: 'end' },
           { title: 'Valeur', key: 'valeurTotale', align: 'end' },
@@ -233,6 +238,15 @@ function fraisApproche(item: { coutMoyen: number; prixAchatMoyen: number }): num
           <span :class="item.sousSeuil ? 'font-weight-bold text-error' : ''">
             {{ fmtQte(item.quantite) }} {{ item.uniteMesure || '' }}
           </span>
+        </template>
+        <!-- Mis de côté par les commandes en attente : visible pour savoir ce qui peut encore être servi à une autre table. -->
+        <template #item.quantiteReservee="{ item }">
+          <span v-if="item.quantiteReservee" class="text-warning font-weight-medium"
+            :title="'Commandé par des tables, pas encore validé'">{{ fmtQte(item.quantiteReservee) }}</span>
+          <span v-else class="text-medium-emphasis">—</span>
+        </template>
+        <template #item.quantiteDisponible="{ item }">
+          <span class="font-weight-medium">{{ fmtQte(item.quantiteDisponible ?? item.quantite) }}</span>
         </template>
         <!-- Un plat n'a pas de frais d'approche : son coût est celui de sa production. -->
         <template #item.fraisApprocheUnitaire="{ item }">

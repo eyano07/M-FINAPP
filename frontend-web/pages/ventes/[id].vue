@@ -7,7 +7,8 @@ interface LigneVente {
   id: number
   articleCode?: string
   designation: string
-  type?: 'MARCHANDISE' | 'SERVICE'
+  /** MARCHANDISE, SERVICE, BOISSON, PLAT… */
+  type?: string
   quantite: number
   prixUnitaire: number
   soumisTva: boolean
@@ -138,6 +139,211 @@ const peutRegler = computed(() =>
 const dialogReglement = ref(false)
 const banques = ref<Etablissement[]>([])
 const operateurs = ref<Etablissement[]>([])
+
+// ── Commande en attente (BROUILLON) : retour d'un article avant paiement, abandon (V134) ──────────────────────
+// Ce que la commande a commandé est mis de côté (non vendable à une autre table) jusqu'à sa validation ; retirer une
+// ligne ou abandonner la commande le rend disponible. Rien n'a encore été comptabilisé.
+const ligneARetirer = ref<LigneVente | null>(null)
+const quantiteARetirer = ref<number | null>(null)
+const confirmationAbandon = ref(false)
+function ouvrirRetrait(l: LigneVente) {
+  ligneARetirer.value = l
+  quantiteARetirer.value = l.quantite
+}
+async function retirerLigne() {
+  const l = ligneARetirer.value
+  if (!l || !vente.value) return
+  if (!quantiteARetirer.value || quantiteARetirer.value <= 0 || quantiteARetirer.value > l.quantite) {
+    erreur.value = `La quantité rendue doit être comprise entre 0 et ${fmtQte(l.quantite)}.`
+    return
+  }
+  busy.value = true
+  erreur.value = ''
+  try {
+    vente.value = await api<Vente>(`/ventes/${route.params.id}/lignes/${l.id}/retirer`, {
+      method: 'POST', body: { quantite: quantiteARetirer.value },
+    })
+    ligneARetirer.value = null
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Le retrait de l'article a échoué.")
+  } finally {
+    busy.value = false
+  }
+}
+async function abandonner() {
+  busy.value = true
+  erreur.value = ''
+  try {
+    vente.value = await api<Vente>(`/ventes/${route.params.id}/abandonner`, { method: 'POST' })
+    confirmationAbandon.value = false
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "L'abandon de la commande a échoué.")
+  } finally {
+    busy.value = false
+  }
+}
+
+// ── Retour d'une vente payée, avec remboursement (V134) ──────────────────────────────────────────────────────
+// Le caissier demande, le responsable du bar, de la cuisine ou du restaurant approuve, puis le caissier rembourse :
+// part rendue extournée, marchandise intacte remise en stock, vide repris pour une bouteille consignée.
+type StatutRetour = 'DEMANDE' | 'APPROUVE' | 'REFUSE' | 'REMBOURSE' | 'ANNULE'
+type CanalRemboursement = 'CAISSE' | 'BANQUE' | 'MOBILE_MONEY' | 'CREANCE'
+interface LigneRetour {
+  ligneVenteId: number
+  designation: string
+  type?: string
+  quantite: number
+  prixUnitaire: number
+  remiseEnStock: boolean
+  montantTtc: number
+  mouvementReference?: string | null
+}
+interface RetourVente {
+  id: number
+  reference: string
+  statut: StatutRetour
+  motif: string
+  demandeur?: string | null
+  dateDemande: string
+  approbateur?: string | null
+  dateDecision?: string | null
+  commentaireDecision?: string | null
+  caissier?: string | null
+  dateRemboursement?: string | null
+  canal?: CanalRemboursement | null
+  etablissement?: string | null
+  canalPropose: CanalRemboursement
+  montantTtc: number
+  pieceReference?: string | null
+  lignes: LigneRetour[]
+}
+const STATUTS_RETOUR: Record<StatutRetour, { label: string; color: string }> = {
+  DEMANDE: { label: "En attente de l'accord du responsable", color: 'warning' },
+  APPROUVE: { label: 'Approuvé — à rembourser', color: 'primary' },
+  REFUSE: { label: 'Refusé', color: 'error' },
+  REMBOURSE: { label: 'Remboursé', color: 'success' },
+  ANNULE: { label: 'Retiré', color: 'grey' },
+}
+const CANAUX: Record<CanalRemboursement, string> = {
+  CAISSE: 'Caisse', BANQUE: 'Banque', MOBILE_MONEY: 'Mobile money', CREANCE: 'Créance du client diminuée',
+}
+const retours = ref<RetourVente[]>([])
+async function chargerRetours() {
+  if (!vente.value || vente.value.statut === 'BROUILLON') { retours.value = []; return }
+  try {
+    retours.value = await api<RetourVente[]>(`/ventes/${route.params.id}/retours`)
+  } catch {
+    retours.value = []
+  }
+}
+const retourOuvert = computed(() => retours.value.some(r => r.statut === 'DEMANDE' || r.statut === 'APPROUVE'))
+const peutDemanderRetour = computed(() => canWrite.value && vente.value?.statut === 'VALIDEE' && !retourOuvert.value)
+
+const dialogRetour = ref(false)
+const formRetour = reactive({
+  motif: '',
+  lignes: [] as { ligneVenteId: number; designation: string; type?: string; vendu: number; dejaRendu: number; quantite: number | null; remiseEnStock: boolean }[],
+})
+function ouvrirRetour() {
+  const rendus: Record<number, number> = {}
+  for (const r of retours.value.filter(x => x.statut !== 'REFUSE' && x.statut !== 'ANNULE')) {
+    for (const l of r.lignes) rendus[l.ligneVenteId] = (rendus[l.ligneVenteId] || 0) + l.quantite
+  }
+  formRetour.motif = ''
+  formRetour.lignes = (vente.value?.lignes || []).map(l => ({
+    ligneVenteId: l.id, designation: l.designation, type: l.type, vendu: l.quantite, dejaRendu: rendus[l.id] || 0,
+    quantite: null, remiseEnStock: l.type === 'BOISSON',
+  }))
+  erreur.value = ''
+  dialogRetour.value = true
+}
+const lignesRetourSaisies = computed(() => formRetour.lignes.filter(l => l.quantite && l.quantite > 0))
+async function envoyerRetour() {
+  if (!lignesRetourSaisies.value.length) {
+    erreur.value = 'Indiquez la quantité rendue d\'au moins une ligne.'
+    return
+  }
+  const trop = lignesRetourSaisies.value.find(l => (l.quantite || 0) > l.vendu - l.dejaRendu)
+  if (trop) {
+    erreur.value = `« ${trop.designation} » : on ne peut rendre que ${fmtQte(trop.vendu - trop.dejaRendu)}.`
+    return
+  }
+  if (!formRetour.motif.trim()) {
+    erreur.value = 'Le motif du retour est obligatoire.'
+    return
+  }
+  busy.value = true
+  erreur.value = ''
+  try {
+    await api(`/ventes/${route.params.id}/retours`, {
+      method: 'POST',
+      body: {
+        motif: formRetour.motif.trim(),
+        lignes: lignesRetourSaisies.value.map(l => ({ ligneVenteId: l.ligneVenteId, quantite: l.quantite, remiseEnStock: l.remiseEnStock })),
+      },
+    })
+    dialogRetour.value = false
+    await chargerRetours()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'La demande de retour a échoué.')
+  } finally {
+    busy.value = false
+  }
+}
+
+const retourARembourser = ref<RetourVente | null>(null)
+const formRemboursement = reactive({ canal: 'CAISSE' as CanalRemboursement, etablissementId: null as number | null })
+const etablissementsRemboursement = computed(() =>
+  (formRemboursement.canal === 'BANQUE' ? banques.value : operateurs.value).map(e => ({ title: e.nom, value: e.id })))
+async function ouvrirRemboursement(r: RetourVente) {
+  retourARembourser.value = r
+  formRemboursement.canal = r.canalPropose
+  formRemboursement.etablissementId = null
+  erreur.value = ''
+  if (banques.value.length === 0 && operateurs.value.length === 0) {
+    const [bqs, ops] = await Promise.all([
+      api<Etablissement[]>('/etablissements?type=BANQUE').catch(() => []),
+      api<Etablissement[]>('/etablissements?type=MOBILE_MONEY').catch(() => []),
+    ])
+    banques.value = bqs
+    operateurs.value = ops
+  }
+}
+async function rembourser() {
+  const r = retourARembourser.value
+  if (!r) return
+  const besoin = formRemboursement.canal === 'BANQUE' || formRemboursement.canal === 'MOBILE_MONEY'
+  busy.value = true
+  erreur.value = ''
+  try {
+    await api(`/ventes/retours/${r.id}/rembourser`, {
+      method: 'POST',
+      body: r.canalPropose === 'CREANCE' ? {} : {
+        canal: formRemboursement.canal,
+        etablissementId: besoin ? formRemboursement.etablissementId : null,
+      },
+    })
+    retourARembourser.value = null
+    await chargerRetours()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Le remboursement a échoué.')
+  } finally {
+    busy.value = false
+  }
+}
+async function retirerRetour(r: RetourVente) {
+  if (!confirm(`Retirer la demande de retour ${r.reference} ? Elle ne pourra plus être approuvée ni remboursée.`)) return
+  busy.value = true
+  erreur.value = ''
+  try {
+    await api(`/ventes/retours/${r.id}/annuler`, { method: 'POST' })
+    await chargerRetours()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Le retrait de la demande a échoué.')
+  } finally {
+    busy.value = false
+  }
+}
 const formReglement = reactive({
   modeReglement: 'CAISSE' as 'CAISSE' | 'BANQUE' | 'MOBILE_MONEY',
   etablissementId: null as number | null,
@@ -290,6 +496,7 @@ async function charger() {
     ])
     vente.value = data
     await chargerFactures()
+    await chargerRetours()
     tauxChange.value = taux.taux || 0
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger la vente.')
@@ -508,6 +715,28 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
               Encaisser la créance
             </v-btn>
             <v-btn
+              v-if="peutValider"
+              color="error"
+              variant="outlined"
+              rounded="lg"
+              prepend-icon="mdi-cart-remove"
+              :loading="busy"
+              @click="confirmationAbandon = true"
+            >
+              Abandonner la commande
+            </v-btn>
+            <v-btn
+              v-if="peutDemanderRetour"
+              color="warning"
+              variant="outlined"
+              rounded="lg"
+              prepend-icon="mdi-keyboard-return"
+              :loading="busy"
+              @click="ouvrirRetour"
+            >
+              Retour avec remboursement
+            </v-btn>
+            <v-btn
               v-if="peutAnnuler"
               color="error"
               variant="outlined"
@@ -526,8 +755,9 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
         </v-alert>
 
         <v-alert v-if="vente.statut === 'BROUILLON'" type="info" variant="tonal" class="mb-4" density="comfortable">
-          Cette vente est un brouillon : le stock n'est pas encore décrémenté et aucune écriture comptable n'a été
-          générée. Validez-la pour la comptabiliser.
+          Cette vente est un brouillon : ses boissons et ses plats sont mis de côté (ils ne peuvent plus être vendus
+          ailleurs), mais le stock n'est pas encore décrémenté et aucune écriture comptable n'a été générée. Validez-la
+          pour la comptabiliser.
         </v-alert>
 
         <v-alert v-if="vente.statut === 'VALIDEE' && vente.modeReglement === 'CREDIT' && !vente.reglee"
@@ -645,6 +875,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
               <th class="text-right">{{ sansTva ? 'Montant' : 'Montant HT' }}</th>
               <th v-if="!sansTva" class="text-right">TVA</th>
               <th v-if="!sansTva" class="text-right">Total TTC</th>
+              <th v-if="peutValider" class="vd-noprint" />
             </tr>
           </thead>
           <tbody>
@@ -662,9 +893,41 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
                 <span v-else class="text-medium-emphasis">exonéré</span>
               </td>
               <td v-if="!sansTva" class="text-right font-weight-medium cellule-montant" data-label="Total TTC">{{ fmtUSD(l.montantTtc) }}</td>
+              <td v-if="peutValider" class="text-right vd-noprint cellule-action">
+                <v-btn size="small" variant="text" color="error" prepend-icon="mdi-keyboard-return" @click="ouvrirRetrait(l)">
+                  Retirer
+                </v-btn>
+              </td>
             </tr>
           </tbody>
         </v-table>
+      </v-card>
+
+      <!-- ── Retours de la vente (V134) ─────────────────────────── -->
+      <v-card v-if="retours.length" class="classroom-card mb-4 pa-4 vd-noprint">
+        <p class="vd-retours__titre"><v-icon icon="mdi-keyboard-return" size="18" class="mr-1" />Retours avec remboursement</p>
+        <div v-for="r in retours" :key="r.id" class="vd-retour">
+          <div class="vd-retour__tete">
+            <strong>{{ r.reference }}</strong>
+            <v-chip :color="STATUTS_RETOUR[r.statut].color" size="small" variant="tonal">{{ STATUTS_RETOUR[r.statut].label }}</v-chip>
+            <span class="vd-retour__montant">{{ fmtUSD(r.montantTtc) }}</span>
+          </div>
+          <p class="mb-1 text-body-2">
+            {{ r.lignes.map(l => `${fmtQte(l.quantite)} × ${l.designation}${l.remiseEnStock ? '' : ' (non remis en stock)'}`).join(', ') }}
+          </p>
+          <p class="mb-1 text-caption text-medium-emphasis">
+            Motif : {{ r.motif }} — demandé par {{ r.demandeur || '?' }} le {{ fmtHeure(r.dateDemande) }}
+            <template v-if="r.approbateur"> · {{ r.statut === 'REFUSE' ? 'refusé' : 'approuvé' }} par {{ r.approbateur }}
+              <template v-if="r.commentaireDecision"> : « {{ r.commentaireDecision }} »</template></template>
+            <template v-if="r.statut === 'REMBOURSE'"> · remboursé par {{ r.caissier }} ({{ CANAUX[r.canal || 'CAISSE'] }}<template
+              v-if="r.etablissement"> {{ r.etablissement }}</template>) — pièce {{ r.pieceReference }}</template>
+          </p>
+          <div v-if="canWrite && (r.statut === 'APPROUVE' || r.statut === 'DEMANDE')" class="d-flex flex-wrap ga-2 mt-2">
+            <v-btn v-if="r.statut === 'APPROUVE'" size="small" color="success" variant="flat" prepend-icon="mdi-cash-refund"
+              :loading="busy" @click="ouvrirRemboursement(r)">Rembourser</v-btn>
+            <v-btn size="small" variant="text" color="error" :loading="busy" @click="retirerRetour(r)">Retirer la demande</v-btn>
+          </div>
+        </div>
       </v-card>
 
       <!-- ── Ajout d'une ligne (vente encore brouillon) ────────── -->
@@ -956,6 +1219,106 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
       </v-card>
     </v-dialog>
 
+    <!-- Retour d'un article commandé, avant paiement -->
+    <v-dialog :model-value="!!ligneARetirer" max-width="460" class="no-print" @update:model-value="v => { if (!v && !busy) ligneARetirer = null }">
+      <v-card v-if="ligneARetirer" rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold text-wrap">Retirer « {{ ligneARetirer.designation }} » ?</v-card-title>
+        <v-card-text>
+          <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-3">{{ erreur }}</v-alert>
+          <p class="mb-3">Le client rend cet article avant de payer : il n'est plus mis de côté et redevient disponible.</p>
+          <v-text-field v-model.number="quantiteARetirer" type="number" min="0" :max="ligneARetirer.quantite"
+            :label="`Quantité rendue (commandée : ${fmtQte(ligneARetirer.quantite)})`" variant="outlined" density="comfortable" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="busy" @click="ligneARetirer = null">Garder</v-btn>
+          <v-btn color="error" variant="flat" :loading="busy" @click="retirerLigne">Retirer</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="confirmationAbandon" max-width="460" class="no-print" :persistent="busy">
+      <v-card v-if="vente" rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold text-wrap">Abandonner la commande {{ vente.reference }} ?</v-card-title>
+        <v-card-text>
+          Rien n'a été comptabilisé ni encaissé : la commande passe « annulée » et tout ce qu'elle mettait de côté redevient
+          disponible pour les autres tables.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="busy" @click="confirmationAbandon = false">Garder</v-btn>
+          <v-btn color="error" variant="flat" :loading="busy" @click="abandonner">Abandonner</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Demande de retour d'une vente payée -->
+    <v-dialog v-model="dialogRetour" max-width="640" class="no-print" :persistent="busy" scrollable>
+      <v-card rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold text-wrap">Retour avec remboursement</v-card-title>
+        <v-card-text>
+          <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-3">{{ erreur }}</v-alert>
+          <p class="text-body-2 text-medium-emphasis mb-3">
+            Indiquez ce que le client rend. Le responsable du bar (boissons), de la cuisine (plats) ou du restaurant doit
+            approuver, puis vous remboursez. Une bouteille intacte revient en stock ; un plat servi, non.
+          </p>
+          <div v-for="l in formRetour.lignes" :key="l.ligneVenteId" class="vd-retour-ligne">
+            <div class="vd-retour-ligne__article">
+              <span class="font-weight-medium">{{ l.designation }}</span>
+              <span class="text-caption text-medium-emphasis">
+                vendu {{ fmtQte(l.vendu) }}<template v-if="l.dejaRendu"> · déjà rendu {{ fmtQte(l.dejaRendu) }}</template>
+              </span>
+            </div>
+            <v-text-field v-model.number="l.quantite" type="number" min="0" :max="l.vendu - l.dejaRendu" label="Rendu"
+              :disabled="l.vendu - l.dejaRendu <= 0" variant="outlined" density="compact" hide-details class="vd-retour-ligne__qte" />
+            <v-checkbox v-model="l.remiseEnStock" label="Remis en stock" density="compact" hide-details
+              :disabled="l.type === 'SERVICE'" class="vd-retour-ligne__stock" />
+          </div>
+          <v-textarea v-model="formRetour.motif" label="Motif du retour *" rows="2" auto-grow counter="500" maxlength="500"
+            placeholder="Ex. : bouteille non ouverte rendue, mauvaise commande…" variant="outlined" density="comfortable" class="mt-3" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="busy" @click="dialogRetour = false">Annuler</v-btn>
+          <v-btn color="warning" variant="flat" :loading="busy" @click="envoyerRetour">Demander le retour</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Remboursement d'un retour approuvé -->
+    <v-dialog :model-value="!!retourARembourser" max-width="480" class="no-print" @update:model-value="v => { if (!v && !busy) retourARembourser = null }">
+      <v-card v-if="retourARembourser" rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold text-wrap">Rembourser {{ fmtUSD(retourARembourser.montantTtc) }} ?</v-card-title>
+        <v-card-text>
+          <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-3">{{ erreur }}</v-alert>
+          <template v-if="retourARembourser.canalPropose === 'CREANCE'">
+            <p class="mb-0">
+              La vente à crédit n'est pas encore réglée : aucun argent ne sort, la créance du client diminue de ce montant.
+            </p>
+          </template>
+          <template v-else>
+            <v-select v-model="formRemboursement.canal"
+              :items="[{ title: 'Caisse', value: 'CAISSE' }, { title: 'Banque', value: 'BANQUE' }, { title: 'Mobile money', value: 'MOBILE_MONEY' }]"
+              label="Rembourser par" variant="outlined" density="comfortable" class="mb-3" />
+            <v-select v-if="formRemboursement.canal === 'BANQUE' || formRemboursement.canal === 'MOBILE_MONEY'"
+              v-model="formRemboursement.etablissementId" :items="etablissementsRemboursement"
+              :label="formRemboursement.canal === 'BANQUE' ? 'Banque' : 'Opérateur'"
+              :hint="vente && vente.etablissementNom ? `Laissez vide pour ${vente.etablissementNom}, celui de la vente` : ''" persistent-hint
+              variant="outlined" density="comfortable" class="mb-3" />
+          </template>
+          <p class="text-caption text-medium-emphasis mt-2 mb-0">
+            La part rendue est extournée (produit et TVA), la marchandise intacte revient en stock à son coût, et le vide d'une
+            bouteille consignée est repris.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="busy" @click="retourARembourser = null">Annuler</v-btn>
+          <v-btn color="success" variant="flat" :loading="busy" @click="rembourser">Confirmer le remboursement</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="dialogReglement" max-width="480" class="no-print">
       <v-card class="classroom-card pa-6">
         <div class="d-flex align-center ga-3 mb-4">
@@ -1211,4 +1574,14 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
   .vd-ticket__merci { text-align: center; font-weight: 700; margin-top: 4px; }
   .vd-ticket__horodatage { text-align: center; font-size: 9px; color: #444; margin-top: 6px; }
 }
+.vd-retours__titre { font-size: 0.85rem; font-weight: 700; color: #374151; margin: 0 0 12px; display: flex; align-items: center; }
+.vd-retour { padding: 10px 0; border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.vd-retour:first-of-type { border-top: none; }
+.vd-retour__tete { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.vd-retour__montant { margin-left: auto; font-weight: 700; }
+.vd-retour-ligne { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.vd-retour-ligne__article { display: flex; flex-direction: column; flex: 1 1 180px; min-width: 0; }
+.vd-retour-ligne__qte { flex: 0 0 110px; }
+.vd-retour-ligne__stock { flex: 0 0 auto; }
+.cellule-action { white-space: nowrap; }
 </style>

@@ -41,6 +41,8 @@ interface Emballage {
   bouteillesRestantes: number
 }
 interface Entrepot { id: number; code: string; nom: string }
+/** Boisson de la carte (pour les boissons sans consigne, qui n'ont pas de casier : V134). */
+interface BoissonCarte { id: number; libelle: string; type: string; actif: boolean; sansConsigne?: boolean }
 interface NoteFrais {
   id: number
   reference: string
@@ -61,6 +63,8 @@ interface LignePanier {
   entrepotId: number
   entrepotLabel: string
   echangeConsigne: boolean
+  /** Boisson sans consigne : quantité en unités (bouteilles, briques), jamais de vides. */
+  sansConsigne: boolean
 }
 
 const api = useApi()
@@ -74,6 +78,7 @@ const loadingHistorique = ref(false)
 const erreur = ref('')
 const succes = ref('')
 const emballages = ref<Emballage[]>([])
+const boissonsSansConsigne = ref<BoissonCarte[]>([])
 const entrepots = ref<Entrepot[]>([])
 const historique = ref<NoteFrais[]>([])
 const tauxChange = ref(0)
@@ -104,6 +109,8 @@ const form = reactive({
   fraisApproche: null as number | null,
   description: '',
   echangeConsigne: true,
+  /** Boisson sans consigne : unités par carton (6, 12…), au choix à chaque achat. */
+  contenanceCarton: 12 as number | null,
 })
 
 /** Facture proforma ou justificatif fournisseur, joint à la note dès sa création. */
@@ -128,19 +135,41 @@ const prixEquivalent = computed(() => {
 
 const emballageChoisi = computed(() =>
   emballages.value.find(e => e.articleBoissonId === form.articleBoissonId) || null)
+/** Boisson sans consigne choisie : achat par carton et/ou à l'unité, sans vides (V134). */
+const sansConsigneChoisie = computed(() =>
+  boissonsSansConsigne.value.find(b => b.id === form.articleBoissonId) || null)
+
+/** Boissons proposées : celles qui ont un casier (consignées) puis les boissons sans consigne. */
+const itemsBoissons = computed(() => [
+  ...emballages.value.map(e => ({ title: e.articleBoissonLibelle, value: e.articleBoissonId, props: { subtitle: `Consignée — casier de ${e.contenanceCasier}` } })),
+  ...boissonsSansConsigne.value.map(b => ({ title: b.libelle, value: b.id, props: { subtitle: 'Sans consigne — carton ou unité' } })),
+])
 
 const nbBouteilles = computed(() => {
+  if (sansConsigneChoisie.value) {
+    return (form.contenanceCarton || 0) * (form.nbCasiers || 0) + (form.nbBouteillesSupp || 0)
+  }
   const e = emballageChoisi.value
   if (!e) return 0
   return e.contenanceCasier * (form.nbCasiers || 0) + (form.nbBouteillesSupp || 0)
 })
 
-/** "3 casier(s) + 9 bouteille(s)" ou juste l'un des deux si l'autre est nul. */
+/** "3 casier(s) + 9 bouteille(s)" ou juste l'un des deux si l'autre est nul ; « 2 carton(s) de 6 + 3 unité(s) » sans consigne. */
 const detailQuantite = computed(() => {
   const parts: string[] = []
+  if (sansConsigneChoisie.value) {
+    if (form.nbCasiers) parts.push(`${form.nbCasiers} carton(s) de ${form.contenanceCarton || 0}`)
+    if (form.nbBouteillesSupp) parts.push(`${form.nbBouteillesSupp} unité(s)`)
+    return parts.join(' + ')
+  }
   if (form.nbCasiers) parts.push(`${form.nbCasiers} casier(s)`)
   if (form.nbBouteillesSupp) parts.push(`${form.nbBouteillesSupp} bouteille(s)`)
   return parts.join(' + ')
+})
+
+// Une boisson sans consigne ne rend jamais de vides : l'échange de consigne est retiré dès qu'elle est choisie.
+watch(() => form.articleBoissonId, () => {
+  form.echangeConsigne = !sansConsigneChoisie.value
 })
 
 /** Bouteilles déjà réservées pour l'échange de consigne par d'autres lignes de CE panier, pour la même boisson. */
@@ -166,12 +195,14 @@ async function charger() {
   loadingHistorique.value = true
   erreur.value = ''
   try {
-    const [emb, ents, tauxData] = await Promise.all([
+    const [emb, ents, tauxData, carte] = await Promise.all([
       api<Emballage[]>('/restaurant/emballages'),
       api<Entrepot[]>('/restaurant/entrepots').catch(() => []),
       api<{ taux: number }>('/admin/taux-change').catch(() => ({ taux: 0 })),
+      api<BoissonCarte[]>('/restaurant/carte').catch(() => []),
     ])
     emballages.value = emb
+    boissonsSansConsigne.value = carte.filter(a => a.type === 'BOISSON' && a.sansConsigne && a.actif)
     entrepots.value = ents
     tauxChange.value = tauxData.taux || 0
     if (ents.length === 1) form.entrepotId = ents[0].id
@@ -210,7 +241,9 @@ const totalNote = computed(() => totalPanier.value + fraisApprocheSaisis.value)
 function ajouterAuPanier() {
   erreur.value = ''
   if (!form.articleBoissonId || nbBouteilles.value <= 0) {
-    erreur.value = 'Choisissez une boisson et une quantité (casiers et/ou bouteilles) positive.'
+    erreur.value = sansConsigneChoisie.value
+      ? 'Choisissez une quantité (cartons et/ou unités) positive ; un carton doit contenir au moins une unité.'
+      : 'Choisissez une boisson et une quantité (casiers et/ou bouteilles) positive.'
     return
   }
   if (!form.entrepotId) {
@@ -225,11 +258,12 @@ function ajouterAuPanier() {
     erreur.value = 'Vides insuffisants pour cet échange de consigne : décochez-le ou réduisez la quantité.'
     return
   }
-  const emb = emballageChoisi.value!
+  const sansConsigne = sansConsigneChoisie.value
+  const libelle = sansConsigne ? sansConsigne.libelle : emballageChoisi.value!.articleBoissonLibelle
   const entrepot = entrepots.value.find(e => e.id === form.entrepotId)!
   panier.value.push({
     articleBoissonId: form.articleBoissonId,
-    articleLibelle: emb.articleBoissonLibelle,
+    articleLibelle: libelle,
     nbCasiers: form.nbCasiers,
     nbBouteillesSupp: form.nbBouteillesSupp,
     nbBouteilles: nbBouteilles.value,
@@ -237,7 +271,8 @@ function ajouterAuPanier() {
     prixUnitaire: form.prixUnitaire,
     entrepotId: form.entrepotId,
     entrepotLabel: `${entrepot.code} — ${entrepot.nom}`,
-    echangeConsigne: form.echangeConsigne,
+    echangeConsigne: !sansConsigne && form.echangeConsigne,
+    sansConsigne: !!sansConsigne,
   })
   // Devise et entrepôt persistent (même fournisseur, même livraison) ; le
   // reste se remet à vide pour saisir le produit suivant.
@@ -246,6 +281,7 @@ function ajouterAuPanier() {
   form.nbBouteillesSupp = null
   form.prixUnitaire = null
   form.echangeConsigne = true
+  form.contenanceCarton = 12
 }
 
 function retirerDuPanier(index: number) {
@@ -260,7 +296,7 @@ function fmtPrixLigne(montant: number): string {
 function construireObjet(): string {
   if (panier.value.length === 1) {
     const l = panier.value[0]
-    const objet = `Achat de boissons — ${l.articleLibelle} (${l.detailQuantite}, soit ${l.nbBouteilles} bouteilles)`
+    const objet = `Achat de boissons — ${l.articleLibelle} (${l.detailQuantite}, soit ${l.nbBouteilles} ${l.sansConsigne ? 'unités' : 'bouteilles'})`
     return objet.length > 200 ? objet.slice(0, 197) + '…' : objet
   }
   const totalBouteilles = panier.value.reduce((s, l) => s + l.nbBouteilles, 0)
@@ -402,8 +438,9 @@ function fmtDate(iso: string) {
       {{ succes }}
     </v-alert>
 
-    <v-alert v-if="!loading && !emballages.length" type="info" variant="tonal" rounded="lg" class="mb-4">
-      Aucune boisson n'a de conditionnement défini. Créez-en un avant de demander un achat.
+    <v-alert v-if="!loading && !emballages.length && !boissonsSansConsigne.length" type="info" variant="tonal" rounded="lg" class="mb-4">
+      Aucune boisson à acheter : définissez le casier d'une boisson consignée (Emballages), ou rendez une boisson « sans
+      consigne » sur sa fiche (Carte).
     </v-alert>
 
     <v-card v-if="canWrite" class="classroom-card pa-6 mb-6" max-width="640">
@@ -416,7 +453,7 @@ function fmtDate(iso: string) {
 
       <v-autocomplete
         v-model="form.articleBoissonId"
-        :items="emballages.map(e => ({ title: e.articleBoissonLibelle, value: e.articleBoissonId }))"
+        :items="itemsBoissons"
         label="Boisson *"
         variant="outlined"
         density="comfortable"
@@ -424,28 +461,43 @@ function fmtDate(iso: string) {
         class="mb-3"
       />
 
-      <div class="d-flex ga-2 mb-1">
+      <div class="d-flex ga-2 mb-1 flex-wrap">
         <v-text-field
           v-model.number="form.nbCasiers"
           type="number"
-          label="Nombre de casiers"
-          hint="Casiers complets"
+          :label="sansConsigneChoisie ? 'Nombre de cartons' : 'Nombre de casiers'"
+          :hint="sansConsigneChoisie ? 'Cartons complets' : 'Casiers complets'"
           persistent-hint
           variant="outlined"
           density="comfortable"
-          class="flex-grow-1"
+          class="flex-grow-1 champ-quantite"
+        />
+        <v-text-field
+          v-if="sansConsigneChoisie"
+          v-model.number="form.contenanceCarton"
+          type="number"
+          label="Unités par carton"
+          hint="Ex. 6 ou 12"
+          persistent-hint
+          variant="outlined"
+          density="comfortable"
+          class="flex-grow-1 champ-quantite"
         />
         <v-text-field
           v-model.number="form.nbBouteillesSupp"
           type="number"
-          label="Bouteilles en plus"
-          hint="En plus des casiers complets"
+          :label="sansConsigneChoisie ? 'Unités en plus' : 'Bouteilles en plus'"
+          :hint="sansConsigneChoisie ? 'Bouteilles ou briques à l\'unité' : 'En plus des casiers complets'"
           persistent-hint
           variant="outlined"
           density="comfortable"
-          class="flex-grow-1"
+          class="flex-grow-1 champ-quantite"
         />
       </div>
+      <p v-if="sansConsigneChoisie && nbBouteilles" class="text-body-2 text-medium-emphasis mb-3">
+        Soit <strong>{{ nbBouteilles }}</strong> unité(s) au total ({{ detailQuantite }}) — boisson sans consigne : aucun vide
+        n'est rendu.
+      </p>
       <p v-if="emballageChoisi && nbBouteilles" class="text-body-2 text-medium-emphasis mb-3">
         Soit <strong>{{ nbBouteilles }}</strong> bouteilles au total
         <template v-if="form.nbCasiers && form.nbBouteillesSupp">
@@ -460,7 +512,7 @@ function fmtDate(iso: string) {
         <v-text-field
           v-model.number="form.prixUnitaire"
           type="number"
-          :label="`Prix d'achat d'une bouteille (${form.devisePrix}) *`"
+          :label="`Prix d'achat ${sansConsigneChoisie ? 'd\'une unité' : 'd\'une bouteille'} (${form.devisePrix}) *`"
           hint="Sans prix, le coût de revient reste nul et la marge affichée serait de 100 %"
           persistent-hint
           variant="outlined"
@@ -496,17 +548,19 @@ function fmtDate(iso: string) {
         class="mb-3"
       />
 
-      <v-switch
-        v-model="form.echangeConsigne"
-        label="Échange de consigne : rendre les casiers vides"
-        color="primary"
-        density="compact"
-        hide-details
-        class="mb-2"
-      />
-      <p class="text-caption text-medium-emphasis mb-4">
-        Décochez pour un premier achat, lorsqu'il n'y a pas encore de vides à rendre.
-      </p>
+      <template v-if="!sansConsigneChoisie">
+        <v-switch
+          v-model="form.echangeConsigne"
+          label="Échange de consigne : rendre les casiers vides"
+          color="primary"
+          density="compact"
+          hide-details
+          class="mb-2"
+        />
+        <p class="text-caption text-medium-emphasis mb-4">
+          Décochez pour un premier achat, lorsqu'il n'y a pas encore de vides à rendre.
+        </p>
+      </template>
 
       <v-alert v-if="apercuVides" :type="apercuVides.invalide ? 'error' : 'info'" variant="tonal" density="compact" rounded="lg" class="mb-4">
         <template v-if="apercuVides.invalide">
@@ -701,5 +755,8 @@ function fmtDate(iso: string) {
 .panier-total {
   display: flex; justify-content: space-between; align-items: center;
   padding: 10px 0 0; font-size: 0.9rem; color: #111827;
+}
+.champ-quantite {
+  min-width: 140px;
 }
 </style>
