@@ -13,8 +13,13 @@ const showPassword = ref(false)
 const { login } = useAuth()
 // Retour de la page « Choisissez votre mot de passe » (mot de passe provisoire remplacé) : on se reconnecte.
 const motDePasseChange = useRoute().query.motDePasse === 'change'
+// Activation du mode local lancée depuis cet onglet : les comptes viennent maintenant du serveur en ligne.
+const apresActivation = ref(false)
 const parametresStore = useParametresStore()
-onMounted(() => { parametresStore.charger() })
+onMounted(() => {
+  parametresStore.charger()
+  apresActivation.value = activationModeLocalRecente()
+})
 
 const features = [
   { icon: 'mdi-chart-arc', label: 'Tableaux de bord en temps réel' },
@@ -29,6 +34,11 @@ async function submit() {
   loading.value = true
   try {
     await login(identifiant.value.trim(), motDePasse.value)
+    if (apresActivation.value) {
+      oublierActivationModeLocal()
+      await navigateTo('/admin/synchronisation')
+      return
+    }
     await navigateTo('/dashboard')
   } catch (e: any) {
     error.value = messageErreurApi(e, 'Identifiants invalides. Veuillez réessayer.')
@@ -94,6 +104,17 @@ async function submit() {
           class="mb-6"
         >
           Mot de passe enregistré : connectez-vous avec votre nouveau mot de passe.
+        </v-alert>
+        <v-alert
+          v-if="apresActivation && !error"
+          type="info"
+          variant="tonal"
+          density="compact"
+          rounded="lg"
+          class="mb-6"
+        >
+          Mode local : les comptes de ce serveur viennent d'être remplacés par ceux du serveur en ligne. Connectez-vous
+          avec votre identifiant et votre mot de passe du serveur en ligne ; vous verrez ensuite le résultat de l'activation.
         </v-alert>
         <v-alert
           v-if="error"

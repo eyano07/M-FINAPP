@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useInstanceStore } from '~/stores/instance'
 // Ni le DRH (paie/RH, pas de notes personnelles) ni LOGISTIQUE (son suivi
 // passe par son propre tableau de bord, /logistique) ne gerent leurs notes
 // de frais via cet ecran (voir NavigationDrawer.vue, AVEC_NOTES_FRAIS) :
@@ -20,6 +21,23 @@ interface NoteFrais {
 
 const api = useApi()
 const auth = useAuthStore()
+// Copie en ligne d'un serveur local (V133) : une nouvelle note part en un seul envoi (note, pièces jointes, soumission)
+// et le serveur local la crée avec sa vraie référence à la synchronisation suivante.
+const instance = useInstanceStore()
+const surCopie = computed(() => instance.estCopie)
+interface ActionEnLigne { uuid: string, type: string, libelle: string, resume: string, statut: string, message: string | null,
+  resultatNoteId: number | null, creeLe: string }
+const actionsEnLigne = ref<ActionEnLigne[]>([])
+const succesCreation = ref('')
+async function chargerActionsEnLigne() {
+  if (!surCopie.value) { actionsEnLigne.value = []; return }
+  try {
+    actionsEnLigne.value = await api<ActionEnLigne[]>('/actions-distantes')
+  } catch {
+    actionsEnLigne.value = []
+  }
+}
+watch(surCopie, chargerActionsEnLigne, { immediate: true })
 const route = useRoute()
 const dialog = ref(false)
 // Préfiltré si on arrive depuis une carte du tableau de bord (ex.
@@ -330,6 +348,50 @@ function resetForm() {
 
 const soumission = ref(false)
 
+/** Corps de création d'une note (même contenu sur le serveur principal et sur la copie en ligne). */
+function corpsNote() {
+  return {
+    objet: form.objet,
+    beneficiaire: form.beneficiaire,
+    devise: form.devise,
+    description: form.description || null,
+    sens: form.sens,
+    justificationBudget: form.sens === 'DECAISSEMENT' && form.justificationBudget.trim() ? form.justificationBudget.trim() : null,
+    serviceId: form.sens === 'DECAISSEMENT' ? form.serviceId : null,
+    lignes: lignesValides.value.map(l => ({
+      montant: l.montant,
+      compteImputation: l.compteImputation || null,
+      description: l.description || null,
+      achatMarchandise: l.achatMarchandise,
+      quantiteMarchandise: l.achatMarchandise ? l.quantiteMarchandise : null,
+      articleId: l.achatMarchandise ? l.articleId : null,
+      articleNom: l.achatMarchandise ? l.articleNom : null,
+      soumisTva: l.soumisTva,
+    })),
+  }
+}
+
+/** Copie en ligne : note, pièces jointes et soumission partent ensemble ; un encaissement reste au serveur principal. */
+async function creerNoteSurCopie(executerEnsuite: boolean) {
+  try {
+    const donnees = new FormData()
+    donnees.append('note', new Blob([JSON.stringify(corpsNote())], { type: 'application/json' }))
+    for (const fichier of fichiersAJoindre.value) donnees.append('fichiers', fichier)
+    const soumettre = executerEnsuite && form.sens !== 'ENCAISSEMENT'
+    await api(`/actions-distantes/notes?soumettre=${soumettre}`, { method: 'POST', body: donnees })
+    dialog.value = false
+    resetForm()
+    succesCreation.value = 'Note enregistrée : elle sera créée sur le serveur principal (avec sa référence) à la prochaine '
+      + 'synchronisation' + (soumettre ? ', puis soumise.' : '.') + ' Vous serez prévenu.'
+    await chargerActionsEnLigne()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "La note n'a pas pu être enregistrée.")
+  } finally {
+    saving.value = false
+    soumission.value = false
+  }
+}
+
 async function creerNote(executerEnsuite: boolean) {
   if (!peutCreer.value) {
     erreur.value = 'Renseignez un objet, le bénéficiaire et au moins une ligne avec un montant.'
@@ -338,6 +400,10 @@ async function creerNote(executerEnsuite: boolean) {
   if (executerEnsuite) soumission.value = true
   else saving.value = true
   erreur.value = ''
+  if (surCopie.value) {
+    await creerNoteSurCopie(executerEnsuite)
+    return
+  }
   try {
     const note = await api<{ id: number }>('/notes-frais', {
       method: 'POST',
@@ -581,6 +647,22 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
     </v-alert>
+    <v-alert v-if="succesCreation" type="success" variant="tonal" rounded="lg" class="mb-4" closable @click:close="succesCreation = ''">
+      {{ succesCreation }}
+    </v-alert>
+
+    <!-- Copie en ligne : mes actions en attente du serveur principal (ou traitées ces 7 derniers jours) -->
+    <div v-if="actionsEnLigne.length" class="nf-en-ligne mb-4">
+      <p class="nf-en-ligne__titre"><v-icon icon="mdi-cloud-sync-outline" size="18" /> Faites en ligne</p>
+      <div v-for="a in actionsEnLigne" :key="a.uuid" class="nf-en-ligne__item">
+        <span class="nf-en-ligne__statut" :class="'nf-en-ligne__statut--' + a.statut.toLowerCase()">
+          {{ a.statut === 'EN_ATTENTE' ? 'En attente de synchronisation' : a.statut === 'APPLIQUEE' ? 'Appliquée' : 'Refusée' }}
+        </span>
+        <span class="nf-en-ligne__resume">{{ a.resume }}</span>
+        <NuxtLink v-if="a.resultatNoteId" :to="`/notes-frais/${a.resultatNoteId}`" class="nf-en-ligne__lien">Ouvrir</NuxtLink>
+        <span v-if="a.message && a.statut !== 'EN_ATTENTE'" class="nf-en-ligne__message">{{ a.message }}</span>
+      </div>
+    </div>
 
     <!-- ── Cards grid ──────────────────────────────────────── -->
     <v-skeleton-loader v-if="loading || !prefs.connu" type="card, card, card" />
@@ -754,7 +836,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
             :disabled="!peutCreer || saving"
             @click="creerNote(true)"
           >
-            {{ form.sens === 'ENCAISSEMENT' ? 'Créer et encaisser' : 'Créer et soumettre' }}
+            {{ form.sens === 'ENCAISSEMENT' ? (surCopie ? 'Créer (encaissement au serveur principal)' : 'Créer et encaisser') : 'Créer et soumettre' }}
           </v-btn>
         </div>
       </div>
@@ -1234,4 +1316,17 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   .nf-dialog__footer { flex-direction: column-reverse; align-items: stretch; padding: 14px 16px; }
   .nf-dialog__footer > .v-btn, .nf-dialog__footer > .nf-btn { width: 100%; justify-content: center; }
 }
+
+/* Copie en ligne (V133) : notes et actions faites ici, en attente du serveur principal */
+.nf-en-ligne { padding: 12px 14px; border: 1px solid #bfdbfe; border-radius: 14px; background: #eff6ff; }
+.nf-en-ligne__titre { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-weight: 700; color: #1e3a8a; }
+.nf-en-ligne__item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 4px 0; font-size: 0.88rem; border-top: 1px solid #dbeafe; }
+.nf-en-ligne__item:first-of-type { border-top: 0; }
+.nf-en-ligne__statut { padding: 0 8px; border-radius: 100px; font-size: 0.74rem; font-weight: 700; white-space: nowrap; }
+.nf-en-ligne__statut--en_attente { background: #dbeafe; color: #1d4ed8; }
+.nf-en-ligne__statut--appliquee { background: #dcfce7; color: #15803d; }
+.nf-en-ligne__statut--refusee { background: #fee2e2; color: #b91c1c; }
+.nf-en-ligne__resume { color: #0f172a; min-width: 0; overflow-wrap: anywhere; }
+.nf-en-ligne__lien { font-weight: 600; color: var(--color-primary); }
+.nf-en-ligne__message { flex-basis: 100%; color: #475569; font-size: 0.82rem; }
 </style>

@@ -2,6 +2,7 @@
 import { useAuthStore } from '~/stores/auth'
 import { useNotificationsStore, type NotificationItem } from '~/stores/notifications'
 import { useParametresStore } from '~/stores/parametres'
+import { useInstanceStore } from '~/stores/instance'
 
 defineProps<{ drawerOpen: boolean }>()
 const emit = defineEmits<{ (e: 'toggle-drawer'): void }>()
@@ -10,6 +11,20 @@ const auth = useAuthStore()
 const { logout } = useAuth()
 const notif = useNotificationsStore()
 const parametresStore = useParametresStore()
+const instance = useInstanceStore()
+
+/** Serveur local : état de la synchronisation avec le serveur en ligne (pastille de la barre). */
+const synchro = computed(() => {
+  if (!instance.estLocal) return null
+  const depuis = instance.derniereSynchro ? tempsEcoule(instance.derniereSynchro) : null
+  if (instance.horsConnexion) {
+    return { icone: 'mdi-cloud-off-outline', couleur: '#d97706', probleme: true,
+      texte: `Hors connexion avec le serveur en ligne${instance.enAttente ? ` — ${instance.enAttente} changement(s) en attente` : ''}. `
+        + 'Vous pouvez continuer à travailler : tout partira au retour de la connexion.' }
+  }
+  return { icone: 'mdi-cloud-check-outline', couleur: '#16a34a', probleme: instance.enAttente > 200,
+    texte: `Synchronisé avec le serveur en ligne${depuis ? ` (${depuis})` : ''}${instance.enAttente ? ` — ${instance.enAttente} en cours d'envoi` : ''}.` }
+})
 const rolesStore = useRolesStore()
 const route = useRoute()
 
@@ -75,6 +90,9 @@ const TYPE_META: Record<string, { icon: string; color: string }> = {
   RETOUR_FONDS_RETIRE: { icon: 'mdi-cash-off', color: '#6b7280' },
   RETOUR_FONDS_VALIDE: { icon: 'mdi-cash-refund', color: '#0d9488' },
   RETOUR_FONDS_REFUSE: { icon: 'mdi-cash-remove', color: '#dc2626' },
+  // Action faite sur la copie en ligne (validation, nouvelle note...) appliquée ou refusée par le serveur local.
+  ACTION_EN_LIGNE_APPLIQUEE: { icon: 'mdi-cloud-check-outline', color: '#0d9488' },
+  ACTION_EN_LIGNE_REFUSEE: { icon: 'mdi-cloud-alert-outline', color: '#dc2626' },
 }
 const typeMeta = (type: string) => TYPE_META[type] ?? { icon: 'mdi-bell-outline', color: '#6b7280' }
 
@@ -133,6 +151,22 @@ async function ouvrirNotification(n: NotificationItem) {
     <v-btn icon variant="text" size="small" aria-label="Parametres" class="modern-appbar__action modern-appbar__action--pc" to="/profil">
       <v-icon icon="mdi-cog-outline" size="20" />
     </v-btn>
+
+    <v-tooltip v-if="synchro" location="bottom" max-width="320" :text="synchro.texte">
+      <template #activator="{ props }">
+        <v-btn
+          icon
+          variant="text"
+          size="small"
+          :aria-label="synchro.texte"
+          class="modern-appbar__action modern-appbar__synchro"
+          :class="{ 'modern-appbar__synchro--probleme': synchro.probleme }"
+          v-bind="props"
+        >
+          <v-icon :icon="synchro.icone" size="20" :color="synchro.couleur" />
+        </v-btn>
+      </template>
+    </v-tooltip>
 
     <v-menu location="bottom end" :close-on-content-click="false">
       <template #activator="{ props }">
@@ -559,5 +593,10 @@ async function ouvrirNotification(n: NotificationItem) {
 .user-menu__logout:hover {
   background: #fef2f2;
   color: #dc2626;
+}
+
+/* Pastille de synchronisation (serveur local) : sur téléphone, seulement quand il y a quelque chose à signaler. */
+@media screen and (max-width: 599px) {
+  .modern-appbar__synchro:not(.modern-appbar__synchro--probleme) { display: none; }
 }
 </style>

@@ -79,10 +79,25 @@ interface NoteDetail {
 
 import { useDisplay } from 'vuetify'
 import type { RetourFonds } from '~/components/notes-frais/DetailRetourFonds.vue'
+import { useInstanceStore } from '~/stores/instance'
 
 const route = useRoute()
 const api = useApi()
 const auth = useAuthStore()
+// Copie en ligne d'un serveur local (V133) : seules les actions du circuit (soumettre, vérifier, valider, rejeter,
+// transmettre, priorité, observation) y sont possibles ; elles sont mises en attente puis appliquées au serveur local.
+const instance = useInstanceStore()
+const surCopie = computed(() => instance.estCopie)
+interface ActionEnLigne { uuid: string, libelle: string, resume: string, statut: string, message: string | null, auteur: string, creeLe: string }
+const actionsEnLigne = ref<ActionEnLigne[]>([])
+async function chargerActionsEnLigne() {
+  if (!surCopie.value) { actionsEnLigne.value = []; return }
+  try {
+    actionsEnLigne.value = await api<ActionEnLigne[]>(`/actions-distantes/note/${id.value}`)
+  } catch {
+    actionsEnLigne.value = []
+  }
+}
 const { mobile } = useDisplay()
 const id = computed(() => route.params.id as string)
 const parametresStore = useParametresStore()
@@ -136,6 +151,7 @@ async function charger() {
   try {
     note.value = await api<NoteDetail>(`/notes-frais/${id.value}`)
     prioriteChoisie.value = note.value?.priorite ?? null
+    void chargerActionsEnLigne()
   } catch (e: any) {
     // 404 : note inexistante, ou que le rôle de l'utilisateur ne lui permet pas de voir — le serveur ne
     // distingue volontairement pas les deux (une note cachée ne doit pas révéler son existence).
@@ -185,11 +201,13 @@ const isCreateurOuAdmin = computed(() => isCreateur.value || auth.hasRole('ADMIN
 // s'applique qu'au décaissement (isCreateur n'est qu'un contrôle de rôle,
 // pas de propriété — un caissier verrait sinon ce bouton sur ses propres
 // notes d'encaissement, alors que le backend rejette cette transition).
-const peutSoumettre    = computed(() =>
+// Sur la copie, une seule action en attente par note : le serveur local refuserait la suivante (la note aura changé).
+const actionEnAttente = computed(() => surCopie.value && actionsEnLigne.value.some(a => a.statut === 'EN_ATTENTE'))
+const peutSoumettre    = computed(() => !actionEnAttente.value &&
   isCreateur.value && !estEncaissement.value && ['BROUILLON','REJETEE_DA'].includes(statut.value || ''))
-const peutEncaisser    = computed(() =>
+const peutEncaisser    = computed(() => !surCopie.value &&
   auth.hasRole('CAISSIER') && estEncaissement.value && statut.value === 'BROUILLON')
-const peutVerifier     = computed(() => isDFIN.value && statut.value === 'SOUMISE')
+const peutVerifier     = computed(() => !actionEnAttente.value && isDFIN.value && statut.value === 'SOUMISE')
 // Le DFIN peut corriger le compte d'imputation des lignes pendant sa
 // vérification (note SOUMISE), qu'il en soit ou non le créateur — voir
 // NoteFraisService.modifierComptesLignes côté backend.
@@ -197,22 +215,23 @@ const peutVerifier     = computed(() => isDFIN.value && statut.value === 'SOUMIS
 // reimputer : le compte de chaque ligne decoule de son article.
 // Notes de paie et notes fiscales (module DRH) : comptes imposés par le système, jamais réimputés.
 const categorieDrh = computed(() => libelleCategorieNote(note.value))
-const peutModifierComptes = computed(() => isDFIN.value && statut.value === 'SOUMISE' && !categorieDrh.value
+const peutModifierComptes = computed(() => !surCopie.value && isDFIN.value && statut.value === 'SOUMISE' && !categorieDrh.value
   && (note.value?.lignes || []).some(l => !l.achatMarchandise))
 // Meme fenetre que peutModifierComptes : le DFIN corrige une saisie
 // maladroite de l'employe pendant sa verification, sans renvoyer la note
 // pour un nouveau cycle de soumission — voir NoteFraisService.modifierObjet.
-const peutModifierObjet = computed(() => isDFIN.value && statut.value === 'SOUMISE')
-const peutValiderRejeter = computed(() => isDA.value && statut.value === 'VERIFIEE_DFIN')
-const peutPrioriser    = computed(() => isDA.value && ['VALIDEE_DA', 'TRANSMISE_CAISSE'].includes(statut.value || ''))
-const peutTransmettre  = computed(() => isDFIN.value && statut.value === 'VALIDEE_DA')
-const peutAnnuler      = computed(() =>
+const peutModifierObjet = computed(() => !surCopie.value && isDFIN.value && statut.value === 'SOUMISE')
+const peutValiderRejeter = computed(() => !actionEnAttente.value && isDA.value && statut.value === 'VERIFIEE_DFIN')
+const peutPrioriser    = computed(() => !actionEnAttente.value && isDA.value && ['VALIDEE_DA', 'TRANSMISE_CAISSE'].includes(statut.value || ''))
+const peutTransmettre  = computed(() => !actionEnAttente.value && isDFIN.value && statut.value === 'VALIDEE_DA')
+const peutAnnuler      = computed(() => !surCopie.value &&
   auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','RESP_RESTAURANT','RESP_CUISINE','RESP_BAR','LOGISTIQUE','ADMIN']) &&
   ['BROUILLON','SOUMISE','VERIFIEE_DFIN','VALIDEE_DA','REJETEE_DA'].includes(statut.value || ''))
 
 /** Message contextuel quand aucune action n'est disponible. */
 const messageAucuneAction = computed(() => {
   const s = statut.value || ''
+  if (actionEnAttente.value) return 'Une action faite en ligne attend la synchronisation : les suivantes seront possibles une fois appliquée par le serveur local.'
   if (s === 'BROUILLON' && estEncaissement.value) return "Seul le caissier peut encaisser cette note directement (sans validation "+lDFIN.value+"/"+lDA.value+")."
   if (s === 'TRANSMISE_CAISSE') return 'Cette note est transmise à la trésorerie et attend son paiement (caisse, banque ou mobile money).'
   if (s === 'PAYEE')            return estEncaissement.value ? 'Cette note a déjà été encaissée. Aucune action requise.' : 'Cette note a déjà été payée. Aucune action requise.'
@@ -237,9 +256,9 @@ const retourEnAttente = computed(() => (note.value?.retoursFonds || []).find(r =
 const retoursValides = computed(() => (note.value?.retoursFonds || []).filter(r => r.statut === 'VALIDE'))
 /** Total déjà rendu à la caisse : le montant payé à l'origine est le montant actuel de la note plus ce total. */
 const montantRendu = computed(() => retoursValides.value.reduce((s, r) => s + Number(r.montant || 0), 0))
-const peutReduire = computed(() => estEmetteur.value && isCreateurOuAdmin.value && !estEncaissement.value
+const peutReduire = computed(() => !surCopie.value && estEmetteur.value && isCreateurOuAdmin.value && !estEncaissement.value
   && statut.value === 'PAYEE' && !categorieDrh.value && !retourEnAttente.value)
-const peutAnnulerRetour = computed(() => estEmetteur.value && isCreateurOuAdmin.value && !!retourEnAttente.value)
+const peutAnnulerRetour = computed(() => !surCopie.value && estEmetteur.value && isCreateurOuAdmin.value && !!retourEnAttente.value)
 const reductionOuverte = ref(false)
 const succes = ref('')
 
@@ -302,12 +321,12 @@ const rafraichirControle = ref(0)
 const justificationSaisie = ref('')
 const enregistrementJustification = ref(false)
 const horsBudget = computed(() => !!controleNote.value?.justificationRequise)
-const peutJustifier = computed(() =>
+const peutJustifier = computed(() => !surCopie.value &&
   isCreateur.value && !estEncaissement.value && ['BROUILLON', 'REJETEE_DA'].includes(statut.value || ''))
 watch(() => note.value?.justificationBudget, (v) => { justificationSaisie.value = v || '' }, { immediate: true })
 
 // ── Service budgétaire : le créateur avant la soumission, le DFIN pendant la vérification ──
-const peutModifierService = computed(() => !estEncaissement.value && (
+const peutModifierService = computed(() => !surCopie.value && !estEncaissement.value && (
   (isCreateur.value && ['BROUILLON', 'REJETEE_DA'].includes(statut.value || '')) || (isDFIN.value && statut.value === 'SOUMISE')))
 const editionService = ref(false)
 const serviceChoisi = ref<number | null>(null)
@@ -355,6 +374,13 @@ async function enregistrerJustification() {
   }
 }
 
+/** Sur la copie en ligne, l'action vient d'être mise en attente : le dire, et l'afficher dans la file de la note. */
+function signalerSiRelayee() {
+  if (!surCopie.value) return
+  succes.value = "Action enregistrée : elle sera appliquée au serveur principal à la prochaine synchronisation (vous serez prévenu)."
+  void chargerActionsEnLigne()
+}
+
 async function action(chemin: string, requiertCommentaire = false, statutFileSuivante?: string) {
   if (requiertCommentaire && !observation.value.trim()) {
     erreur.value = chemin === 'valider'
@@ -371,6 +397,7 @@ async function action(chemin: string, requiertCommentaire = false, statutFileSui
       body: { commentaire: observation.value || null },
     })
     observation.value = ''
+    signalerSiRelayee()
     prioriteChoisie.value = note.value?.priorite ?? null
     rafraichirControle.value++
     if (statutFileSuivante) {
@@ -412,6 +439,7 @@ async function definirPriorite() {
       body: { priorite: prioriteChoisie.value, commentaire: observation.value || null },
     })
     observation.value = ''
+    signalerSiRelayee()
     if (venaitDEtreValidee) {
       await allerNoteSuivante('VERIFIEE_DFIN', noteActuelleId)
     }
@@ -430,6 +458,7 @@ async function ajouterObservation() {
       body: { commentaire: observation.value },
     })
     observation.value = ''
+    signalerSiRelayee()
   } catch (e: any) {
     erreur.value = e?.data?.message || "Echec."
   } finally { busy.value = false }
@@ -651,7 +680,7 @@ async function supprimerPiece(piece: PieceJointe) {
   }
 }
 
-const peutGererPieces = computed(() =>
+const peutGererPieces = computed(() => !surCopie.value &&
   auth.hasAnyRole(['DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'ADMIN']))
 </script>
 
@@ -691,6 +720,17 @@ const peutGererPieces = computed(() =>
 
     <v-alert v-if="succes" type="success" variant="tonal" rounded="lg" class="mb-4 nd-noprint" closable @click:close="succes = ''">
       {{ succes }}
+    </v-alert>
+    <!-- Copie en ligne : actions faites ici, en attente du serveur principal (ou traitées récemment) -->
+    <v-alert v-if="actionsEnLigne.length" type="info" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-cloud-sync-outline">
+      <p class="font-weight-bold mb-1">Actions faites en ligne</p>
+      <div v-for="a in actionsEnLigne" :key="a.uuid" class="nd-action-en-ligne">
+        <span class="nd-action-en-ligne__statut" :class="'nd-action-en-ligne__statut--' + a.statut.toLowerCase()">
+          {{ a.statut === 'EN_ATTENTE' ? 'En attente de synchronisation' : a.statut === 'APPLIQUEE' ? 'Appliquée' : 'Refusée' }}
+        </span>
+        {{ a.libelle }} — {{ a.auteur }}, {{ new Date(a.creeLe).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+        <span v-if="a.message && a.statut !== 'EN_ATTENTE'" class="nd-action-en-ligne__message"> : {{ a.message }}</span>
+      </div>
     </v-alert>
     <v-alert v-if="note && retourEnAttente" type="warning" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-cash-refund">
       <strong>Retour de fonds en attente de la caisse :</strong>
@@ -1916,4 +1956,12 @@ const peutGererPieces = computed(() =>
 .nd-retours { padding: 8px 20px 16px; display: flex; flex-direction: column; gap: 12px; }
 .nd-retour:not(:last-child) { padding-bottom: 12px; border-bottom: 1px solid #f3f4f6; }
 .nd-lien-caisse { margin-left: 6px; font-weight: 600; color: inherit; }
+
+/* Actions faites sur la copie en ligne (V133) */
+.nd-action-en-ligne { font-size: 0.86rem; line-height: 1.5; }
+.nd-action-en-ligne__statut { display: inline-block; margin-right: 6px; padding: 0 8px; border-radius: 100px; font-size: 0.74rem; font-weight: 700; }
+.nd-action-en-ligne__statut--en_attente { background: #dbeafe; color: #1d4ed8; }
+.nd-action-en-ligne__statut--appliquee { background: #dcfce7; color: #15803d; }
+.nd-action-en-ligne__statut--refusee { background: #fee2e2; color: #b91c1c; }
+.nd-action-en-ligne__message { color: #475569; }
 </style>

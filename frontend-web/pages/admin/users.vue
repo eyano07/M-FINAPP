@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useInstanceStore } from '~/stores/instance'
 definePageMeta({ roles: ['ADMIN'] })
 
 interface UserRow {
@@ -31,6 +32,10 @@ const rolesDisponibles = ref<string[]>([...ALL_ROLES])
 const rolesMasques = computed(() => ALL_ROLES.filter((r) => !rolesDisponibles.value.includes(r)))
 
 const api = useApi()
+// Copie en ligne d'un serveur local (V133) : seule l'activation / désactivation d'un compte y est possible (immédiate
+// ici, appliquée ensuite au serveur principal) ; création et modification se font sur le serveur principal.
+const instance = useInstanceStore()
+const surCopie = computed(() => instance.estCopie)
 const loading = ref(false)
 const saving = ref(false)
 const erreur = ref('')
@@ -179,6 +184,9 @@ async function toggleActif(u: UserRow) {
     const idx = users.value.findIndex((x) => x.id === u.id)
     if (idx !== -1) users.value[idx].actif = updated.actif
     succes.value = updated.actif ? `${u.nomComplet} activé.` : `${u.nomComplet} désactivé.`
+    if (surCopie.value) {
+      succes.value += ' Effet immédiat sur ce serveur ; appliqué au serveur principal à la prochaine synchronisation.'
+    }
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Échec du changement de statut.')
   } finally {
@@ -207,7 +215,7 @@ const roleColor: Record<string, string> = {
         <button class="usr-refresh-btn" :disabled="loading" @click="charger">
           <v-icon icon="mdi-refresh" size="16" />
         </button>
-        <button class="usr-new-btn" @click="ouvrirAjouter">
+        <button v-if="!surCopie" class="usr-new-btn" @click="ouvrirAjouter">
           <v-icon icon="mdi-plus" size="18" class="mr-1" />
           Ajouter
         </button>
@@ -297,7 +305,7 @@ const roleColor: Record<string, string> = {
             </td>
             <td>
               <div class="usr-actions">
-                <button class="usr-action-btn usr-action-btn--edit" title="Modifier" @click="ouvrirModifier(u)">
+                <button v-if="!surCopie" class="usr-action-btn usr-action-btn--edit" title="Modifier" @click="ouvrirModifier(u)">
                   <v-icon icon="mdi-pencil-outline" size="16" />
                 </button>
                 <button
@@ -344,7 +352,7 @@ const roleColor: Record<string, string> = {
           </div>
 
           <div class="usr-card-item__footer">
-            <button class="usr-card-item__btn usr-card-item__btn--edit" @click="ouvrirModifier(u)">
+            <button v-if="!surCopie" class="usr-card-item__btn usr-card-item__btn--edit" @click="ouvrirModifier(u)">
               <v-icon icon="mdi-pencil-outline" size="15" class="mr-1" />
               Modifier
             </button>

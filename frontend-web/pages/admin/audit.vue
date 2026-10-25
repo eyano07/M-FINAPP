@@ -11,6 +11,8 @@ interface Evenement {
   module: string | null, operation: string | null, ressourceId: string | null, methode: string | null, chemin: string | null,
   requete: string | null, statut: number | null, reussi: boolean, dureeMs: number | null, detail: string | null,
   agent: string | null, terminal: string, systeme: string, libelle: string
+  /** « local » : ligne recopiée du journal du serveur local (copie en ligne). */
+  serveur?: string | null
 }
 interface Compte { cle: string, total: number, echecs: number }
 interface Jour { jour: string, total: number, echecs: number }
@@ -248,7 +250,7 @@ async function demander(q?: string) {
               <td class="text-no-wrap">{{ fmtDate(e.horodatage) }}</td>
               <td data-label="Utilisateur">{{ e.email || '—' }}<small v-if="e.roles?.length" class="au-roles"> {{ e.roles.join(', ') }}</small></td>
               <td class="au-cell-action cellule-large">
-                <div class="au-action">{{ e.libelle }}</div>
+                <div class="au-action">{{ e.libelle }}<span v-if="e.serveur === 'local'" class="au-serveur">serveur local</span></div>
                 <div class="au-tech">
                   <v-chip size="x-small" variant="tonal" :color="couleurOperation(e.operation)">{{ e.operation }}</v-chip>
                   {{ e.module || 'authentification' }}
@@ -277,7 +279,7 @@ async function demander(q?: string) {
     <!-- Détail d'un événement -->
     <v-dialog :model-value="!!detail" max-width="560" @update:model-value="v => { if (!v) detail = null }">
       <v-card v-if="detail" class="pa-5">
-        <h2 class="au-titre">{{ detail.libelle }}</h2>
+        <h2 class="au-titre">{{ detail.libelle }}<span v-if="detail.serveur === 'local'" class="au-serveur">serveur local</span></h2>
         <dl class="au-detail">
           <div><dt>Date</dt><dd>{{ fmtDate(detail.horodatage) }}</dd></div>
           <div><dt>Utilisateur</dt><dd>{{ detail.email || '—' }} {{ detail.roles?.join(', ') }}</dd></div>
@@ -377,4 +379,8 @@ async function demander(q?: string) {
 .au-reponse { background: #f6f8f7; border-radius: 10px; padding: 14px 16px; }
 .au-reponse__texte { margin: 0; }
 .au-liste { margin: 0; padding-left: 18px; }
+
+/* Ligne recopiée du journal du serveur local (V133) */
+.au-serveur { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 100px; background: #eff6ff; color: #1d4ed8;
+  font-size: 0.7rem; font-weight: 700; vertical-align: middle; white-space: nowrap; }
 </style>

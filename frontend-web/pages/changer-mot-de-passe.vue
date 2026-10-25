@@ -14,7 +14,17 @@ const api = useApi()
 const { logout } = useAuth()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
-onMounted(() => { parametresStore.charger() })
+// Copie en ligne d'un serveur local (V133) : un changement de mot de passe est une saisie, faite au serveur principal.
+const surCopie = ref(false)
+onMounted(async () => {
+  parametresStore.charger()
+  try {
+    const e = await api<{ mode: string }>('/instance/etat')
+    surCopie.value = e.mode === 'MIROIR'
+  } catch {
+    // ancien serveur ou instance indisponible : fonctionnement habituel
+  }
+})
 
 const form = reactive({ provisoire: '', nouveau: '', confirmation: '' })
 const voir = reactive({ provisoire: false, nouveau: false, confirmation: false })
@@ -80,6 +90,10 @@ async function enregistrer() {
         choisissez le vôtre pour continuer. Lui seul le connaîtra.
       </p>
 
+      <v-alert v-if="surCopie" type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
+        Ce serveur est la copie en ligne du serveur de l'entreprise : changez votre mot de passe depuis le réseau de
+        l'entreprise (serveur local), puis reconnectez-vous ici après la synchronisation.
+      </v-alert>
       <v-alert v-if="succes" type="success" variant="tonal" density="compact" rounded="lg" class="mb-4">
         Mot de passe enregistré. Reconnectez-vous avec votre nouveau mot de passe…
       </v-alert>

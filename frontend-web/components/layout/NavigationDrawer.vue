@@ -238,6 +238,7 @@ const adminItems: NavItem[] = [
   { title: "Journal d'audit", icon: 'mdi-clipboard-text-clock-outline', to: '/admin/audit', roles: ['ADMIN'] },
   { title: 'Messagerie (e-mails)', icon: 'mdi-email-fast-outline', to: '/admin/messagerie', roles: ['ADMIN'] },
   { title: 'Modules', icon: 'mdi-view-grid-outline', to: '/admin/modules', roles: ['ADMIN'] },
+  { title: 'Serveur local et synchronisation', icon: 'mdi-server-network', to: '/admin/synchronisation', roles: ['ADMIN'] },
   { title: 'Permissions', icon: 'mdi-shield-key-outline', to: '/admin/permissions', roles: ['ADMIN'] },
   // Administrateur seul : l'import ecrit la tresorerie sans note de frais.
   { title: 'Importer un journal', icon: 'mdi-database-import-outline', to: '/admin/import-journal', roles: ['ADMIN'] },
