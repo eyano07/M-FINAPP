@@ -91,9 +91,10 @@ attendre_service nginx 60 >/dev/null || true
 docker compose restart nginx >/dev/null   # reprend les adresses des conteneurs recrees
 
 titre "Controles"
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "http://127.0.0.1:${PORT_HTTP}/api/health" || true)
+# nginx vient de redemarrer : chaque adresse est reessayee pendant 60 s (attendre_url) au lieu d'echouer au premier code 000.
+code=$(attendre_url "http://127.0.0.1:${PORT_HTTP}/api/health" || true)
 [ "$code" = 200 ] || echec "/api/health repond $code au lieu de 200."
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "http://127.0.0.1:${PORT_HTTP}/login" || true)
+code=$(attendre_url "http://127.0.0.1:${PORT_HTTP}/login" || true)
 [ "$code" = 200 ] || echec "La page de connexion repond $code au lieu de 200."
 info "journal d'audit : $(docker compose exec -T backend sh -c 'ls /app/data/logs | wc -l' 2>/dev/null || echo '?') fichier(s) dans le volume, audit.log $(docker compose exec -T backend sh -c 'wc -l < /app/data/logs/audit.log' 2>/dev/null || echo '?') ligne(s)"
 info "migration appliquee : V$(psql_super -c "select max(version::int) from flyway_schema_history where version ~ '^[0-9]+\$'")"
