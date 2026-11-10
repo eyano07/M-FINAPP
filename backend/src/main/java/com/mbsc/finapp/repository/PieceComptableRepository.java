@@ -145,11 +145,17 @@ public interface PieceComptableRepository extends JpaRepository<PieceComptable, 
                                     @Param("totalDebit") java.math.BigDecimal totalDebit,
                                     @Param("depuis") java.time.Instant depuis);
 
-    /** Efface les pieces devenues vides apres suppression de leurs ecritures. */
+    /**
+     * Efface les pieces devenues vides apres suppression de leurs ecritures,
+     * sauf les pieces {@code protegees} qu'une autre table reference encore.
+     *
+     * @param protegees jamais vide (une liste vide est mal traduite en SQL)
+     */
     @Modifying
     @Query("""
         delete from PieceComptable p
-        where not exists (select 1 from EcritureGrandLivre e where e.piece = p)
+        where p.id not in :protegees
+          and not exists (select 1 from EcritureGrandLivre e where e.piece = p)
         """)
-    int supprimerPiecesSansEcriture();
+    int supprimerPiecesSansEcriture(@Param("protegees") java.util.Collection<Long> protegees);
 }

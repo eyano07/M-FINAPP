@@ -17,6 +17,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -113,6 +114,8 @@ public class ImportJournalService {
     private final ConversionDeviseService conversionDevise;
     /** Cree la banque ou l'operateur mobile money des comptes de tresorerie importes qui n'en ont pas. */
     private final EtablissementTresorerieService etablissements;
+    /** Pieces liees a une vente, un stock, une paie... : jamais effacees par un remplacement. */
+    private final PiecesRattachees piecesRattachees;
 
     /**
      * Cle de regroupement des lignes en pieces comptables.
@@ -301,7 +304,7 @@ public class ImportJournalService {
 
         int ecrituresRemplacees = 0;
         if (erreurs.isEmpty() && !simulation && modeImport == ModeImport.REMPLACER) {
-            ecrituresRemplacees = effacerEcrituresRemplacables();
+            ecrituresRemplacees = effacerEcrituresRemplacables(avertissements);
         }
 
         if (erreurs.isEmpty() && !simulation) {
@@ -370,13 +373,38 @@ public class ImportJournalService {
      * comptable et fausserait durablement les soldes de tresorerie, alors que
      * ces mouvements ne proviennent pas du fichier importe.</p>
      *
+     * <p>Les pieces rattachees a une operation de l'application (vente,
+     * mouvement de stock, paie, minerai, immobilisation...) sont conservees
+     * avec leurs ecritures pour la meme raison : voir {@link PiecesRattachees}.</p>
+     *
      * @return nombre d'ecritures supprimees
      */
-    private int effacerEcrituresRemplacables() {
-        int supprimees = ecritureRepository.supprimerEcrituresSansTransaction();
-        int pieces = pieceRepository.supprimerPiecesSansEcriture();
-        log.warn("Import en mode REMPLACER : {} ecriture(s) et {} piece(s) effacees",
-            supprimees, pieces);
+    private int effacerEcrituresRemplacables(List<String> avertissements) {
+        Set<Long> protegees = piecesRattachees.identifiants();
+        int nbProtegees = protegees.size();
+        // Valeur impossible : « not in () » est mal traduit en SQL.
+        protegees.add(-1L);
+        int supprimees;
+        int pieces;
+        try {
+            supprimees = ecritureRepository.supprimerEcrituresSansTransaction(protegees);
+            pieces = pieceRepository.supprimerPiecesSansEcriture(protegees);
+        } catch (DataIntegrityViolationException e) {
+            // Une table encore referencee malgre la protection : refus explicite
+            // plutot qu'une « erreur interne ». La transaction est annulee en bloc.
+            log.warn("Import en mode REMPLACER refuse : {}", e.getMostSpecificCause().getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Le remplacement est impossible : certaines pieces comptables sont encore rattachees a des"
+                + " operations de l'application (ventes, stock, paie...). Aucune ecriture n'a ete modifiee."
+                + " Importez en mode « Ajouter », ou partez d'une base vide.");
+        }
+        if (nbProtegees > 0) {
+            avertissements.add(nbProtegees + " piece(s) rattachee(s) a une operation de l'application (vente,"
+                + " stock, paie...) ont ete conservees avec leurs ecritures. Si le fichier les contient aussi,"
+                + " elles figurent desormais en double.");
+        }
+        log.warn("Import en mode REMPLACER : {} ecriture(s) et {} piece(s) effacees, {} piece(s) rattachee(s)"
+            + " conservee(s)", supprimees, pieces, nbProtegees);
         return supprimees;
     }
 

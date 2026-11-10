@@ -315,7 +315,11 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
      * tresorerie : imports precedents, pieces manuelles, soldes d'ouverture.
      * Les ecritures liees a un mouvement reel de caisse, de banque ou de
      * mobile money sont preservees — les supprimer laisserait ces
-     * transactions sans contrepartie comptable.
+     * transactions sans contrepartie comptable. Il en va de meme des ecritures
+     * des pieces {@code protegees} (rattachees a une vente, un mouvement de
+     * stock, un bulletin de paie...) : voir {@link com.mbsc.finapp.service.PiecesRattachees}.
+     *
+     * @param protegees jamais vide (une liste vide est mal traduite en SQL)
      */
     @Modifying
     @Query("""
@@ -323,8 +327,9 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
         where e.transaction is null
           and e.transactionBancaire is null
           and e.transactionMobileMoney is null
+          and (e.piece is null or e.piece.id not in :protegees)
         """)
-    int supprimerEcrituresSansTransaction();
+    int supprimerEcrituresSansTransaction(@Param("protegees") java.util.Collection<Long> protegees);
 
     /**
      * Mouvements mensuels d'une periode par compte des classes budgetaires (2, 6, 7, 8) et par service, pour le
