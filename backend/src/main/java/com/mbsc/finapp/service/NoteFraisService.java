@@ -149,15 +149,16 @@ public class NoteFraisService {
     /**
      * Notes visibles par l'utilisateur, filtrees par statut, periode de
      * creation et recherche textuelle ({@link RechercheNoteFrais} : reference,
-     * libelle, compte d'une ligne) — chaque critere est facultatif.
+     * libelle, beneficiaire, compte d'une ligne) — chaque critere est facultatif.
      *
      * <p>La recherche s'applique apres la regle de visibilite : elle ne peut
      * jamais reveler une note que l'utilisateur n'a pas le droit de voir.</p>
      */
     @Transactional(readOnly = true)
     public List<NoteFraisResponse> lister(StatutNote statut, LocalDate du, LocalDate au,
-                                          String reference, String libelle, String compte) {
-        RechercheNoteFrais recherche = RechercheNoteFrais.de(reference, libelle, compte);
+                                          String reference, String libelle, String compte,
+                                          String beneficiaire) {
+        RechercheNoteFrais recherche = RechercheNoteFrais.de(reference, libelle, compte, beneficiaire);
         RegleVisibiliteNote regle = regleVisibilite();
         Long utilisateurId = currentUser.requireUserId();
         List<NoteFrais> notes = statut == null

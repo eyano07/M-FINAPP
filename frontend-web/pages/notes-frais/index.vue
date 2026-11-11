@@ -40,30 +40,48 @@ async function chargerActionsEnLigne() {
 watch(surCopie, chargerActionsEnLigne, { immediate: true })
 const route = useRoute()
 const dialog = ref(false)
-// Préfiltré si on arrive depuis une carte du tableau de bord (ex.
-// /notes-frais?statut=SOUMISE) — sinon aucun filtre, comportement historique.
-const filterStatut = ref<string | null>(
-  typeof route.query.statut === 'string' ? route.query.statut : null)
 
 // Période (date de création) : aujourd'hui par défaut des deux côtés — pas
 // un historique complet par défaut, qui ralentirait l'écran sans raison sur
 // une entreprise déjà active depuis longtemps. Vidée = borne ouverte.
 const aujourdhui = () => new Date().toISOString().slice(0, 10)
-const dateDu = ref(aujourdhui())
-const dateAu = ref(aujourdhui())
+
+// Filtres gardés pendant la session : ouvrir une note puis revenir à la liste
+// les retrouve tels quels, au lieu de repartir des valeurs par défaut.
+const filtresGardes = useState('notes-frais.filtres', () => ({
+  sens: 'DECAISSEMENT' as 'DECAISSEMENT' | 'ENCAISSEMENT',
+  statut: null as string | null,
+  du: aujourdhui(),
+  au: aujourdhui(),
+  reference: '',
+  libelle: '',
+  compte: '',
+  beneficiaire: '',
+}))
+
+// Préfiltré si on arrive depuis une carte du tableau de bord (ex.
+// /notes-frais?statut=SOUMISE) — sinon le dernier filtre choisi.
+const filterStatut = ref<string | null>(
+  typeof route.query.statut === 'string' ? route.query.statut : filtresGardes.value.statut)
+
+const dateDu = ref(filtresGardes.value.du)
+const dateAu = ref(filtresGardes.value.au)
 
 // Recherche textuelle, exécutée par le serveur (seul à connaître les lignes de chaque note) :
-// référence, libellé (objet) de la note, nom ou numéro d'un compte imputé sur l'une de ses lignes.
-// Elle se combine avec le statut et la période.
-const rechercheReference = ref('')
-const rechercheLibelle = ref('')
-const rechercheCompte = ref('')
+// référence, libellé (objet) de la note, nom du bénéficiaire, nom ou numéro d'un compte imputé
+// sur l'une de ses lignes. Elle se combine avec le statut et la période.
+const rechercheReference = ref(filtresGardes.value.reference)
+const rechercheLibelle = ref(filtresGardes.value.libelle)
+const rechercheCompte = ref(filtresGardes.value.compte)
+const rechercheBeneficiaire = ref(filtresGardes.value.beneficiaire)
 const rechercheActive = computed(() =>
-  !!(rechercheReference.value.trim() || rechercheLibelle.value.trim() || rechercheCompte.value.trim()))
+  !!(rechercheReference.value.trim() || rechercheLibelle.value.trim() || rechercheCompte.value.trim()
+    || rechercheBeneficiaire.value.trim()))
 function effacerRecherche() {
   rechercheReference.value = ''
   rechercheLibelle.value = ''
   rechercheCompte.value = ''
+  rechercheBeneficiaire.value = ''
 }
 
 // Règle de visibilité propre au rôle : selon lui, certaines notes ne sont pas accessibles. Les rôles à
@@ -96,7 +114,7 @@ const STATUTS_ENCAISSEMENT = ['BROUILLON', 'PAYEE', 'ANNULEE']
 // filtres valides pour lui (les siens en plus, ceux des autres createurs
 // restreints comme avant).
 
-const activeSens = ref<'DECAISSEMENT' | 'ENCAISSEMENT'>('DECAISSEMENT')
+const activeSens = ref<'DECAISSEMENT' | 'ENCAISSEMENT'>(filtresGardes.value.sens)
 const peutCreerEncaissement = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
 // Miroir de NoteFraisService.creer/soumettre cote backend : comptable et
 // caissier sont desormais les deux seuls a pouvoir emettre une note de
@@ -126,6 +144,7 @@ async function charger() {
     if (rechercheReference.value.trim()) query.reference = rechercheReference.value.trim()
     if (rechercheLibelle.value.trim()) query.libelle = rechercheLibelle.value.trim()
     if (rechercheCompte.value.trim()) query.compte = rechercheCompte.value.trim()
+    if (rechercheBeneficiaire.value.trim()) query.beneficiaire = rechercheBeneficiaire.value.trim()
     const resultat = await api<NoteFrais[]>('/notes-frais', { query: Object.keys(query).length ? query : undefined })
     if (numero !== derniereRequete) return
     notes.value = resultat
@@ -160,7 +179,7 @@ watch(filterStatut, charger)
 watch([dateDu, dateAu], charger)
 // Recherche : une courte pause dans la frappe avant d'interroger le serveur.
 let minuterieRecherche: ReturnType<typeof setTimeout> | undefined
-watch([rechercheReference, rechercheLibelle, rechercheCompte], () => {
+watch([rechercheReference, rechercheLibelle, rechercheCompte, rechercheBeneficiaire], () => {
   clearTimeout(minuterieRecherche)
   minuterieRecherche = setTimeout(charger, 350)
 })
@@ -169,6 +188,10 @@ onBeforeUnmount(() => clearTimeout(minuterieRecherche))
 // proposée change (l'encaissement n'a pas de circuit DFIN/DA), un filtre
 // devenu invalide laisserait sinon une grille vide sans chip actif visible.
 watch(activeSens, () => { filterStatut.value = null })
+watch([activeSens, filterStatut, dateDu, dateAu, rechercheReference, rechercheLibelle, rechercheCompte,
+  rechercheBeneficiaire], ([sens, statut, du, au, reference, libelle, compte, beneficiaire]) => {
+  filtresGardes.value = { sens, statut, du, au, reference, libelle, compte, beneficiaire }
+})
 
 const lignesVides = () => [{
   montant: null as number | null, compteImputation: null as string | null, description: '',
@@ -613,7 +636,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
       </div>
     </div>
 
-    <!-- ── Recherche (référence, libellé, compte) ──────────── -->
+    <!-- ── Recherche (référence, libellé, bénéficiaire, compte) ── -->
     <div class="nf-filter nf-filter--recherche">
       <v-icon icon="mdi-magnify" size="18" color="#9ca3af" />
       <span class="nf-periode__label">Recherche</span>
@@ -627,6 +650,11 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
           v-model="rechercheLibelle" type="search" autocomplete="off"
           class="nf-periode__input nf-recherche__input"
           placeholder="Libellé de la note" aria-label="Rechercher une note par son libellé"
+        >
+        <input
+          v-model="rechercheBeneficiaire" type="search" autocomplete="off"
+          class="nf-periode__input nf-recherche__input"
+          placeholder="Nom du bénéficiaire" aria-label="Rechercher une note par le nom du bénéficiaire"
         >
         <input
           v-model="rechercheCompte" type="search" autocomplete="off"

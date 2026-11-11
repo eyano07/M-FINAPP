@@ -87,11 +87,12 @@ public class NoteFraisController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
             // Recherche textuelle facultative : fragment de la reference, du libelle (objet) de la note,
-            // ou nom / debut de numero d'un compte impute sur l'une de ses lignes.
+            // du nom du beneficiaire, ou nom / debut de numero d'un compte impute sur l'une de ses lignes.
             @RequestParam(required = false) String reference,
             @RequestParam(required = false) String libelle,
-            @RequestParam(required = false) String compte) {
-        return service.lister(statut, du, au, reference, libelle, compte);
+            @RequestParam(required = false) String compte,
+            @RequestParam(required = false) String beneficiaire) {
+        return service.lister(statut, du, au, reference, libelle, compte, beneficiaire);
     }
 
     /**
