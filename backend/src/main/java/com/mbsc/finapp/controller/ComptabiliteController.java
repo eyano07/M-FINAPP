@@ -1,11 +1,13 @@
 package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.comptabilite.*;
+import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.service.AnalyseFinanciereIaService;
 import com.mbsc.finapp.service.ClotureAnnuelleService;
 import com.mbsc.finapp.dto.admin.CompteResponse;
 import com.mbsc.finapp.service.ComptabiliteAnalytiqueService;
 import com.mbsc.finapp.service.ComptabiliteService;
+import com.mbsc.finapp.service.JournalCompteService;
 import com.mbsc.finapp.service.EtatsFinanciersExcelService;
 import com.mbsc.finapp.service.BalanceAgeeService;
 import com.mbsc.finapp.service.PeriodeComptableService;
@@ -30,6 +32,7 @@ import java.util.List;
 public class ComptabiliteController {
 
     private final ComptabiliteService service;
+    private final JournalCompteService journalCompte;
     private final PeriodeComptableService periodeService;
     private final EtatsFinanciersExcelService excelService;
     private final AnalyseFinanciereIaService analyseIaService;
@@ -99,6 +102,21 @@ public class ComptabiliteController {
     @PostMapping("/pieces/{id}/annuler")
     public PieceResponse annuler(@PathVariable Long id) {
         return service.annuler(id);
+    }
+
+    /**
+     * Journal d'un compte au choix ({@code compte} : numero du plan comptable, sous-comptes compris) du {@code du} au
+     * {@code au} (mois en cours par defaut) : une ligne par mouvement avec note, objet, beneficiaire, contrepartie et
+     * solde cumule ; {@code devise} : USD (par defaut) ou CDF.
+     */
+    @GetMapping("/journal-compte")
+    public JournalCompteResponse journalCompte(
+        @RequestParam String compte,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
+        @RequestParam(required = false) Devise devise
+    ) {
+        return journalCompte.journal(compte, du, au, devise);
     }
 
     @GetMapping("/grand-livre")

@@ -155,6 +155,30 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
                                                 @Param("du") LocalDate du,
                                                 @Param("au") LocalDate au);
 
+    /**
+     * Mouvements d'un compte de tresorerie (caisse, banque, mobile money) sur une periode, avec l'operation et la note de
+     * frais qui les portent : le journal des comptes (voir JournalCompteService).
+     */
+    @Query("""
+        select e from EcritureGrandLivre e
+        join fetch e.compte c
+        left join fetch e.piece p
+        left join fetch e.transaction t
+        left join fetch t.noteFrais
+        left join fetch e.transactionBancaire tb
+        left join fetch tb.noteFrais
+        left join fetch e.transactionMobileMoney tm
+        left join fetch tm.noteFrais
+        where c.numero like :prefixe%
+          and e.dateEcriture >= :du
+          and e.dateEcriture <= :au
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+        order by e.dateEcriture asc, e.id asc
+    """)
+    List<EcritureGrandLivre> mouvementsDuCompte(@Param("prefixe") String prefixe,
+                                                @Param("du") LocalDate du,
+                                                @Param("au") LocalDate au);
+
     /** Lignes, avec leur compte, des pièces données : les contreparties des mouvements de caisse. */
     @Query("""
         select e from EcritureGrandLivre e
