@@ -20,6 +20,12 @@ import java.util.Set;
  * utilisateurs, les parametres, le plan comptable, les articles et les clients :
  * l'import repart d'une comptabilite vide, comme sur une base neuve.
  *
+ * <p>Les compteurs de references (NF-, PC-, VTE-...) ne sont pas remis a 1 : un
+ * numero n'est jamais reutilise, la suite reste chronologique (SYSCOHADA
+ * revise). Les remettre a 1 ici bloquait d'ailleurs l'import :
+ * {@code ALTER SEQUENCE} verrouille le compteur jusqu'a la fin de la
+ * transaction, et ReferenceGenerator le lit dans une transaction a part.</p>
+ *
  * <p>Les tables de depart ({@link #RACINES}) sont videes entierement. Toute
  * table qui les reference, directement ou non, perd les lignes devenues
  * orphelines (lignes de vente, observations d'une note, pieces jointes d'une
@@ -39,12 +45,6 @@ public class EffacementComptable {
 
     /** Tables videes entierement, avec le libelle montre a l'analyse (vide : non montre). */
     static final Map<String, String> RACINES = racines();
-
-    /** Compteurs de references des donnees effacees, remis a 1 (NF-2026-000001...). */
-    static final List<String> COMPTEURS = List.of("seq_note_frais", "seq_transaction_caisse", "seq_recu_caisse",
-        "seq_piece_comptable", "seq_mouvement_stock", "seq_depense_vehicule", "seq_transaction_bancaire",
-        "seq_recu_banque", "seq_transaction_mobile_money", "seq_recu_mobile_money", "seq_vente",
-        "seq_immobilisation", "seq_provision", "seq_production", "seq_retour_vente");
 
     /** Cles etrangeres : table, colonnes, table referencee, colonnes referencees. */
     private static final String CLES = """
@@ -149,11 +149,6 @@ public class EffacementComptable {
         // Les bouteilles vides se comptent par leurs mouvements, effaces.
         if (existantes.contains("restaurant_emballages")) {
             jdbc.update("update restaurant_emballages set bouteilles_vides = 0 where bouteilles_vides <> 0");
-        }
-        Set<String> sequences = new LinkedHashSet<>(jdbc.queryForList(
-            "select sequencename::text from pg_sequences where schemaname = 'public'", String.class));
-        for (String s : COMPTEURS) {
-            if (sequences.contains(s)) jdbc.execute("alter sequence " + ident(s) + " restart");
         }
         log.warn("Remplacement de la comptabilite : lignes effacees {}", bilan);
         return bilan;

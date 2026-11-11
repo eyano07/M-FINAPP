@@ -112,6 +112,8 @@ public class ImportJournalService {
     private final EtablissementTresorerieService etablissements;
     /** Vide la comptabilite et les operations qui en produisent avant un remplacement. */
     private final EffacementComptable effacement;
+    /** Date de cloture : le remplacement n'efface jamais une periode cloturee. */
+    private final PeriodeComptableService periodes;
 
     /**
      * Cle de regroupement des lignes en pieces comptables.
@@ -298,6 +300,14 @@ public class ImportJournalService {
         List<String> references = new ArrayList<>();
         int importees = 0;
 
+        // SYSCOHADA revise : les ecritures d'une periode cloturee sont intangibles. Le remplacement, qui efface tout,
+        // ne sert qu'a une reprise sur un exercice ouvert ; ensuite, on importe en « Ajouter » et on corrige par extourne.
+        LocalDate cloture = modeImport == ModeImport.REMPLACER ? periodes.dateCloture() : null;
+        if (cloture != null) {
+            erreurs.add("Mode « Remplacer » refuse : la comptabilite est cloturee jusqu'au " + cloture
+                + ". Les ecritures d'une periode cloturee sont intangibles (SYSCOHADA revise) : importez en mode"
+                + " « Ajouter », puis corrigez par extourne.");
+        }
         if (erreurs.isEmpty() && modeImport == ModeImport.REMPLACER) {
             if (simulation) {
                 List<String> apercu = effacement.apercu();

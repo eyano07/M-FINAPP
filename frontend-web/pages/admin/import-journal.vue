@@ -464,7 +464,8 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
           </p>
           <p class="mb-0 text-body-2 text-medium-emphasis">
             Restent : utilisateurs, paramètres, plan comptable, articles et clients.
-            Les numéros (NF-…, PC-…, VTE-…) repartent de 1. Faites une sauvegarde avant si besoin.
+            Les numéros (NF-…, PC-…, VTE-…) continuent : un numéro n’est jamais réutilisé.
+            Refusé si une période est clôturée (SYSCOHADA). Faites une sauvegarde avant si besoin.
           </p>
         </v-card-text>
         <v-divider />

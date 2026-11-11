@@ -45,10 +45,11 @@ class ImportJournalRemplacementTest {
     private final CurrentUserProvider utilisateur = mock(CurrentUserProvider.class);
     private final EtablissementTresorerieService etablissements = mock(EtablissementTresorerieService.class);
     private final EffacementComptable effacement = mock(EffacementComptable.class);
+    private final PeriodeComptableService periodes = mock(PeriodeComptableService.class);
 
     private final ImportJournalService service = new ImportJournalService(comptes, comptabilite,
         utilisateur, mock(DocumentationCompteService.class), mock(ImportIaService.class),
-        mock(ConversionDeviseService.class), etablissements, effacement);
+        mock(ConversionDeviseService.class), etablissements, effacement, periodes);
 
     private static final String JOURNAL = """
         Date;N° Pièce;Journal;Compte;Intitulé du compte;Libellé écriture;Débit;Crédit
@@ -93,6 +94,17 @@ class ImportJournalRemplacementTest {
         verify(effacement, never()).effacer();
         assertThat(rapport.avertissements())
             .anyMatch(a -> a.contains("effacera") && a.contains("7 note(s) de frais, 8 vente(s)"));
+    }
+
+    @Test
+    void uneComptabiliteClotureeNeSeRemplacePas() {
+        when(periodes.dateCloture()).thenReturn(java.time.LocalDate.of(2025, 12, 31));
+
+        assertThatThrownBy(() -> importer(false))
+            .isInstanceOfSatisfying(ResponseStatusException.class,
+                e -> assertThat(e.getReason()).contains("cloturee jusqu'au 2025-12-31"));
+        verify(effacement, never()).effacer();
+        verify(comptabilite, never()).creerPieceInterne(any(), anyString(), any(), any(), any());
     }
 
     @Test
