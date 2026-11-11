@@ -2,7 +2,6 @@ package com.mbsc.finapp.repository;
 
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -309,27 +308,6 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
         where e.piece.id = :pieceId and c.numero = :numero
     """)
     BigDecimal soldePourPieceEtCompte(@Param("pieceId") Long pieceId, @Param("numero") String numero);
-
-    /**
-     * Efface les ecritures qui ne sont adossees a aucune transaction de
-     * tresorerie : imports precedents, pieces manuelles, soldes d'ouverture.
-     * Les ecritures liees a un mouvement reel de caisse, de banque ou de
-     * mobile money sont preservees — les supprimer laisserait ces
-     * transactions sans contrepartie comptable. Il en va de meme des ecritures
-     * des pieces {@code protegees} (rattachees a une vente, un mouvement de
-     * stock, un bulletin de paie...) : voir {@link com.mbsc.finapp.service.PiecesRattachees}.
-     *
-     * @param protegees jamais vide (une liste vide est mal traduite en SQL)
-     */
-    @Modifying
-    @Query("""
-        delete from EcritureGrandLivre e
-        where e.transaction is null
-          and e.transactionBancaire is null
-          and e.transactionMobileMoney is null
-          and (e.piece is null or e.piece.id not in :protegees)
-        """)
-    int supprimerEcrituresSansTransaction(@Param("protegees") java.util.Collection<Long> protegees);
 
     /**
      * Mouvements mensuels d'une periode par compte des classes budgetaires (2, 6, 7, 8) et par service, pour le

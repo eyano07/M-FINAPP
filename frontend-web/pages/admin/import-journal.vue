@@ -42,7 +42,7 @@ const substitutions = ref<Record<string, string>>({})
 const regroupement = ref<'REFERENCE' | 'JOUR' | 'FICHIER'>('REFERENCE')
 const modeImport = ref<'REMPLACER' | 'AJOUTER'>('REMPLACER')
 const MODES_IMPORT = [
-  { value: 'REMPLACER', title: 'Remplacer — efface les écritures existantes' },
+  { value: 'REMPLACER', title: 'Remplacer — efface toute la comptabilité et les opérations' },
   { value: 'AJOUTER', title: 'Ajouter — conserve les écritures existantes' },
 ]
 const confirmation = ref(false)
@@ -282,8 +282,8 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
         variant="outlined" density="comfortable" class="mt-2" hide-details />
       <p class="text-caption text-medium-emphasis mt-2 mb-0">
         Rejouer un import sans remplacer empile un second jeu d’écritures et double les soldes.
-        Le remplacement ne touche pas aux écritures adossées à un mouvement réel de caisse,
-        de banque ou de mobile money.
+        Le remplacement repart d’une comptabilité vide : il efface aussi les notes de frais, la caisse,
+        la banque, le mobile money, les ventes, le stock et la paie.
       </p>
 
       <v-select v-model="regroupement" :items="MODES" label="Regroupement des lignes en pièces"
@@ -453,17 +453,18 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
 
     <v-dialog v-model="confirmation" max-width="520">
       <v-card>
-        <v-card-title class="text-error">Remplacer les écritures existantes ?</v-card-title>
+        <v-card-title class="text-error">Effacer toute la comptabilité ?</v-card-title>
         <v-divider />
         <v-card-text>
           <p class="mb-3">
-            Les écritures comptables actuelles vont être <strong>définitivement effacées</strong>
-            avant l’import : imports précédents, pièces saisies à la main et soldes d’ouverture.
+            Avant l’import, tout ceci va être <strong>définitivement effacé</strong> :
+            écritures et pièces comptables, notes de frais, opérations de caisse, de banque et de
+            mobile money, ventes, mouvements et niveaux de stock, bulletins de paie,
+            immobilisations, provisions.
           </p>
           <p class="mb-0 text-body-2 text-medium-emphasis">
-            Les écritures adossées à un encaissement ou un décaissement réel (caisse, banque,
-            mobile money) sont conservées : les supprimer laisserait ces mouvements sans
-            contrepartie comptable.
+            Restent : utilisateurs, paramètres, plan comptable, articles et clients.
+            Les numéros (NF-…, PC-…, VTE-…) repartent de 1. Faites une sauvegarde avant si besoin.
           </p>
         </v-card-text>
         <v-divider />

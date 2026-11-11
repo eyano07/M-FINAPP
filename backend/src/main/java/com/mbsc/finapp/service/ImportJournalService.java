@@ -9,8 +9,6 @@ import com.mbsc.finapp.domain.enums.JournalComptable;
 import com.mbsc.finapp.dto.admin.ImportJournalResponse;
 import com.mbsc.finapp.dto.admin.SuggestionImport;
 import com.mbsc.finapp.repository.CompteOHADARepository;
-import com.mbsc.finapp.repository.EcritureGrandLivreRepository;
-import com.mbsc.finapp.repository.PieceComptableRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
@@ -102,8 +100,6 @@ public class ImportJournalService {
         DateTimeFormatter.ofPattern("yyyy/MM/dd"));
 
     private final CompteOHADARepository compteRepository;
-    private final EcritureGrandLivreRepository ecritureRepository;
-    private final PieceComptableRepository pieceRepository;
     private final ComptabiliteService comptabilite;
     private final CurrentUserProvider currentUser;
     /** Fiche de documentation des comptes créés pendant l'import. */
@@ -114,8 +110,8 @@ public class ImportJournalService {
     private final ConversionDeviseService conversionDevise;
     /** Cree la banque ou l'operateur mobile money des comptes de tresorerie importes qui n'en ont pas. */
     private final EtablissementTresorerieService etablissements;
-    /** Pieces liees a une vente, un stock, une paie... : jamais effacees par un remplacement. */
-    private final PiecesRattachees piecesRattachees;
+    /** Vide la comptabilite et les operations qui en produisent avant un remplacement. */
+    private final EffacementComptable effacement;
 
     /**
      * Cle de regroupement des lignes en pieces comptables.
@@ -302,9 +298,16 @@ public class ImportJournalService {
         List<String> references = new ArrayList<>();
         int importees = 0;
 
-        int ecrituresRemplacees = 0;
-        if (erreurs.isEmpty() && !simulation && modeImport == ModeImport.REMPLACER) {
-            ecrituresRemplacees = effacerEcrituresRemplacables(avertissements);
+        if (erreurs.isEmpty() && modeImport == ModeImport.REMPLACER) {
+            if (simulation) {
+                List<String> apercu = effacement.apercu();
+                if (!apercu.isEmpty()) {
+                    avertissements.add("L'import reel effacera d'abord toute la comptabilite et les operations : "
+                        + String.join(", ", apercu) + ".");
+                }
+            } else {
+                effacerComptabilite();
+            }
         }
 
         if (erreurs.isEmpty() && !simulation) {
@@ -363,49 +366,20 @@ public class ImportJournalService {
     }
 
     /**
-     * Efface les ecritures comptables remplacables avant un import.
-     *
-     * <p><b>Perimetre volontairement restreint.</b> Seules les pieces sans
-     * transaction de tresorerie sont supprimees : imports precedents, pieces
-     * saisies a la main, soldes d'ouverture. Les ecritures adossees a un
-     * encaissement ou un decaissement reel (caisse, banque, mobile money) sont
-     * conservees — les effacer laisserait des transactions sans contrepartie
-     * comptable et fausserait durablement les soldes de tresorerie, alors que
-     * ces mouvements ne proviennent pas du fichier importe.</p>
-     *
-     * <p>Les pieces rattachees a une operation de l'application (vente,
-     * mouvement de stock, paie, minerai, immobilisation...) sont conservees
-     * avec leurs ecritures pour la meme raison : voir {@link PiecesRattachees}.</p>
-     *
-     * @return nombre d'ecritures supprimees
+     * Efface toute la comptabilite et les operations qui en produisent (notes de
+     * frais, caisse, banque, ventes, stock, paie...) avant un import en mode
+     * « Remplacer » : voir {@link EffacementComptable}. Meme transaction que
+     * l'import : un fichier refuse ensuite laisse tout en place.
      */
-    private int effacerEcrituresRemplacables(List<String> avertissements) {
-        Set<Long> protegees = piecesRattachees.identifiants();
-        int nbProtegees = protegees.size();
-        // Valeur impossible : « not in () » est mal traduit en SQL.
-        protegees.add(-1L);
-        int supprimees;
-        int pieces;
+    private void effacerComptabilite() {
         try {
-            supprimees = ecritureRepository.supprimerEcrituresSansTransaction(protegees);
-            pieces = pieceRepository.supprimerPiecesSansEcriture(protegees);
+            effacement.effacer();
         } catch (DataIntegrityViolationException e) {
-            // Une table encore referencee malgre la protection : refus explicite
-            // plutot qu'une « erreur interne ». La transaction est annulee en bloc.
             log.warn("Import en mode REMPLACER refuse : {}", e.getMostSpecificCause().getMessage());
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "Le remplacement est impossible : certaines pieces comptables sont encore rattachees a des"
-                + " operations de l'application (ventes, stock, paie...). Aucune ecriture n'a ete modifiee."
-                + " Importez en mode « Ajouter », ou partez d'une base vide.");
+                "Le remplacement est impossible : des donnees de l'application referencent encore la comptabilite ("
+                + e.getMostSpecificCause().getMessage() + "). Rien n'a ete modifie.");
         }
-        if (nbProtegees > 0) {
-            avertissements.add(nbProtegees + " piece(s) rattachee(s) a une operation de l'application (vente,"
-                + " stock, paie...) ont ete conservees avec leurs ecritures. Si le fichier les contient aussi,"
-                + " elles figurent desormais en double.");
-        }
-        log.warn("Import en mode REMPLACER : {} ecriture(s) et {} piece(s) effacees, {} piece(s) rattachee(s)"
-            + " conservee(s)", supprimees, pieces, nbProtegees);
-        return supprimees;
     }
 
     private PieceComptable creerPiece(String reference, List<LigneImport> lignes, User auteur,

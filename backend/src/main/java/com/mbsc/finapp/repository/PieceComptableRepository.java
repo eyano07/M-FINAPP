@@ -3,7 +3,6 @@ package com.mbsc.finapp.repository;
 import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.enums.JournalComptable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -144,18 +143,4 @@ public interface PieceComptableRepository extends JpaRepository<PieceComptable, 
                                     @Param("libelle") String libelle,
                                     @Param("totalDebit") java.math.BigDecimal totalDebit,
                                     @Param("depuis") java.time.Instant depuis);
-
-    /**
-     * Efface les pieces devenues vides apres suppression de leurs ecritures,
-     * sauf les pieces {@code protegees} qu'une autre table reference encore.
-     *
-     * @param protegees jamais vide (une liste vide est mal traduite en SQL)
-     */
-    @Modifying
-    @Query("""
-        delete from PieceComptable p
-        where p.id not in :protegees
-          and not exists (select 1 from EcritureGrandLivre e where e.piece = p)
-        """)
-    int supprimerPiecesSansEcriture(@Param("protegees") java.util.Collection<Long> protegees);
 }

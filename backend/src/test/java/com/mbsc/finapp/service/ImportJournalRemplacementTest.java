@@ -5,23 +5,18 @@ import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.dto.admin.ImportJournalResponse;
 import com.mbsc.finapp.repository.CompteOHADARepository;
-import com.mbsc.finapp.repository.EcritureGrandLivreRepository;
-import com.mbsc.finapp.repository.PieceComptableRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -29,32 +24,31 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Import en mode « Remplacer » : les pieces rattachees a une operation
- * (vente, mouvement de stock, paie...) ne sont jamais effacees.
+ * Import en mode « Remplacer » : toute la comptabilite et les operations qui en
+ * produisent (notes de frais, caisse, ventes, stock, paie...) sont effacees
+ * avant l'import, comme sur une base neuve.
  *
- * <p>Avant, le remplacement effacait les ecritures d'une piece de stock puis
- * echouait sur la cle etrangere {@code mouvements_stock_piece_id_fkey} : erreur
- * interne a l'ecran au lieu d'un message utile.</p>
+ * <p>Avant, les pieces rattachees a une operation etaient conservees : leurs
+ * ecritures figuraient en double si le fichier les contenait aussi.</p>
  */
 class ImportJournalRemplacementTest {
 
     private final CompteOHADARepository comptes = mock(CompteOHADARepository.class);
-    private final EcritureGrandLivreRepository ecritures = mock(EcritureGrandLivreRepository.class);
-    private final PieceComptableRepository pieces = mock(PieceComptableRepository.class);
     private final ComptabiliteService comptabilite = mock(ComptabiliteService.class);
     private final CurrentUserProvider utilisateur = mock(CurrentUserProvider.class);
     private final EtablissementTresorerieService etablissements = mock(EtablissementTresorerieService.class);
-    private final PiecesRattachees rattachees = mock(PiecesRattachees.class);
+    private final EffacementComptable effacement = mock(EffacementComptable.class);
 
-    private final ImportJournalService service = new ImportJournalService(comptes, ecritures, pieces, comptabilite,
+    private final ImportJournalService service = new ImportJournalService(comptes, comptabilite,
         utilisateur, mock(DocumentationCompteService.class), mock(ImportIaService.class),
-        mock(ConversionDeviseService.class), etablissements, rattachees);
+        mock(ConversionDeviseService.class), etablissements, effacement);
 
     private static final String JOURNAL = """
         Date;N° Pièce;Journal;Compte;Intitulé du compte;Libellé écriture;Débit;Crédit
@@ -72,52 +66,43 @@ class ImportJournalRemplacementTest {
         when(etablissements.rattacherComptesOrphelins(anyCollection(), anyBoolean())).thenReturn(List.of());
     }
 
-    private ImportJournalResponse importer() {
+    private ImportJournalResponse importer(boolean simulation) {
         MockMultipartFile fichier = new MockMultipartFile("fichier", "journal.csv", "text/csv",
             JOURNAL.getBytes(StandardCharsets.UTF_8));
-        return service.importer(fichier, false, null, null, null, ImportJournalService.ModeImport.REMPLACER);
+        return service.importer(fichier, simulation, null, null, null, ImportJournalService.ModeImport.REMPLACER);
     }
 
     @Test
-    void conserveLesPiecesRattacheesAUneOperation() {
-        when(rattachees.identifiants()).thenReturn(new HashSet<>(Set.of(7L, 12L)));
+    void effaceToutAvantDImporter() {
+        when(effacement.effacer()).thenReturn(Map.of("notes_frais", 7, "ventes", 8));
 
-        ImportJournalResponse rapport = importer();
+        ImportJournalResponse rapport = importer(false);
 
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Collection<Long>> protegeesEcritures = ArgumentCaptor.forClass(Collection.class);
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Collection<Long>> protegeesPieces = ArgumentCaptor.forClass(Collection.class);
-        verify(ecritures).supprimerEcrituresSansTransaction(protegeesEcritures.capture());
-        verify(pieces).supprimerPiecesSansEcriture(protegeesPieces.capture());
-        assertThat(protegeesEcritures.getValue()).contains(7L, 12L);
-        assertThat(protegeesPieces.getValue()).contains(7L, 12L);
-        assertThat(rapport.avertissements()).anyMatch(a -> a.startsWith("2 piece(s) rattachee(s)"));
+        var ordre = inOrder(effacement, comptabilite);
+        ordre.verify(effacement).effacer();
+        ordre.verify(comptabilite).creerPieceInterne(any(), anyString(), any(), any(), any());
+        assertThat(rapport.avertissements()).noneMatch(a -> a.contains("double"));
     }
 
     @Test
-    void sansPieceRattacheeLaListeTransmiseNEstJamaisVide() {
-        when(rattachees.identifiants()).thenReturn(new HashSet<>());
+    void lAnalyseAnnonceCeQuiSeraEffaceSansRienEffacer() {
+        when(effacement.apercu()).thenReturn(List.of("7 note(s) de frais", "8 vente(s)"));
 
-        ImportJournalResponse rapport = importer();
+        ImportJournalResponse rapport = importer(true);
 
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Collection<Long>> protegees = ArgumentCaptor.forClass(Collection.class);
-        verify(pieces).supprimerPiecesSansEcriture(protegees.capture());
-        assertThat(protegees.getValue()).isNotEmpty();
-        assertThat(rapport.avertissements()).noneMatch(a -> a.contains("rattachee"));
+        verify(effacement, never()).effacer();
+        assertThat(rapport.avertissements())
+            .anyMatch(a -> a.contains("effacera") && a.contains("7 note(s) de frais, 8 vente(s)"));
     }
 
     @Test
     void uneReferenceRestanteDonneUnMessageClairEtRienNEstImporte() {
-        when(rattachees.identifiants()).thenReturn(new HashSet<>());
-        when(pieces.supprimerPiecesSansEcriture(anyCollection()))
-            .thenThrow(new DataIntegrityViolationException("mouvements_stock_piece_id_fkey"));
+        when(effacement.effacer()).thenThrow(new DataIntegrityViolationException("mouvements_stock_piece_id_fkey"));
 
-        assertThatThrownBy(this::importer)
+        assertThatThrownBy(() -> importer(false))
             .isInstanceOfSatisfying(ResponseStatusException.class, e -> {
                 assertThat(e.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-                assertThat(e.getReason()).contains("Aucune ecriture n'a ete modifiee");
+                assertThat(e.getReason()).contains("Rien n'a ete modifie");
             });
         verify(comptabilite, never()).creerPieceInterne(any(), anyString(), any(), any(), any());
     }
