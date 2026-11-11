@@ -91,8 +91,13 @@ async function comptabiliser(id: number) {
   }
 }
 
-async function annuler(id: number) {
-  if (!confirm('Annuler cette pièce ? Une pièce d\'extourne sera générée.')) return
+async function annuler(item: Piece) {
+  const message = item.tresorerie
+    ? 'Annuler cette pièce de trésorerie ? Une pièce d\'extourne sera générée : le solde de la caisse, de la banque '
+      + 'ou du mobile money sera corrigé d\'autant. La pièce reste visible, au statut ANNULEE (SYSCOHADA).'
+    : 'Annuler cette pièce ? Une pièce d\'extourne sera générée. La pièce reste visible, au statut ANNULEE (SYSCOHADA).'
+  if (!confirm(message)) return
+  const id = item.id
   erreur.value = ''
   try {
     await api(`/comptabilite/pieces/${id}/annuler`, { method: 'POST' })
@@ -141,7 +146,7 @@ function motifVerrou(item: Piece): string | null {
   }
   if (item.statut === 'COMPTABILISEE' && !item.extournable) {
     return item.tresorerie
-      ? MOTIF_TRESORERIE
+      ? MOTIF_TRESORERIE + ' Seul le DFIN peut extourner une pièce de trésorerie sans opération de caisse derrière elle (pièce importée).'
       : "Pièce d'un mouvement de stock ou d'une vente : elle s'annule depuis son opération d'origine."
   }
   return null
@@ -260,7 +265,7 @@ function fmtDate(d: string) {
                 size="small"
                 color="error"
                 variant="tonal"
-                @click="annuler(item.id)"
+                @click="annuler(item)"
               >
                 Annuler
               </v-btn>

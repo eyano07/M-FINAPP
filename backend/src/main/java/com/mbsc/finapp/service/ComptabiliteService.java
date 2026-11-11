@@ -225,11 +225,12 @@ public class ComptabiliteService {
         // comptabiliser() et annuler() les accepteront.
         java.util.Set<Long> liees = new java.util.HashSet<>(pieceRepository.idsPiecesLieesAUneOperation());
         java.util.Set<Long> tresorerie = new java.util.HashSet<>(pieceRepository.idsPiecesTresorerie());
+        boolean dfin = estDfin();
         return pieceRepository.findAllWithCreatedByOrderByDatePieceDesc().stream()
             .map(p -> {
                 boolean touche = tresorerie.contains(p.getId());
                 return PieceResponse.from(p, false,
-                    p.getStatut() == StatutPiece.COMPTABILISEE && !liees.contains(p.getId()) && !touche,
+                    p.getStatut() == StatutPiece.COMPTABILISEE && !liees.contains(p.getId()) && (!touche || dfin),
                     p.getStatut() == StatutPiece.BROUILLON && !touche && !JOURNAUX_TRESORERIE.contains(p.getJournal()),
                     touche);
             })
@@ -287,9 +288,11 @@ public class ComptabiliteService {
      * n'en garderait aucune trace. Une imputation erronée se corrige par une
      * pièce de reclassement, un montant erroné par une note de frais.</p>
      *
-     * <p>Refuse enfin toute pièce qui mouvemente un compte de trésorerie,
-     * même sans opération derrière elle (journal historique importé) : voir
-     * {@link #exigerHorsTresorerie}.</p>
+     * <p>Refuse enfin, sauf au DFIN, toute pièce qui mouvemente un compte de
+     * trésorerie sans opération derrière elle (journal historique importé) :
+     * voir {@link #exigerHorsTresorerie}. Le DFIN peut la contre-passer — une
+     * pièce importée en double, par exemple —, comme le veut le SYSCOHADA
+     * révisé : la pièce reste, ANNULEE, et son extourne la solde.</p>
      */
     @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'ADMIN')")
     @Transactional
@@ -311,13 +314,20 @@ public class ComptabiliteService {
         // Même sans opération de trésorerie derrière elle (journal historique
         // importé), une pièce qui mouvemente la classe 5 ne s'extourne pas
         // d'ici : ce serait modifier la trésorerie sans note de frais.
-        if (originale.getLignes().stream().anyMatch(l -> estCompteTresorerie(l.getCompte().getNumero()))) {
+        if (!estDfin() && originale.getLignes().stream().anyMatch(l -> estCompteTresorerie(l.getCompte().getNumero()))) {
             throw new IllegalStateException(
                 "Cette pièce (" + originale.getReference() + ") mouvemente la trésorerie : l'extourner d'ici "
                 + "modifierait la caisse, la banque ou le mobile money sans passer par une note de frais. "
-                + "Une correction de trésorerie passe par une note de frais d'encaissement ou de décaissement.");
+                + "Une correction de trésorerie passe par une note de frais d'encaissement ou de décaissement, "
+                + "ou par une extourne du DFIN.");
         }
         return PieceResponse.from(extournerInterne(originale, currentUser.requireUser()));
+    }
+
+    /** Le DFIN seul contre-passe une pièce de trésorerie sans opération derrière elle. */
+    private boolean estDfin() {
+        return currentUser.requirePrincipal().getAuthorities().stream()
+            .anyMatch(a -> "ROLE_DFIN".equals(a.getAuthority()));
     }
 
     /**
