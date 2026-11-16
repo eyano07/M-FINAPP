@@ -137,6 +137,8 @@ const logistiqueItems: NavItem[] = [
   // que 'Tableau de bord' dans restaurantItems.
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/logistique', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   { title: 'Articles', icon: 'mdi-package-variant-closed', to: '/logistique/articles', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
+  // 16/11/2026 : services vendables (sans stock) séparés des articles à vendre ; même catalogue, même garde.
+  { title: 'Services', icon: 'mdi-hand-extended-outline', to: '/logistique/services', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
   { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
   // Répertoire des fournisseurs (V141) : hors grille des modules, ouvert par rôle comme FournisseurService — les
   // acheteurs (logistique, restaurant, cuisine, bar, patrimoine), la comptabilité et la direction ; pas le caissier.

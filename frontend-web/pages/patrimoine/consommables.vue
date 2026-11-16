@@ -6,6 +6,10 @@ definePageMeta({ module: 'PATRIMOINE' })
  * type CONSOMMABLE vit dans le meme catalogue, dans les memes entrepots, et sa
  * sortie debite deja le compte de charge. Cette page en est la vue metier —
  * elle ne duplique aucune mecanique de stock.
+ *
+ * 16/11/2026 : les consommables se créent et se modifient ICI (plus depuis Logistique › Articles, réservée aux
+ * articles à vendre), avec la boîte commune LogistiqueFormulaireArticle. Mêmes droits d'écriture que le catalogue
+ * côté serveur (StockService : LOGISTIQUE, DFIN, ADMIN) : le bouton suit la même règle que la page Articles.
  */
 interface Article {
   id: number
@@ -30,7 +34,10 @@ interface StockNiveau {
 }
 
 const api = useApi()
+const auth = useAuthStore()
 const parametresStore = useParametresStore()
+const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'DFIN']))
+const formulaire = ref<{ ouvrir: (a?: any) => void } | null>(null)
 const tauxChange = ref(0)
 const loading = ref(false)
 const erreur = ref('')
@@ -119,9 +126,8 @@ const sousSeuil = computed(() => stock.value.filter(l => l.sousSeuil))
           prepend-icon="mdi-printer-outline" @click="imprimer">
           Imprimer
         </v-btn>
-        <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-package-variant-closed"
-          to="/logistique/articles">
-          Gérer le catalogue
+        <v-btn v-if="canWrite" color="primary" rounded="lg" prepend-icon="mdi-plus" @click="formulaire?.ouvrir()">
+          Nouveau consommable
         </v-btn>
       </div>
     </div>
@@ -147,10 +153,20 @@ const sousSeuil = computed(() => stock.value.filter(l => l.sousSeuil))
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4 no-print">{{ erreur }}</v-alert>
 
     <v-alert v-if="!loading && articles.length === 0" type="info" variant="tonal" class="mb-4 no-print">
-      Aucun consommable enregistré. Créez un article de type <strong>Consommable</strong> depuis le catalogue :
-      il utilisera les mêmes entrepôts et mouvements que le reste du stock, et sa sortie passera automatiquement
+      Aucun consommable enregistré.<template v-if="canWrite"> Créez-en un avec <strong>Nouveau consommable</strong> :</template>
+      <template v-else> La logistique ou le DFIN les crée ;</template> il utilisera les mêmes entrepôts et mouvements que le reste du stock, et sa sortie passera automatiquement
       en charge.
     </v-alert>
+
+    <v-card v-if="canWrite && articles.length" class="classroom-card pa-4 mb-4 no-print">
+      <div class="kpi-label mb-2">Références ({{ articles.length }}) · cliquer pour modifier</div>
+      <div class="d-flex flex-wrap ga-2">
+        <v-chip v-for="a in articles" :key="a.id" size="small" :variant="a.actif ? 'tonal' : 'outlined'"
+          :color="a.actif ? 'primary' : 'grey'" prepend-icon="mdi-pencil" @click="formulaire?.ouvrir(a)">
+          {{ a.code }} · {{ a.libelle }}
+        </v-chip>
+      </div>
+    </v-card>
 
     <v-row v-if="articles.length" class="mb-2 no-print">
       <v-col cols="6" md="4">
@@ -225,6 +241,8 @@ const sousSeuil = computed(() => stock.value.filter(l => l.sousSeuil))
         </template>
       </v-data-table>
     </v-card>
+
+    <LogistiqueFormulaireArticle ref="formulaire" type="CONSOMMABLE" :taux-change="tauxChange" @enregistre="charger" />
   </div>
 </template>
 
