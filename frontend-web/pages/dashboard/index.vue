@@ -231,10 +231,12 @@ const enCoursAilleurs = computed(() =>
     !['PAYEE', 'ANNULEE'].includes(n.statut) && !statutsActionnables.value.includes(n.statut)
   ).length)
 
+const dateDuJour = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date())
+
 const greeting = computed(() => {
   const h = new Date().getHours()
   if (h < 12) return 'Bonjour'
-  if (h < 18) return 'Bon apres-midi'
+  if (h < 18) return 'Bon après-midi'
   return 'Bonsoir'
 })
 
@@ -377,9 +379,9 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
     <!-- ── Header ──────────────────────────────────────────── -->
     <header class="dash__header">
       <div>
-        <p class="dash__eyebrow">{{ greeting }} 👋</p>
-        <h1 class="dash__title">{{ auth.user?.prenom || auth.user?.email }}</h1>
-        <p class="dash__sub">Voici l'état de votre trésorerie en temps réel.</p>
+        <p class="dash__eyebrow">{{ dateDuJour }}</p>
+        <h1 class="dash__title">{{ greeting }}, {{ auth.user?.prenom || auth.user?.email }}</h1>
+        <p class="dash__sub">Votre trésorerie et les notes qui attendent votre action.</p>
       </div>
       <v-btn
         color="primary"
@@ -419,79 +421,6 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
         :to="s.to"
       />
     </div>
-    <!-- ── Analyses graphiques ────────────────────────────────── -->
-    <div class="dash__section-header" style="margin-bottom:20px">
-      <div>
-        <h2 class="dash__section-title">Analyses graphiques</h2>
-        <p class="dash__section-sub">{{ estCaissier ? '2 types de graphiques' : '9 types de graphiques' }} · données en temps réel</p>
-      </div>
-    </div>
-
-    <ClientOnly>
-      <!-- 9. Résultat net (en tête : indicateur financier le plus important) -->
-      <div v-if="!estCaissier" class="cg-full">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-timeline-variant" size="15" class="mr-1" />Courbe — Évolution du résultat net</p>
-          <p class="cg-sub">Résultat net cumulé (Balance) de janvier à aujourd'hui</p>
-          <div class="cg-canvas"><Line :data="resultatNetLineData" :options="resultatNetLineOpts" /></div>
-        </div>
-      </div>
-      <!-- 1. Courbe -->
-      <div class="cg-full">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-line" size="15" class="mr-1" />Courbe — Tendance mensuelle des notes</p>
-          <p class="cg-sub">Évolution du nombre de notes soumises sur 6 mois</p>
-          <div class="cg-canvas"><Line :data="lineData" :options="lineOpts" /></div>
-        </div>
-      </div>
-      <!-- 2. Barres + 5. Anneau -->
-      <div v-if="!estCaissier" class="cg-grid2">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-bar" size="15" class="mr-1" />Barres — Montants par statut</p>
-          <p class="cg-sub">Cumul des montants regroupés par statut de traitement</p>
-          <div class="cg-canvas"><Bar :data="barData" :options="barOpts" /></div>
-        </div>
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-donut" size="15" class="mr-1" />Anneau — Répartition des statuts</p>
-          <p class="cg-sub">Distribution du nombre de notes par statut</p>
-          <div class="cg-canvas"><Doughnut :data="donutData" :options="donutOpts" /></div>
-        </div>
-      </div>
-      <!-- 3. Aires -->
-      <div class="cg-full">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-waves" size="15" class="mr-1" />Aires — Évolution de la trésorerie</p>
-          <p class="cg-sub">Projection de la trésorerie sur 6 mois (estimée depuis le solde actuel)</p>
-          <div class="cg-canvas"><Line :data="areaData" :options="areaOpts" /></div>
-        </div>
-      </div>
-      <!-- 4. Circulaire + 6. Radar -->
-      <div v-if="!estCaissier" class="cg-grid2">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-pie" size="15" class="mr-1" />Circulaire — Répartition par priorité</p>
-          <p class="cg-sub">Distribution des notes selon leur niveau de priorité</p>
-          <div class="cg-canvas"><Pie :data="pieData" :options="pieOpts" /></div>
-        </div>
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-spider-web" size="15" class="mr-1" />Radar — Indicateurs de performance</p>
-          <p class="cg-sub">Scores multidimensionnels : paiement, approbation, budget…</p>
-          <div class="cg-canvas"><Radar :data="radarData" :options="radarOpts" /></div>
-        </div>
-      </div>
-      <!-- 7. Nuage de points + 8. Bulles -->
-      <div v-if="!estCaissier" class="cg-grid2">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-scatter-plot" size="15" class="mr-1" />Nuage de points — Montants des notes</p>
-          <p class="cg-sub">Chaque point représente une note de frais et son montant</p>
-          <div class="cg-canvas"><Scatter :data="scatterData" :options="scatterOpts" /></div>
-        </div>
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-circle-multiple-outline" size="15" class="mr-1" />Bulles — Distribution priorité × montant</p>
-          <p class="cg-sub">Taille = montant relatif · Couleur = niveau de priorité</p>
-          <div class="cg-canvas"><Bubble :data="bubbleData" :options="bubbleOpts" /></div>
-        </div>
-      </div>
-    </ClientOnly>
     <!-- ── Notes section ───────────────────────────────────── -->
     <div class="dash__section-header">
       <div>
@@ -501,12 +430,11 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
       <v-btn
         variant="outlined"
         color="primary"
-        append-icon="mdi-arrow-right"
         rounded="lg"
         size="small"
         to="/notes-frais"
       >
-        Tout voir
+        Voir toutes les notes
       </v-btn>
     </div>
 
@@ -530,10 +458,84 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 
     <div v-else class="dash__empty">
       <v-icon icon="mdi-check-circle-outline" size="48" color="success" />
-      <p class="dash__empty-title">Tout est à jour !</p>
-      <p class="dash__empty-sub">Aucune note de frais en attente dans le circuit.</p>
+      <p class="dash__empty-title">Aucune note à traiter</p>
+      <p class="dash__empty-sub">Toutes les notes de frais sont traitées. Les nouvelles notes apparaîtront ici.</p>
     </div>
 
+
+    <!-- ── Analyses graphiques ────────────────────────────────── -->
+    <div class="dash__section-header dash__section-header--analyses">
+      <div>
+        <h2 class="dash__section-title">Analyses</h2>
+        <p class="dash__section-sub">Évolution des notes, de la trésorerie et du résultat, d'après les données saisies.</p>
+      </div>
+    </div>
+
+    <ClientOnly>
+      <!-- 9. Résultat net (en tête : indicateur financier le plus important) -->
+      <div v-if="!estCaissier" class="cg-full">
+        <div class="cg-card">
+          <p class="cg-title">Évolution du résultat net</p>
+          <p class="cg-sub">Résultat net cumulé (Balance) de janvier à aujourd'hui</p>
+          <div class="cg-canvas"><Line :data="resultatNetLineData" :options="resultatNetLineOpts" /></div>
+        </div>
+      </div>
+      <!-- 1. Courbe -->
+      <div class="cg-full">
+        <div class="cg-card">
+          <p class="cg-title">Notes soumises par mois</p>
+          <p class="cg-sub">Nombre de notes soumises, sur les 6 derniers mois</p>
+          <div class="cg-canvas"><Line :data="lineData" :options="lineOpts" /></div>
+        </div>
+      </div>
+      <!-- 2. Barres + 5. Anneau -->
+      <div v-if="!estCaissier" class="cg-grid2">
+        <div class="cg-card">
+          <p class="cg-title">Montants par statut</p>
+          <p class="cg-sub">Cumul des montants regroupés par statut de traitement</p>
+          <div class="cg-canvas"><Bar :data="barData" :options="barOpts" /></div>
+        </div>
+        <div class="cg-card">
+          <p class="cg-title">Notes par statut</p>
+          <p class="cg-sub">Distribution du nombre de notes par statut</p>
+          <div class="cg-canvas"><Doughnut :data="donutData" :options="donutOpts" /></div>
+        </div>
+      </div>
+      <!-- 3. Aires -->
+      <div class="cg-full">
+        <div class="cg-card">
+          <p class="cg-title">Trésorerie prévue sur 6 mois</p>
+          <p class="cg-sub">Estimation calculée à partir du solde actuel, pas une prévision comptable</p>
+          <div class="cg-canvas"><Line :data="areaData" :options="areaOpts" /></div>
+        </div>
+      </div>
+      <!-- 4. Circulaire + 6. Radar -->
+      <div v-if="!estCaissier" class="cg-grid2">
+        <div class="cg-card">
+          <p class="cg-title">Notes par priorité</p>
+          <p class="cg-sub">Distribution des notes selon leur niveau de priorité</p>
+          <div class="cg-canvas"><Pie :data="pieData" :options="pieOpts" /></div>
+        </div>
+        <div class="cg-card">
+          <p class="cg-title">Indicateurs de suivi</p>
+          <p class="cg-sub">Part des notes payées, approuvées, dans le budget, etc.</p>
+          <div class="cg-canvas"><Radar :data="radarData" :options="radarOpts" /></div>
+        </div>
+      </div>
+      <!-- 7. Nuage de points + 8. Bulles -->
+      <div v-if="!estCaissier" class="cg-grid2">
+        <div class="cg-card">
+          <p class="cg-title">Montant de chaque note</p>
+          <p class="cg-sub">Chaque point représente une note de frais et son montant</p>
+          <div class="cg-canvas"><Scatter :data="scatterData" :options="scatterOpts" /></div>
+        </div>
+        <div class="cg-card">
+          <p class="cg-title">Priorité et montant des notes</p>
+          <p class="cg-sub">Taille : montant relatif. Couleur : niveau de priorité</p>
+          <div class="cg-canvas"><Bubble :data="bubbleData" :options="bubbleOpts" /></div>
+        </div>
+      </div>
+    </ClientOnly>
   </div>
 </template>
 
@@ -551,15 +553,16 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 36px;
+  margin-bottom: 32px;
   flex-wrap: wrap;
 }
 .dash__eyebrow {
   font-size: 0.8125rem;
   color: #6b7280;
   font-weight: 500;
-  margin: 0 0 4px;
+  margin: 0 0 6px;
 }
+.dash__eyebrow::first-letter { text-transform: uppercase; }
 .dash__title {
   font-size: clamp(1.5rem, 3vw, 2rem);
   font-weight: 700;
@@ -581,8 +584,8 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .dash__stats {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
-  gap: 16px;
-  margin-bottom: 40px;
+  gap: 14px;
+  margin-bottom: 44px;
 }
 
 /* ── Section header ──────────────────────────────────────── */
@@ -592,8 +595,11 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8ebe9;
   flex-wrap: wrap;
 }
+.dash__section-header--analyses { margin-top: 44px; }
 .dash__section-title {
   font-size: 1.0625rem;
   font-weight: 700;
@@ -611,6 +617,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 16px;
+  margin-bottom: 8px;
 }
 
 /* ── Empty state ─────────────────────────────────────────── */
@@ -622,8 +629,8 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   gap: 10px;
   padding: 64px 24px;
   background: #fff;
-  border: 1px dashed #e5e7eb;
-  border-radius: 16px;
+  border: 1px dashed #d5dbd7;
+  border-radius: 12px;
   text-align: center;
 }
 .dash__empty-title {
@@ -642,7 +649,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .cg-full { margin-bottom: 16px; }
 .cg-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 @media (max-width: 680px) { .cg-grid2 { grid-template-columns: 1fr; } }
-.cg-card { min-width: 0; background: #fff; border: 1px solid #f0f0f0; border-radius: 18px; padding: 20px 22px; }
+.cg-card { min-width: 0; background: #fff; border: 1px solid #e8ebe9; border-radius: 12px; padding: 20px 22px; }
 .cg-title { font-size: 0.875rem; font-weight: 700; color: #111827; margin: 0 0 4px; display: flex; align-items: center; }
 .cg-sub { font-size: 0.75rem; color: #6b7280; margin: 0 0 16px; }
 .cg-canvas { height: 260px; position: relative; }
