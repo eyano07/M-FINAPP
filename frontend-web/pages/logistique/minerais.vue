@@ -198,22 +198,33 @@ const formCharge = reactive({
 // charge : choisir la nature preselectionne le compte, plus personne n'a a
 // connaitre le plan comptable pour saisir un peage. Le compte reste
 // modifiable ensuite — la preselection n'est qu'un defaut.
+// Le compte est retrouvé par son intitulé : sans point, son numéro dépend du plan de chaque installation
+// (618.1 « Péage routier » prend le premier numéro libre sous 618, les 6181 à 6183 étant des comptes officiels).
 const NATURES_FRAIS = [
-  { libelle: 'Transport sur achat', compte: '618.3' },
-  { libelle: 'Péage routier', compte: '618.1' },
-  { libelle: 'Per diem de route', compte: '618.2' },
-  { libelle: 'Pont bascule', compte: '638.1' },
-  { libelle: 'Manutention', compte: '638.2' },
-  { libelle: 'Document de chargement', compte: '646.1' },
-  { libelle: 'Document de déchargement', compte: '646.1' },
+  { libelle: 'Transport sur achat', intitule: 'Transport sur achat de minerais' },
+  { libelle: 'Péage routier', intitule: 'Péage routier' },
+  { libelle: 'Per diem de route', intitule: 'Per diem de route' },
+  { libelle: 'Pont bascule', intitule: 'Pont bascule - pesée des camions' },
+  { libelle: 'Manutention', intitule: 'Manutention' },
+  { libelle: 'Document de chargement', intitule: 'Autorisations de transport de minerais' },
+  { libelle: 'Document de déchargement', intitule: 'Autorisations de transport de minerais' },
 ]
+const comptesFrais = ref<{ numero: string, libelle: string }[]>([])
+onMounted(async () => {
+  try {
+    comptesFrais.value = await api<{ numero: string, libelle: string }[]>('/comptes')
+  } catch {
+    // sans le plan comptable, la nature ne préselectionne simplement pas de compte
+  }
+})
 const LIBELLES_COURANTS = NATURES_FRAIS.map(n => n.libelle)
 
 /** Nature choisie -> compte correspondant. Sans effet sur un libelle libre. */
 function onNatureChoisie(valeur: string | null) {
   const nature = NATURES_FRAIS.find(n => n.libelle === (valeur ?? '').trim())
-  if (nature) {
-    formCharge.compteChargeNumero = nature.compte
+  const compte = nature && comptesFrais.value.find(c => c.libelle === nature.intitule)
+  if (compte) {
+    formCharge.compteChargeNumero = compte.numero
   }
 }
 
@@ -965,9 +976,6 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
 .minerais-cell__dupliquer { opacity: 0; transition: opacity 0.15s; }
 .minerais-cell:hover .minerais-cell__dupliquer, .minerais-cell__dupliquer:focus-visible { opacity: 1; }
 
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
-.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 .kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
 .kpi-value { font-size: 1.25rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
 </style>

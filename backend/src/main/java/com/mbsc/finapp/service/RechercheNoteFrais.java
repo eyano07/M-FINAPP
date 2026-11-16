@@ -8,33 +8,36 @@ import java.util.Locale;
 
 /**
  * Recherche textuelle dans la liste des notes de frais : par reference, par
- * libelle (objet) de la note et par compte impute sur l'une de ses lignes.
+ * libelle (objet) de la note, par nom du beneficiaire et par compte impute sur
+ * l'une de ses lignes.
  *
- * <p>Les trois criteres se combinent (ET) ; un critere vide est ignore. La
+ * <p>Les quatre criteres se combinent (ET) ; un critere vide est ignore. La
  * comparaison ignore la casse et les accents (« deplacement » retrouve
  * « Déplacement »). La reference et le libelle se cherchent par fragment ; le
- * compte par son nom (fragment) ou par le debut de son numero (« 604 »
+ * beneficiaire aussi ; le compte par son nom (fragment) ou par le debut de son numero (« 604 »
  * retrouve 6041, 6042...).</p>
  *
  * <p>Les textes saisis sont normalises une fois a la construction : les
  * champs de ce record sont donc deja en minuscules sans accents, ou
  * {@code null} quand le critere est absent.</p>
  */
-record RechercheNoteFrais(String reference, String libelle, String compte) {
+record RechercheNoteFrais(String reference, String libelle, String compte, String beneficiaire) {
 
     /** Construit la recherche a partir des saisies brutes ({@code null} ou blanc = critere absent). */
-    static RechercheNoteFrais de(String reference, String libelle, String compte) {
-        return new RechercheNoteFrais(normaliser(reference), normaliser(libelle), normaliser(compte));
+    static RechercheNoteFrais de(String reference, String libelle, String compte, String beneficiaire) {
+        return new RechercheNoteFrais(normaliser(reference), normaliser(libelle), normaliser(compte),
+            normaliser(beneficiaire));
     }
 
     boolean estVide() {
-        return reference == null && libelle == null && compte == null;
+        return reference == null && libelle == null && compte == null && beneficiaire == null;
     }
 
     /** Vrai si la note satisfait tous les criteres renseignes. */
     boolean correspond(NoteFrais note) {
         return contient(note.getReference(), reference)
             && contient(note.getObjet(), libelle)
+            && contient(note.getBeneficiaire(), beneficiaire)
             && (compte == null
                 || note.getLignes().stream().anyMatch(l -> compteCorrespond(l.getCompteImputation())));
     }

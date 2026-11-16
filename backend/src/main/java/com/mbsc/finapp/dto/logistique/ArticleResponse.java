@@ -29,7 +29,9 @@ public record ArticleResponse(
     boolean soumisTva,
     BigDecimal stockMin,
     boolean actif,
-    boolean vendable
+    boolean vendable,
+    /** BOISSON seulement : sans consigne (pas de casier ni de vides, V134). */
+    boolean sansConsigne
 ) {
     public static ArticleResponse from(Article a) {
         var entrepot = a.getEntrepot();
@@ -53,7 +55,8 @@ public record ArticleResponse(
             a.isSoumisTva(),
             a.getStockMin(),
             a.isActif(),
-            a.estVendable()
+            a.estVendable(),
+            a.isSansConsigne()
         );
     }
 }

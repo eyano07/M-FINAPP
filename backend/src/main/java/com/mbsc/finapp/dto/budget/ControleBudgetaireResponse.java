@@ -23,8 +23,22 @@ public record ControleBudgetaireResponse(
     List<LigneControle> lignes,
     List<String> avertissements,
     /** false : module Budget désactivé par l'administrateur, aucune dépense n'est contrôlée ni rattachée. */
-    boolean budgetActif
+    boolean budgetActif,
+    /** Période du budget de référence (« Décembre 2026 », « Exercice 2026 »...), null sans budget. */
+    String budgetPeriode,
+    /** Service de la dépense (null : aucun). */
+    Long serviceId,
+    String serviceNom,
+    String serviceResponsable
 ) {
+    /** Réponse sans service ni période (module désactivé, note d'encaissement...). */
+    public ControleBudgetaireResponse(Integer exercice, int mois, Long budgetId, String budgetReference, String budgetIntitule,
+                                      StatutControleBudget statut, boolean justificationRequise, String devise, BigDecimal tauxChange,
+                                      List<LigneControle> lignes, List<String> avertissements, boolean budgetActif) {
+        this(exercice, mois, budgetId, budgetReference, budgetIntitule, statut, justificationRequise, devise, tauxChange, lignes,
+            avertissements, budgetActif, null, null, null, null);
+    }
+
     public record LigneControle(
         int index,
         String compteNumero,
@@ -40,8 +54,12 @@ public record ControleBudgetaireResponse(
         BigDecimal realiseCumule,
         BigDecimal engage,
         BigDecimal disponibleCumule,
+        /** Prévu sur toute la période du budget (l'année, le semestre, le trimestre ou le mois). */
         BigDecimal prevuAnnuel,
+        /** Disponible sur toute la période du budget. */
         BigDecimal disponibleAnnuel,
-        String message
+        String message,
+        /** Enveloppe contrôlée : « service Restaurant », « lignes générales », « budget consolidé » (null : budget sans service). */
+        String enveloppe
     ) {}
 }

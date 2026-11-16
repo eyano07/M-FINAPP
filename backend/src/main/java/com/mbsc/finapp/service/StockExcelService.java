@@ -200,6 +200,11 @@ public class StockExcelService {
     // Libellés des filtres
     // ---------------------------------------------------------------------
 
+    /**
+     * Libelle de l'article filtre. Lu directement dans le depot : cet appel n'est sur QUE parce que
+     * {@code stockService.grandLivreStock(articleId, ...)}, appele avant, refuse (404) un article hors du domaine
+     * d'un responsable cuisine ou bar — ne jamais deplacer la lecture de ce libelle avant cet appel.
+     */
     private String libelleArticle(Long articleId) {
         if (articleId == null) {
             return "Tous les articles";

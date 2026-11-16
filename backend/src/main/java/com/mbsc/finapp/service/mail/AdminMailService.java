@@ -7,6 +7,7 @@ import com.mbsc.finapp.dto.mail.MailTestRequest;
 import com.mbsc.finapp.dto.mail.MailTestResponse;
 import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.security.CurrentUserProvider;
+import com.mbsc.finapp.security.IdentifiantConnexion;
 import com.mbsc.finapp.service.MailNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -77,8 +78,15 @@ public class AdminMailService {
 
     public MailTestResponse tester(MailTestRequest req) {
         var admin = currentUser.requireUser();
+        // L'identifiant de connexion n'est plus forcément une adresse (nom d'utilisateur) : on ne l'utilise
+        // comme destinataire que s'il en est une.
         String dest = req != null && StringUtils.hasText(req.destinataire()) ? req.destinataire().strip()
-            : StringUtils.hasText(admin.getEmailNotification()) ? admin.getEmailNotification() : admin.getEmail();
+            : StringUtils.hasText(admin.getEmailNotification()) ? admin.getEmailNotification()
+            : IdentifiantConnexion.estUneAdresse(admin.getEmail()) ? admin.getEmail().strip() : null;
+        if (dest == null) {
+            return new MailTestResponse(false, "Aucune adresse de destination : saisissez-en une ci-dessus, ou renseignez "
+                + "le « Mail de notification » de votre profil (votre identifiant de connexion n'est pas une adresse e-mail).");
+        }
         try {
             mails.envoyerTest(dest, admin.getPrenom());
             parametres.noterEnvoi(null);

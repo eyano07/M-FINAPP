@@ -9,8 +9,8 @@ import java.util.function.Predicate;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Code d'une nouvelle boisson, déduit de son libellé et de sa société : lisible, sans accents,
- * limité à la colonne, et unique.
+ * Code d'un nouvel article de la carte, déduit de son libellé (et de la société d'une boisson) : lisible,
+ * sans accents, limité à la colonne, et unique.
  */
 class GenerateurCodeArticleTest {
 
@@ -178,5 +178,132 @@ class GenerateurCodeArticleTest {
     @Test
     void la_meme_saisie_donne_toujours_le_meme_code() {
         assertThat(code("Primus 55CL", "Bracongo")).isEqualTo(code("  primus   55cl ", " BRACONGO "));
+    }
+
+    // ---------------------------------------------------------------------
+    // Plats : pas de société, le préfixe PLAT les distingue des boissons
+    // ---------------------------------------------------------------------
+
+    private static String codePlat(String libelle) {
+        return GenerateurCodeArticle.genererPlat(libelle, RIEN_N_EXISTE);
+    }
+
+    @Test
+    void un_plat_recoit_le_prefixe_plat_et_les_mots_de_son_libelle() {
+        assertThat(codePlat("Omelette")).isEqualTo("PLAT-OMEL");
+        assertThat(codePlat("Poulet braisé")).isEqualTo("PLAT-POUL-BRAI");
+        assertThat(codePlat("Brochette de bœuf")).isEqualTo("PLAT-BROC-BOEU");
+        assertThat(codePlat("Crème brûlée")).isEqualTo("PLAT-CREM-BRUL");
+    }
+
+    @Test
+    void les_mots_de_liaison_des_noms_de_plats_sont_ignores() {
+        assertThat(codePlat("Poulet braisé avec frites")).isEqualTo("PLAT-POUL-BRAI-FRIT");
+        assertThat(codePlat("Riz sans sauce")).isEqualTo("PLAT-RIZ-SAUC");
+        assertThat(codePlat("Pizza pour deux")).isEqualTo("PLAT-PIZZ-DEUX");
+        assertThat(code("Jus avec pulpe 1L", null)).isEqualTo("JUS-PULP-1L");
+    }
+
+    @Test
+    void un_plat_garde_une_quantite_ecrite_dans_son_libelle() {
+        assertThat(codePlat("Brochettes x2")).isEqualTo("PLAT-BROC-X2");
+        assertThat(codePlat("Sauce 33 cl")).isEqualTo("PLAT-SAUC-33CL");
+    }
+
+    @Test
+    void un_libelle_de_plat_vide_ne_donne_pas_de_code() {
+        assertThat(codePlat(null)).isEmpty();
+        assertThat(codePlat("")).isEmpty();
+        assertThat(codePlat("   ")).isEmpty();
+        assertThat(codePlat("!!! -- ???")).isEmpty();
+    }
+
+    @Test
+    void un_code_de_plat_deja_pris_recoit_un_numero() {
+        Set<String> pris = new HashSet<>(Set.of("PLAT-OMEL"));
+
+        assertThat(GenerateurCodeArticle.genererPlat("Omelette", pris::contains)).isEqualTo("PLAT-OMEL-2");
+
+        pris.add("PLAT-OMEL-2");
+        assertThat(GenerateurCodeArticle.genererPlat("Omelette", pris::contains)).isEqualTo("PLAT-OMEL-3");
+        assertThat(GenerateurCodeArticle.genererPlat("Omelette nature", pris::contains)).isEqualTo("PLAT-OMEL-NATU");
+    }
+
+    @Test
+    void un_code_de_plat_ne_contient_que_des_majuscules_chiffres_et_tirets_et_tient_dans_la_colonne() {
+        for (String libelle : new String[] {"Crème brûlée & café", "Poulet « maison » (épicé)", "Ñandú 1,5l",
+            "Extraordinairement Interminable Dénomination Commerciale 123456789012345678901234567890CL"}) {
+            String code = codePlat(libelle);
+            assertThat(code).matches("[A-Z0-9]+(-[A-Z0-9]+)*").startsWith("PLAT-");
+            assertThat(code.length()).isLessThanOrEqualTo(GenerateurCodeArticle.LONGUEUR_MAX);
+        }
+    }
+
+    @Test
+    void la_meme_saisie_donne_toujours_le_meme_code_de_plat() {
+        assertThat(codePlat("Poulet braisé")).isEqualTo(codePlat("  poulet   BRAISÉ "));
+    }
+
+    // ---------------------------------------------------------------------
+    // Provisions : vivres, épices, charbon... — pas de société, le préfixe PROV
+    // ---------------------------------------------------------------------
+
+    private static String codeProvision(String libelle) {
+        return GenerateurCodeArticle.genererProvision(libelle, RIEN_N_EXISTE);
+    }
+
+    @Test
+    void une_provision_recoit_le_prefixe_prov_et_les_mots_de_son_libelle() {
+        assertThat(codeProvision("Riz")).isEqualTo("PROV-RIZ");
+        assertThat(codeProvision("Farine de blé")).isEqualTo("PROV-FARI-BLE");
+        assertThat(codeProvision("Charbon de bois")).isEqualTo("PROV-CHAR-BOIS");
+        assertThat(codeProvision("Tomates fraîches")).isEqualTo("PROV-TOMA-FRAI");
+    }
+
+    @Test
+    void une_provision_garde_son_conditionnement_ecrit_dans_le_libelle() {
+        assertThat(codeProvision("Huile de palme 5 L")).isEqualTo("PROV-HUIL-PALM-5L");
+        assertThat(codeProvision("Sac de riz 25 kg")).isEqualTo("PROV-SAC-RIZ-25KG");
+        assertThat(codeProvision("Sucre en poudre 1kg")).isEqualTo("PROV-SUCR-POUD-1KG");
+    }
+
+    @Test
+    void un_libelle_de_provision_vide_ne_donne_pas_de_code() {
+        assertThat(codeProvision(null)).isEmpty();
+        assertThat(codeProvision("")).isEmpty();
+        assertThat(codeProvision("   ")).isEmpty();
+        assertThat(codeProvision("!!! -- ???")).isEmpty();
+    }
+
+    @Test
+    void un_code_de_provision_deja_pris_recoit_un_numero() {
+        Set<String> pris = new HashSet<>(Set.of("PROV-RIZ"));
+
+        assertThat(GenerateurCodeArticle.genererProvision("Riz", pris::contains)).isEqualTo("PROV-RIZ-2");
+
+        pris.add("PROV-RIZ-2");
+        assertThat(GenerateurCodeArticle.genererProvision("Riz", pris::contains)).isEqualTo("PROV-RIZ-3");
+    }
+
+    @Test
+    void une_provision_ne_se_confond_ni_avec_un_plat_ni_avec_une_boisson() {
+        assertThat(codeProvision("Riz")).isEqualTo("PROV-RIZ");
+        assertThat(codePlat("Riz")).isEqualTo("PLAT-RIZ");
+        assertThat(code("Riz", null)).isEqualTo("RIZ");
+    }
+
+    @Test
+    void un_code_de_provision_ne_contient_que_des_majuscules_chiffres_et_tirets_et_tient_dans_la_colonne() {
+        for (String libelle : new String[] {"Piment « oiseau » (séché)", "Œufs & lait 1,5l", "Ñame",
+            "Extraordinairement Interminable Dénomination Commerciale 123456789012345678901234567890KG"}) {
+            String code = codeProvision(libelle);
+            assertThat(code).matches("[A-Z0-9]+(-[A-Z0-9]+)*").startsWith("PROV-");
+            assertThat(code.length()).isLessThanOrEqualTo(GenerateurCodeArticle.LONGUEUR_MAX);
+        }
+    }
+
+    @Test
+    void la_meme_saisie_donne_toujours_le_meme_code_de_provision() {
+        assertThat(codeProvision("Farine de blé")).isEqualTo(codeProvision("  farine   DE   BLÉ "));
     }
 }

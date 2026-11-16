@@ -23,6 +23,10 @@ public interface SortiePlatRepository extends JpaRepository<SortiePlat, Long> {
     """)
     List<SortiePlat> rechercher(@Param("du") LocalDate du, @Param("au") LocalDate au);
 
+    /** Mouvements de stock des sorties non annulees de ce motif — voir RestaurantService.listerPlatsPerimes. */
+    @Query("select s.mouvementStock.id from SortiePlat s where s.motif = :motif and s.annulee = false")
+    List<Long> idsMouvementsParMotif(@Param("motif") com.mbsc.finapp.domain.enums.MotifSortiePlat motif);
+
     /** true si ce mouvement de stock est la sortie d'un plat : il ne s'annule qu'avec elle. */
     boolean existsByMouvementStockId(Long mouvementStockId);
 }

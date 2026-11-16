@@ -52,6 +52,16 @@ public class LotStock {
     @JoinColumn(name = "ligne_mouvement_id")
     private LigneMouvementStock ligneMouvement;
 
+    /**
+     * Ligne de note de frais dont le paiement a créé ce lot ; {@code null} s'il ne vient pas d'un achat par note
+     * (réception directe, lot d'ouverture, arrivée d'un transfert). Sert au retour de fonds : le fournisseur reprend
+     * des bouteilles ou des kilos <i>de cette livraison</i>, c'est donc ce lot qui diminue, pas le plus ancien de
+     * l'article — voir {@code LotStockService.consommer}.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ligne_note_frais_id")
+    private LigneNoteFrais ligneNoteFrais;
+
     @Column(name = "date_entree", nullable = false)
     private LocalDate dateEntree;
 

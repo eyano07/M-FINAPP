@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT', niveau: 'ECRITURE' })
+definePageMeta({ module: 'RESTAURANT', niveau: 'ECRITURE', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Production : transforme des provisions en portions d'un plat.
@@ -27,6 +27,8 @@ interface Recette {
   uniteMesure?: string
   lignes: LigneRecette[]
   coutEstimeParPortion: number
+  /** Durée de conservation de la fiche, en jours ; absente : le plat ne se périme pas. */
+  dureeConservationJours?: number | null
 }
 interface LigneSaisie {
   provisionId: number | null
@@ -46,6 +48,8 @@ interface Production {
   id: number
   reference: string
   dateProduction: string
+  /** Date d'expiration des portions ; absente : elles ne se périment pas. */
+  dateExpiration?: string | null
   platCode: string
   platLibelle: string
   uniteMesure?: string
@@ -61,10 +65,11 @@ interface Production {
 }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 const recettes = ref<Recette[]>([])
 const provisions = ref<Provision[]>([])
@@ -98,6 +103,17 @@ const entrepotsOptions = computed(() =>
 
 const recetteDuPlat = computed(() => recettes.value.find(r => r.platId === form.platId) || null)
 const platSansFiche = computed(() => !!recetteDuPlat.value && !recetteDuPlat.value.lignes.length)
+
+/**
+ * Date d'expiration des portions qu'on s'apprête à produire : date de production + durée de conservation de la fiche
+ * technique. Passé cette date, celles qui n'ont pas été vendues sont périmées. Null quand le plat ne se périme pas.
+ */
+const expirationPrevue = computed(() => {
+  const jours = recetteDuPlat.value?.dureeConservationJours
+  if (jours == null || !form.dateProduction) return null
+  const [a, m, j] = form.dateProduction.split('-').map(Number)
+  return new Date(a, m - 1, j + jours).toLocaleDateString('fr-FR', { dateStyle: 'long' })
+})
 
 const provisionDe = (id: number | null) => provisions.value.find(p => p.id === id) || null
 const stockDisponible = (provisionId: number | null, entrepotId: number | null) =>
@@ -225,9 +241,15 @@ async function produire() {
 }
 
 async function annuler(p: Production) {
-  if (!confirm(
-    `Annuler la production ${p.reference} ? Les ingrédients reviendront en stock et les `
-    + `${fmtQte(p.quantite)} portion(s) en sortiront.`)) return
+  const confirme = await dialogues.confirmer({
+    titre: `Annuler la production ${p.reference} ?`,
+    message: `Les ingrédients reviendront en stock et les ${fmtQte(p.quantite)} portion(s) en sortiront.`,
+    bouton: 'Annuler la production',
+    abandon: 'Retour',
+    nature: 'danger',
+    icone: 'mdi-cancel',
+  })
+  if (!confirme) return
   annulationId.value = p.id
   erreur.value = ''
   succes.value = ''
@@ -320,6 +342,18 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { dateSty
           </v-col>
         </v-row>
 
+        <p v-if="form.platId && recetteDuPlat" class="text-caption text-medium-emphasis mb-3 prod-expiration">
+          <v-icon icon="mdi-timer-sand" size="14" class="mr-1" />
+          <template v-if="expirationPrevue">
+            Ces portions expirent le <strong>{{ expirationPrevue }}</strong>
+            (conservation de {{ recetteDuPlat.dureeConservationJours }} jour{{ (recetteDuPlat.dureeConservationJours || 0) > 1 ? 's' : '' }},
+            fiche technique) : passé cette date, les portions non vendues sont périmées.
+          </template>
+          <template v-else>
+            Aucune durée de conservation dans la fiche technique : ces portions ne se périment pas.
+          </template>
+        </p>
+
         <v-alert
           v-if="platSansFiche"
           type="info" variant="tonal" density="compact" rounded="lg" class="mb-3"
@@ -404,6 +438,7 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { dateSty
           :headers="[
             { title: 'Référence', key: 'reference' },
             { title: 'Date', key: 'dateProduction' },
+            { title: 'Expire le', key: 'dateExpiration' },
             { title: 'Plat', key: 'platLibelle' },
             { title: 'Portions', key: 'quantite', align: 'end' },
             { title: 'Coût total', key: 'coutTotal', align: 'end' },
@@ -421,6 +456,10 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { dateSty
             </button>
           </template>
           <template #item.dateProduction="{ item }">{{ fmtDate(item.dateProduction) }}</template>
+          <template #item.dateExpiration="{ item }">
+            <span v-if="item.dateExpiration">{{ fmtDate(item.dateExpiration) }}</span>
+            <span v-else class="text-medium-emphasis">—</span>
+          </template>
           <template #item.platLibelle="{ item }">
             <span class="font-weight-medium">{{ item.platLibelle }}</span>
             <span class="text-medium-emphasis text-caption d-block">{{ item.platCode }}</span>

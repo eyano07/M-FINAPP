@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { RetourFonds } from '~/components/notes-frais/DetailRetourFonds.vue'
+
 const rolesStore = useRolesStore()
-definePageMeta({ module: 'CAISSE', niveau: 'ECRITURE' })
+definePageMeta({ module: 'CAISSE', niveau: 'ECRITURE', roles: ['CAISSIER'] })
 
 interface Transaction {
   id: number
@@ -15,6 +17,9 @@ interface Transaction {
   beneficiaire?: string
   dateOperation: string
   tauxJournalier?: number
+  /** Retour de fonds : la note payée que cet encaissement réduit (distincte de noteFraisId, le paiement). */
+  noteRetourId?: number
+  noteRetourReference?: string
 }
 
 interface Compte {
@@ -258,8 +263,9 @@ async function charger() {
         manifestement fausse plutot que plausible. */,
       // Position comptable reelle du compte 571, toutes origines confondues
       // (saisie caisse, journal importe, piece manuelle). Les transactions du
-      // module ci-dessus n'en sont qu'une partie.
-      api<LigneBalance[]>('/caisse/balance').catch(() => [] as LigneBalance[]),
+      // module ci-dessus n'en sont qu'une partie. Soldes de tresorerie seuls :
+      // la balance generale est fermee au caissier.
+      api<LigneBalance[]>('/caisse/soldes-tresorerie').catch(() => [] as LigneBalance[]),
     ])
     transactions.value = txs
     comptes.value = cpts
@@ -271,7 +277,7 @@ async function charger() {
   } finally {
     loading.value = false
   }
-  await chargerNotes()
+  await Promise.all([chargerNotes(), chargerRetours()])
 }
 
 async function chargerNotes() {
@@ -296,6 +302,86 @@ async function chargerNotes() {
 
 onMounted(charger)
 
+// ── Retours de fonds à recevoir ───────────────────────────────────────
+// L'émetteur d'une note payée l'a réduite : il rapporte la différence en espèces. À la réception, le caissier valide
+// (le serveur passe le retour en caisse, sort du stock les marchandises rendues, met la note à jour et prévient les
+// personnes concernées) ou refuse avec un motif, transmis à l'émetteur. Il ne corrige pas le montant.
+const retoursFonds = ref<RetourFonds[]>([])
+const loadingRetours = ref(false)
+const retourAValider = ref<RetourFonds | null>(null)
+const retourARefuser = ref<RetourFonds | null>(null)
+const motifRefus = ref('')
+const traitementRetour = ref(false)
+const erreurRetour = ref('')
+const succesRetour = ref('')
+
+async function chargerRetours() {
+  loadingRetours.value = true
+  try {
+    retoursFonds.value = await api<RetourFonds[]>('/caisse/retours-fonds')
+  } catch {
+    retoursFonds.value = []
+  } finally {
+    loadingRetours.value = false
+  }
+}
+
+const fmtMontantDevise = (v: number, devise?: string | null) =>
+  `${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0)} ${devise || ''}`.trim()
+
+function demanderValidationRetour(r: RetourFonds) {
+  erreurRetour.value = ''
+  succesRetour.value = ''
+  retourAValider.value = r
+}
+
+function demanderRefusRetour(r: RetourFonds) {
+  erreurRetour.value = ''
+  succesRetour.value = ''
+  motifRefus.value = ''
+  retourARefuser.value = r
+}
+
+async function validerRetour() {
+  const r = retourAValider.value
+  if (!r) return
+  traitementRetour.value = true
+  erreurRetour.value = ''
+  try {
+    const res = await api<RetourFonds>(`/caisse/retours-fonds/${r.id}/valider`, { method: 'POST' })
+    retourAValider.value = null
+    succesRetour.value = `Retour de fonds reçu : ${fmtMontantDevise(res.montant, res.devise)} pour la note ${res.noteReference}`
+      + `${res.numeroRecu ? ` (reçu n° ${res.numeroRecu})` : ''}. La note est réduite, les personnes concernées sont prévenues.`
+    await charger()
+    // Le reçu s'affiche aussitôt, prêt à imprimer pour l'émetteur qui a rapporté l'argent.
+    const tx = transactions.value.find((t) => t.reference === res.transactionReference)
+    if (tx) afficherRecu(tx, res.demandeurNom || undefined)
+  } catch (e: any) {
+    erreurRetour.value = e?.data?.message || "La réception n'a pas pu être enregistrée."
+    await chargerRetours()
+  } finally {
+    traitementRetour.value = false
+  }
+}
+
+async function refuserRetour() {
+  const r = retourARefuser.value
+  if (!r || !motifRefus.value.trim()) return
+  traitementRetour.value = true
+  erreurRetour.value = ''
+  try {
+    await api(`/caisse/retours-fonds/${r.id}/refuser`, { method: 'POST', body: { motif: motifRefus.value.trim() } })
+    retourARefuser.value = null
+    succesRetour.value = `Retour de fonds de la note ${r.noteReference} refusé : l'émetteur est prévenu du motif.`
+    await chargerRetours()
+  } catch (e: any) {
+    erreurRetour.value = e?.data?.message || "Le refus n'a pas pu être enregistré."
+    await chargerRetours()
+  } finally {
+    traitementRetour.value = false
+  }
+}
+
 // ── Reçu de paiement (imprimable) ─────────────────────────────────────
 const recuData = ref<RecuData | null>(null)
 const dateEditionRecu = ref('')
@@ -308,7 +394,7 @@ function construireRecu(tx: Transaction, beneficiaire?: string): RecuData {
     montant: tx.montant,
     dateOperation: tx.dateOperation,
     caissierNom: tx.caissierNom,
-    noteFraisReference: tx.noteFraisReference,
+    noteFraisReference: tx.noteFraisReference || tx.noteRetourReference,
     objet: tx.libelle,
     beneficiaire,
   }
@@ -359,6 +445,14 @@ async function voirRecu(item: Transaction) {
       beneficiaire = note?.beneficiaire || note?.demandeurNom
     } catch {
       // Reçu affiché sans le nom du bénéficiaire si la note n'est plus consultable.
+    }
+  } else if (item.sens === 'ENCAISSEMENT' && item.noteRetourId) {
+    // Retour de fonds : le payeur est l'émetteur de la note, qui a rapporté l'argent.
+    try {
+      const note = await api<{ demandeurNom?: string }>(`/notes-frais/${item.noteRetourId}`)
+      beneficiaire = note?.demandeurNom
+    } catch {
+      // Reçu affiché sans le nom du payeur si la note n'est plus consultable.
     }
   }
   afficherRecu(item, beneficiaire)
@@ -673,6 +767,111 @@ const fmtTaux = computed(() =>
     </v-card>
 
 
+    <!-- ── Retours de fonds à recevoir ──────────────────────────────────── -->
+    <v-card v-if="retoursFonds.length || succesRetour || erreurRetour" id="retours-fonds" class="classroom-card mt-4">
+      <v-card-title class="text-subtitle-1 font-weight-semibold pa-4 pb-2 d-flex align-center">
+        Retours de fonds à recevoir
+        <v-chip v-if="retoursFonds.length" size="small" color="teal" variant="tonal" class="ml-2">
+          {{ retoursFonds.length }}
+        </v-chip>
+        <v-spacer />
+        <v-btn size="small" variant="text" icon="mdi-refresh" :loading="loadingRetours" @click="chargerRetours" />
+      </v-card-title>
+      <div class="px-4 pb-4">
+        <v-alert v-if="succesRetour" type="success" variant="tonal" density="compact" rounded="lg" class="mb-3" closable
+          @click:close="succesRetour = ''">
+          {{ succesRetour }}
+        </v-alert>
+        <v-alert v-if="erreurRetour" type="error" variant="tonal" density="compact" rounded="lg" class="mb-3" closable
+          @click:close="erreurRetour = ''">
+          {{ erreurRetour }}
+        </v-alert>
+        <p v-if="retoursFonds.length" class="text-body-2 text-medium-emphasis mb-3">
+          Ces notes payées ont été réduites par leur émetteur : il doit vous remettre la différence en espèces. Validez à la
+          réception de l'argent, ou refusez en indiquant le motif.
+        </p>
+        <p v-else class="text-body-2 text-medium-emphasis mb-0">Aucun retour de fonds en attente.</p>
+        <div class="caisse-retours">
+          <div v-for="r in retoursFonds" :key="r.id" class="caisse-retour">
+            <div class="caisse-retour__tete">
+              <nuxt-link :to="`/notes-frais/${r.noteId}`" class="caisse-note__ref">{{ r.noteReference }}</nuxt-link>
+              <span class="caisse-retour__objet">{{ r.noteObjet }}</span>
+              <v-spacer />
+              <span class="caisse-retour__montant">{{ fmtMontantDevise(r.montant, r.devise) }}</span>
+            </div>
+            <NotesFraisDetailRetourFonds :retour="r" :avec-statut="false" :avec-montant="false" />
+            <div v-if="auth.hasRole('CAISSIER')" class="caisse-retour__actions">
+              <v-btn color="error" variant="text" rounded="lg" size="small" prepend-icon="mdi-close"
+                :disabled="traitementRetour" @click="demanderRefusRetour(r)">
+                Refuser
+              </v-btn>
+              <v-btn color="teal" variant="flat" rounded="lg" size="small" prepend-icon="mdi-cash-check"
+                :disabled="traitementRetour" @click="demanderValidationRetour(r)">
+                Valider la réception
+              </v-btn>
+            </div>
+          </div>
+        </div>
+      </div>
+    </v-card>
+
+    <!-- Confirmation de la réception de l'argent -->
+    <v-dialog :model-value="!!retourAValider" max-width="480" :persistent="traitementRetour"
+      @update:model-value="(v) => { if (!v) retourAValider = null }">
+      <v-card v-if="retourAValider" rounded="xl">
+        <v-card-title class="d-flex align-center ga-2 pt-4 px-5">
+          <v-icon icon="mdi-cash-check" color="teal" />
+          Valider la réception
+        </v-card-title>
+        <v-card-text class="px-5">
+          <p class="mb-3">
+            J'ai reçu <strong>{{ fmtMontantDevise(retourAValider.montant, retourAValider.devise) }}</strong> en espèces de
+            {{ retourAValider.demandeurNom || "l'émetteur" }} pour la note <strong>{{ retourAValider.noteReference }}</strong>.
+          </p>
+          <p class="text-body-2 text-medium-emphasis mb-0">
+            Le retour est enregistré en caisse avec un reçu ; la note est réduite, les marchandises rendues sortent du stock
+            et {{ rolesStore.libelle('DFIN') }}, {{ rolesStore.libelle('COMPTABLE') }}, {{ rolesStore.libelle('DA') }},
+            {{ rolesStore.libelle('ADMIN') }} ainsi que le responsable du bar ou de la cuisine concerné sont prévenus.
+          </p>
+        </v-card-text>
+        <v-card-actions class="px-5 pb-4">
+          <v-spacer />
+          <v-btn variant="text" :disabled="traitementRetour" @click="retourAValider = null">Annuler</v-btn>
+          <v-btn color="teal" variant="flat" rounded="lg" :loading="traitementRetour" @click="validerRetour">
+            J'ai reçu l'argent
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Refus motivé -->
+    <v-dialog :model-value="!!retourARefuser" max-width="480" :persistent="traitementRetour"
+      @update:model-value="(v) => { if (!v) retourARefuser = null }">
+      <v-card v-if="retourARefuser" rounded="xl">
+        <v-card-title class="d-flex align-center ga-2 pt-4 px-5">
+          <v-icon icon="mdi-cash-remove" color="error" />
+          Refuser le retour de fonds
+        </v-card-title>
+        <v-card-text class="px-5">
+          <p class="mb-3">
+            Note <strong>{{ retourARefuser.noteReference }}</strong> :
+            {{ fmtMontantDevise(retourARefuser.montant, retourARefuser.devise) }} annoncés par
+            {{ retourARefuser.demandeurNom || "l'émetteur" }}. La note restera inchangée.
+          </p>
+          <v-textarea v-model="motifRefus" label="Motif du refus *" rows="3" auto-grow counter="500" maxlength="500"
+            variant="outlined" density="comfortable" placeholder="Ex. : argent non remis, montant incomplet…" />
+        </v-card-text>
+        <v-card-actions class="px-5 pb-4">
+          <v-spacer />
+          <v-btn variant="text" :disabled="traitementRetour" @click="retourARefuser = null">Annuler</v-btn>
+          <v-btn color="error" variant="flat" rounded="lg" :loading="traitementRetour" :disabled="!motifRefus.trim()"
+            @click="refuserRetour">
+            Refuser
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- ── Tableau des transactions ──────────────────────────────────── -->
     <v-card class="classroom-card mt-4">
       <v-card-title class="text-subtitle-1 font-weight-semibold pa-4 pb-2">
@@ -786,6 +985,10 @@ const fmtTaux = computed(() =>
         </template>
         <template #[`item.noteFraisReference`]="{ item }">
           <code v-if="item.noteFraisReference" class="text-caption text-primary">{{ item.noteFraisReference }}</code>
+          <span v-else-if="item.noteRetourReference" class="d-inline-flex align-center ga-1" title="Retour de fonds sur cette note">
+            <code class="text-caption text-teal">{{ item.noteRetourReference }}</code>
+            <v-icon icon="mdi-cash-refund" size="14" color="teal" />
+          </span>
           <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #[`item.beneficiaire`]="{ item }">
@@ -1147,17 +1350,7 @@ const fmtTaux = computed(() =>
   margin: 4px 0 10px;
 }
 
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
-.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 .taux-badge {
   font-size: 0.78rem;
   background: var(--color-primary-lighter);
@@ -1246,6 +1439,23 @@ const fmtTaux = computed(() =>
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* Téléphone et tablette : l'objet s'affiche en entier ; le montant et « Payer » passent sous le texte, sur toute la largeur. */
+@media screen and (max-width: 959px) {
+  .caisse-note { flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; }
+  .caisse-note .caisse-note__objet { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+  .caisse-note .caisse-note__main { flex: 1 1 100%; }
+  .caisse-note .caisse-note__montant { flex: 1 1 auto; font-size: 1.05rem; }
+  .caisse-note .v-btn { flex: 0 0 auto; }
+}
+
+/* ── Retours de fonds à recevoir ─────────────────────────────────── */
+.caisse-retours { display: flex; flex-direction: column; gap: 12px; }
+.caisse-retour { border: 1px solid #ccfbf1; background: #fcfffe; border-radius: 12px; padding: 12px 14px; }
+.caisse-retour__tete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.caisse-retour__tete .caisse-note__ref { text-decoration: none; }
+.caisse-retour__objet { font-size: 0.875rem; font-weight: 500; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.caisse-retour__montant { font-size: 1rem; font-weight: 700; color: #0f766e; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.caisse-retour__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 
 .dialog-card { overflow: hidden; }
 .dialog-header { padding: 28px 28px 20px; text-align: center; }

@@ -114,10 +114,9 @@ public class ImportIaService {
      * a une impasse.
      *
      * <p>Le rattachement se fait au plus long prefixe existant : {@code 1211}
-     * se raccroche a {@code 121}, dont il heritera du type et de la classe. La
-     * creation manuelle imposant la numerotation {@code parent.suffixe}, le
-     * compte cree porte {@code 121.1} et non {@code 1211} — l'import substitue
-     * alors l'un a l'autre. Le libelle propose est celui lu dans le fichier,
+     * se raccroche a {@code 121}, dont il heritera du type et de la classe, et
+     * porte le numero du fichier sans point ({@code 1211}, jamais {@code 121.1} :
+     * audit SYSCOHADA C-17). Le libelle propose est celui lu dans le fichier,
      * qui decrit deja l'usage voulu.</p>
      */
     private SuggestionImport proposerCreation(String numero, String libelleLigne, String intituleFichier) {
@@ -128,8 +127,8 @@ public class ImportIaService {
                 + " Verifiez le numero dans votre fichier.", false);
         }
         CompteOHADA p = parent.get();
-        String suffixe = numero.substring(p.getNumero().length());
-        String propose = p.getNumero() + "." + suffixe;
+        // Le numéro du fichier, déjà sans point (C-17), prolonge celui du parent : il est créé tel quel.
+        String propose = numero.replace(".", "");
         // Seule la colonne « Intitule du compte » peut nommer un compte : elle
         // porte bien un nom de compte. Le libelle d'ecriture, lui, decrit UNE
         // operation (« Paiement courses de service MIKE FLO ») et n'a jamais
@@ -144,8 +143,8 @@ public class ImportIaService {
         return new SuggestionImport("CREATION", numero, propose, libelle,
             "Compte absent du plan comptable. Il peut etre cree sous « " + p.getNumero()
             + " " + p.getLibelle() + " », dont il heritera du type et de la classe."
-            + " Il portera le numero " + propose + " (la creation manuelle impose"
-            + " la forme parent.suffixe) et les ecritures y seront rattachees.", false);
+            + " Il portera le numero " + propose + " (sans point) et les ecritures y seront rattachees.", false,
+            p.getNumero());
     }
 
     /** Plus long prefixe du numero correspondant a un compte existant. */

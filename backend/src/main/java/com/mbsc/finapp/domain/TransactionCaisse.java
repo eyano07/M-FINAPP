@@ -36,6 +36,15 @@ public class TransactionCaisse {
     @ToString.Exclude
     private NoteFrais noteFrais;   // optionnel
 
+    /**
+     * Retour de fonds : la note payee que cet encaissement reduit (voir {@code RetourFondsService}), null sinon. Distinct de
+     * {@link #noteFrais}, le lien un-pour-un du paiement de la note : une note payee peut recevoir plusieurs retours.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "note_retour_id")
+    @ToString.Exclude
+    private NoteFrais noteRetour;
+
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal montant;
 

@@ -2,6 +2,7 @@
 import { useAuthStore } from '~/stores/auth'
 import { useNotificationsStore, type NotificationItem } from '~/stores/notifications'
 import { useParametresStore } from '~/stores/parametres'
+import { useInstanceStore } from '~/stores/instance'
 
 defineProps<{ drawerOpen: boolean }>()
 
@@ -18,15 +19,59 @@ const auth = useAuthStore()
 const { logout } = useAuth()
 const notif = useNotificationsStore()
 const parametresStore = useParametresStore()
+const instance = useInstanceStore()
+
+/** Serveur local : état de la synchronisation avec le serveur en ligne (pastille de la barre). */
+const synchro = computed(() => {
+  if (!instance.estLocal) return null
+  const depuis = instance.derniereSynchro ? tempsEcoule(instance.derniereSynchro) : null
+  if (instance.horsConnexion) {
+    return { icone: 'mdi-cloud-off-outline', couleur: '#d97706', probleme: true,
+      texte: `Hors connexion avec le serveur en ligne${instance.enAttente ? ` — ${instance.enAttente} changement(s) en attente` : ''}. `
+        + 'Vous pouvez continuer à travailler : tout partira au retour de la connexion.' }
+  }
+  return { icone: 'mdi-cloud-check-outline', couleur: '#16a34a', probleme: instance.enAttente > 200,
+    texte: `Synchronisé avec le serveur en ligne${depuis ? ` (${depuis})` : ''}${instance.enAttente ? ` — ${instance.enAttente} en cours d'envoi` : ''}.` }
+})
 const rolesStore = useRolesStore()
+const route = useRoute()
+
+// Titre de la page (barre sous 960 px). Ordre : titre posé par la page (usePageTitle) > `definePageMeta({ titre })` > titre
+// `h1` que la page affiche elle-même (lu dans le DOM : une seule source, aucun titre à répéter dans chaque page).
+const titreExplicite = usePageTitle()
+const titreH1 = ref('')
+let observateur: MutationObserver | undefined
+let lecturePlanifiee = 0
+function lireTitreH1() {
+  const h1 = document.querySelector('.v-main h1.page-title') ?? document.querySelector('.v-main h1')
+  titreH1.value = (h1?.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+function planifierLecture() {
+  if (lecturePlanifiee) return
+  lecturePlanifiee = requestAnimationFrame(() => { lecturePlanifiee = 0; lireTitreH1() })
+}
+const titrePage = computed(() => {
+  const explicite = titreExplicite.value.chemin === route.path ? titreExplicite.value.titre : ''
+  return explicite || (route.meta.titre as string | undefined) || titreH1.value
+})
+watch(() => route.path, () => nextTick(lireTitreH1))
 
 onMounted(() => {
   notif.charger()
   notif.connecter()
   parametresStore.charger()
+  usePreferencesStore().charger()
+  lireTitreH1()
+  const principal = document.querySelector('.v-main')
+  if (principal) {
+    observateur = new MutationObserver(planifierLecture)
+    observateur.observe(principal, { childList: true, subtree: true, characterData: true })
+  }
 })
 onUnmounted(() => {
   notif.deconnecter()
+  observateur?.disconnect()
+  if (lecturePlanifiee) cancelAnimationFrame(lecturePlanifiee)
 })
 
 const TYPE_META: Record<string, { icon: string; color: string }> = {
@@ -39,6 +84,33 @@ const TYPE_META: Record<string, { icon: string; color: string }> = {
   NOTE_ANNULEE:   { icon: 'mdi-cancel',                color: '#6b7280' },
   ENCAISSEMENT_CAISSE: { icon: 'mdi-cash-plus',        color: 'var(--color-primary)' },
   IA_CREDIT_EPUISE: { icon: 'mdi-robot-confused-outline', color: '#b45309' },
+  PLATS_PERIMES:  { icon: 'mdi-clock-alert-outline',   color: '#b45309' },
+  PLATS_PERIMES_RETIRES: { icon: 'mdi-delete-clock-outline', color: '#6b7280' },
+  // Circuit des budgets : soumission au DA, approbation, rejet, mise en exécution, dépense validée hors budget.
+  BUDGET_SOUMIS:  { icon: 'mdi-file-send-outline',     color: '#2563eb' },
+  BUDGET_APPROUVE: { icon: 'mdi-check-decagram-outline', color: '#16a34a' },
+  BUDGET_REJETE:  { icon: 'mdi-close-octagon-outline', color: '#dc2626' },
+  BUDGET_EN_EXECUTION: { icon: 'mdi-play-circle-outline', color: '#0d9488' },
+  BUDGET_DEPASSE: { icon: 'mdi-alert-octagon-outline', color: '#dc2626' },
+  // Retour de fonds sur une note payée : attendu à la caisse (caissiers), retiré par l'émetteur, reçu en caisse (note
+  // réduite), ou refusé par le caissier.
+  RETOUR_FONDS_A_RECEVOIR: { icon: 'mdi-cash-clock', color: '#d97706' },
+  RETOUR_FONDS_RETIRE: { icon: 'mdi-cash-off', color: '#6b7280' },
+  RETOUR_FONDS_VALIDE: { icon: 'mdi-cash-refund', color: '#0d9488' },
+  RETOUR_FONDS_REFUSE: { icon: 'mdi-cash-remove', color: '#dc2626' },
+  // Action faite sur la copie en ligne (validation, nouvelle note...) appliquée ou refusée par le serveur local.
+  ACTION_EN_LIGNE_APPLIQUEE: { icon: 'mdi-cloud-check-outline', color: '#0d9488' },
+  ACTION_EN_LIGNE_REFUSEE: { icon: 'mdi-cloud-alert-outline', color: '#dc2626' },
+  RETOUR_VENTE_A_APPROUVER: { icon: 'mdi-keyboard-return', color: '#d97706' },
+  RETOUR_VENTE_APPROUVE: { icon: 'mdi-check-decagram-outline', color: '#2563eb' },
+  RETOUR_VENTE_REFUSE: { icon: 'mdi-close-octagon-outline', color: '#dc2626' },
+  RETOUR_VENTE_REMBOURSE: { icon: 'mdi-cash-refund', color: '#0d9488' },
+  // Circuit des pièces comptables : saisie ou restauration à valider (DFIN), annulation par le comptable (DFIN),
+  // comptabilisation et comptabilisation rétablie (comptable).
+  PIECE_A_COMPTABILISER: { icon: 'mdi-file-document-edit-outline', color: '#2563eb' },
+  PIECE_ANNULEE: { icon: 'mdi-file-cancel-outline', color: '#dc2626' },
+  PIECE_COMPTABILISEE: { icon: 'mdi-file-check-outline', color: '#16a34a' },
+  PIECE_RESTAUREE: { icon: 'mdi-file-restore-outline', color: '#0d9488' },
 }
 const typeMeta = (type: string) => TYPE_META[type] ?? { icon: 'mdi-bell-outline', color: '#6b7280' }
 
@@ -54,9 +126,15 @@ function tempsEcoule(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR')
 }
 
+// Le panneau reste ouvert pour « Tout marquer comme lu » (close-on-content-click désactivé) ; il se referme quand une
+// notification ouvre sa page, sinon il masquerait la page qu'on vient d'ouvrir.
+const panneauNotifications = ref(false)
 async function ouvrirNotification(n: NotificationItem) {
   await notif.marquerLue(n.id)
-  if (n.lien) await navigateTo(n.lien)
+  if (n.lien) {
+    panneauNotifications.value = false
+    await navigateTo(n.lien)
+  }
 }
 </script>
 
@@ -76,7 +154,19 @@ async function ouvrirNotification(n: NotificationItem) {
       <span class="modern-appbar__name">{{ parametresStore.parametres.nom }}</span>
     </div>
 
-    <v-spacer />
+    <!-- Téléphone et tablette (< 960 px) : le titre de la page, sous une miniature du logo et du nom de l'entreprise. -->
+    <div class="modern-appbar__page" :class="{ 'modern-appbar__page--sans-titre': !titrePage }">
+      <span class="modern-appbar__marque">
+        <span class="modern-appbar__logo modern-appbar__logo--mini" :class="{ 'modern-appbar__logo--image': parametresStore.parametres.logoUrl }">
+          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="">
+          <v-icon v-else icon="mdi-finance" size="10" color="white" />
+        </span>
+        <span class="modern-appbar__marque-nom">{{ parametresStore.parametres.nom }}</span>
+      </span>
+      <span v-if="titrePage" class="modern-appbar__titre" aria-hidden="true">{{ titrePage }}</span>
+    </div>
+
+    <v-spacer class="modern-appbar__espace" />
 
     <v-menu location="bottom end">
       <template #activator="{ props }">
@@ -91,15 +181,31 @@ async function ouvrirNotification(n: NotificationItem) {
       </v-list>
     </v-menu>
 
-    <v-btn icon variant="text" size="small" aria-label="Aide" class="modern-appbar__action">
+    <v-btn icon variant="text" size="small" aria-label="Aide" class="modern-appbar__action modern-appbar__action--pc">
       <v-icon icon="mdi-help-circle-outline" size="20" />
     </v-btn>
 
-    <v-btn icon variant="text" size="small" aria-label="Parametres" class="modern-appbar__action" to="/profil">
+    <v-btn icon variant="text" size="small" aria-label="Parametres" class="modern-appbar__action modern-appbar__action--pc" to="/profil">
       <v-icon icon="mdi-cog-outline" size="20" />
     </v-btn>
 
-    <v-menu location="bottom end" :close-on-content-click="false">
+    <v-tooltip v-if="synchro" location="bottom" max-width="320" :text="synchro.texte">
+      <template #activator="{ props }">
+        <v-btn
+          icon
+          variant="text"
+          size="small"
+          :aria-label="synchro.texte"
+          class="modern-appbar__action modern-appbar__synchro"
+          :class="{ 'modern-appbar__synchro--probleme': synchro.probleme }"
+          v-bind="props"
+        >
+          <v-icon :icon="synchro.icone" size="20" :color="synchro.couleur" />
+        </v-btn>
+      </template>
+    </v-tooltip>
+
+    <v-menu v-model="panneauNotifications" location="bottom end" :close-on-content-click="false">
       <template #activator="{ props }">
         <v-btn icon variant="text" size="small" aria-label="Notifications" class="modern-appbar__action" v-bind="props">
           <v-badge
@@ -239,6 +345,71 @@ async function ouvrirNotification(n: NotificationItem) {
   color: var(--ink-soft) !important;
 }
 
+/* Titre de la page : visible seulement sous 960 px (téléphone et tablette) ; au-dessus, la marque reste à gauche
+   et le grand titre est dans la page. */
+.modern-appbar__page { display: none; }
+@media screen and (max-width: 959px) {
+  .modern-appbar__brand,
+  .modern-appbar__action--pc,
+  .modern-appbar__espace { display: none !important; }
+
+  .modern-appbar__page {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    margin-left: 2px;
+  }
+  .modern-appbar__marque {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+  }
+  .modern-appbar__logo--mini { width: 14px; height: 14px; border-radius: 4px; }
+  .modern-appbar__logo--mini img { padding: 1px; }
+  .modern-appbar__marque-nom {
+    font-size: 0.64rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .modern-appbar__titre {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.1px;
+    color: var(--ink);
+  }
+  /* Titre pas encore connu (page qui se charge) : la marque garde sa taille habituelle. */
+  .modern-appbar__page--sans-titre .modern-appbar__marque { gap: 10px; }
+  .modern-appbar__page--sans-titre .modern-appbar__logo--mini { width: 30px; height: 30px; border-radius: 8px; }
+  .modern-appbar__page--sans-titre .modern-appbar__logo--mini img { padding: 3px; }
+  .modern-appbar__page--sans-titre .modern-appbar__marque-nom {
+    font-size: 0.9375rem;
+    font-weight: 400;
+    letter-spacing: -0.1px;
+    text-transform: none;
+    color: var(--ink-2);
+  }
+
+  /* Cibles tactiles de 44 px. */
+  .modern-appbar .modern-appbar__action { width: 44px !important; height: 44px !important; }
+  .modern-appbar .modern-appbar__avatar { width: 40px; height: 40px; margin-left: 4px; margin-right: 4px; }
+}
+
 .modern-appbar__avatar {
   display: inline-flex;
   align-items: center;
@@ -264,8 +435,8 @@ async function ouvrirNotification(n: NotificationItem) {
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: 14px;
-  width: 340px;
-  max-height: 420px;
+  width: min(340px, calc(100vw - 16px));
+  max-height: min(420px, calc(100dvh - 80px));
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0,0,0,0.10);
@@ -459,5 +630,10 @@ async function ouvrirNotification(n: NotificationItem) {
 .user-menu__logout:hover {
   background: #fef2f2;
   color: #dc2626;
+}
+
+/* Pastille de synchronisation (serveur local) : sur téléphone, seulement quand il y a quelque chose à signaler. */
+@media screen and (max-width: 599px) {
+  .modern-appbar__synchro:not(.modern-appbar__synchro--probleme) { display: none; }
 }
 </style>

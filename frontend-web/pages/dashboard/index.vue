@@ -8,7 +8,7 @@ import { Bar, Line, Pie, Doughnut, Radar, Scatter, Bubble } from 'vue-chartjs'
 // LOGISTIQUE non plus : son tableau de bord est /logistique (voir
 // NavigationDrawer.vue) - celui-ci n'a rien de pertinent pour son metier
 // (tresorerie, budgets, notes de frais).
-definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE'] })
+definePageMeta({ titre: 'Tableau de bord', roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE'] })
 
 interface Note {
   id: number
@@ -33,6 +33,10 @@ const erreur = ref('')
 const estCaissier = computed(() =>
   auth.hasRole('CAISSIER') && !auth.hasAnyRole(['ADMIN', 'DFIN', 'DA', 'DG', 'LOGISTIQUE'])
 )
+
+// Raccourcis Vente / Caisse : réservés au caissier. L'administrateur configure l'application mais ne vend ni n'encaisse
+// (séparation des tâches, voir SeparationDesTachesTest) : le serveur et les pages Caisse et Nouvelle vente le lui refusent.
+const peutOperer = computed(() => auth.hasRole('CAISSIER'))
 
 const notes = ref<Note[]>([])
 const tresorerie = ref(0)
@@ -71,7 +75,7 @@ async function charger() {
   // OHADA) : la tresorerie du canal est donc la somme de tous les
   // sous-comptes du prefixe, pas un compte unique comme pour la caisse.
   try {
-    const balance = await api<any[]>('/caisse/balance')
+    const balance = await api<any[]>(auth.hasAnyRole(['COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN']) ? '/caisse/balance' : '/caisse/soldes-tresorerie')
     const caisse = balance.find((l) => l.compteNumero === '571')
     tresorerie.value = caisse ? caisse.solde : 0
     tresorerieBanque.value = balance
@@ -382,9 +386,19 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
         <p class="dash__eyebrow">{{ dateDuJour }}</p>
         <h1 class="dash__title">{{ greeting }}, {{ auth.user?.prenom || auth.user?.email }}</h1>
       </div>
-      <v-btn color="primary" prepend-icon="mdi-plus" elevation="0" to="/notes-frais" class="dash__cta">
-        Nouvelle note
-      </v-btn>
+      <div class="dash__actions">
+        <v-btn v-if="peutOperer && permissions.peutVoir('VENTES')" color="primary" variant="tonal" prepend-icon="mdi-cart-outline"
+          elevation="0" to="/ventes/nouvelle" class="dash__cta">
+          Vente
+        </v-btn>
+        <v-btn v-if="peutOperer && permissions.peutVoir('CAISSE')" color="primary" variant="tonal" prepend-icon="mdi-cash-register"
+          elevation="0" to="/caisse" class="dash__cta">
+          Caisse
+        </v-btn>
+        <v-btn color="primary" prepend-icon="mdi-plus" elevation="0" to="/notes-frais" class="dash__cta">
+          Nouvelle note
+        </v-btn>
+      </div>
     </header>
 
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-6" closable @click:close="erreur = ''">
@@ -563,6 +577,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .dash__eyebrow { font-size: 0.875rem; color: var(--ink-soft); margin: 0 0 6px; }
 .dash__eyebrow::first-letter { text-transform: uppercase; }
 .dash__title { font-size: clamp(1.7rem, 3.4vw, 2.5rem); font-weight: 700; color: var(--ink); letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
+.dash__actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .dash__cta { flex-shrink: 0; }
 
 /* ── Situation : position de trésorerie + indicateurs ────── */

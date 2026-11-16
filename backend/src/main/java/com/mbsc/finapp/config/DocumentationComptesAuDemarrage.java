@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Au démarrage, rédige la fiche de documentation des comptes ajoutés avant que
@@ -17,9 +18,14 @@ import org.springframework.stereotype.Component;
 public class DocumentationComptesAuDemarrage implements ApplicationRunner {
 
     private final DocumentationCompteService documentation;
+    private final InstanceService instance;
 
     @Override
     public void run(ApplicationArguments args) {
+        // Copie en ligne (ou ancien serveur local) : rien n'est ecrit ici, les donnees viennent du serveur principal (V132).
+        if (instance.lectureSeule()) {
+            return;
+        }
         documentation.documenterComptesExistants();
     }
 }

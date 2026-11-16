@@ -7,7 +7,7 @@ definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN'] })
     <div class="page-head">
       <div>
         <h1 class="page-title">Nouveau budget</h1>
-        <p class="page-sub">Budget annuel ventilé par mois : saisissez-le ligne par ligne ou faites-le proposer par l’IA à partir du réalisé</p>
+        <p class="page-sub">Budget de l’exercice, d’un semestre, d’un trimestre ou d’un mois, ventilé par mois et réparti au besoin par service : saisissez-le ligne par ligne ou faites-le proposer par l’IA à partir du réalisé</p>
       </div>
       <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/budgets">Retour aux budgets</v-btn>
     </div>

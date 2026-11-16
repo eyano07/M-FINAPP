@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // StockService.listerMouvements exclut le caissier, qui a pourtant le
 // module en LECTURE pour le catalogue : sans ce controle il voyait la page.
-definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] })
 
 interface Mouvement {
   id: number
@@ -18,6 +18,7 @@ interface Mouvement {
 }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const loading = ref(false)
 const erreur = ref('')
@@ -72,7 +73,15 @@ async function valider(id: number) {
 }
 
 async function annuler(id: number) {
-  if (!confirm('Annuler ce mouvement ? Les stocks et écritures seront extournés.')) return
+  const confirme = await dialogues.confirmer({
+    titre: 'Annuler ce mouvement ?',
+    message: 'Les stocks et écritures seront extournés.',
+    bouton: 'Annuler le mouvement',
+    abandon: 'Retour',
+    nature: 'danger',
+    icone: 'mdi-cancel',
+  })
+  if (!confirme) return
   erreur.value = ''
   try {
     await api(`/logistique/mouvements/${id}/annuler`, { method: 'POST' })

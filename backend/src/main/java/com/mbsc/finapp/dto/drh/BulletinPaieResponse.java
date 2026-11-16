@@ -60,7 +60,13 @@ public record BulletinPaieResponse(
     /** Pilote le document imprimé : bulletin complet si vrai, reçu de paiement simplifié sinon. */
     boolean employeConforme,
     /** Nom complet du titulaire actuel du rôle RESP_DRH, pour la signature du bulletin imprimé (null si aucun). */
-    String drhNom
+    String drhNom,
+    /** Personnes à charge retenues pour l'IPR (enfants + conjoint), figées sur le bulletin. */
+    Integer personnesACharge,
+    /** CNSS patronale par branche : pensions (4313), prestations familiales (4311), risques professionnels (4312). */
+    BigDecimal cnssPatronalePension,
+    BigDecimal cnssPatronalePf,
+    BigDecimal cnssPatronaleRp
 ) {
     public static BulletinPaieResponse from(BulletinPaie b, String drhNom) {
         return new BulletinPaieResponse(
@@ -77,6 +83,8 @@ public record BulletinPaieResponse(
             b.getPieceComptable() != null ? b.getPieceComptable().getReference() : null,
             b.getPieceComptable() != null ? b.getPieceComptable().getStatut() : null,
             b.getDateCloture() != null,
-            b.getEmploye().isConforme(), drhNom);
+            b.getEmploye().isConforme(), drhNom,
+            b.getPersonnesACharge() != null ? b.getPersonnesACharge() : b.getNombreEnfants(),
+            b.getCnssPatronalePension(), b.getCnssPatronalePf(), b.getCnssPatronaleRp());
     }
 }

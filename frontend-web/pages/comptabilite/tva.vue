@@ -247,9 +247,6 @@ function fmtDate(d: string) {
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
-.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 
 /* Recapitulatif de l'arrete, avant generation de la piece. */
 .decl-recap { display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); border-radius: 10px; padding: 14px 16px; }

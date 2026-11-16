@@ -1,9 +1,12 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.enums.DureeBudget;
 import com.mbsc.finapp.dto.budget.BudgetResponse;
 import com.mbsc.finapp.service.ThemeDocumentService.ThemeDocument;
 import com.mbsc.finapp.dto.budget.SuiviBudgetResponse;
+import com.mbsc.finapp.dto.budget.SuiviBudgetResponse.Depassement;
 import com.mbsc.finapp.dto.budget.SuiviBudgetResponse.LigneSuivi;
+import com.mbsc.finapp.dto.budget.SuiviBudgetResponse.SuiviService;
 import com.mbsc.finapp.dto.budget.SuiviBudgetResponse.TotalSuivi;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -28,13 +31,15 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
- * Budget au format PDF (A4 paysage) : en-tete de l'entreprise, informations et circuit d'approbation, synthese
- * par section avec graphique prevu / realise, budget par ligne en trimestres et semestres (sous-totaux par
- * nature SYSCOHADA), ventilation mensuelle, depenses et notes hors budget, signatures. Montants en devise de
- * base (USD) au centime : les totaux se verifient a la lecture.
+ * Budget au format PDF (A4 paysage) : en-tete de l'entreprise, informations (periode, circuit d'approbation),
+ * synthese par section avec graphique prevu / realise, budget par ligne en trimestres et semestres (ou mois par
+ * mois pour une periode plus courte que l'annee), sous-totaux par nature SYSCOHADA, ventilation mensuelle d'un
+ * budget annuel, execution par service, depassements, depenses et notes hors budget, signatures. Montants en
+ * devise de base (USD) au centime : les totaux se verifient a la lecture.
  */
 @Service
 @RequiredArgsConstructor
@@ -65,11 +70,15 @@ public class BudgetPdfService {
         try (PDDocument doc = new PDDocument()) {
             Rendu r = new Rendu(doc, theme, budget);
             r.nouvellePage();
-            r.informations(budget);
+            r.informations(budget, suivi);
             r.synthese(suivi);
+            r.depassements(suivi);
             r.graphiques(suivi);
             r.tableauPeriodes(suivi);
-            r.tableauMensuel(suivi);
+            if (budget.duree() == DureeBudget.ANNUEL) {
+                r.tableauMensuel(suivi);
+            }
+            r.services(suivi);
             r.horsBudget(suivi);
             r.signatures(budget);
             r.piedsDePage();
@@ -124,7 +133,9 @@ public class BudgetPdfService {
             hauteurPied = papier.pied(cs, PAGE);
             basContenu = hauteurPied + 22f;
             float haut = PAGE.getHeight() - hauteurEntete - 6;
-            String titre = "BUDGET PRÉVISIONNEL " + budget.exercice();
+            String titre = budget.duree() == null || budget.duree() == DureeBudget.ANNUEL
+                ? "BUDGET PRÉVISIONNEL " + budget.exercice()
+                : "BUDGET PRÉVISIONNEL  -  " + budget.libellePeriode().toUpperCase(Locale.FRANCE);
             texte(titre, BOLD, 12, MARGE, haut - 12, couleur);
             texteDroite(budget.reference() + (budget.numeroRevision() > 0 ? "  -  révision n° " + budget.numeroRevision() : "")
                 + "  -  " + statut(budget.statut().name()), REG, 8, PAGE.getWidth() - MARGE, haut - 6, GRIS);
@@ -163,10 +174,15 @@ public class BudgetPdfService {
 
         // ---------------- sections ----------------
 
-        void informations(BudgetResponse b) throws IOException {
+        void informations(BudgetResponse b, SuiviBudgetResponse s) throws IOException {
             titreSection("Informations");
+            long services = s.services().stream().filter(x -> x.serviceId() != null).count();
             String[][] lignes = {
                 {"Intitulé", b.intitule(), "Exercice", String.valueOf(b.exercice())},
+                {"Période", b.duree().nom() + "  -  " + b.libellePeriode() + " (" + MOIS[b.moisDebut() - 1]
+                    + (b.moisFin() == b.moisDebut() ? "" : " à " + MOIS[b.moisFin() - 1]) + ")",
+                    "Services", b.parService() ? services + " service" + (services > 1 ? "s" : "") + " (budget consolidé)"
+                        : services > 0 ? "Budget non réparti ; " + services + " service(s) avec des dépenses" : "Budget non réparti par service"},
                 {"Référence", b.reference() + (b.revisionDeReference() != null ? " (révise " + b.revisionDeReference() + ")" : ""),
                     "Statut", statut(b.statut().name())},
                 {"Élaboré par", nvl(b.elaboreParNom()) + date(b.dateCreation(), " le "), "Soumis le", date(b.dateSoumission(), "")},
@@ -197,35 +213,39 @@ public class BudgetPdfService {
         void synthese(SuiviBudgetResponse s) throws IOException {
             int mois = s.moisEcoules();
             titreSection("Synthèse (USD)  -  exécution au " + s.calculeLe().format(JOUR)
-                + (mois > 0 && mois < 12 ? " (" + mois + " mois écoulé" + (mois > 1 ? "s" : "") + ")" : ""));
-            float[] l = {150, 54, 54, 54, 54, 58, 58, 64, 64, 64, 60, 38};
-            String[] entete = {"Section", "T1", "T2", "T3", "T4", "S1", "S2", "Prévu année", "Prévu à date", "Réalisé à date",
-                "Écart à date", "Taux"};
-            Tableau t = new Tableau(l, entete, 1);
+                + (mois > 0 && mois < 12 ? " (" + mois + " mois écoulé" + (mois > 1 ? "s" : "") + " de l'exercice)" : ""));
+            List<Colonne> cols = colonnesPeriode();
+            float[] l = largeurs(new float[] {150}, cols.size(), 332f, new float[] {64, 64, 64, 60, 38});
+            List<String> entete = new ArrayList<>(List.of("Section"));
+            cols.forEach(c -> entete.add(c.libelle()));
+            entete.addAll(List.of("Prévu " + periodeCourte(), "Prévu à date", "Réalisé à date", "Écart à date", "Taux"));
+            Tableau t = new Tableau(l, entete.toArray(String[]::new), 1);
             for (TotalSuivi tot : s.sections()) {
                 boolean recette = "PRODUITS".equals(tot.section());
-                ajouterSynthese(t, tot.libelle(), tot, mois, recette, tot.tauxExecution(), false);
+                ajouterSynthese(t, tot.libelle(), tot, mois, recette, tot.tauxExecution(), false, cols);
             }
-            ajouterSynthese(t, "Résultat prévisionnel (produits - charges)", s.resultat(), mois, true, null, true);
+            ajouterSynthese(t, "Résultat prévisionnel (produits - charges)", s.resultat(), mois, true, null, true, cols);
             t.dessiner();
             legende("Écart à date = réalisé à date - prévu à date (prévu cumulé jusqu'au mois en cours). En vert : favorable (recettes "
-                + "au-delà du prévu, dépenses en deçà) ; en rouge : défavorable. Taux = réalisé de l'exercice / prévu de l'année.");
+                + "au-delà du prévu, dépenses en deçà) ; en rouge : défavorable. Taux = réalisé de la période / prévu de la période"
+                + (budget.duree() == DureeBudget.ANNUEL ? "" : " (« " + budget.libellePeriode() + " » : seuls ses mois sont pris en compte)") + ".");
         }
 
         /** Ligne de synthese : periodes du prevu, puis prevu et realise cumules a date et leur ecart, colore selon son sens. */
-        private void ajouterSynthese(Tableau t, String libelle, TotalSuivi tot, int mois, boolean recette, BigDecimal taux, boolean gras) {
+        private void ajouterSynthese(Tableau t, String libelle, TotalSuivi tot, int mois, boolean recette, BigDecimal taux, boolean gras,
+                                     List<Colonne> cols) {
             BigDecimal[] prevu = tot.prevu().toArray(BigDecimal[]::new);
             BigDecimal[] realise = tot.realise().toArray(BigDecimal[]::new);
-            BigDecimal[] tr = MoteurBudgetaire.trimestres(prevu);
-            BigDecimal[] se = MoteurBudgetaire.semestres(prevu);
             BigDecimal prevuADate = MoteurBudgetaire.cumul(prevu, mois);
             BigDecimal realiseADate = MoteurBudgetaire.cumul(realise, mois);
             BigDecimal ecart = realiseADate.subtract(prevuADate);
-            float[][] couleurs = new float[12][];
-            couleurs[10] = couleurEcart(ecart, recette);
-            t.ligne(new String[] {libelle, montant(tr[0]), montant(tr[1]), montant(tr[2]), montant(tr[3]), montant(se[0]), montant(se[1]),
-                montant(MoteurBudgetaire.total(prevu)), montant(prevuADate), montant(realiseADate), montant(ecart), taux(taux)},
-                gras, gras ? GRIS_CLAIR : null, couleurs);
+            List<String> cellules = new ArrayList<>(List.of(libelle));
+            cols.forEach(c -> cellules.add(montant(somme(tot.prevu(), c))));
+            cellules.addAll(List.of(montant(MoteurBudgetaire.total(prevu)), montant(prevuADate), montant(realiseADate), montant(ecart),
+                taux(taux)));
+            float[][] couleurs = new float[cellules.size()][];
+            couleurs[cellules.size() - 2] = couleurEcart(ecart, recette);
+            t.ligne(cellules.toArray(String[]::new), gras, gras ? GRIS_CLAIR : null, couleurs);
         }
 
         /** Vert si l'ecart est favorable (recette au-dela du prevu, depense en deca), rouge s'il est defavorable. */
@@ -255,7 +275,7 @@ public class BudgetPdfService {
         private void graphique(String titre, List<BigDecimal> prevu, List<BigDecimal> realise, float x, float bas, float largeur, float hauteur) throws IOException {
             texte(titre, BOLD, 8, x, bas + hauteur + 4, null);
             BigDecimal max = BigDecimal.ONE;
-            for (int m = 0; m < 12; m++) {
+            for (int m = budget.moisDebut() - 1; m < budget.moisFin(); m++) {
                 max = max.max(prevu.get(m).abs()).max(realise.get(m).abs());
             }
             float zone = hauteur - 16;
@@ -264,9 +284,11 @@ public class BudgetPdfService {
             cs.moveTo(x, bas + 12);
             cs.lineTo(x + largeur, bas + 12);
             cs.stroke();
-            float pas = largeur / 12f;
-            for (int m = 0; m < 12; m++) {
-                float bx = x + m * pas + 3;
+            int debut = budget.moisDebut() - 1;
+            int nombre = budget.moisFin() - budget.moisDebut() + 1;
+            float pas = largeur / (float) nombre;
+            for (int m = debut; m < debut + nombre; m++) {
+                float bx = x + (m - debut) * pas + 3;
                 float hp = prevu.get(m).abs().divide(max, 6, RoundingMode.HALF_UP).floatValue() * zone;
                 float hr = realise.get(m).abs().divide(max, 6, RoundingMode.HALF_UP).floatValue() * zone;
                 cs.setNonStrokingColor(0.78f, 0.82f, 0.88f);
@@ -290,10 +312,14 @@ public class BudgetPdfService {
 
         void tableauPeriodes(SuiviBudgetResponse s) throws IOException {
             place(80);
-            titreSection("Budget par ligne : trimestres, semestres et exécution (USD)");
-            float[] l = {42, 150, 52, 52, 52, 52, 56, 56, 60, 58, 50, 58, 38};
-            String[] entete = {"Compte", "Libellé", "T1", "T2", "T3", "T4", "S1", "S2", "Prévu", "Réalisé", "Engagé", "Disponible", "Taux"};
-            Tableau t = new Tableau(l, entete);
+            List<Colonne> cols = colonnesPeriode();
+            titreSection(budget.duree() == DureeBudget.ANNUEL ? "Budget par ligne : trimestres, semestres et exécution (USD)"
+                : cols.isEmpty() ? "Budget par ligne et exécution (USD)" : "Budget par ligne : mois de la période et exécution (USD)");
+            float[] l = largeurs(new float[] {42, 150}, cols.size(), 320f, new float[] {60, 58, 50, 58, 38});
+            List<String> entete = new ArrayList<>(List.of("Compte", "Libellé"));
+            cols.forEach(c -> entete.add(c.libelle()));
+            entete.addAll(List.of("Prévu", "Réalisé", "Engagé", "Disponible", "Taux"));
+            Tableau t = new Tableau(l, entete.toArray(String[]::new));
             for (TotalSuivi section : s.sections()) {
                 boolean recette = "PRODUITS".equals(section.section());
                 t.titre(section.libelle().toUpperCase(), couleurClaire());
@@ -304,16 +330,19 @@ public class BudgetPdfService {
                     for (LigneSuivi ls : s.lignes()) {
                         if (ls.section().equals(section.section()) && ls.nature().equals(nature.code())) {
                             t.ligne(lignePeriodesDetail(ls.compteNumero(), ls.compteLibelle(), ls.prevu(), ls.realiseAnnuel(),
-                                ls.engageAnnuel(), ls.disponibleAnnuel(), ls.tauxExecution()), false, null, couleursDisponible(ls.disponibleAnnuel(), recette));
+                                ls.engageAnnuel(), ls.disponibleAnnuel(), ls.tauxExecution(), cols), false, null,
+                                couleursDisponible(ls.disponibleAnnuel(), recette, cols));
                         }
                     }
                     BigDecimal dispoNature = nature.prevuAnnuel().subtract(nature.realiseAnnuel()).subtract(nature.engageAnnuel());
                     t.ligne(lignePeriodesDetail(nature.code(), "Total " + nature.libelle(), nature.prevu(), nature.realiseAnnuel(),
-                        nature.engageAnnuel(), dispoNature, nature.tauxExecution()), true, GRIS_CLAIR, couleursDisponible(dispoNature, recette));
+                        nature.engageAnnuel(), dispoNature, nature.tauxExecution(), cols), true, GRIS_CLAIR,
+                        couleursDisponible(dispoNature, recette, cols));
                 }
                 BigDecimal dispoSection = section.prevuAnnuel().subtract(section.realiseAnnuel()).subtract(section.engageAnnuel());
                 t.ligne(lignePeriodesDetail("", "TOTAL " + section.libelle().toUpperCase(), section.prevu(), section.realiseAnnuel(),
-                    section.engageAnnuel(), dispoSection, section.tauxExecution()), true, couleurClaire(), couleursDisponible(dispoSection, recette));
+                    section.engageAnnuel(), dispoSection, section.tauxExecution(), cols), true, couleurClaire(),
+                    couleursDisponible(dispoSection, recette, cols));
             }
             t.dessiner();
             legende("Réalisé : écritures comptabilisées au grand livre. Engagé : notes de frais validées non encore payées. Disponible = "
@@ -321,12 +350,55 @@ public class BudgetPdfService {
         }
 
         /** Disponible negatif : depassement (rouge) pour une depense, recette superieure au prevu (vert) pour un produit. */
-        private float[][] couleursDisponible(BigDecimal disponible, boolean recette) {
-            float[][] c = new float[13][];
+        private float[][] couleursDisponible(BigDecimal disponible, boolean recette, List<Colonne> cols) {
+            int nombre = 2 + cols.size() + 5;
+            float[][] c = new float[nombre][];
             if (disponible != null && disponible.signum() < 0) {
-                c[11] = recette ? VERT : ROUGE;
+                c[nombre - 2] = recette ? VERT : ROUGE;
             }
             return c;
+        }
+
+        /** Colonnes de detail : trimestres et semestres d'un budget annuel, mois d'une periode plus courte (aucune pour un mois). */
+        private List<Colonne> colonnesPeriode() {
+            if (budget.duree() == null || budget.duree() == DureeBudget.ANNUEL) {
+                return List.of(new Colonne("T1", 1, 3), new Colonne("T2", 4, 6), new Colonne("T3", 7, 9), new Colonne("T4", 10, 12),
+                    new Colonne("S1", 1, 6), new Colonne("S2", 7, 12));
+            }
+            List<Colonne> cols = new ArrayList<>();
+            if (budget.moisFin() > budget.moisDebut()) {
+                for (int m = budget.moisDebut(); m <= budget.moisFin(); m++) {
+                    cols.add(new Colonne(MOIS[m - 1], m, m));
+                }
+            }
+            return cols;
+        }
+
+        /** « année », « semestre », « trimestre » ou « mois ». */
+        private String periodeCourte() {
+            return switch (budget.duree() == null ? DureeBudget.ANNUEL : budget.duree()) {
+                case ANNUEL -> "année";
+                case SEMESTRIEL -> "semestre";
+                case TRIMESTRIEL -> "trimestre";
+                case MENSUEL -> "mois";
+            };
+        }
+
+        /**
+         * Largeurs d'un tableau : colonnes fixes de tete, {@code n} colonnes de periode se partageant {@code espace}, puis
+         * colonnes fixes de queue. Sans colonne de periode, l'espace revient a la derniere colonne de tete (le libelle).
+         */
+        private float[] largeurs(float[] tete, int n, float espace, float[] queue) {
+            float[] l = new float[tete.length + n + queue.length];
+            System.arraycopy(tete, 0, l, 0, tete.length);
+            if (n == 0) {
+                l[tete.length - 1] += espace;
+            }
+            for (int i = 0; i < n; i++) {
+                l[tete.length + i] = espace / n;
+            }
+            System.arraycopy(queue, 0, l, tete.length + n, queue.length);
+            return l;
         }
 
         void tableauMensuel(SuiviBudgetResponse s) throws IOException {
@@ -361,11 +433,11 @@ public class BudgetPdfService {
         void horsBudget(SuiviBudgetResponse s) throws IOException {
             if (!s.horsBudget().isEmpty()) {
                 place(60);
-                titreSection("Dépenses et recettes hors budget (comptes mouvementés non couverts par une ligne)");
-                Tableau t = new Tableau(new float[] {60, 330, 120, 120}, new String[] {"Compte", "Libellé", "Section", "Réalisé"}, 3);
+                titreSection("Dépenses et recettes hors budget (comptes mouvementés ou engagés non couverts par une ligne)");
+                Tableau t = new Tableau(new float[] {60, 330, 120, 120, 120}, new String[] {"Compte", "Libellé", "Section", "Réalisé", "Engagé"}, 3);
                 for (SuiviBudgetResponse.CompteHorsBudget h : s.horsBudget()) {
                     t.ligne(new String[] {h.compteNumero(), nvl(h.compteLibelle()), SuiviBudgetaireService.libelleSection(
-                        MoteurBudgetaire.Section.valueOf(h.section())), montant(h.realiseAnnuel())}, false, null);
+                        MoteurBudgetaire.Section.valueOf(h.section())), montant(h.realiseAnnuel()), montant(h.engageAnnuel())}, false, null);
                 }
                 t.dessiner();
                 y -= 8;
@@ -373,15 +445,78 @@ public class BudgetPdfService {
             if (!s.notesHorsBudget().isEmpty()) {
                 place(60);
                 titreSection("Notes de frais hors budget ou en dépassement (justification exigée)");
-                Tableau t = new Tableau(new float[] {78, 170, 80, 70, 72, 316},
-                    new String[] {"Note", "Objet", "Montant", "Statut", "Contrôle", "Justification"}, 99);
+                Tableau t = new Tableau(new float[] {78, 150, 80, 65, 70, 95, 248},
+                    new String[] {"Note", "Objet", "Montant", "Statut", "Contrôle", "Service", "Justification"}, 99);
                 for (SuiviBudgetResponse.NoteHorsBudget n : s.notesHorsBudget()) {
                     t.ligne(new String[] {n.reference(), nvl(n.objet()), montant(n.montant()) + " " + nvl(n.devise()), statutNote(n.statut()),
-                        controle(n.statutBudget()), nvl(n.justification())}, false, null);
+                        controle(n.statutBudget()), nvl(n.serviceNom()), nvl(n.justification())}, false, null);
                 }
                 t.dessiner();
                 y -= 8;
             }
+            if (!s.nonRattache().isEmpty()) {
+                place(60);
+                titreSection("Dépenses non rattachées à un service (comptes budgétés seulement par service)");
+                Tableau t = new Tableau(new float[] {60, 450, 120, 120}, new String[] {"Compte", "Libellé", "Section", "Réalisé"}, 3);
+                for (SuiviBudgetResponse.CompteHorsBudget h : s.nonRattache()) {
+                    t.ligne(new String[] {h.compteNumero(), nvl(h.compteLibelle()), SuiviBudgetaireService.libelleSection(
+                        MoteurBudgetaire.Section.valueOf(h.section())), montant(h.realiseAnnuel())}, false, null);
+                }
+                t.dessiner();
+                legende("Ces dépenses comptent dans le budget consolidé, mais dans l'enveloppe d'aucun service : écritures passées hors note "
+                    + "de frais, ou notes de frais sans service. Rattachez les notes à leur service pour les suivre sur son budget.");
+            }
+        }
+
+        /** Execution de l'enveloppe de chaque service sur la periode. */
+        void services(SuiviBudgetResponse s) throws IOException {
+            if (s.services().isEmpty()) {
+                return;
+            }
+            place(80);
+            titreSection("Exécution par service (dépenses, USD)");
+            Tableau t = new Tableau(new float[] {150, 130, 72, 72, 66, 72, 42, 72, 80, 26},
+                new String[] {"Service", "Responsable", "Prévu", "Réalisé", "Engagé", "Disponible", "Taux", "Non budgété", "Dépassement", ""}, 2);
+            for (SuiviService sv : s.services()) {
+                float[][] c = new float[10][];
+                if (sv.disponible().signum() < 0) {
+                    c[5] = ROUGE;
+                }
+                if (sv.depassement().signum() > 0) {
+                    c[8] = ROUGE;
+                }
+                t.ligne(new String[] {sv.nom() + (sv.actif() ? "" : " (désactivé)"), nvl(sv.responsable()), montant(sv.prevu()),
+                    montant(sv.realise()), montant(sv.engage()), montant(sv.disponible()), taux(sv.tauxExecution()),
+                    montant(sv.nonBudgete()), montant(sv.depassement()), ""}, sv.serviceId() == null, sv.serviceId() == null ? GRIS_CLAIR : null, c);
+            }
+            t.dessiner();
+            legende("Le réalisé et l'engagé d'un service proviennent de ses notes de frais (payées : grand livre ; approuvées non payées : "
+                + "engagé). Une dépense d'un service sur un compte qu'il n'a pas budgété s'impute sur la ligne générale du compte si elle "
+                + "existe, sinon elle est « non budgétée ». Dépassement = dépassements de ses lignes + dépenses non budgétées.");
+        }
+
+        /** Depassements de la periode : services puis budget consolide. */
+        void depassements(SuiviBudgetResponse s) throws IOException {
+            if (s.depassements().isEmpty()) {
+                return;
+            }
+            place(70);
+            titreSection("Dépassements budgétaires de la période (USD)");
+            Tableau t = new Tableau(new float[] {170, 52, 210, 70, 70, 70, 66, 78},
+                new String[] {"Enveloppe", "Compte", "Libellé", "Nature", "Prévu", "Réalisé", "Engagé", "Dépassement"}, 4);
+            for (Depassement d : s.depassements()) {
+                float[][] c = new float[8][];
+                c[7] = ROUGE;
+                String enveloppe = "CONSOLIDE".equals(d.niveau()) ? "Budget consolidé"
+                    : d.serviceId() == null ? "Lignes générales" : "Service " + d.serviceNom()
+                        + (present(d.responsable()) ? " (" + d.responsable() + ")" : "");
+                t.ligne(new String[] {enveloppe, d.compteNumero(), nvl(d.compteLibelle()),
+                    "NON_BUDGETE".equals(d.nature()) ? "Non budgété" : "Dépassement", montant(d.prevu()), montant(d.realise()),
+                    montant(d.engage()), montant(d.montant())}, false, null, c);
+            }
+            t.dessiner();
+            legende("Dépassement = réalisé + engagé - prévu sur la période, pour une dépense. « Non budgété » : dépense d'un service sur "
+                + "un compte qu'aucune de ses lignes (ni ligne générale) ne couvre.");
         }
 
         void signatures(BudgetResponse b) throws IOException {
@@ -508,12 +643,12 @@ public class BudgetPdfService {
         // ---------------- lignes ----------------
 
         private String[] lignePeriodesDetail(String compte, String libelle, List<BigDecimal> prevu, BigDecimal realise,
-                                             BigDecimal engage, BigDecimal disponible, BigDecimal taux) {
-            BigDecimal[] m = prevu.toArray(BigDecimal[]::new);
-            BigDecimal[] t = MoteurBudgetaire.trimestres(m);
-            BigDecimal[] s = MoteurBudgetaire.semestres(m);
-            return new String[] {compte, libelle, montant(t[0]), montant(t[1]), montant(t[2]), montant(t[3]), montant(s[0]),
-                montant(s[1]), montant(MoteurBudgetaire.total(m)), montant(realise), montant(engage), montant(disponible), taux(taux)};
+                                             BigDecimal engage, BigDecimal disponible, BigDecimal taux, List<Colonne> cols) {
+            List<String> cellules = new ArrayList<>(List.of(compte, libelle));
+            cols.forEach(c -> cellules.add(montant(somme(prevu, c))));
+            cellules.addAll(List.of(montant(MoteurBudgetaire.total(prevu.toArray(BigDecimal[]::new))), montant(realise), montant(engage),
+                montant(disponible), taux(taux)));
+            return cellules.toArray(String[]::new);
         }
 
         private String[] ligneMensuelle(String compte, String libelle, List<BigDecimal> prevu) {
@@ -630,6 +765,18 @@ public class BudgetPdfService {
         private float[] couleurClaire() {
             return new float[] {0.85f + couleur[0] * 0.15f, 0.85f + couleur[1] * 0.15f, 0.85f + couleur[2] * 0.15f};
         }
+    }
+
+    /** Colonne de detail d'un tableau : un libelle et les mois (1-12) qu'elle totalise. */
+    private record Colonne(String libelle, int debut, int fin) {
+    }
+
+    private static BigDecimal somme(List<BigDecimal> mensuel, Colonne c) {
+        BigDecimal s = BigDecimal.ZERO;
+        for (int m = c.debut(); m <= c.fin(); m++) {
+            s = s.add(mensuel.get(m - 1));
+        }
+        return s;
     }
 
     // =====================================================================

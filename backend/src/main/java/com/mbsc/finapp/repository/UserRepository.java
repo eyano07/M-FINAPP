@@ -13,7 +13,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @EntityGraph(attributePaths = "roles")
     Optional<User> findByEmail(String email);
 
+    /**
+     * Comptes dont l'identifiant de connexion ne differe que par la casse. Une liste, pas un
+     * {@code Optional} : la colonne n'est unique qu'a la casse pres, et d'anciens comptes peuvent
+     * avoir ete enregistres avec des majuscules (voir {@code AppUserDetailsService}).
+     */
+    @EntityGraph(attributePaths = "roles")
+    List<User> findAllByEmailIgnoreCase(String email);
+
     boolean existsByEmail(String email);
+
+    boolean existsByEmailIgnoreCase(String email);
 
     @EntityGraph(attributePaths = "roles")
     List<User> findAllByOrderByNomAscPrenomAsc();

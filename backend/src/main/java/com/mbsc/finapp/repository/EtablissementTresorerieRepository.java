@@ -11,6 +11,9 @@ public interface EtablissementTresorerieRepository extends JpaRepository<Etablis
 
     boolean existsByNomIgnoreCaseAndType(String nom, TypeEtablissement type);
 
+    /** Vrai si le compte porte déjà un établissement (un compte n'en porte qu'un). */
+    boolean existsByCompteId(Long compteId);
+
     @Query("""
         select e from EtablissementTresorerie e
         join fetch e.compte

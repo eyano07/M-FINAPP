@@ -1,5 +1,6 @@
 package com.mbsc.finapp.dto.budget;
 
+import com.mbsc.finapp.domain.enums.DureeBudget;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -28,5 +29,13 @@ public record BudgetRequest(
 
     @NotEmpty(message = "Le budget doit comporter au moins une ligne")
     @Valid
-    List<LigneBudgetRequest> lignes
+    List<LigneBudgetRequest> lignes,
+
+    /** Duree couverte (ANNUEL si absente) : l'exercice entier, un semestre, un trimestre ou un mois. */
+    DureeBudget duree,
+
+    /** Numero de la periode dans l'exercice (1 si absent) : 1-2 (semestre), 1-4 (trimestre), 1-12 (mois). */
+    @Min(value = 1, message = "Période invalide")
+    @Max(value = 12, message = "Période invalide")
+    Integer periode
 ) {}

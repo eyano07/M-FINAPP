@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Demande d'achat de provisions (matieres premieres de cuisine), sur le meme
@@ -66,7 +66,7 @@ const panier = ref<LignePanier[]>([])
 const historiqueProvisions = computed(() =>
   historique.value.filter(n => n.objet?.startsWith('Achat de provisions')))
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 // Devise commune à tout le panier (une seule note, un seul fournisseur réglé
 // en une fois) : verrouillée dès la première ligne ajoutée pour éviter qu'un
@@ -453,7 +453,7 @@ function fmtDate(iso: string) {
           persistent-hint
           variant="outlined"
           density="comfortable"
-          class="champ-fournisseur"
+          class="champ-fournisseur champ-entier"
         />
         <v-text-field
           v-model.number="form.fraisApproche"
@@ -464,7 +464,7 @@ function fmtDate(iso: string) {
           persistent-hint
           variant="outlined"
           density="comfortable"
-          class="champ-frais"
+          class="champ-frais champ-entier"
         />
       </div>
 
@@ -493,7 +493,7 @@ function fmtDate(iso: string) {
     </v-card>
 
     <v-alert v-else type="info" variant="tonal" rounded="lg" class="mb-6">
-      Seul le responsable restaurant peut demander un achat de provisions.
+      Seuls le responsable restaurant et le responsable cuisine peuvent demander un achat de provisions.
     </v-alert>
 
     <v-card class="classroom-card">
@@ -547,8 +547,8 @@ function fmtDate(iso: string) {
 .panier-ligne__titre { font-size: 0.875rem; font-weight: 600; color: var(--ink); margin: 0; }
 .panier-ligne__detail { font-size: 0.75rem; color: var(--ink-soft); margin: 2px 0 0; }
 .panier-ligne__montant { font-size: 0.875rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
-.champ-fournisseur { flex: 2 1 260px; }
-.champ-frais { flex: 1 1 200px; }
+.champ-fournisseur { flex: 2 1 340px; }
+.champ-frais { flex: 1 1 270px; }
 .panier-frais {
   display: flex;
   justify-content: space-between;

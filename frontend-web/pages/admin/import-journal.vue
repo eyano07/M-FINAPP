@@ -14,6 +14,8 @@ interface Rapport {
   avertissements: string[]
   references: string[]
   suggestions: Suggestion[]
+  /** Banques et opérateurs mobile money créés pour les comptes de trésorerie du fichier (ou qui le seront). */
+  etablissementsRattaches: string[]
 }
 
 interface Suggestion {
@@ -23,6 +25,8 @@ interface Suggestion {
   libelle: string | null
   raison: string
   genereParIa: boolean
+  /** Compte sous lequel créer le compte proposé (suggestion CREATION). */
+  parentNumero?: string | null
 }
 
 const api = useApi()
@@ -40,7 +44,7 @@ const substitutions = ref<Record<string, string>>({})
 const regroupement = ref<'REFERENCE' | 'JOUR' | 'FICHIER'>('REFERENCE')
 const modeImport = ref<'REMPLACER' | 'AJOUTER'>('REMPLACER')
 const MODES_IMPORT = [
-  { value: 'REMPLACER', title: 'Remplacer — efface les écritures existantes' },
+  { value: 'REMPLACER', title: 'Remplacer — efface toute la comptabilité et les opérations' },
   { value: 'AJOUTER', title: 'Ajouter — conserve les écritures existantes' },
 ]
 const confirmation = ref(false)
@@ -82,7 +86,7 @@ async function envoyer(simulation: boolean) {
     body.append('fichier', fichier.value)
     const subs = Object.entries(substitutions.value).map(([a, b]) => `${a}:${b}`).join(',')
     const url = `/admin/import/journal?simulation=${simulation}&regroupement=${regroupement.value}`
-      + `&devise=${devise.value}`
+      + `&devise=${devise.value}&modeImport=${modeImport.value}`
       + (subs ? `&substitutions=${encodeURIComponent(subs)}` : '')
     const r = await api<Rapport>(url, { method: 'POST', body })
     rapport.value = r
@@ -172,7 +176,9 @@ async function creerCompte(s: Suggestion) {
   creationEnCours.value = s.valeurActuelle
   erreur.value = ''
   try {
-    const [parent, suffixe] = s.valeurProposee.split(/\.(.+)/)
+    // Le compte proposé prolonge le numéro de son parent, sans point (C-17) : 604215 = 6042 + 15.
+    const parent = s.parentNumero ?? ''
+    const suffixe = s.valeurProposee.slice(parent.length)
     await api('/admin/comptes', {
       method: 'POST',
       body: { parentNumero: parent, suffixe, libelle: s.libelle || `Compte ${s.valeurActuelle}` },
@@ -280,8 +286,8 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
         variant="outlined" density="comfortable" class="mt-2" hide-details />
       <p class="text-caption text-medium-emphasis mt-2 mb-0">
         Rejouer un import sans remplacer empile un second jeu d’écritures et double les soldes.
-        Le remplacement ne touche pas aux écritures adossées à un mouvement réel de caisse,
-        de banque ou de mobile money.
+        Le remplacement repart d’une comptabilité vide : il efface aussi les notes de frais, la caisse,
+        la banque, le mobile money, les ventes, le stock et la paie.
       </p>
 
       <v-select v-model="regroupement" :items="MODES" label="Regroupement des lignes en pièces"
@@ -364,6 +370,19 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
         Aucune anomalie détectée. Vous pouvez lancer l’import réel.
       </v-alert>
 
+      <v-alert v-if="rapport.etablissementsRattaches?.length" type="info" variant="tonal" class="mb-4"
+        icon="mdi-bank-plus">
+        <div class="font-weight-bold mb-1">
+          {{ rapport.simulation ? 'Seront créés automatiquement dans Banques & Mobile Money :' : 'Créés automatiquement dans Banques & Mobile Money :' }}
+        </div>
+        <ul class="pl-4 mb-1">
+          <li v-for="(e, i) in rapport.etablissementsRattaches" :key="i" class="text-body-2">{{ e }}</li>
+        </ul>
+        <div class="text-caption">
+          Leur solde se lit dans le grand livre : il correspond d’emblée aux écritures importées, sans montant à saisir.
+        </div>
+      </v-alert>
+
       <v-card v-if="rapport.suggestions.length" class="classroom-card pa-5 mb-4 sugg-card">
         <div class="d-flex align-center ga-2 mb-1">
           <v-icon icon="mdi-creation" color="deep-purple" size="20" />
@@ -438,17 +457,19 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
 
     <v-dialog v-model="confirmation" max-width="520">
       <v-card>
-        <v-card-title class="text-error">Remplacer les écritures existantes ?</v-card-title>
+        <v-card-title class="text-error">Effacer toute la comptabilité ?</v-card-title>
         <v-divider />
         <v-card-text>
           <p class="mb-3">
-            Les écritures comptables actuelles vont être <strong>définitivement effacées</strong>
-            avant l’import : imports précédents, pièces saisies à la main et soldes d’ouverture.
+            Avant l’import, tout ceci va être <strong>définitivement effacé</strong> :
+            écritures et pièces comptables, notes de frais, opérations de caisse, de banque et de
+            mobile money, ventes, mouvements et niveaux de stock, bulletins de paie,
+            immobilisations, provisions.
           </p>
           <p class="mb-0 text-body-2 text-medium-emphasis">
-            Les écritures adossées à un encaissement ou un décaissement réel (caisse, banque,
-            mobile money) sont conservées : les supprimer laisserait ces mouvements sans
-            contrepartie comptable.
+            Restent : utilisateurs, paramètres, plan comptable, articles et clients.
+            Les numéros (NF-…, PC-…, VTE-…) continuent : un numéro n’est jamais réutilisé.
+            Refusé si une période est clôturée (SYSCOHADA). Faites une sauvegarde avant si besoin.
           </p>
         </v-card-text>
         <v-divider />
@@ -466,9 +487,6 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
-.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 .kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
 .kpi-value { font-size: 1.25rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
 .sugg-card { border-left: 3px solid #7c3aed !important; }

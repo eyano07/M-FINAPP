@@ -13,10 +13,13 @@ import { defineStore } from 'pinia'
  * décimales, quantités à 2 décimales au plus. Il ne se règle plus.
  */
 type Devise = 'USD' | 'CDF'
+/** Retrait des plats périmés : à la main avec une notification, ou automatique (réglage de l'administrateur). */
+type ModeRetraitPerimes = 'MANUEL' | 'AUTOMATIQUE'
 interface RestaurantParametresState {
   devise: Devise
   tauxChange: number
   charge: boolean
+  retraitPerimes: ModeRetraitPerimes
 }
 
 export const useRestaurantParametresStore = defineStore('restaurantParametres', {
@@ -24,6 +27,7 @@ export const useRestaurantParametresStore = defineStore('restaurantParametres', 
     devise: 'CDF',
     tauxChange: 0,
     charge: false,
+    retraitPerimes: 'MANUEL',
   }),
 
   actions: {
@@ -42,10 +46,13 @@ export const useRestaurantParametresStore = defineStore('restaurantParametres', 
       if (this.charge && !forcer) return
       const api = useApi()
       const [params, taux] = await Promise.allSettled([
-        api<{ deviseAffichage: Devise }>('/restaurant/parametres'),
+        api<{ deviseAffichage: Devise; retraitPerimesMode?: ModeRetraitPerimes }>('/restaurant/parametres'),
         api<{ taux: number }>('/admin/taux-change'),
       ])
-      if (params.status === 'fulfilled') this.devise = params.value.deviseAffichage
+      if (params.status === 'fulfilled') {
+        this.devise = params.value.deviseAffichage
+        this.retraitPerimes = params.value.retraitPerimesMode ?? 'MANUEL'
+      }
       if (taux.status === 'fulfilled') this.tauxChange = taux.value.taux || 0
       if (this.devise === 'CDF' && this.tauxChange <= 0) {
         // Sans taux, rien ne se convertit en FC : repli sur la devise de base

@@ -33,7 +33,10 @@ public record NoteFraisResponse(
     com.mbsc.finapp.domain.enums.CategorieNote categorie,
     Integer paieMois,
     Integer paieAnnee,
-    com.mbsc.finapp.domain.enums.OrganismePaie organismePaie
+    com.mbsc.finapp.domain.enums.OrganismePaie organismePaie,
+    /** Service qui engage la depense (null : aucun). */
+    Long serviceId,
+    String serviceNom
 ) {
     public static NoteFraisResponse from(NoteFrais n) {
         var createur = n.getCreateur();
@@ -56,7 +59,9 @@ public record NoteFraisResponse(
             n.getCategorie(),
             n.getPaieMois(),
             n.getPaieAnnee(),
-            n.getOrganismePaie()
+            n.getOrganismePaie(),
+            n.getService() == null ? null : n.getService().getId(),
+            n.getService() == null ? null : n.getService().getNom()
         );
     }
 

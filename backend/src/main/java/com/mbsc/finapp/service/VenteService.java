@@ -9,6 +9,7 @@ import com.mbsc.finapp.dto.vente.VenteRequest;
 import com.mbsc.finapp.dto.vente.VenteResponse;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
+import com.mbsc.finapp.audit.AuditService;
 import com.mbsc.finapp.dto.vente.ReglerCreanceRequest;
 import com.mbsc.finapp.repository.ArticleRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
@@ -58,6 +59,32 @@ public class VenteService {
     public static final String COMPTE_TVA_FACTUREE = "4431";
     /** Compte OHADA "Clients locaux" : contrepartie d'une vente a credit. */
     public static final String COMPTE_CLIENTS = "4111";
+
+    /**
+     * Compte à débiter pour une nouvelle vente à crédit : le compte propre du client (41111, 41112… depuis V145,
+     * demande du 15/11/2026), le collectif 4111 pour une vente sans fiche client ou une fiche sans compte.
+     */
+    static String compteClient(Vente vente) {
+        Client client = vente.getClient();
+        return client != null && client.getCompteComptable() != null ? client.getCompteComptable() : COMPTE_CLIENTS;
+    }
+
+    /**
+     * Compte de la créance d'une vente déjà comptabilisée : celui que sa pièce a réellement débité. Une vente passée
+     * avant V145 reste sur 4111 même si son client a reçu depuis un compte propre : son règlement, son retour et sa
+     * réévaluation doivent viser le même compte, sinon la créance ne se solderait jamais.
+     */
+    public static String compteCreance(Vente vente) {
+        if (vente.getPiece() != null && vente.getPiece().getLignes() != null) {
+            for (var l : vente.getPiece().getLignes()) {
+                if (l.getCompte() != null && l.getCompte().getNumero().startsWith(COMPTE_CLIENTS)
+                    && l.getDebit() != null && l.getDebit().signum() > 0) {
+                    return l.getCompte().getNumero();
+                }
+            }
+        }
+        return compteClient(vente);
+    }
     /** Compte OHADA "Caisse" : contrepartie d'une vente reglee en especes. */
     public static final String COMPTE_CAISSE = "571";
     /** Ecarts de change sur creances commerciales (SYSCOHADA revise, V95) — pas 676/776, reserves aux operations financieres. */
@@ -72,6 +99,7 @@ public class VenteService {
     private final TableRestaurantRepository tableRestaurantRepository;
     private final CompteOHADARepository compteRepository;
     private final ComptabiliteService comptabilite;
+    private final AnalytiqueVentesService analytique;
     private final StockService stockService;
     // Consigne des emballages : la vente d'une boisson alimente le stock de
     // bouteilles vides. Dependance a sens unique (RestaurantService ne connait
@@ -87,6 +115,9 @@ public class VenteService {
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     private final EcritureGrandLivreRepository ecritureRepository;
+    /** Commandes en attente : ce qu'elles ont commande est mis de cote (V134). */
+    private final ReservationStockService reservations;
+    private final com.mbsc.finapp.repository.RetourVenteRepository retourVenteRepository;
 
     // ---------------------------------------------------------------------
     // Consultation
@@ -111,7 +142,7 @@ public class VenteService {
     // ---------------------------------------------------------------------
 
     /** Enregistre la vente en BROUILLON : aucune ecriture, aucun mouvement de stock. */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse creer(VenteRequest req) {
         User auteur = currentUser.requireUser();
@@ -182,6 +213,10 @@ public class VenteService {
                 .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId())));
         }
 
+        // Ce qui est commandé est mis de côté jusqu'à la validation : rien ne peut sortir de ce que d'autres commandes
+        // en attente ont déjà réservé (V134).
+        reservations.exigerDisponibles(quantitesParArticle(vente.getLignes()), vente.getEntrepot(), null);
+
         // Totaux indicatifs tant que la vente est en brouillon ; ils sont
         // recalculés (et figés avec le taux) à la validation.
         calculerTotaux(vente, tauxTvaService.tauxALaDate(date));
@@ -198,7 +233,7 @@ public class VenteService {
      * au-dela du brouillon : une vente VALIDEE a deja genere sa sortie de
      * stock et son ecriture, la completer silencieusement les fausserait.
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse ajouterLigne(Long id, AjouterLigneVenteRequest req) {
         Vente vente = charger(id);
@@ -222,8 +257,69 @@ public class VenteService {
                 .orElseThrow(() -> RessourceIntrouvableException.of("Entrepot", req.entrepotId())));
         }
 
+        // La commande garde ce qu'elle avait déjà mis de côté : seul l'article ajouté se contrôle, pour tout ce que la
+        // commande en demande désormais (V134).
+        Article ajoute = ligne.getArticle();
+        reservations.exigerDisponible(ajoute, vente.getEntrepot(), quantitesParArticle(vente.getLignes()).entrySet().stream()
+            .filter(e -> e.getKey().getId().equals(ajoute.getId())).map(Map.Entry::getValue).findFirst().orElse(BigDecimal.ZERO),
+            vente.getId());
+
         calculerTotaux(vente, tauxTvaService.tauxALaDate(vente.getDateVente()));
         log.info("Ligne ajoutee [vente={}, article={}]", vente.getReference(), req.articleId());
+        return VenteResponse.from(vente);
+    }
+
+    /**
+     * Retour d'un article commandé avant paiement : retire une ligne d'une commande en attente (BROUILLON), ou en réduit
+     * la quantité. Ce qu'elle mettait de côté redevient disponible ; rien n'avait été comptabilisé (V134).
+     *
+     * @param quantite quantité rendue ; absente, toute la ligne
+     */
+    @PreAuthorize("hasRole('CAISSIER')")
+    @Transactional
+    public VenteResponse retirerLigne(Long id, Long ligneId, BigDecimal quantite) {
+        Vente vente = charger(id);
+        if (vente.getStatut() != StatutVente.BROUILLON) {
+            throw new TransitionInvalideException("Seule une commande en attente (BROUILLON) perd une ligne (état actuel : "
+                + vente.getStatut() + ") : une vente validée se rend par un retour avec remboursement.");
+        }
+        LigneVente ligne = vente.getLignes().stream().filter(l -> l.getId().equals(ligneId)).findFirst()
+            .orElseThrow(() -> RessourceIntrouvableException.of("LigneVente", ligneId));
+        BigDecimal rendue = quantite == null ? ligne.getQuantite() : quantite;
+        if (rendue.signum() <= 0 || rendue.compareTo(ligne.getQuantite()) > 0) {
+            throw new IllegalArgumentException("La quantité rendue de « " + ligne.getDesignation() + " » doit être comprise "
+                + "entre 0 et " + ligne.getQuantite().stripTrailingZeros().toPlainString() + ".");
+        }
+        boolean toute = rendue.compareTo(ligne.getQuantite()) == 0;
+        if (toute) {
+            vente.getLignes().remove(ligne);
+        } else {
+            ligne.setQuantite(ligne.getQuantite().subtract(rendue));
+        }
+        calculerTotaux(vente, tauxTvaService.tauxALaDate(vente.getDateVente()));
+        String detail = "Commande " + vente.getReference() + " : " + rendue.stripTrailingZeros().toPlainString() + " × "
+            + ligne.getDesignation() + " rendu(s) avant paiement" + (toute ? " (ligne retirée)" : "") + ".";
+        AuditService.detailler(detail);
+        log.info("Ligne rendue avant paiement [vente={}, ligne={}, quantite={}]", vente.getReference(), ligneId, rendue);
+        return VenteResponse.from(vente);
+    }
+
+    /**
+     * Abandonne une commande en attente (BROUILLON) : elle passe ANNULEE sans aucune écriture (rien n'avait été
+     * comptabilisé), et tout ce qu'elle mettait de côté redevient disponible (V134).
+     */
+    @PreAuthorize("hasRole('CAISSIER')")
+    @Transactional
+    public VenteResponse abandonner(Long id) {
+        Vente vente = charger(id);
+        if (vente.getStatut() != StatutVente.BROUILLON) {
+            throw new TransitionInvalideException("Seule une commande en attente (BROUILLON) peut être abandonnée (état "
+                + "actuel : " + vente.getStatut() + ").");
+        }
+        vente.setStatut(StatutVente.ANNULEE);
+        AuditService.detailler("Commande " + vente.getReference() + " abandonnée avant paiement (" + vente.getLignes().size()
+            + " ligne(s), rien de comptabilisé).");
+        log.info("Commande abandonnee [ref={}]", vente.getReference());
         return VenteResponse.from(vente);
     }
 
@@ -231,7 +327,7 @@ public class VenteService {
     // Validation : le seul endroit qui produit des effets comptables
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse valider(Long id) {
         Vente vente = charger(id);
@@ -262,6 +358,14 @@ public class VenteService {
         if (vente.getTotalTtc().signum() <= 0) {
             throw new IllegalArgumentException("Le montant total de la vente doit etre strictement positif.");
         }
+
+        // 1 ter. Plats périmés : les portions dont la date d'expiration est passée ne se vendent plus (voir
+        //        RestaurantService.exigerPlatsNonPerimesInterne) ; les portions encore bonnes se vendent normalement.
+        restaurantService.exigerPlatsNonPerimesInterne(vente);
+
+        // 1 quater. Stock mis de côté : la commande peut prendre ce qu'elle avait réservé, jamais ce que d'autres
+        //           commandes en attente ont réservé (V134).
+        reservations.exigerDisponibles(quantitesParArticle(vente.getLignes()), vente.getEntrepot(), vente.getId());
 
         // 2. Sortie de stock des articles stockés : décrément au CMP + pièce
         //    STOCK (coût des ventes). La garde de stock insuffisant s'applique
@@ -308,6 +412,10 @@ public class VenteService {
             construireEcrituresVente(vente),
             auteur));
 
+        // 3 bis. Comptabilité analytique (classe 9) : chiffre d'affaires HT et coût des ventes reflétés par activité. Ne
+        //        bloque jamais la vente — voir AnalytiqueVentesService.
+        analytique.refleterInterne(vente, auteur);
+
         vente.setStatut(StatutVente.VALIDEE);
         // Facture normalisee DGI : enregistree ici, transmise au dispositif apres le commit (sans jamais bloquer la vente).
         factureNormalisee.surVenteValidee(vente);
@@ -327,11 +435,23 @@ public class VenteService {
             throw new TransitionInvalideException(
                 "Seule une vente VALIDEE peut etre annulee (etat actuel : " + vente.getStatut() + ")");
         }
+        // Une part déjà rendue et remboursée serait extournée une seconde fois par l'annulation complète (V134).
+        if (retourVenteRepository.existsByVenteIdAndStatutIn(id, java.util.EnumSet.of(StatutRetourVente.REMBOURSE))) {
+            throw new TransitionInvalideException("La vente " + vente.getReference() + " a déjà un retour remboursé : "
+                + "rendez le reste par un retour avec remboursement plutôt que d'annuler la vente.");
+        }
+        if (retourVenteRepository.existsByVenteIdAndStatutIn(id,
+            java.util.EnumSet.of(StatutRetourVente.DEMANDE, StatutRetourVente.APPROUVE))) {
+            throw new TransitionInvalideException("Une demande de retour est en cours sur la vente " + vente.getReference()
+                + " : retirez-la ou faites-la refuser avant d'annuler la vente.");
+        }
         User auteur = currentUser.requireUser();
 
         if (vente.getPiece() != null) {
             comptabilite.annulerInterne(vente.getPiece().getId(), auteur);
         }
+        // Miroir de l'étape 3 bis de valider() : le reflet analytique est contre-passé avec la pièce de vente.
+        analytique.annulerRefletInterne(vente, auteur);
         stockService.annulerMouvementInterne(vente.getMouvement(), auteur);
         // Miroir de l'étape 2 bis de valider() : les camions cédés reviennent
         // en stock et redeviennent vendables.
@@ -365,7 +485,7 @@ public class VenteService {
      * principe que {@link EcartChangeService}, applique ici a une creance
      * plutot qu'a une charge.</p>
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse reglerCreance(Long id, ReglerCreanceRequest req) {
         return appliquerReglementCreance(charger(id), req).vente();
@@ -378,13 +498,14 @@ public class VenteService {
      * traçabilite comptable qu'un reglement individuel, juste declenchee en
      * une seule interaction cote caisse).
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public AdditionReglementResponse reglerAdditionTable(Long tableId, ReglerCreanceRequest req) {
         List<Vente> creances = venteRepository.findActivesByTableIdIn(List.of(tableId)).stream()
             .filter(v -> v.getStatut() == StatutVente.VALIDEE
                 && v.getModeReglement() == ModeReglement.CREDIT
-                && v.getPieceReglement() == null)
+                && v.getPieceReglement() == null
+                && ttcRestantDu(v).signum() > 0)
             .toList();
         if (creances.isEmpty()) {
             throw new IllegalStateException("Aucune commande a regler pour cette table.");
@@ -432,11 +553,19 @@ public class VenteService {
         // ouverte : cet ecart vit sur une piece distincte de celle de la
         // vente, soldePourPieceEtCompte seul ne le verrait jamais et
         // laisserait un residu bloque sur le compte client apres reglement.
-        BigDecimal montantDu = ecritureRepository.soldePourPieceEtCompte(vente.getPiece().getId(), COMPTE_CLIENTS);
+        BigDecimal montantDu = ecritureRepository.soldePourPieceEtCompte(vente.getPiece().getId(), compteCreance(vente));
         if (montantDu == null) {
             montantDu = BigDecimal.ZERO;
         }
         montantDu = montantDu.add(vente.getEcartLatentCumule());
+        // Un retour remboursé sur la créance (vente à crédit pas encore réglée) l'a déjà diminuée, par sa propre pièce
+        // (C 4111) : on ne la réclame plus au client (V134).
+        for (RetourVente retour : retourVenteRepository.remboursementsSurCreance(vente.getId())) {
+            BigDecimal solde = ecritureRepository.soldePourPieceEtCompte(retour.getPiece().getId(), compteCreance(vente));
+            if (solde != null) {
+                montantDu = montantDu.add(solde);
+            }
+        }
         if (montantDu.signum() <= 0) {
             throw new IllegalStateException(
                 "Aucune creance exigible trouvee pour la vente " + vente.getReference() + ".");
@@ -453,13 +582,13 @@ public class VenteService {
                     "Aucun taux de change applicable au " + dateReglement
                     + " : impossible d'encaisser une creance en " + vente.getDevise() + ".");
             }
-            montantEncaisse = conversionDevise.enDeviseBase(vente.getTotalTtc(), vente.getDevise(), tauxReglement).montantBase();
+            montantEncaisse = conversionDevise.enDeviseBase(ttcRestantDu(vente), vente.getDevise(), tauxReglement).montantBase();
         }
 
         String libelle = "Reglement creance " + vente.getReference() + " - " + vente.designationClient();
         List<EcritureGrandLivre> lignes = new ArrayList<>();
         lignes.add(ligneReglement(compteTresorerie, montantEncaisse, BigDecimal.ZERO, libelle, dateReglement));
-        lignes.add(ligneReglement(compteParNumero(COMPTE_CLIENTS), BigDecimal.ZERO, montantDu, libelle, dateReglement));
+        lignes.add(ligneReglement(compteParNumero(compteCreance(vente)), BigDecimal.ZERO, montantDu, libelle, dateReglement));
 
         // Ecart de change realise : encaisse > du => gain (756), sinon perte (656).
         BigDecimal ecart = montantEncaisse.subtract(montantDu);
@@ -582,7 +711,7 @@ public class VenteService {
     /** Compte debite : client pour une vente a credit, tresorerie pour un comptant. */
     private CompteOHADA compteContrepartie(Vente vente) {
         return switch (vente.getModeReglement()) {
-            case CREDIT -> compteParNumero(COMPTE_CLIENTS);
+            case CREDIT -> compteParNumero(compteClient(vente));
             case CAISSE -> compteParNumero(COMPTE_CAISSE);
             case BANQUE, MOBILE_MONEY -> {
                 if (vente.getEtablissement() == null) {
@@ -643,6 +772,26 @@ public class VenteService {
     private Vente charger(Long id) {
         return venteRepository.findWithLignesById(id)
             .orElseThrow(() -> RessourceIntrouvableException.of("Vente", id));
+    }
+
+    /** Quantité totale par article (une commande peut citer deux fois le même article). */
+    static Map<Article, BigDecimal> quantitesParArticle(List<LigneVente> lignes) {
+        Map<Long, Article> articles = new LinkedHashMap<>();
+        Map<Long, BigDecimal> quantites = new LinkedHashMap<>();
+        for (LigneVente l : lignes) {
+            articles.putIfAbsent(l.getArticle().getId(), l.getArticle());
+            quantites.merge(l.getArticle().getId(), l.getQuantite(), BigDecimal::add);
+        }
+        Map<Article, BigDecimal> parArticle = new LinkedHashMap<>();
+        quantites.forEach((id, q) -> parArticle.put(articles.get(id), q));
+        return parArticle;
+    }
+
+    /** TTC d'une vente à crédit qui reste dû : son total moins les retours remboursés sur sa créance (V134). */
+    private BigDecimal ttcRestantDu(Vente vente) {
+        BigDecimal rendu = retourVenteRepository.remboursementsSurCreance(vente.getId()).stream()
+            .map(RetourVente::getMontantTtc).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return vente.getTotalTtc().subtract(rendu);
     }
 
     /**

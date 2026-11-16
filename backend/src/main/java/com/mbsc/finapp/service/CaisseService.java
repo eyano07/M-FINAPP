@@ -10,6 +10,7 @@ import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.TransactionCaisse;
 import com.mbsc.finapp.domain.User;
+import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.JournalComptable;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
 import com.mbsc.finapp.domain.enums.RoleType;
@@ -98,7 +99,7 @@ public class CaisseService {
     // Saisie directe
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse enregistrer(TransactionCaisseRequest req) {
         User caissier = currentUser.requireUser();
@@ -163,7 +164,7 @@ public class CaisseService {
      * credit et les sorties au debit, et se solde en cout des marchandises
      * vendues.</p>
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse acheterMarchandise(AchatMarchandiseRequest req) {
         User caissier = currentUser.requireUser();
@@ -252,7 +253,7 @@ public class CaisseService {
      * qu'il soit independant de la vente : un camion peut etre paye avant ou
      * apres avoir ete revendu.</p>
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse reglerCamionsMinerai(ReglementCamionsRequest req) {
         User caissier = currentUser.requireUser();
@@ -440,7 +441,7 @@ public class CaisseService {
         // Entree en stock des lignes "achat de marchandise" : rattachee a la
         // piece qui vient d'etre generee, sans nouvelle ecriture (voir
         // StockService.entreesDepuisNoteFraisInterne).
-        LocalDate dateReglement = saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        LocalDate dateReglement = saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         if (!ventilation.entreesStock().isEmpty()) {
             PieceComptable piece = saved.getEcritures().get(0).getPiece();
             stockService.entreesDepuisNoteFraisInterne(
@@ -471,7 +472,7 @@ public class CaisseService {
         // est reclassee en 656/756 par une piece dediee, au lieu de rester
         // invisible dans le compte de charge.
         ecartChange.comptabiliserEcart(note, tauxOperation,
-            saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(), caissier);
+            saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate(), caissier);
 
         // Note de paie (module DRH) : écrit la constatation de la paie du mois dans la même transaction
         // que son règlement — sans effet sur toute autre note (voir PaieNoteService).
@@ -683,7 +684,12 @@ public class CaisseService {
             .toList();
     }
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    /**
+     * Grand livre et balance : consultation comptable, fermée au caissier (il opère la caisse, il ne la contrôle pas).
+     * Un compte qui cumule CAISSIER et l'un de ces rôles garde l'accès. Le caissier lit les soldes de ses comptes de
+     * trésorerie par {@link #soldesTresorerie()}.
+     */
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<EcritureResponse> grandLivre() {
         return ecritureRepository.listerAvecDetails().stream()
@@ -691,9 +697,25 @@ public class CaisseService {
             .toList();
     }
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<LigneBalanceResponse> balance() {
+        return calculerBalance();
+    }
+
+    /**
+     * Soldes des seuls comptes de trésorerie (classe 5 : caisse 571, banques 521x, mobile money 552x) : ce dont l'écran
+     * Caisse et le tableau de bord du caissier ont besoin, sans lui ouvrir la balance générale.
+     */
+    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @Transactional(readOnly = true)
+    public List<LigneBalanceResponse> soldesTresorerie() {
+        return calculerBalance().stream()
+            .filter(l -> l.compteNumero() != null && l.compteNumero().startsWith("5"))
+            .toList();
+    }
+
+    private List<LigneBalanceResponse> calculerBalance() {
         return ecritureRepository.calculerBalance().stream()
             .map(row -> LigneBalanceResponse.of(
                 (String) row[0],
@@ -715,16 +737,24 @@ public class CaisseService {
      * journal : une pièce issue d'un import ou saisie manuellement peut
      * mouvementer la caisse sans jamais porter le journal CAISSE — elle
      * doit tout de même apparaître ici.</p>
+     *
+     * <p>Affiché dans la devise demandée : USD (devise de base) par défaut, ou CDF. La conversion est faite ici, une fois,
+     * au taux du dernier jour de la période ({@link ConversionDeviseService#affichage}) : chaque ligne est arrondie, puis
+     * les totaux des pièces et du journal sont recalculés sur les lignes converties.</p>
+     *
+     * <p>Une seule méthode porte ce nom : {@code SeparationDesTachesTest} relit sa règle {@code @PreAuthorize} par son nom.</p>
      */
     @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
-    public LivreJournalResponse journal(LocalDate du, LocalDate au) {
+    public LivreJournalResponse journal(LocalDate du, LocalDate au, Devise devise) {
         LocalDate debut = du != null ? du : LocalDate.of(2000, 1, 1);
         LocalDate fin = au != null ? au : LocalDate.now();
+        ConversionDeviseService.Affichage affichage = conversionDevise.affichage(devise, fin);
 
         List<PieceResponse> pieces = pieceRepository.livreJournalParCompte(EcritureComptableService.COMPTE_CAISSE, debut, fin)
             .stream()
             .map(PieceResponse::from)
+            .map(p -> affichage.estConvertie() ? p.enDevise(affichage::convertir) : p)
             .toList();
 
         BigDecimal totalDebit = BigDecimal.ZERO;
@@ -733,7 +763,7 @@ public class CaisseService {
             totalDebit = totalDebit.add(p.totalDebit() != null ? p.totalDebit() : BigDecimal.ZERO);
             totalCredit = totalCredit.add(p.totalCredit() != null ? p.totalCredit() : BigDecimal.ZERO);
         }
-        return new LivreJournalResponse(debut, fin, pieces, totalDebit, totalCredit);
+        return new LivreJournalResponse(debut, fin, pieces, totalDebit, totalCredit, affichage.devise(), affichage.taux());
     }
 
     // ---------------------------------------------------------------------

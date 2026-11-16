@@ -28,7 +28,7 @@ public class CompteOHADA {
     private TypeCompte type;
 
     @Column(name = "classe")
-    private Integer classe;  // 1..8 classes OHADA
+    private Integer classe;  // 1..9 classes OHADA (9 : hors bilan et analytique)
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")

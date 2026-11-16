@@ -2,6 +2,7 @@ package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.restaurant.ParametresRestaurantRequest;
 import com.mbsc.finapp.dto.restaurant.ParametresRestaurantResponse;
+import com.mbsc.finapp.dto.restaurant.RetraitPerimesModeRequest;
 import com.mbsc.finapp.service.ParametresRestaurantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,5 +28,11 @@ public class ParametresRestaurantController {
     @PutMapping
     public ParametresRestaurantResponse enregistrer(@Valid @RequestBody ParametresRestaurantRequest req) {
         return service.enregistrer(req);
+    }
+
+    /** Retrait des plats périmés manuel ou automatique : réservé à l'administrateur (voir le service). */
+    @PutMapping("/retrait-perimes")
+    public ParametresRestaurantResponse definirRetraitPerimes(@Valid @RequestBody RetraitPerimesModeRequest req) {
+        return service.definirRetraitPerimes(req.mode());
     }
 }

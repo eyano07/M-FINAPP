@@ -2,8 +2,13 @@ package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.vente.AjouterLigneVenteRequest;
 import com.mbsc.finapp.dto.vente.ReglerCreanceRequest;
+import com.mbsc.finapp.dto.vente.RemboursementRetourRequest;
+import com.mbsc.finapp.dto.vente.RetirerLigneVenteRequest;
+import com.mbsc.finapp.dto.vente.RetourVenteRequest;
+import com.mbsc.finapp.dto.vente.RetourVenteResponse;
 import com.mbsc.finapp.dto.vente.VenteRequest;
 import com.mbsc.finapp.dto.vente.VenteResponse;
+import com.mbsc.finapp.service.RetourVenteService;
 import com.mbsc.finapp.service.VenteService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +27,7 @@ import java.util.List;
 public class VenteController {
 
     private final VenteService service;
+    private final RetourVenteService retours;
 
     @GetMapping
     public List<VenteResponse> lister() {
@@ -57,5 +63,47 @@ public class VenteController {
     @PostMapping("/{id}/regler")
     public VenteResponse reglerCreance(@PathVariable Long id, @Valid @RequestBody ReglerCreanceRequest req) {
         return service.reglerCreance(id, req);
+    }
+
+    // ── Commandes en attente (V134) ──
+
+    /** Retour d'un article commandé avant paiement : la ligne est retirée (ou sa quantité réduite), sa réservation libérée. */
+    @PostMapping("/{id}/lignes/{ligneId}/retirer")
+    public VenteResponse retirerLigne(@PathVariable Long id, @PathVariable Long ligneId,
+                                      @Valid @RequestBody(required = false) RetirerLigneVenteRequest req) {
+        return service.retirerLigne(id, ligneId, req == null ? null : req.quantite());
+    }
+
+    /** Commande en attente abandonnée : rien n'avait été comptabilisé, ce qu'elle réservait redevient disponible. */
+    @PostMapping("/{id}/abandonner")
+    public VenteResponse abandonner(@PathVariable Long id) {
+        return service.abandonner(id);
+    }
+
+    // ── Retours d'une vente payée, avec remboursement (V134) ──
+
+    @GetMapping("/{id}/retours")
+    public List<RetourVenteResponse> retours(@PathVariable Long id) {
+        return retours.listerParVente(id);
+    }
+
+    /** Le caissier demande le retour : le responsable du bar, de la cuisine ou du restaurant décidera. */
+    @PostMapping("/{id}/retours")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RetourVenteResponse demanderRetour(@PathVariable Long id, @Valid @RequestBody RetourVenteRequest req) {
+        return retours.demander(id, req);
+    }
+
+    /** Remboursement d'un retour approuvé : extourne de la part rendue, remise en stock, vides repris. */
+    @PostMapping("/retours/{retourId}/rembourser")
+    public RetourVenteResponse rembourserRetour(@PathVariable Long retourId,
+                                                @RequestBody(required = false) RemboursementRetourRequest req) {
+        return retours.rembourser(retourId, req);
+    }
+
+    /** Le caissier retire une demande de retour pas encore remboursée. */
+    @PostMapping("/retours/{retourId}/annuler")
+    public RetourVenteResponse annulerRetour(@PathVariable Long retourId) {
+        return retours.annuler(retourId);
     }
 }

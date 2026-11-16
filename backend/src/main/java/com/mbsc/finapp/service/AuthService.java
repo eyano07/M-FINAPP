@@ -33,13 +33,21 @@ public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
+    /**
+     * Identifiant inconnu ou mot de passe faux. Le message de Spring Security (« Bad credentials », en anglais, ou sa
+     * traduction selon la langue du navigateur) n'est jamais montré : l'écran de connexion affiche celui-ci. Il ne dit
+     * pas lequel des deux est faux, pour ne pas révéler si un identifiant existe.
+     */
+    static final String MESSAGE_IDENTIFIANTS_INCORRECTS = "Identifiant ou mot de passe incorrect.";
+
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final UserRepository userRepository;
     private final LoginAttemptService loginAttemptService;
     private final com.mbsc.finapp.audit.AuditService audit;
+    private final DoubleAuthService doubleAuth;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         log.debug("Tentative de connexion pour {}", request.email());
 
@@ -57,6 +65,23 @@ public class AuthService {
                 new UsernamePasswordAuthenticationToken(request.email(), request.motDePasse())
             );
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            // Double authentification (audit SYSCOHADA du 10/11/2026, C-23) : le mot de passe ne suffit plus.
+            Long userId = principal.getDomainUser().getId();
+            if (doubleAuth.estActive(userId)) {
+                if (request.codeDoubleAuth() == null || request.codeDoubleAuth().isBlank()) {
+                    throw new com.mbsc.finapp.security.DoubleAuthException(
+                        com.mbsc.finapp.security.DoubleAuthException.REQUISE,
+                        "Saisissez le code à 6 chiffres affiché par votre application d'authentification.");
+                }
+                if (!doubleAuth.verifierConnexion(userId, request.codeDoubleAuth())) {
+                    loginAttemptService.enregistrerEchec(request.email());
+                    audit.authentification("CONNEXION", principal.getUsername(), userId, false,
+                        "code de double authentification incorrect");
+                    throw new com.mbsc.finapp.security.DoubleAuthException(
+                        com.mbsc.finapp.security.DoubleAuthException.INCORRECT,
+                        "Code de double authentification incorrect ou déjà utilisé.");
+                }
+            }
             loginAttemptService.enregistrerSucces(request.email());
             log.info("Connexion reussie : {}", principal.getUsername());
             audit.authentification("CONNEXION", principal.getUsername(), principal.getDomainUser().getId(), true, null);
@@ -66,7 +91,7 @@ public class AuthService {
             loginAttemptService.enregistrerEchec(request.email());
             log.warn("Echec de connexion pour {} : identifiants invalides", request.email());
             audit.authentification("CONNEXION", request.email(), null, false, "identifiants invalides");
-            throw ex;
+            throw new BadCredentialsException(MESSAGE_IDENTIFIANTS_INCORRECTS, ex);
         }
     }
 
@@ -123,7 +148,9 @@ public class AuthService {
             user.getPrenom(),
             user.getTelephone(),
             user.getPhotoCheminStockage() != null ? "/profil/photo" : null,
-            user.getRoles().stream().map(Role::getNom).map(Enum::name).collect(Collectors.toSet())
+            user.getRoles().stream().map(Role::getNom).map(Enum::name).collect(Collectors.toSet()),
+            user.isDoitChangerMotDePasse(),
+            doubleAuth.doitActiver(user)
         );
 
         return new AuthResponse(

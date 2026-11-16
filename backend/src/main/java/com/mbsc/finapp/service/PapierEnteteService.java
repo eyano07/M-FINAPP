@@ -6,6 +6,7 @@ import com.mbsc.finapp.domain.enums.ModeleEntete;
 import com.mbsc.finapp.domain.enums.OrientationPapier;
 import com.mbsc.finapp.domain.enums.TypePapierEntete;
 import com.mbsc.finapp.security.CurrentUserProvider;
+import com.mbsc.finapp.security.IdentifiantConnexion;
 import com.mbsc.finapp.service.ThemeDocumentService.ThemeDocument;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.cos.COSArray;
@@ -264,8 +265,11 @@ public class PapierEnteteService {
             c.drawRightAlignedHtml(u.getAffectation(), Canvas.BOLD, 9.5f, xDroite, y, new float[] { 0.15f, 0.15f, 0.15f });
             y += 14f;
         }
-        if (StringUtils.hasText(u.getEmail())) {
-            c.drawRightAlignedHtml(u.getEmail(), Canvas.REGULAR, 8f, xDroite, y, GRAY_TEXT);
+        // L'identifiant de connexion n'est plus forcément une adresse (nom d'utilisateur) : à défaut,
+        // on imprime le « Mail de notification » du compte, et rien s'il n'y en a pas.
+        String contact = IdentifiantConnexion.adresseDeContact(u.getEmail(), u.getEmailNotification());
+        if (contact != null) {
+            c.drawRightAlignedHtml(contact, Canvas.REGULAR, 8f, xDroite, y, GRAY_TEXT);
             y += 12f;
         }
         if (StringUtils.hasText(u.getTelephone())) {

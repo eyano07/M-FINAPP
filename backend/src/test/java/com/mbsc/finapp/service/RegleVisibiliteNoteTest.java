@@ -23,8 +23,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class RegleVisibiliteNoteTest {
 
-    private static final List<String> AUTORITES = Arrays.stream(RoleType.values())
-        .map(r -> "ROLE_" + r.name()).toList();
+    /**
+     * Les 11 roles qui existaient quand la regle a ete extraite : l'equivalence exhaustive avec l'implementation
+     * d'origine ne porte que sur eux (2^11 combinaisons). Les roles ajoutes ensuite (RESP_CUISINE, RESP_BAR) sont
+     * couverts par leur propre equivalence avec RESP_RESTAURANT, plus bas.
+     */
+    private static final List<String> ROLES_HISTORIQUES = List.of(
+        "ADMIN", "DG", "DA", "DFIN", "DIRECTEUR", "CAISSIER", "COMPTABLE", "LOGISTIQUE", "GEST_PATRIMOINE",
+        "RESP_DRH", "RESP_RESTAURANT");
+
+    /** Roles ajoutes depuis : ils suivent exactement la regle du responsable restaurant. */
+    private static final List<String> ROLES_RESTAURANT_AJOUTES = List.of("RESP_CUISINE", "RESP_BAR");
+
+    private static final List<String> AUTORITES = ROLES_HISTORIQUES.stream().map(r -> "ROLE_" + r).toList();
 
     private static final Long MOI = 7L;
 
@@ -111,13 +122,66 @@ class RegleVisibiliteNoteTest {
         assertThat(reglesAtteintes).containsExactlyInAnyOrder(RegleVisibiliteNote.values());
     }
 
+    /**
+     * Garde-fou : un role ajoute a l'enum sans decision ici retomberait sur {@link RegleVisibiliteNote#TOUTES} et
+     * verrait les notes de tout le monde. Tout nouveau role doit etre classe dans une des deux listes ci-dessus
+     * (et, s'il est « etroit », dans la regle SES_NOTES).
+     */
+    @Test
+    void chaque_role_de_l_enum_est_classe_explicitement() {
+        Set<String> classes = new HashSet<>(ROLES_HISTORIQUES);
+        classes.addAll(ROLES_RESTAURANT_AJOUTES);
+
+        assertThat(classes).containsExactlyInAnyOrderElementsOf(
+            Arrays.stream(RoleType.values()).map(Enum::name).toList());
+    }
+
+    /**
+     * Le responsable cuisine et le responsable bar suivent EXACTEMENT la regle du responsable restaurant, quels
+     * que soient les autres roles qui l'accompagnent : leurs notes seules tant qu'aucun role de la chaine de
+     * validation (ni COMPTABLE) ne s'y ajoute.
+     */
+    @Test
+    void les_responsables_cuisine_et_bar_suivent_la_regle_du_responsable_restaurant_pour_toutes_les_combinaisons() {
+        List<String> autres = ROLES_HISTORIQUES.stream().filter(r -> !r.equals("RESP_RESTAURANT")).toList();
+
+        for (String ajoute : ROLES_RESTAURANT_AJOUTES) {
+            for (int masque = 0; masque < (1 << autres.size()); masque++) {
+                Set<String> avecAjoute = new HashSet<>();
+                Set<String> avecReference = new HashSet<>();
+                for (int i = 0; i < autres.size(); i++) {
+                    if ((masque & (1 << i)) != 0) {
+                        avecAjoute.add("ROLE_" + autres.get(i));
+                        avecReference.add("ROLE_" + autres.get(i));
+                    }
+                }
+                avecAjoute.add("ROLE_" + ajoute);
+                avecReference.add("ROLE_RESP_RESTAURANT");
+
+                assertThat(RegleVisibiliteNote.pour(avecAjoute))
+                    .as("%s avec %s", ajoute, avecAjoute)
+                    .isEqualTo(RegleVisibiliteNote.pour(avecReference));
+            }
+        }
+    }
+
+    @Test
+    void les_trois_roles_du_restaurant_ensemble_ne_voient_toujours_que_leurs_notes() {
+        assertThat(RegleVisibiliteNote.pour(roles("RESP_RESTAURANT", "RESP_CUISINE", "RESP_BAR")))
+            .isEqualTo(RegleVisibiliteNote.SES_NOTES);
+        assertThat(RegleVisibiliteNote.pour(roles("RESP_CUISINE", "RESP_BAR")))
+            .isEqualTo(RegleVisibiliteNote.SES_NOTES);
+        assertThat(RegleVisibiliteNote.pour(roles("RESP_CUISINE", "RESP_BAR", "COMPTABLE")))
+            .isEqualTo(RegleVisibiliteNote.TOUTES);
+    }
+
     // ---------------------------------------------------------------------
     // Cas lisibles : quelle regle pour quel profil, et ce qu'elle laisse voir
     // ---------------------------------------------------------------------
 
     @Test
     void directeur_responsable_restaurant_et_logistique_seuls_ne_voient_que_leurs_notes() {
-        for (String role : List.of("DIRECTEUR", "RESP_RESTAURANT", "LOGISTIQUE")) {
+        for (String role : List.of("DIRECTEUR", "RESP_RESTAURANT", "RESP_CUISINE", "RESP_BAR", "LOGISTIQUE")) {
             RegleVisibiliteNote regle = RegleVisibiliteNote.pour(roles(role));
 
             assertThat(regle).as(role).isEqualTo(RegleVisibiliteNote.SES_NOTES);
@@ -131,6 +195,8 @@ class RegleVisibiliteNoteTest {
     void un_role_de_la_chaine_de_validation_leve_la_restriction() {
         assertThat(RegleVisibiliteNote.pour(roles("DIRECTEUR", "DFIN"))).isEqualTo(RegleVisibiliteNote.TOUTES);
         assertThat(RegleVisibiliteNote.pour(roles("RESP_RESTAURANT", "COMPTABLE"))).isEqualTo(RegleVisibiliteNote.TOUTES);
+        assertThat(RegleVisibiliteNote.pour(roles("RESP_CUISINE", "COMPTABLE"))).isEqualTo(RegleVisibiliteNote.TOUTES);
+        assertThat(RegleVisibiliteNote.pour(roles("RESP_BAR", "DFIN"))).isEqualTo(RegleVisibiliteNote.TOUTES);
         assertThat(RegleVisibiliteNote.pour(roles("LOGISTIQUE", "ADMIN"))).isEqualTo(RegleVisibiliteNote.TOUTES);
     }
 

@@ -36,6 +36,15 @@ public class StockService {
 
     private static final Logger log = LoggerFactory.getLogger(StockService.class);
 
+    // Lecture du menu Logistique. Le responsable cuisine et le responsable bar y sont admis EN LECTURE SEULE, et ne
+    // voient que les articles de leur domaine (voir PerimetreRestaurant.logistique) : articles, etat du stock, grand
+    // livre et mouvements sont filtres dans chaque methode, jamais seulement a l'ecran. Aucune garde d'ecriture
+    // ne les cite — les ecritures sur les plats, boissons et provisions restent d'ailleurs refusees hors ADMIN.
+    private static final String LECTURE_CATALOGUE =
+        "hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')";
+    private static final String LECTURE_MOUVEMENTS =
+        "hasAnyRole('LOGISTIQUE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')";
+
     private final ArticleRepository articleRepository;
     private final EntrepotRepository entrepotRepository;
     private final MouvementStockRepository mouvementRepository;
@@ -48,6 +57,8 @@ public class StockService {
     private final CamionMineraiRepository camionRepository;
     private final MouvementEmballageRepository mouvementEmballageRepository;
     private final SortiePlatRepository sortiePlatRepository;
+    private final com.mbsc.finapp.repository.SortieBoissonRepository sortieBoissonRepository;
+    private final com.mbsc.finapp.repository.LigneRetourVenteRepository ligneRetourVenteRepository;
     private final ComptabiliteService comptabilite;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
@@ -60,10 +71,14 @@ public class StockService {
 
     // Le caissier est inclus en lecture : le catalogue (et sa disponibilite)
     // lui est necessaire pour saisir une vente.
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_CATALOGUE)
     @Transactional(readOnly = true)
     public List<ArticleResponse> listerArticles() {
-        return articleRepository.findAllWithComptes().stream().map(ArticleResponse::from).toList();
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        return articleRepository.findAllWithComptes().stream()
+            .filter(a -> perimetre.autorise(a.getType()))
+            .map(ArticleResponse::from)
+            .toList();
     }
 
     /**
@@ -72,10 +87,13 @@ public class StockService {
      * catalogue chargé à l'ouverture de l'écran — qui peut rester ouvert
      * toute la journée à la caisse. Mêmes droits que {@link #listerArticles}.
      */
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_CATALOGUE)
     @Transactional(readOnly = true)
     public ArticleResponse consulterArticle(Long id) {
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        // Un article hors du domaine de l'appelant n'existe pas pour lui : 404, jamais 403 (on ne confirme rien).
         return ArticleResponse.from(articleRepository.findById(id)
+            .filter(a -> perimetre.autorise(a.getType()))
             .orElseThrow(() -> RessourceIntrouvableException.of("Article", id)));
     }
 
@@ -117,6 +135,12 @@ public class StockService {
         article.setCategorie(categorieApplicable ? req.categorie().trim() : null);
         // La société (brasserie, fabricant, fournisseur) n'a de sens que pour une boisson de la carte.
         article.setSociete(type == TypeArticle.BOISSON && StringUtils.hasText(req.societe()) ? req.societe().trim() : null);
+        // Consignée ou non : propre aux boissons ; absent de la requête, l'état actuel est gardé (V134).
+        if (type != TypeArticle.BOISSON) {
+            article.setSansConsigne(false);
+        } else if (req.sansConsigne() != null) {
+            article.setSansConsigne(req.sansConsigne());
+        }
         article.setPrixVente(req.prixVente());
         article.setPrixAchat(req.prixAchat());
         article.setSoumisTva(req.soumisTva() == null || req.soumisTva());
@@ -158,7 +182,7 @@ public class StockService {
     // et l'etat du stock : une vente de marchandise impose de choisir
     // l'entrepot a decrementer (voir ventes/nouvelle.vue), donc sans cette
     // liste il ne peut pas aller au bout d'une vente.
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_CATALOGUE)
     @Transactional(readOnly = true)
     public List<EntrepotResponse> listerEntrepots() {
         return entrepotRepository.findAllByOrderByCodeAsc().stream().map(EntrepotResponse::from).toList();
@@ -198,7 +222,7 @@ public class StockService {
     // Mouvements de stock
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_MOUVEMENTS)
     @Transactional(readOnly = true)
     public List<MouvementResponse> listerMouvements() {
         // Une requête par propriétaire possible, pas une par mouvement : l'écran
@@ -209,17 +233,34 @@ public class StockService {
         rattaches.addAll(camionRepository.idsMouvementsValides());
         rattaches.addAll(mouvementEmballageRepository.idsMouvementsStockValides());
         java.util.Set<Long> restaurant = new java.util.HashSet<>(mouvementRepository.idsValidesModuleRestaurant());
+        // Un responsable cuisine ou bar ne voit que les mouvements qui portent au moins un article de son domaine.
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        java.util.Set<Long> visibles = perimetre.restreint()
+            ? new java.util.HashSet<>(mouvementRepository.idsMouvementsParTypes(perimetre.types()))
+            : null;
         return mouvementRepository.findAllWithCreatedBy().stream()
+            .filter(m -> visibles == null || visibles.contains(m.getId()))
             .map(m -> MouvementResponse.from(m, false,
                 m.getStatut() == StatutMouvement.VALIDE && !rattaches.contains(m.getId()),
                 restaurant.contains(m.getId())))
             .toList();
     }
 
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_MOUVEMENTS)
     @Transactional(readOnly = true)
     public MouvementResponse consulterMouvement(Long id) {
-        return MouvementResponse.from(chargerMouvement(id));
+        MouvementStock mouvement = chargerMouvement(id);
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        if (!perimetre.restreint()) {
+            return MouvementResponse.from(mouvement);
+        }
+        // Un mouvement mixte (ex. une vente : un plat et une boisson) ne montre que les lignes du domaine ; un
+        // mouvement sans aucune ligne du domaine n'existe pas pour l'appelant (404).
+        List<LigneMouvementStock> visibles = perimetre.filtrer(mouvement.getLignes(), l -> l.getArticle().getType());
+        if (visibles.isEmpty()) {
+            throw RessourceIntrouvableException.of("MouvementStock", id);
+        }
+        return MouvementResponse.from(mouvement, visibles);
     }
 
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'ADMIN')")
@@ -227,6 +268,12 @@ public class StockService {
     public MouvementResponse creerMouvement(MouvementRequest req) {
         User auteur = currentUser.requireUser();
         validerLignes(req);
+        // Audit SYSCOHADA du 10/11/2026, C-08 : une entrée de stock saisie ici ne se paie pas par la caisse ou la
+        // banque ; un achat payé passe par une note de frais.
+        if (req.compteContrepartieNumero() != null && !req.compteContrepartieNumero().isBlank()) {
+            ComptabiliteService.exigerContrepartieHorsTresorerie(req.compteContrepartieNumero().trim(),
+                "contrepartie d'un mouvement de stock");
+        }
 
         MouvementStock mouvement = MouvementStock.builder()
             .reference(referenceGenerator.pourMouvementStock())
@@ -352,6 +399,18 @@ public class StockService {
                 "Le mouvement " + mouvement.getReference() + " est une sortie de plat (perte, cadeau...) : "
                 + "annulez-la depuis l'écran Sorties de plats du restaurant.");
         }
+        if (sortieBoissonRepository.existsByMouvementStockId(mouvement.getId())) {
+            throw new IllegalStateException(
+                "Le mouvement " + mouvement.getReference() + " est la perte d'une boisson sans consigne : "
+                + "annulez-la depuis les mouvements de bouteilles vides du restaurant.");
+        }
+        // La remise en stock d'un retour remboursé : annulée seule, le client resterait remboursé d'une marchandise
+        // qui n'existe plus en stock.
+        if (ligneRetourVenteRepository.existsByMouvementStockId(mouvement.getId())) {
+            throw new IllegalStateException(
+                "Le mouvement " + mouvement.getReference() + " est la remise en stock d'un retour de vente remboursé : "
+                + "il ne s'annule pas seul.");
+        }
     }
 
     /**
@@ -442,8 +501,9 @@ public class StockService {
             .toList();
     }
 
-    /** Une ligne de sortie demandée par une vente : un article et sa quantité. */
     /**
+     * Une ligne de sortie demandée par une vente ou une perte : un article et sa quantité.
+     *
      * @param coutImpose cout de sortie a retenir au lieu du cout moyen pondere,
      *        ou {@code null} pour le CMP habituel. Renseigne pour un camion de
      *        minerais : chaque chargement sort du stock a SON propre cout
@@ -452,10 +512,35 @@ public class StockService {
      *        interchangeables. Sans cela, le CMP moyennerait des chargements
      *        de teneurs et de frais de route differents, et la marge camion par
      *        camion — la raison d'etre de ce suivi — serait faussee.
+     * @param compteCharge compte a debiter au lieu du compte de charge de
+     *        l'article, ou {@code null} pour celui de l'article. Renseigne pour
+     *        une boisson offerte (62761) ou perimee (60312) et pour une sortie
+     *        de plat hors vente (un compte par motif) : la sortie de stock est la
+     *        meme qu'une vente, seule la charge change de compte — voir
+     *        {@code RestaurantService.compteChargePerte} et {@code compteSortiePlat}.
+     *        Le compte de stock credite reste celui de l'article.
+     * @param ligneNoteOrigineId ligne de la note de frais dont la marchandise est rendue au fournisseur (retour
+     *        d'achat), ou {@code null}. Sert au seul suivi de gestion des lots : le lot de cette livraison diminue
+     *        d'abord, au lieu du plus ancien de l'article — voir {@code LotStockService.consommer}. Sans effet sur le
+     *        cout moyen ni sur les ecritures.
      */
-    public record SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose) {
+    public record SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose, CompteOHADA compteCharge,
+                              Long ligneNoteOrigineId) {
         public SortieVente(Article article, BigDecimal quantite) {
-            this(article, quantite, null);
+            this(article, quantite, null, null, null);
+        }
+
+        public SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose) {
+            this(article, quantite, coutImpose, null, null);
+        }
+
+        public SortieVente(Article article, BigDecimal quantite, BigDecimal coutImpose, CompteOHADA compteCharge) {
+            this(article, quantite, coutImpose, compteCharge, null);
+        }
+
+        /** Cette sortie rend au fournisseur une partie de la livraison payee par la ligne de note {@code ligneNoteId}. */
+        public SortieVente rendueSurLaLigne(Long ligneNoteId) {
+            return new SortieVente(article, quantite, coutImpose, compteCharge, ligneNoteId);
         }
     }
 
@@ -497,11 +582,14 @@ public class StockService {
 
         List<EcritureGrandLivre> ecrituresCompta = new ArrayList<>();
         // Les lignes sont creees dans l'ordre des sorties : l'index fait donc
-        // correspondre chaque ligne au cout impose eventuel de sa sortie.
+        // correspondre chaque ligne au cout impose et au compte de charge
+        // eventuels de sa sortie.
         List<LigneMouvementStock> lignesSortie = saved.getLignes();
         for (int i = 0; i < lignesSortie.size(); i++) {
-            BigDecimal coutImpose = i < sorties.size() ? sorties.get(i).coutImpose() : null;
-            appliquerLigne(saved, lignesSortie.get(i), ecrituresCompta, coutImpose);
+            SortieVente demande = i < sorties.size() ? sorties.get(i) : null;
+            appliquerLigne(saved, lignesSortie.get(i), ecrituresCompta,
+                demande == null ? null : demande.coutImpose(), demande == null ? null : demande.compteCharge(),
+                demande == null ? null : demande.ligneNoteOrigineId());
         }
         if (!ecrituresCompta.isEmpty()) {
             PieceComptable piece = comptabilite.creerPieceInterne(
@@ -578,9 +666,18 @@ public class StockService {
      * @param montantAchat prix HT seul, sans les frais — voir StockNiveau.valeurAchat
      * @param fournisseur  bénéficiaire de la note de frais (traçabilité du lot — voir
      *                     {@link LotStockService}), {@code null} si non applicable
+     * @param ligneNote    ligne de la note qui porte cet achat : le lot créé s'en souvient, pour qu'un retour de
+     *                     fonds rende cette livraison-là (voir {@code LotStockService.consommer}), {@code null}
+     *                     si non applicable
      */
     public record EntreeNoteFrais(Article article, Entrepot entrepot, BigDecimal quantite,
-                                  BigDecimal montant, BigDecimal montantAchat, String fournisseur) {}
+                                  BigDecimal montant, BigDecimal montantAchat, String fournisseur,
+                                  LigneNoteFrais ligneNote) {
+        public EntreeNoteFrais(Article article, Entrepot entrepot, BigDecimal quantite,
+                               BigDecimal montant, BigDecimal montantAchat, String fournisseur) {
+            this(article, entrepot, quantite, montant, montantAchat, fournisseur, null);
+        }
+    }
 
     /**
      * Entrée en stock issue d'un achat de marchandises réglé par note de
@@ -650,7 +747,7 @@ public class StockService {
             BigDecimal prixTransportUnite = e.quantite().signum() != 0
                 ? e.montant().subtract(e.montantAchat()).divide(e.quantite(), 6, RoundingMode.HALF_UP) : BigDecimal.ZERO;
             lotStock.enregistrerEntree(ligne.getArticle(), ligne.getEntrepotCible(), date, e.fournisseur(),
-                ligne.getQuantite(), prixAchatUnite, prixTransportUnite, ligne);
+                ligne.getQuantite(), prixAchatUnite, prixTransportUnite, ligne, e.ligneNote());
         }
         PieceComptable piece = comptabilite.creerPieceInterne(
             JournalComptable.STOCK, libelle, date, ecritures, auteur);
@@ -795,7 +892,7 @@ public class StockService {
 
     private void appliquerLigne(MouvementStock mouvement, LigneMouvementStock ligne,
                                 List<EcritureGrandLivre> ecrituresCompta) {
-        appliquerLigne(mouvement, ligne, ecrituresCompta, null);
+        appliquerLigne(mouvement, ligne, ecrituresCompta, null, null, null);
     }
 
     /**
@@ -803,9 +900,17 @@ public class StockService {
      *        pondere, ou {@code null} pour le CMP habituel — voir
      *        {@link SortieVente}. Sans effet sur une entree ou un transfert,
      *        dont le cout ne se deduit pas du stock existant.
+     * @param compteChargeImpose compte debite par une SORTIE au lieu du compte
+     *        de charge de l'article, ou {@code null} — voir
+     *        {@link SortieVente#compteCharge}. Sans effet sur une entree, un
+     *        transfert ou un ecart de valorisation (voir {@link #sortie}), qui
+     *        reste entre les comptes de variation et de stock de l'article.
+     * @param ligneNoteOrigineId ligne de note dont la livraison est rendue au fournisseur, ou {@code null} — voir
+     *        {@link SortieVente}. Ne change que les lots touches par une SORTIE, jamais sa valeur ni ses ecritures.
      */
     private void appliquerLigne(MouvementStock mouvement, LigneMouvementStock ligne,
-                                List<EcritureGrandLivre> ecrituresCompta, BigDecimal coutImpose) {
+                                List<EcritureGrandLivre> ecrituresCompta, BigDecimal coutImpose,
+                                CompteOHADA compteChargeImpose, Long ligneNoteOrigineId) {
         Article article = ligne.getArticle();
         BigDecimal qte = ligne.getQuantite();
 
@@ -839,11 +944,14 @@ public class StockService {
                 ligne.setCoutUnitaire(cmp);
                 ligne.setMontant(montant);
                 ecrireStockGrandLivre(article, source, mouvement, BigDecimal.ZERO, qte, niveau);
-                // Comptable : Débit compte charge / Crédit compte stock
-                ajouterEcriture(ecrituresCompta, compteCharge(article), montant, BigDecimal.ZERO, mouvement);
+                // Comptable : Débit compte charge (celui de l'article, ou le compte imposé d'une boisson offerte ou
+                // périmée) / Crédit compte stock
+                ajouterEcriture(ecrituresCompta, compteChargeImpose != null ? compteChargeImpose : compteCharge(article),
+                    montant, BigDecimal.ZERO, mouvement);
                 ajouterEcriture(ecrituresCompta, compteStock(article), BigDecimal.ZERO, montant, mouvement);
-                // Suivi de gestion : déplète les lots en FIFO ou au prorata (résultat sans emploi ici, pas de transfert derrière).
-                lotStock.consommer(article, source, qte, ligne);
+                // Suivi de gestion : déplète les lots en FIFO ou au prorata (résultat sans emploi ici, pas de transfert derrière) ;
+                // un retour d'achat vide d'abord le lot de la livraison rendue.
+                lotStock.consommer(article, source, qte, ligne, ligneNoteOrigineId);
             }
             case TRANSFERT -> {
                 Entrepot source = exigerEntrepot(ligne.getEntrepotSource(), "entrepôt source", mouvement);
@@ -1111,19 +1219,34 @@ public class StockService {
     // ---------------------------------------------------------------------
 
     // Le caissier consulte la disponibilite avant de vendre.
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_CATALOGUE)
     @Transactional(readOnly = true)
     public List<StockNiveauResponse> etatStock() {
-        return niveauRepository.findAllWithDetails().stream().map(StockNiveauResponse::from).toList();
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        return niveauRepository.findAllWithDetails().stream()
+            .filter(n -> perimetre.autorise(n.getArticle().getType()))
+            .map(StockNiveauResponse::from)
+            .toList();
     }
 
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize(LECTURE_MOUVEMENTS)
     @Transactional(readOnly = true)
     public List<StockGrandLivreResponse> grandLivreStock(Long articleId, Long entrepotId,
                                                          LocalDate du, LocalDate au) {
+        PerimetreRestaurant.Perimetre perimetre = PerimetreRestaurant.logistiqueCourant();
+        // Un article hors du domaine de l'appelant : 404, comme pour la fiche de l'article. Verifie AVANT toute
+        // lecture : l'export Excel s'arrete ici et ne lit jamais le libelle de cet article (StockExcelService).
+        if (perimetre.restreint() && articleId != null) {
+            articleRepository.findById(articleId)
+                .filter(a -> !perimetre.autorise(a.getType()))
+                .ifPresent(a -> {
+                    throw RessourceIntrouvableException.of("Article", articleId);
+                });
+        }
         LocalDate debut = du != null ? du : LocalDate.of(2000, 1, 1);
         LocalDate fin = au != null ? au : LocalDate.now();
         return stockGrandLivreRepository.rechercher(articleId, entrepotId, debut, fin).stream()
+            .filter(g -> perimetre.autorise(g.getArticle().getType()))
             .map(StockGrandLivreResponse::from)
             .toList();
     }

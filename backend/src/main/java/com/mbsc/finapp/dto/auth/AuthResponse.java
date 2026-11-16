@@ -16,6 +16,12 @@ public record AuthResponse(
         String prenom,
         String telephone,
         String photoUrl,
-        Set<String> roles
+        Set<String> roles,
+        /** Vrai tant que le mot de passe provisoire choisi par l'administrateur n'a pas ete remplace (V131) : l'ecran
+         *  bloque alors l'utilisateur sur la page de changement de mot de passe. */
+        boolean doitChangerMotDePasse,
+        /** Vrai si la double authentification est obligatoire pour ce compte et pas encore activée (C-23) : l'écran
+         *  bloque alors l'utilisateur sur la page d'activation. */
+        boolean doitActiverDoubleAuth
     ) {}
 }

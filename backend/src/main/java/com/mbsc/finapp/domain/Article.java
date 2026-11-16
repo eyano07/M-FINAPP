@@ -100,6 +100,23 @@ public class Article {
     @Builder.Default
     private BigDecimal stockMin = BigDecimal.ZERO;
 
+    /**
+     * Durée de conservation d'un plat, en jours, définie dans sa fiche technique : les portions d'une production expirent
+     * à sa date de production + cette durée (0 : le jour même), et celles qui n'ont pas été vendues ensuite sont périmées.
+     * Absente : le plat ne se périme pas. Sans objet pour les autres types d'article.
+     */
+    @Column(name = "duree_conservation_jours")
+    private Integer dureeConservationJours;
+
+    /**
+     * BOISSON seulement : true pour une boisson sans consigne (whisky, vin, champagne, jus en carton...) dont on ne gere pas
+     * les bouteilles vides : pas de conditionnement, achat par carton ou a l'unite sans echange de consigne, vente sans
+     * vide (V134). Une boisson consignee (biere, sucrerie en casier) a un conditionnement et un stock de vides.
+     */
+    @Column(name = "sans_consigne", nullable = false)
+    @Builder.Default
+    private boolean sansConsigne = false;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean actif = true;

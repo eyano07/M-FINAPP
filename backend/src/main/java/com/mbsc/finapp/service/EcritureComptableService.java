@@ -23,7 +23,6 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -131,7 +130,7 @@ public class EcritureComptableService {
 
         LocalDate dateEcriture = (transaction.getDateOperation() == null
             ? Instant.now() : transaction.getDateOperation())
-            .atZone(ZoneOffset.UTC).toLocalDate();
+            .atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         periodeService.verifierDateOuverte(dateEcriture);
 
         BigDecimal total = transaction.getMontant();
@@ -181,7 +180,7 @@ public class EcritureComptableService {
 
         LocalDate dateEcriture = (transaction.getDateOperation() == null
             ? Instant.now() : transaction.getDateOperation())
-            .atZone(ZoneOffset.UTC).toLocalDate();
+            .atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         periodeService.verifierDateOuverte(dateEcriture);
 
         BigDecimal montant = transaction.getMontant();
@@ -244,7 +243,7 @@ public class EcritureComptableService {
 
         LocalDate dateEcriture = (transaction.getDateOperation() == null
             ? Instant.now() : transaction.getDateOperation())
-            .atZone(ZoneOffset.UTC).toLocalDate();
+            .atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         periodeService.verifierDateOuverte(dateEcriture);
 
         String texte = StringUtils.hasText(libelle) ? libelle : transaction.getReference();
@@ -305,7 +304,7 @@ public class EcritureComptableService {
 
         LocalDate dateEcriture = (transaction.getDateOperation() == null
             ? Instant.now() : transaction.getDateOperation())
-            .atZone(ZoneOffset.UTC).toLocalDate();
+            .atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         periodeService.verifierDateOuverte(dateEcriture);
 
         String texte = StringUtils.hasText(libelle) ? libelle : transaction.getReference();
@@ -348,7 +347,7 @@ public class EcritureComptableService {
 
         LocalDate dateEcriture = (transaction.getDateOperation() == null
             ? Instant.now() : transaction.getDateOperation())
-            .atZone(ZoneOffset.UTC).toLocalDate();
+            .atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         periodeService.verifierDateOuverte(dateEcriture);
 
         BigDecimal montant = transaction.getMontant();
@@ -395,7 +394,7 @@ public class EcritureComptableService {
 
         LocalDate dateEcriture = (transaction.getDateOperation() == null
             ? Instant.now() : transaction.getDateOperation())
-            .atZone(ZoneOffset.UTC).toLocalDate();
+            .atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         periodeService.verifierDateOuverte(dateEcriture);
 
         String texte = StringUtils.hasText(libelle) ? libelle : transaction.getReference();
@@ -438,7 +437,7 @@ public class EcritureComptableService {
 
         LocalDate dateEcriture = (transaction.getDateOperation() == null
             ? Instant.now() : transaction.getDateOperation())
-            .atZone(ZoneOffset.UTC).toLocalDate();
+            .atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         periodeService.verifierDateOuverte(dateEcriture);
 
         BigDecimal montant = transaction.getMontant();
@@ -485,7 +484,7 @@ public class EcritureComptableService {
 
         LocalDate dateEcriture = (transaction.getDateOperation() == null
             ? Instant.now() : transaction.getDateOperation())
-            .atZone(ZoneOffset.UTC).toLocalDate();
+            .atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         periodeService.verifierDateOuverte(dateEcriture);
 
         String texte = StringUtils.hasText(libelle) ? libelle : transaction.getReference();

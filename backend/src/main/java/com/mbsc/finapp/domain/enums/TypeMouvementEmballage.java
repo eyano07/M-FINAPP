@@ -7,9 +7,10 @@ package com.mbsc.finapp.domain.enums;
  * quantite saisie est toujours positive. Inferer le sens d'un signe obligerait
  * chaque appelant a le connaitre, et un oubli passerait silencieusement.</p>
  *
- * <p>Aucun de ces mouvements ne produit d'ecriture comptable : la consigne
- * n'est pas portee au bilan. Seule la reception de boissons, qui est un vrai
- * achat, genere une piece — par le moteur de stock ordinaire.</p>
+ * <p>Aucun de ces mouvements ne produit d'ecriture pour les bouteilles vides elles-memes : la
+ * consigne n'est pas portee au bilan. Les pieces viennent du moteur de stock ordinaire : la
+ * reception de boissons, qui est un vrai achat, et les pertes de boisson (casse d'une pleine,
+ * peremption, cadeau), qui sortent la boisson du stock au cout moyen.</p>
  */
 public enum TypeMouvementEmballage {
 
@@ -34,22 +35,28 @@ public enum TypeMouvementEmballage {
      */
     CASSE_PLEINE(-1),
     /**
-     * Boisson perimee : le contenu est jete mais le contenant n'est PAS
-     * detruit — sans effet sur le stock de vides (sens nul). Seul le stock de
-     * la boisson diminue, avec la meme ecriture comptable qu'une sortie
-     * ordinaire.
+     * Boisson perimee : c'est la boisson qui est perimee, pas la bouteille. Le contenu est jete —
+     * la boisson sort du stock au cout moyen, imputee au compte 60312 « Boissons perimees » — et la
+     * bouteille, videe, est remise dans le stock de vides (+1 par bouteille), comme pour un cadeau ou
+     * une vente.
      */
-    PERIME(0),
+    PERIME(1),
     /**
-     * Boisson offerte (cadeau, promotion) : meme traitement que PERIME — sans
-     * effet sur le stock de vides (sens nul), seul le stock de la boisson
-     * diminue. Distingue du PERIME par le motif, pas par le mecanisme.
+     * Boisson offerte (cadeau, promotion) : le contenu est consomme, comme pour une
+     * vente — la boisson sort du stock au cout moyen, imputee au compte 62761 « Boissons
+     * offertes a la clientele » — et la bouteille, elle, est remise dans le stock de vides
+     * (+1 par bouteille).
      */
-    CADEAU(0),
+    CADEAU(1),
     /** Ecart d'inventaire en faveur du stock. */
     AJUSTEMENT_PLUS(1),
     /** Ecart d'inventaire en defaveur du stock. */
-    AJUSTEMENT_MOINS(-1);
+    AJUSTEMENT_MOINS(-1),
+    /**
+     * Retour de fonds sur un achat de boissons avec echange de consigne (note reduite apres paiement) : le fournisseur
+     * rend les vides des bouteilles non livrees ou reprises — le symetrique d'{@link #ACHAT}, +1 par bouteille.
+     */
+    RETOUR_ACHAT(1);
 
     private final int sens;
 
@@ -69,12 +76,12 @@ public enum TypeMouvementEmballage {
 
     /**
      * true pour un mouvement saisi a la main sur l'ecran des mouvements, donc
-     * annulable depuis cet ecran. VENTE, RETOUR_VENTE et ACHAT sont produits
-     * par la vente ou par le paiement d'une note d'achat, et ne s'annulent
-     * qu'avec l'operation qui les a produits.
+     * annulable depuis cet ecran. VENTE, RETOUR_VENTE, ACHAT et RETOUR_ACHAT
+     * sont produits par la vente, le paiement d'une note d'achat ou son retour
+     * de fonds, et ne s'annulent qu'avec l'operation qui les a produits.
      */
     public boolean estSaisieManuelle() {
-        return this != VENTE && this != RETOUR_VENTE && this != ACHAT;
+        return this != VENTE && this != RETOUR_VENTE && this != ACHAT && this != RETOUR_ACHAT;
     }
 
     /**

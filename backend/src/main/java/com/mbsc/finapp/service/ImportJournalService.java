@@ -3,20 +3,20 @@ package com.mbsc.finapp.service;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.PieceComptable;
+import com.mbsc.finapp.domain.SoldeOuverture;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.JournalComptable;
 import com.mbsc.finapp.dto.admin.ImportJournalResponse;
 import com.mbsc.finapp.dto.admin.SuggestionImport;
 import com.mbsc.finapp.repository.CompteOHADARepository;
-import com.mbsc.finapp.repository.EcritureGrandLivreRepository;
-import com.mbsc.finapp.repository.PieceComptableRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -101,16 +101,21 @@ public class ImportJournalService {
         DateTimeFormatter.ofPattern("yyyy/MM/dd"));
 
     private final CompteOHADARepository compteRepository;
-    private final EcritureGrandLivreRepository ecritureRepository;
-    private final PieceComptableRepository pieceRepository;
     private final ComptabiliteService comptabilite;
     private final CurrentUserProvider currentUser;
     /** Fiche de documentation des comptes créés pendant l'import. */
     private final DocumentationCompteService documentation;
     /** Propose des corrections au lieu de se contenter de refuser le fichier. */
     private final ImportIaService assistance;
+    private final NumerosComptes numerosComptes;
     /** Convertit un journal en devise etrangere vers la devise de base. */
     private final ConversionDeviseService conversionDevise;
+    /** Cree la banque ou l'operateur mobile money des comptes de tresorerie importes qui n'en ont pas. */
+    private final EtablissementTresorerieService etablissements;
+    /** Vide la comptabilite et les operations qui en produisent avant un remplacement. */
+    private final EffacementComptable effacement;
+    /** Date de cloture : le remplacement n'efface jamais une periode cloturee. */
+    private final PeriodeComptableService periodes;
 
     /**
      * Cle de regroupement des lignes en pieces comptables.
@@ -158,7 +163,9 @@ public class ImportJournalService {
                                 String libelle,
                                 BigDecimal debit, BigDecimal credit,
                                 /** Montant en devise etrangere, si le fichier porte des colonnes dediees. */
-                                BigDecimal montantDevise) {}
+                                BigDecimal montantDevise,
+                                /** Colonne facultative « Bénéficiaire » (V143). */
+                                String beneficiaire) {}
 
     // -----------------------------------------------------------------
     // Point d'entree
@@ -204,7 +211,7 @@ public class ImportJournalService {
                 String remplacement = substitutions.get(l.compte());
                 return remplacement == null ? l : new LigneImport(l.numeroLigne(), l.date(),
                     l.referencePiece(), l.journal(), remplacement, l.intituleCompte(), l.libelle(),
-                    l.debit(), l.credit(), l.montantDevise());
+                    l.debit(), l.credit(), l.montantDevise(), l.beneficiaire());
             }).toList();
         }
 
@@ -281,6 +288,26 @@ public class ImportJournalService {
             }
         }
 
+        // Pièces du 1er janvier : la reprise des à-nouveaux est importée en solde d'ouverture ; une pièce qui porte
+        // des charges ou des produits reste un mouvement, et l'analyse dit pourquoi.
+        for (var e : parPiece.entrySet()) {
+            List<LigneImport> lignesPiece = e.getValue();
+            if (!SoldeOuverture.estJourOuverture(lignesPiece.get(0).date())) {
+                continue;
+            }
+            if (estSoldeOuverture(lignesPiece)) {
+                avertissements.add("Pièce " + e.getKey() + " du 1er janvier : importée en solde d'ouverture (reprise des"
+                    + " à-nouveaux). Elle alimente les colonnes « Soldes d'ouverture » de la balance, pas les mouvements"
+                    + " de l'exercice.");
+            } else {
+                List<String> gestion = lignesPiece.stream().map(LigneImport::compte)
+                    .filter(c -> !SoldeOuverture.estCompteDeBilan(c)).distinct().limit(5).toList();
+                avertissements.add("Pièce " + e.getKey() + " du 1er janvier : elle porte des comptes de gestion ("
+                    + String.join(", ", gestion) + ") et reste dans les mouvements de l'exercice. Un compte de charges ou de"
+                    + " produits n'a pas de solde d'ouverture (SYSCOHADA).");
+            }
+        }
+
         // Diagnostic : si presque toutes les pieces sont isolees, la colonne
         // de reference numerote les lignes et non les pieces. On oriente vers
         // un autre regroupement plutot que de laisser des centaines d'erreurs
@@ -297,9 +324,24 @@ public class ImportJournalService {
         List<String> references = new ArrayList<>();
         int importees = 0;
 
-        int ecrituresRemplacees = 0;
-        if (erreurs.isEmpty() && !simulation && modeImport == ModeImport.REMPLACER) {
-            ecrituresRemplacees = effacerEcrituresRemplacables();
+        // SYSCOHADA revise : les ecritures d'une periode cloturee sont intangibles. Le remplacement, qui efface tout,
+        // ne sert qu'a une reprise sur un exercice ouvert ; ensuite, on importe en « Ajouter » et on corrige par extourne.
+        LocalDate cloture = modeImport == ModeImport.REMPLACER ? periodes.dateCloture() : null;
+        if (cloture != null) {
+            erreurs.add("Mode « Remplacer » refuse : la comptabilite est cloturee jusqu'au " + cloture
+                + ". Les ecritures d'une periode cloturee sont intangibles (SYSCOHADA revise) : importez en mode"
+                + " « Ajouter », puis corrigez par extourne.");
+        }
+        if (erreurs.isEmpty() && modeImport == ModeImport.REMPLACER) {
+            if (simulation) {
+                List<String> apercu = effacement.apercu();
+                if (!apercu.isEmpty()) {
+                    avertissements.add("L'import reel effacera d'abord toute la comptabilite et les operations : "
+                        + String.join(", ", apercu) + ".");
+                }
+            } else {
+                effacerComptabilite();
+            }
         }
 
         if (erreurs.isEmpty() && !simulation) {
@@ -325,6 +367,13 @@ public class ImportJournalService {
             references.addAll(parPiece.keySet());
         }
 
+        // Une banque ou un operateur mobile money mouvemente par le fichier doit exister dans l'application : sans
+        // lui, l'ecran des banques n'affichait rien et un ajout manuel ouvrait un second compte a solde nul. Son solde
+        // se lit dans le grand livre : il vaut d'emblee celui des ecritures importees, sans montant a initialiser.
+        List<String> etablissementsRattaches = erreurs.isEmpty()
+            ? etablissements.rattacherComptesOrphelins(comptesVus, simulation)
+            : List.of();
+
         if (!simulation && !erreurs.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Le fichier comporte " + erreurs.size() + " anomalie(s) : corrigez-les puis relancez. "
@@ -338,7 +387,7 @@ public class ImportJournalService {
             : List.of();
 
         return new ImportJournalResponse(simulation, lignes.size(), parPiece.size(), importees,
-            totalDebit, totalCredit, erreurs, avertissements, references, suggestions);
+            totalDebit, totalCredit, erreurs, avertissements, references, suggestions, etablissementsRattaches);
     }
 
     /** Cle sous laquelle une ligne est rattachee a une piece. */
@@ -351,24 +400,20 @@ public class ImportJournalService {
     }
 
     /**
-     * Efface les ecritures comptables remplacables avant un import.
-     *
-     * <p><b>Perimetre volontairement restreint.</b> Seules les pieces sans
-     * transaction de tresorerie sont supprimees : imports precedents, pieces
-     * saisies a la main, soldes d'ouverture. Les ecritures adossees a un
-     * encaissement ou un decaissement reel (caisse, banque, mobile money) sont
-     * conservees — les effacer laisserait des transactions sans contrepartie
-     * comptable et fausserait durablement les soldes de tresorerie, alors que
-     * ces mouvements ne proviennent pas du fichier importe.</p>
-     *
-     * @return nombre d'ecritures supprimees
+     * Efface toute la comptabilite et les operations qui en produisent (notes de
+     * frais, caisse, banque, ventes, stock, paie...) avant un import en mode
+     * « Remplacer » : voir {@link EffacementComptable}. Meme transaction que
+     * l'import : un fichier refuse ensuite laisse tout en place.
      */
-    private int effacerEcrituresRemplacables() {
-        int supprimees = ecritureRepository.supprimerEcrituresSansTransaction();
-        int pieces = pieceRepository.supprimerPiecesSansEcriture();
-        log.warn("Import en mode REMPLACER : {} ecriture(s) et {} piece(s) effacees",
-            supprimees, pieces);
-        return supprimees;
+    private void effacerComptabilite() {
+        try {
+            effacement.effacer();
+        } catch (DataIntegrityViolationException e) {
+            log.warn("Import en mode REMPLACER refuse : {}", e.getMostSpecificCause().getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Le remplacement est impossible : des donnees de l'application referencent encore la comptabilite ("
+                + e.getMostSpecificCause().getMessage() + "). Rien n'a ete modifie.");
+        }
     }
 
     private PieceComptable creerPiece(String reference, List<LigneImport> lignes, User auteur,
@@ -422,8 +467,23 @@ public class ImportJournalService {
             }
             ecritures.add(ligne.build());
         }
-        return comptabilite.creerPieceInterne(
+        PieceComptable piece = comptabilite.creerPieceInterne(
             premiere.journal(), libelle, premiere.date(), ecritures, auteur);
+        // Règle du 13/11/2026 : une pièce du journal datée du 1er janvier, aux seuls comptes de bilan, est la reprise
+        // des à-nouveaux. Elle alimente les soldes d'ouverture de la balance, pas les mouvements de l'exercice.
+        if (estSoldeOuverture(lignes)) {
+            piece.setSoldeOuverture(true);
+        }
+        // Bénéficiaire : le premier renseigné parmi les lignes de la pièce (V143).
+        lignes.stream().map(LigneImport::beneficiaire).filter(StringUtils::hasText).findFirst()
+            .map(b -> b.length() > 255 ? b.substring(0, 255) : b)
+            .ifPresent(piece::setBeneficiaire);
+        return piece;
+    }
+
+    /** Pièce du 1er janvier ne portant que des comptes de bilan : voir {@link SoldeOuverture}. */
+    private static boolean estSoldeOuverture(List<LigneImport> lignes) {
+        return SoldeOuverture.concerne(lignes.get(0).date(), lignes.stream().map(LigneImport::compte).toList());
     }
 
     /**
@@ -440,7 +500,7 @@ public class ImportJournalService {
      * @param journal -1 si la colonne est absente (valeur par defaut appliquee)
      */
     private record Mapping(int date, int piece, int journal, int compte, int intituleCompte,
-                            int libelle, int debit, int credit, int debitUsd, int creditUsd) {
+                            int libelle, int debit, int credit, int debitUsd, int creditUsd, int beneficiaire) {
         boolean complet() {
             return date >= 0 && compte >= 0 && debit >= 0 && credit >= 0;
         }
@@ -470,7 +530,9 @@ public class ImportJournalService {
             chercher(enTetes, List.of("credit"), List.of("usd", "dollar", "devise")),
             // Colonnes facultatives portant le montant en dollars.
             chercher(enTetes, List.of("debitusd", "debitdollar", "debitdevise", "debit$"), List.of()),
-            chercher(enTetes, List.of("creditusd", "creditdollar", "creditdevise", "credit$"), List.of()));
+            chercher(enTetes, List.of("creditusd", "creditdollar", "creditdevise", "credit$"), List.of()),
+            // Colonne facultative (V143) : nom de la personne ou de l'entité payée ou servie.
+            chercher(enTetes, List.of("beneficiaire", "nomdubeneficiaire", "beneficiaires"), List.of()));
     }
 
     /**
@@ -632,7 +694,7 @@ public class ImportJournalService {
             int numero = 0;
             boolean enteteVue = false;
             // Positions canoniques par defaut si le fichier n'a pas d'en-tete.
-            Mapping map = new Mapping(0, 1, 2, 3, 4, 5, 6, 7, -1, -1);
+            Mapping map = new Mapping(0, 1, 2, 3, 4, 5, 6, 7, -1, -1, -1);
             while ((ligne = r.readLine()) != null) {
                 numero++;
                 if (ligne.isBlank()) continue;
@@ -762,9 +824,10 @@ public class ImportJournalService {
         BigDecimal enDevise = (dUsd == null ? BigDecimal.ZERO : dUsd)
             .add(cUsd == null ? BigDecimal.ZERO : cUsd);
 
+        // Sous-comptes à point d'un journal ancien : lus sans point (C-17).
         return Optional.of(new LigneImport(numero, date, refPiece, lireJournal(journalTexte),
-            compte.trim(), intituleCompte, libelle, debit, credit,
-            enDevise.signum() > 0 ? enDevise : null));
+            numerosComptes.sansPoint(compte.trim()), intituleCompte, libelle, debit, credit,
+            enDevise.signum() > 0 ? enDevise : null, lire(v, map.beneficiaire()).trim()));
     }
 
     private LocalDate lireDate(String texte, Row row, int colonne) {
@@ -913,12 +976,10 @@ public class ImportJournalService {
             // Le compte existe : on s'y rattache tel quel, intitule du plan compris.
             return Optional.of(numero);
         }
-        int sep = numero.lastIndexOf('.');
-        if (sep <= 0) {
-            return Optional.empty();
-        }
-        CompteOHADA parent = compteRepository.findByNumero(numero.substring(0, sep)).orElse(null);
-        if (parent == null) {
+        // Le compte créé prolonge le numéro de son parent, sans point (C-17) : 604215 sous 6042.
+        CompteOHADA parent = s.parentNumero() == null ? null
+            : compteRepository.findByNumero(s.parentNumero()).orElse(null);
+        if (parent == null || numero.indexOf('.') >= 0 || !numero.startsWith(parent.getNumero())) {
             return Optional.empty();
         }
         CompteOHADA nouveau = CompteOHADA.builder()

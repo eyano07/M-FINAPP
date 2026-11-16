@@ -2,7 +2,6 @@ package com.mbsc.finapp.repository;
 
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -104,6 +103,21 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
     BigDecimal soldePourCompte(@Param("prefixe") String prefixe);
 
     /**
+     * Solde (débits − crédits) d'un compte précis, numéro exact et non préfixe (42111 ne compte pas 421110…), hors
+     * brouillons : pièces comptabilisées ou annulées (l'extourne compense l'origine) et opérations de trésorerie
+     * sans pièce. Sert à l'avance ouverte d'un agent (audit DRH du 15/11/2026, D-06).
+     */
+    @Query("""
+        select coalesce(sum(e.debit), 0) - coalesce(sum(e.credit), 0)
+        from EcritureGrandLivre e
+        join e.compte c
+        left join e.piece p
+        where c.numero = :numero
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+    """)
+    BigDecimal soldeDuCompte(@Param("numero") String numero);
+
+    /**
      * Lignes du Grand Livre ordonnees par date puis identifiant, avec le compte
      * et la transaction charges (evite les N+1 a l'affichage).
      */
@@ -134,6 +148,67 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
     List<EcritureGrandLivre> grandLivreParCompte(@Param("prefixe") String prefixe,
                                                  @Param("du") LocalDate du,
                                                  @Param("au") LocalDate au);
+
+    /**
+     * Mouvements d'un compte (préfixe) sur une période avec tout ce que le rapport de caisse affiche — pièce, opération de
+     * caisse (reçu, horodatage) et son caissier — en une seule requête (pas de N+1 sur un mois de mouvements). Hors
+     * brouillons, comme {@link #grandLivreParCompte}.
+     */
+    @Query("""
+        select e from EcritureGrandLivre e
+        join fetch e.compte c
+        left join fetch e.piece p
+        left join fetch e.transaction t
+        left join fetch t.caissier
+        where c.numero like :prefixe%
+          and e.dateEcriture >= :du
+          and e.dateEcriture <= :au
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+        order by e.dateEcriture asc, e.id asc
+    """)
+    List<EcritureGrandLivre> mouvementsDeCaisse(@Param("prefixe") String prefixe,
+                                                @Param("du") LocalDate du,
+                                                @Param("au") LocalDate au);
+
+    /**
+     * Mouvements d'un compte de tresorerie (caisse, banque, mobile money) sur une periode, avec l'operation et la note de
+     * frais qui les portent : le journal des comptes (voir JournalCompteService).
+     */
+    @Query("""
+        select e from EcritureGrandLivre e
+        join fetch e.compte c
+        left join fetch e.piece p
+        left join fetch e.transaction t
+        left join fetch t.noteFrais
+        left join fetch e.transactionBancaire tb
+        left join fetch tb.noteFrais
+        left join fetch e.transactionMobileMoney tm
+        left join fetch tm.noteFrais
+        where c.numero like :prefixe%
+          and e.dateEcriture >= :du
+          and e.dateEcriture <= :au
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+        order by e.dateEcriture asc, e.id asc
+    """)
+    List<EcritureGrandLivre> mouvementsDuCompte(@Param("prefixe") String prefixe,
+                                                @Param("du") LocalDate du,
+                                                @Param("au") LocalDate au);
+
+    /** Lignes, avec leur compte, des pièces données : les contreparties des mouvements de caisse. */
+    @Query("""
+        select e from EcritureGrandLivre e
+        join fetch e.compte
+        where e.piece.id in :pieceIds
+    """)
+    List<EcritureGrandLivre> lignesDesPieces(@Param("pieceIds") java.util.Collection<Long> pieceIds);
+
+    /** Lignes, avec leur compte, des opérations de caisse données (écritures anciennes, sans pièce). */
+    @Query("""
+        select e from EcritureGrandLivre e
+        join fetch e.compte
+        where e.transaction.id in :transactionIds
+    """)
+    List<EcritureGrandLivre> lignesDesTransactions(@Param("transactionIds") java.util.Collection<Long> transactionIds);
 
     /**
      * Cumul débit/crédit avant la date de début (report à nouveau).
@@ -177,6 +252,9 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
      * ici transformerait une reprise de charge ou de produit en résultat de
      * l'exercice. Elle est restituée par {@link #soldesOuvertureParCompte}.</p>
      *
+     * <p>La pièce de clôture de l'exercice est exclue elle aussi : elle solde les classes 6, 7 et 8 vers le
+     * compte 13 et ramènerait à zéro le résultat de l'exercice clos (audit SYSCOHADA du 10/11/2026, C-04).</p>
+     *
      * Retourne [numero, libelle, type, classe, totalDebit, totalCredit].
      */
     @Query("""
@@ -188,6 +266,7 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
         where e.dateEcriture >= :du and e.dateEcriture <= :au
           and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
           and (p is null or p.soldeOuverture = false)
+          and (p is null or p.clotureExercice = false)
         group by c.numero, c.libelle, c.type, c.classe
         order by c.numero
     """)
@@ -274,40 +353,67 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
     BigDecimal soldePourPieceEtCompte(@Param("pieceId") Long pieceId, @Param("numero") String numero);
 
     /**
-     * Efface les ecritures qui ne sont adossees a aucune transaction de
-     * tresorerie : imports precedents, pieces manuelles, soldes d'ouverture.
-     * Les ecritures liees a un mouvement reel de caisse, de banque ou de
-     * mobile money sont preservees — les supprimer laisserait ces
-     * transactions sans contrepartie comptable.
-     */
-    @Modifying
-    @Query("""
-        delete from EcritureGrandLivre e
-        where e.transaction is null
-          and e.transactionBancaire is null
-          and e.transactionMobileMoney is null
-        """)
-    int supprimerEcrituresSansTransaction();
-
-    /**
-     * Mouvements mensuels d'une periode par compte des classes budgetaires (2, 6, 7, 8), pour le suivi
-     * budgetaire : [numero, type, mois (1-12), debit, credit]. Memes ecritures que le grand livre (pieces
-     * non brouillon et operations de tresorerie), sans les a-nouveaux, les reevaluations latentes de change
-     * ni la piece de cloture de l'exercice (qui solde les classes 6 et 7 vers le resultat et annulerait le
-     * realise de l'annee).
+     * Mouvements mensuels d'une periode par compte des classes budgetaires (2, 6, 7, 8) et par service, pour le
+     * suivi budgetaire : [numero, type, mois (1-12), serviceId (null : aucun), debit, credit]. Memes ecritures que
+     * le grand livre (pieces non brouillon et operations de tresorerie), sans les a-nouveaux, les reevaluations
+     * latentes de change ni la piece de cloture de l'exercice (qui solde les classes 6 et 7 vers le resultat et
+     * annulerait le realise de l'annee).
+     *
+     * <p>Le service est celui de la note de frais que l'operation de tresorerie (caisse, banque, mobile money) a
+     * payee — ou, pour un retour de fonds en caisse, celui de la note reduite (le retour diminue le realise du service
+     * qui avait engage la depense) ; une ecriture sans note, ou d'une note sans service, n'en a pas.</p>
      */
     @Query("""
-        select c.numero, c.type, extract(month from e.dateEcriture), coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
+        select c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id),
+               coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
         from EcritureGrandLivre e
         join e.compte c
         left join e.piece p
+        left join e.transaction tc left join tc.noteFrais nc left join nc.service sc
+        left join tc.noteRetour nr left join nr.service sr
+        left join e.transactionBancaire tb left join tb.noteFrais nb left join nb.service sb
+        left join e.transactionMobileMoney tm left join tm.noteFrais nm left join nm.service sm
         where e.dateEcriture >= :du and e.dateEcriture <= :au
           and c.classe in (2, 6, 7, 8)
           and (p is null or (p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON
                              and p.soldeOuverture = false
                              and p.reevaluationDevise = false
-                             and (p.libelle is null or p.libelle not like 'Clôture de l''exercice%')))
-        group by c.numero, c.type, extract(month from e.dateEcriture)
+                             and p.clotureExercice = false))
+        group by c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id)
     """)
     List<Object[]> mouvementsMensuelsBudgetaires(@Param("du") LocalDate du, @Param("au") LocalDate au);
+
+    /**
+     * Comptabilité analytique (SYSCOHADA classe 9, comptes 92 à 99) :
+     * mouvements agrégés par compte sur une période.
+     * Retourne [numero, totalDebit, totalCredit].
+     */
+    @Query("""
+        select c.numero, coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
+        from EcritureGrandLivre e
+        join e.compte c
+        left join e.piece p
+        where c.classe = 9 and c.numero >= '92' and c.numero < '9A'
+          and e.dateEcriture >= :du and e.dateEcriture <= :au
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+        group by c.numero
+    """)
+    List<Object[]> mouvementsAnalytiques(@Param("du") LocalDate du, @Param("au") LocalDate au);
+
+    /**
+     * Comptabilité analytique : cumuls débit/crédit antérieurs à {@code du}
+     * (report à nouveau), par compte 92 à 99.
+     * Retourne [numero, totalDebit, totalCredit].
+     */
+    @Query("""
+        select c.numero, coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
+        from EcritureGrandLivre e
+        join e.compte c
+        left join e.piece p
+        where c.classe = 9 and c.numero >= '92' and c.numero < '9A'
+          and e.dateEcriture < :du
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+        group by c.numero
+    """)
+    List<Object[]> soldesAnterieursAnalytiques(@Param("du") LocalDate du);
 }

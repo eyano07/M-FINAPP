@@ -28,7 +28,15 @@ public record ParametresPaieResponse(
     BigDecimal tauxMajorationHsFerie,
     String directeurDrh,
     String fonctionDirecteur,
-    String villeSignature
+    String villeSignature,
+    BigDecimal tauxCnssPensionPatronale,
+    BigDecimal tauxCnssPf,
+    BigDecimal tauxCnssRp,
+    BigDecimal tauxInpp51A300,
+    BigDecimal tauxInppPlus300,
+    boolean conjointACharge,
+    BigDecimal joursCongeParMois,
+    BigDecimal joursCongeParTranche5Ans
 ) {
     public static ParametresPaieResponse from(ParametresPaie p) {
         return new ParametresPaieResponse(
@@ -38,6 +46,9 @@ public record ParametresPaieResponse(
             p.isCnssDeductibleIpr(), p.isComptabiliserPaie(), p.getSmigJournalierFc(), p.getDiviseurAllocationFamiliale(),
             p.getPlafondRetenuePct(), p.getPlafondTransportExonereFcJour(), p.getHeuresLegalesHebdo(),
             p.getTauxMajorationHs1(), p.getTauxMajorationHs2(), p.getTauxMajorationHsFerie(),
-            p.getDirecteurDrh(), p.getFonctionDirecteur(), p.getVilleSignature());
+            p.getDirecteurDrh(), p.getFonctionDirecteur(), p.getVilleSignature(),
+            p.getTauxCnssPensionPatronale(), p.getTauxCnssPf(), p.getTauxCnssRp(),
+            p.getTauxInpp51A300(), p.getTauxInppPlus300(), p.isConjointACharge(),
+            p.getJoursCongeParMois(), p.getJoursCongeParTranche5Ans());
     }
 }

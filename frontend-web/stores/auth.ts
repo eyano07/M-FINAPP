@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { usePermissionsStore } from '~/stores/permissions'
+import { usePermissionsStore, type ModuleMetier } from '~/stores/permissions'
 
 /**
  * Le backend renvoie photoUrl en chemin relatif a la racine de l'API (meme
@@ -14,6 +14,26 @@ function prefixerPhotoUrl(user: AuthUser): AuthUser {
   return { ...user, photoUrl: `${apiBase}${user.photoUrl}` }
 }
 
+/**
+ * Les rôles qui voient tout le module Restaurant : ceux que le serveur admet en lecture
+ * (RestaurantService.LECTURE), le caissier excepté. Le caissier a le module en ÉCRITURE (le plan des
+ * salles, les ventes) mais ne voit du restaurant que ce qu'il lui faut au comptoir : la carte, le plan
+ * des salles et les stocks (voir NavigationDrawer). Les pages réservées portent la même liste dans leur
+ * definePageMeta({ roles }) : une macro de compilation, qui ne peut pas la lire ici.
+ */
+export const ROLES_RESTAURANT_COMPLET = ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN']
+
+/**
+ * La cuisine (plats, fiches techniques, production, provisions) et le bar (boissons, bouteilles vides, achats de
+ * boissons) : le responsable restaurant, la direction et la comptabilité voient les deux ; le responsable cuisine
+ * et le responsable bar chacun le sien. Ces listes servent au menu et aux boutons — le serveur applique de toute
+ * façon la même séparation (PerimetreRestaurant, gardes de RestaurantService) et filtre les listes mixtes (carte,
+ * stock, analyses) sur le type des articles. Les `definePageMeta({ roles })` en recopient les valeurs (macro de
+ * compilation, qui ne peut pas lire cette constante).
+ */
+export const ROLES_RESTAURANT_CUISINE = ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN']
+export const ROLES_RESTAURANT_BAR = ['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN']
+
 export interface AuthUser {
   id: number
   email: string
@@ -22,6 +42,14 @@ export interface AuthUser {
   telephone?: string | null
   photoUrl?: string | null
   roles: string[]
+  /**
+   * Mot de passe provisoire choisi par l'administrateur (création du compte ou mot de passe redéfini) : tant qu'il
+   * n'est pas remplacé, l'utilisateur reste sur la page /changer-mot-de-passe (voir middleware/auth.global.ts) et le
+   * serveur refuse le reste (403 MOT_DE_PASSE_A_CHANGER).
+   */
+  doitChangerMotDePasse?: boolean
+  /** Double authentification obligatoire pour ce rôle et pas encore activée : bloqué sur /double-authentification. */
+  doitActiverDoubleAuth?: boolean
 }
 
 interface AuthState {
@@ -50,6 +78,12 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isAuthenticated: (s) => !!s.accessToken && !!s.user,
+    /** Voit tout le module Restaurant (faux pour un compte qui n'est que caissier) — voir ROLES_RESTAURANT_COMPLET. */
+    restaurantComplet: (s) => (s.user?.roles ?? []).some((r) => ROLES_RESTAURANT_COMPLET.includes(r)),
+    /** Voit la cuisine du restaurant (plats, fiches techniques, provisions) — voir ROLES_RESTAURANT_CUISINE. */
+    restaurantCuisine: (s) => (s.user?.roles ?? []).some((r) => ROLES_RESTAURANT_CUISINE.includes(r)),
+    /** Voit le bar du restaurant (boissons, bouteilles vides) — voir ROLES_RESTAURANT_BAR. */
+    restaurantBar: (s) => (s.user?.roles ?? []).some((r) => ROLES_RESTAURANT_BAR.includes(r)),
     roles: (s) => s.user?.roles ?? [],
     /**
      * Route d'atterrissage par defaut selon le role. Le Directeur metier
@@ -66,27 +100,36 @@ export const useAuthStore = defineStore('auth', {
       if (roles.some((r) => ROLES_DASHBOARD.includes(r))) {
         return '/dashboard'
       }
+      // Meme risque de boucle quand le module de la page d'accueil est coupe (ou ferme a ce compte) alors que le
+      // compte garde un autre role : une fois les permissions chargees, un atterrissage inaccessible est ignore
+      // au profit du suivant. Avant leur chargement on ne sait rien : on garde l'ordre habituel.
+      const permissions = usePermissionsStore()
+      const accessible = (module: ModuleMetier) => !permissions.charge || permissions.peutVoir(module)
       // La logistique atterrit directement sur son propre tableau de bord
       // (meme logique que GEST_PATRIMOINE ci-dessous) : le tableau de bord
       // general (tresorerie/notes de frais) n'a rien de pertinent pour elle.
-      if (roles.includes('LOGISTIQUE')) {
+      if (roles.includes('LOGISTIQUE') && accessible('LOGISTIQUE')) {
         return '/logistique'
       }
       // Le gestionnaire du patrimoine atterrit directement sur son module.
-      if (roles.includes('GEST_PATRIMOINE')) {
+      if (roles.includes('GEST_PATRIMOINE') && accessible('PATRIMOINE')) {
         return '/patrimoine/immobilisations'
       }
       // Le responsable DRH atterrit directement sur son module (meme logique
       // que GEST_PATRIMOINE) : la paie/RH n'a pas de place dans le tableau de
       // bord financier general.
-      if (roles.includes('RESP_DRH')) {
+      if (roles.includes('RESP_DRH') && accessible('DRH_PAIE')) {
         return '/drh/bulletins'
       }
-      // Responsable restaurant : meme logique. La carte est la page d'entree
-      // naturelle du module, et il a le droit de l'ouvrir — condition
-      // necessaire pour ne pas creer de boucle de redirection.
-      if (roles.includes('RESP_RESTAURANT')) {
+      // Responsable restaurant et responsable bar : le tableau de bord du bar. La page d'entree naturelle du module,
+      // qu'ils ont le droit d'ouvrir — condition necessaire pour ne pas creer de boucle de redirection.
+      if ((roles.includes('RESP_RESTAURANT') || roles.includes('RESP_BAR')) && accessible('RESTAURANT')) {
         return '/restaurant'
+      }
+      // Responsable cuisine : /restaurant est un tableau de bord de boissons, interdit a ce role ; son tableau de
+      // bord est celui des provisions.
+      if (roles.includes('RESP_CUISINE') && accessible('RESTAURANT')) {
+        return '/restaurant/provisions/tableau-bord'
       }
       // Directeur metier (et tout role sans tableau de bord) : ses notes.
       return '/notes-frais'
@@ -235,6 +278,8 @@ export const useAuthStore = defineStore('auth', {
       // du precedent (navigateTo() est une navigation cote client, elle ne
       // reinitialise pas les stores Pinia comme le ferait un rechargement).
       usePermissionsStore().reinitialiser()
+      // Idem pour les préférences d'affichage (enregistrées sur le compte, rechargées à la prochaine ouverture de session).
+      usePreferencesStore().reinitialiser()
     },
 
     hasRole(role: string): boolean {

@@ -5,6 +5,7 @@ import com.mbsc.finapp.domain.FactureNormalisee;
 import com.mbsc.finapp.domain.FactureNormalisee.Statut;
 import com.mbsc.finapp.domain.FactureNormalisee.Type;
 import com.mbsc.finapp.domain.ParametresEntreprise;
+import com.mbsc.finapp.domain.RetourVente;
 import com.mbsc.finapp.domain.Vente;
 import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.domain.enums.TypeNotification;
@@ -27,6 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Facture normalisée DGI : enregistre chaque vente validée (et chaque avoir d'annulation) dans le registre, la
@@ -52,11 +54,14 @@ public class FactureNormaliseeService {
     private final NotificationService notifications;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
+    private final InstanceService instance;
 
     public FactureNormaliseeService(FactureNormaliseeRepository repository, VenteRepository ventes,
                                     ParametresEmcfService parametres, ParametresEntrepriseService entreprise,
                                     FactureNormaliseeMapper mapper, EmcfSimulateur simulateur, EmcfHttpClient http,
-                                    NotificationService notifications, ObjectMapper json, PlatformTransactionManager tm) {
+                                    NotificationService notifications, ObjectMapper json, PlatformTransactionManager tm,
+                                    InstanceService instance) {
+        this.instance = instance;
         this.repository = repository;
         this.ventes = ventes;
         this.parametres = parametres;
@@ -77,7 +82,7 @@ public class FactureNormaliseeService {
     /** Vente validée : crée l'entrée du registre (idempotent) puis transmet après le commit. */
     public void surVenteValidee(Vente vente) {
         if (!parametres.config().actif()) return;
-        FactureNormalisee f = repository.findByVenteIdAndType(vente.getId(), Type.VENTE).orElse(null);
+        FactureNormalisee f = repository.findByVenteIdAndTypeAndRetourIsNull(vente.getId(), Type.VENTE).orElse(null);
         if (f == null) {
             f = repository.save(FactureNormalisee.builder().vente(vente).type(Type.VENTE).statut(Statut.EN_ATTENTE).build());
         }
@@ -89,16 +94,32 @@ public class FactureNormaliseeService {
      * facture jamais certifiée est simplement classée annulée. Appelé même si le module a été désactivé depuis.
      */
     public void surVenteAnnulee(Vente vente) {
-        FactureNormalisee f = repository.findByVenteIdAndType(vente.getId(), Type.VENTE).orElse(null);
+        FactureNormalisee f = repository.findByVenteIdAndTypeAndRetourIsNull(vente.getId(), Type.VENTE).orElse(null);
         if (f == null) return;
         if (f.getStatut() != Statut.CERTIFIEE) {
             f.setStatut(Statut.ANNULEE);
             f.setDateMaj(Instant.now());
             return;
         }
-        FactureNormalisee avoir = repository.findByVenteIdAndType(vente.getId(), Type.AVOIR).orElse(null);
+        FactureNormalisee avoir = repository.findByVenteIdAndTypeAndRetourIsNull(vente.getId(), Type.AVOIR).orElse(null);
         if (avoir == null) {
             avoir = repository.save(FactureNormalisee.builder().vente(vente).type(Type.AVOIR).origine(f)
+                .statut(Statut.EN_ATTENTE).build());
+        }
+        if (avoir.getStatut() == Statut.EN_ATTENTE) transmettreApresCommit(avoir.getId());
+    }
+
+    /**
+     * Retour remboursé (V134) : la part rendue d'une vente qui a une facture normalisée est compensée par un avoir partiel,
+     * rattaché au retour (un par retour). Si la facture de la vente n'est pas encore certifiée, l'avoir attend : il cite son
+     * identifiant et sera transmis après elle (retransmission automatique). Appelé même si le module a été désactivé depuis.
+     */
+    public void surRetourRembourse(RetourVente retour) {
+        FactureNormalisee f = repository.findByVenteIdAndTypeAndRetourIsNull(retour.getVente().getId(), Type.VENTE).orElse(null);
+        if (f == null || f.getStatut() == Statut.ANNULEE) return;
+        FactureNormalisee avoir = repository.findByRetourId(retour.getId()).orElse(null);
+        if (avoir == null) {
+            avoir = repository.save(FactureNormalisee.builder().vente(retour.getVente()).retour(retour).type(Type.AVOIR).origine(f)
                 .statut(Statut.EN_ATTENTE).build());
         }
         if (avoir.getStatut() == Statut.EN_ATTENTE) transmettreApresCommit(avoir.getId());
@@ -228,6 +249,9 @@ public class FactureNormaliseeService {
     /** Retransmet les factures en attente dont le délai est écoulé (aussi les avoirs, même module désactivé). */
     @Scheduled(fixedDelay = 60_000L, initialDelay = 60_000L)
     public void retransmettreEnAttente() {
+        if (instance.lectureSeule()) {   // copie en ligne : seul le serveur principal parle a la DGI
+            return;
+        }
         List<Long> ids;
         try {
             ids = tx.execute(s -> repository.aRetransmettre(Instant.now(), PageRequest.of(0, 20)).stream()

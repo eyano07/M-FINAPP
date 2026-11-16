@@ -45,6 +45,10 @@ public class Client {
     @Column(length = 40)
     private String nif;
 
+    /** Compte propre du client sous 4111 (41111, 41112…), ouvert à la création de la fiche (V145). */
+    @Column(name = "compte_comptable", length = 20)
+    private String compteComptable;
+
     /** PARTICULIER, ENTREPRISE ou ADMINISTRATION. */
     @Column(name = "type_client", nullable = false, length = 20)
     @Builder.Default

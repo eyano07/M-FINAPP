@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Fiches techniques : la composition d'un plat en provisions, pour UNE portion.
@@ -26,20 +26,26 @@ interface Recette {
   prixVente?: number | null
   lignes: LigneRecette[]
   coutEstimeParPortion: number
+  /** Durée de conservation du plat, en jours ; absente : le plat ne se périme pas. */
+  dureeConservationJours?: number | null
 }
 interface Provision { id: number; code: string; libelle: string; uniteMesure?: string }
+/** Une ligne de l'état du stock des provisions (une par provision et par entrepôt). */
+interface NiveauStock { articleId: number; quantite: number; valeurTotale: number }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
 
 // Composer un plat en ingrédients est le travail quotidien du chef
 // cuisinier (responsable restaurant) — l'administrateur, lui, se limite à
 // créer la fiche article sur la carte (RestaurantService.ECRITURE).
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'ADMIN']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 const recettes = ref<Recette[]>([])
 const provisions = ref<Provision[]>([])
+const niveauxStock = ref<NiveauStock[]>([])
 const tauxChange = ref(0)
 const loading = ref(false)
 const saving = ref(false)
@@ -49,6 +55,8 @@ const succes = ref('')
 const platSelectionneId = ref<number | null>(null)
 const lignesEnCours = ref<LigneRecette[]>([])
 const modifie = ref(false)
+/** Durée de conservation en cours de saisie (champ numérique : vide = chaîne vide). */
+const dureeEnCours = ref<number | string | null>(null)
 
 const recetteSelectionnee = computed(() =>
   recettes.value.find(r => r.platId === platSelectionneId.value) || null)
@@ -70,14 +78,34 @@ const provisionsOptions = computed(() =>
     value: p.id,
   })))
 
+/**
+ * CMP courant de CHAQUE provision, tous entrepôts confondus (valeur totale ÷ quantité totale, comme le serveur :
+ * RestaurantService.cmpParArticle). C'est lui qui chiffre un ingrédient dès son ajout, sans attendre qu'il figure
+ * dans une fiche enregistrée.
+ */
+const cmpDepuisLeStock = computed(() => {
+  const cumul = new Map<number, { quantite: number; valeur: number }>()
+  for (const n of niveauxStock.value) {
+    const c = cumul.get(n.articleId) ?? { quantite: 0, valeur: 0 }
+    c.quantite += n.quantite
+    c.valeur += n.valeurTotale
+    cumul.set(n.articleId, c)
+  }
+  const cmp = new Map<number, number>()
+  cumul.forEach((c, id) => cmp.set(id, c.quantite === 0 ? 0 : c.valeur / c.quantite))
+  return cmp
+})
+
 /** CMP courant par provision, pour chiffrer une ligne dès sa saisie. */
 const coutParProvision = computed(() => {
   const m: Record<number, number> = {}
+  // Les fiches enregistrées portent le CMP de leurs ingrédients : un repli si l'état du stock n'a pas pu être lu.
   for (const r of recettes.value) {
     for (const l of r.lignes) {
       if (l.provisionId != null && l.coutMoyenActuel != null) m[l.provisionId] = l.coutMoyenActuel
     }
   }
+  cmpDepuisLeStock.value.forEach((cmp, id) => { m[id] = cmp })
   return m
 })
 
@@ -88,6 +116,15 @@ function coutLigne(l: LigneRecette): number {
   if (l.provisionId == null || !l.quantite) return 0
   return (coutParProvision.value[l.provisionId] ?? 0) * l.quantite
 }
+
+/** Une ligne n'a de coût à afficher que si elle porte une provision et une quantité. */
+const ligneChiffree = (l: LigneRecette) => l.provisionId != null && !!l.quantite
+
+/** Ingrédients de la fiche en cours qui n'ont encore aucun achat : leur coût moyen est inconnu, donc compté à 0. */
+const ingredientsSansCout = computed(() => [...new Set(
+  lignesEnCours.value
+    .filter(l => l.provisionId != null && (coutParProvision.value[l.provisionId] ?? 0) <= 0)
+    .map(l => provisions.value.find(p => p.id === l.provisionId)?.libelle ?? '?'))])
 
 /** Marge théorique : prix de vente (FC) vs coût estimé (USD, devise du grand livre). */
 const margeEstimee = computed(() => {
@@ -157,14 +194,16 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [recs, provs, taux] = await Promise.all([
+    const [recs, provs, taux, niveaux] = await Promise.all([
       api<Recette[]>('/restaurant/recettes'),
       api<Provision[]>('/restaurant/provisions'),
       api<{ taux: number }>('/admin/taux-change').catch(() => ({ taux: 0 })),
+      api<NiveauStock[]>('/restaurant/provisions/stock').catch(() => []),
       parametres.charger(),
     ])
     recettes.value = recs
     provisions.value = provs
+    niveauxStock.value = niveaux
     tauxChange.value = taux.taux || 0
     if (platSelectionneId.value === null || !recs.some(r => r.platId === platSelectionneId.value)) {
       platSelectionneId.value = recs.length ? recs[0].platId : null
@@ -182,12 +221,50 @@ function rechargerLignes() {
   lignesEnCours.value = recetteSelectionnee.value
     ? recetteSelectionnee.value.lignes.map(l => ({ ...l }))
     : []
+  dureeEnCours.value = recetteSelectionnee.value?.dureeConservationJours ?? null
   modifie.value = false
 }
 
-function choisirPlat(platId: number) {
+// ── Durée de conservation ─────────────────────────────────────────────────
+// Elle fait partie de la fiche : chaque production en tire la date d'expiration de ses portions (production + durée) ;
+// passé cette date, les portions non vendues sont périmées. Vide : le plat ne se périme pas.
+const dureeSaisie = computed<number | null>(() => {
+  const v = dureeEnCours.value
+  if (v === null || v === '' || (typeof v === 'string' && !v.trim())) return null
+  return Number(v)
+})
+const dureeValide = computed(() =>
+  dureeSaisie.value === null || (Number.isInteger(dureeSaisie.value) && dureeSaisie.value >= 0 && dureeSaisie.value <= 365))
+
+const aideConservation = computed(() => {
+  if (dureeSaisie.value === null) return 'Aucune durée : ce plat ne se périme pas.'
+  if (!dureeValide.value) return ''
+  const d = new Date()
+  d.setDate(d.getDate() + dureeSaisie.value)
+  const jour = d.toLocaleDateString('fr-FR', { dateStyle: 'long' })
+  return `Une production d'aujourd'hui expire le ${jour} ; le lendemain, les portions non vendues sont périmées.`
+})
+
+/** Recherche du sélecteur de plat : même règle que la liste (code, libellé du plat, ingrédients). */
+function filtrePlat(_valeur: unknown, requete: string, item?: { raw: Recette }): boolean {
+  const r = item?.raw
+  return !!r && correspondRecherche([r.platCode, r.platLibelle, ...r.lignes.flatMap(l => [l.provisionCode, l.provisionLibelle])], requete)
+}
+function sousTitrePlat(r: Recette): string {
+  const n = r.lignes.length
+  return `${r.platCode} · ${n ? `${n} ingrédient${n > 1 ? 's' : ''}` : 'sans fiche'}${r.dureeConservationJours != null ? ` · conservation ${r.dureeConservationJours} j` : ''}`
+}
+
+async function choisirPlat(platId: number) {
   if (platId === platSelectionneId.value) return
-  if (modifie.value && !confirm('Les modifications non enregistrées de cette fiche seront perdues. Continuer ?')) {
+  if (modifie.value && !(await dialogues.confirmer({
+    titre: 'Quitter cette fiche sans enregistrer ?',
+    message: 'Les modifications non enregistrées de cette fiche seront perdues.',
+    bouton: 'Quitter sans enregistrer',
+    abandon: 'Rester',
+    nature: 'attention',
+    icone: 'mdi-content-save-alert-outline',
+  }))) {
     return
   }
   platSelectionneId.value = platId
@@ -227,6 +304,9 @@ const raisonsBlocage = computed(() => {
   if (lignesEnCours.value.some(l => !l.quantite || l.quantite <= 0)) {
     raisons.push('Chaque ligne doit porter une quantité strictement positive.')
   }
+  if (!dureeValide.value) {
+    raisons.push('La durée de conservation est un nombre entier de jours, de 0 à 365.')
+  }
   return raisons
 })
 const peutEnregistrer = computed(() => raisonsBlocage.value.length === 0)
@@ -246,6 +326,7 @@ async function enregistrer() {
         provisionId: l.provisionId,
         quantite: l.quantite,
       })),
+      dureeConservationJours: dureeSaisie.value,
     }
     await api(`/restaurant/recettes/${platSelectionneId.value}`, { method: 'PUT', body })
     succes.value = 'Fiche technique enregistrée.'
@@ -292,6 +373,25 @@ const fmtQte = (n?: number | null) =>
     </v-card>
 
     <div v-else class="fiche-layout">
+      <!-- ── Sélecteur de plat (téléphone et tablette) : un champ compact à la place du panneau de 280 px ── -->
+      <v-autocomplete
+        :model-value="platSelectionneId"
+        :items="recettes"
+        item-title="platLibelle"
+        item-value="platId"
+        :custom-filter="filtrePlat"
+        label="Plat"
+        prepend-inner-icon="mdi-silverware-fork-knife"
+        placeholder="Rechercher un plat ou un ingrédient…"
+        variant="outlined" density="comfortable" rounded="lg" hide-details no-data-text="Aucune fiche ne correspond à votre recherche."
+        class="fiche-selecteur"
+        @update:model-value="(id: number | null) => id !== null && choisirPlat(id)"
+      >
+        <template #item="{ props, item }">
+          <v-list-item v-bind="props" :title="item.raw.platLibelle" :subtitle="sousTitrePlat(item.raw)" />
+        </template>
+      </v-autocomplete>
+
       <!-- ── Liste des plats ──────────────────────────────── -->
       <v-card class="classroom-card fiche-plats">
         <div class="fiche-plats__recherche">
@@ -316,6 +416,7 @@ const fmtQte = (n?: number | null) =>
               {{ r.platCode }} ·
               <span v-if="r.lignes.length">{{ r.lignes.length }} ingrédient{{ r.lignes.length > 1 ? 's' : '' }}</span>
               <span v-else class="fiche-sans">sans fiche</span>
+              <span v-if="r.dureeConservationJours != null"> · conservation {{ r.dureeConservationJours }} j</span>
             </v-list-item-subtitle>
           </v-list-item>
           <p v-if="!recettesFiltrees.length" class="text-caption text-medium-emphasis text-center pa-4 mb-0">
@@ -348,6 +449,23 @@ const fmtQte = (n?: number | null) =>
           </div>
         </div>
 
+        <div class="fiche-conservation mb-4">
+          <v-text-field
+            v-model="dureeEnCours"
+            type="number" min="0" max="365" step="1"
+            label="Durée de conservation (jours)"
+            prepend-inner-icon="mdi-timer-sand"
+            variant="outlined" density="compact" rounded="lg" hide-details
+            :readonly="!canWrite"
+            class="fiche-conservation__champ"
+            @update:model-value="modifie = true"
+          />
+          <p class="text-caption text-medium-emphasis mb-0 fiche-conservation__aide">
+            {{ aideConservation }}
+            <template v-if="dureeSaisie !== null && dureeValide">0 = à vendre le jour même.</template>
+          </p>
+        </div>
+
         <v-alert
           v-if="modifie && raisonsBlocage.length"
           type="warning" variant="tonal" density="compact" rounded="lg" class="mb-4"
@@ -360,14 +478,17 @@ const fmtQte = (n?: number | null) =>
           {{ canWrite ? 'Cliquez sur « Ingrédient » pour composer la fiche.' : '' }}
         </p>
 
-        <div v-for="(l, i) in lignesEnCours" :key="i" class="fiche-ligne">
+        <CommunLigneSaisie
+          v-for="(l, i) in lignesEnCours" :key="i" :numero="i + 1" etiquette="Ingrédient" :lecture="!canWrite"
+          @retirer="supprimerLigne(i)"
+        >
           <v-autocomplete
             v-model="l.provisionId"
             :items="provisionsOptions"
             label="Provision"
             variant="outlined" density="compact" hide-details
             :readonly="!canWrite"
-            class="fiche-ligne__provision"
+            class="ls-large"
             @update:model-value="modifie = true"
           />
           <v-text-field
@@ -375,16 +496,14 @@ const fmtQte = (n?: number | null) =>
             type="number" label="Quantité" min="0" step="0.001"
             variant="outlined" density="compact" hide-details
             :readonly="!canWrite"
-            class="fiche-ligne__qte"
+            class="ls-court"
             @update:model-value="modifie = true"
           />
-          <span class="fiche-ligne__cout">{{ fmtUSD(coutLigne(l)) }}</span>
-          <v-btn
-            v-if="canWrite"
-            icon="mdi-close" size="x-small" variant="text" title="Retirer"
-            @click="supprimerLigne(i)"
-          />
-        </div>
+          <div class="ls-court fiche-ligne__cout">
+            <span class="fiche-ligne__cout-etiquette">Coût</span>
+            <span class="fiche-ligne__cout-valeur">{{ ligneChiffree(l) ? fmtUSD(coutLigne(l)) : '—' }}</span>
+          </div>
+        </CommunLigneSaisie>
 
         <v-divider class="my-4" />
 
@@ -429,6 +548,9 @@ const fmtQte = (n?: number | null) =>
             {{ margeEstimee.toFixed(1) }} %
           </span>
         </div>
+        <p v-if="ingredientsSansCout.length" class="text-caption text-warning mt-3 mb-0">
+          Sans achat enregistré, coût inconnu (compté à 0) : {{ ingredientsSansCout.join(', ') }}.
+        </p>
         <p class="text-caption text-medium-emphasis mt-3 mb-0">
           Estimation au coût moyen actuel des provisions. Le coût de revient réel est figé à chaque
           production, d'après les ingrédients effectivement consommés.
@@ -440,27 +562,20 @@ const fmtQte = (n?: number | null) =>
 
 <style scoped>
 .fiche-layout { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.fiche-selecteur { display: none; }
 .fiche-plats { flex: 0 0 280px; max-height: 620px; display: flex; flex-direction: column; overflow: hidden; }
 .fiche-plats__recherche { flex: 0 0 auto; padding: 10px 10px 4px; }
 .fiche-plats__liste { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .fiche-detail { flex: 1 1 420px; min-width: 0; }
 .fiche-sans { color: #b45309; font-weight: 600; }
 
-.fiche-ligne {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-}
-.fiche-ligne__provision { flex: 1 1 240px; min-width: 0; }
-.fiche-ligne__qte { flex: 0 0 120px; }
-.fiche-ligne__cout {
-  flex: 0 0 100px;
-  text-align: right;
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-  white-space: nowrap;
-}
+.fiche-conservation { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.fiche-conservation__champ { flex: 0 0 300px; }
+.fiche-conservation__aide { flex: 1 1 260px; min-width: 0; }
+
+/* Coût d'un ingrédient : valeur seule alignée à droite sur PC, tuile « Coût » sur téléphone. */
+.fiche-ligne__cout { align-self: center; text-align: right; font-size: 0.8125rem; color: var(--ink-soft); white-space: nowrap; }
+.fiche-ligne__cout-etiquette { display: none; }
 
 .fiche-total {
   display: flex;
@@ -472,4 +587,23 @@ const fmtQte = (n?: number | null) =>
 }
 .fiche-total strong { font-size: 1.15rem; color: var(--color-primary); }
 .fiche-total--secondaire { font-size: 0.8125rem; color: var(--ink-soft); }
+
+/* Téléphone et tablette : le sélecteur remplace la liste, la fiche prend toute la largeur. */
+@media screen and (max-width: 959px) {
+  .fiche-layout { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 12px; }
+  .fiche-selecteur { display: block; }
+  .fiche-plats { display: none; }
+  .fiche-detail { flex: 1 1 auto; width: 100%; }
+  .fiche-ligne__cout {
+    display: flex; flex-direction: column; justify-content: center; text-align: left;
+    padding: 6px 12px 7px; background: #f6f8fa; border-radius: 10px;
+  }
+  .fiche-ligne__cout-etiquette {
+    display: block; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #94a3b8;
+  }
+  .fiche-ligne__cout-valeur { font-size: 1rem; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+}
+@media screen and (max-width: 599px) {
+  .fiche-conservation__champ { flex: 1 1 100%; }
+}
 </style>

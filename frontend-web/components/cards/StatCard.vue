@@ -41,6 +41,7 @@ function onClick() {
   flex-direction: column;
   gap: 10px;
   height: 100%;
+  min-width: 0;
   padding: 18px 20px 18px 22px;
   background: var(--surface);
   border: 1px solid var(--hairline);
@@ -76,7 +77,7 @@ function onClick() {
   color: var(--ink);
   letter-spacing: -0.02em;
   line-height: 1.1;
-  font-variant-numeric: tabular-nums;
+  white-space: nowrap;   /* ne jamais couper un montant */
 }
 .stat-card__trend {
   display: inline-flex;

@@ -58,6 +58,18 @@ public class LotStockService {
     public void enregistrerEntree(Article article, Entrepot entrepot, java.time.LocalDate date, String fournisseur,
                                    BigDecimal quantite, BigDecimal prixAchatUnitaire, BigDecimal prixTransportUnitaire,
                                    LigneMouvementStock ligne) {
+        enregistrerEntree(article, entrepot, date, fournisseur, quantite, prixAchatUnitaire, prixTransportUnitaire, ligne, null);
+    }
+
+    /**
+     * Comme ci-dessus, pour l'achat réglé par une note de frais : {@code ligneNote} est la ligne de la note dont le
+     * paiement crée ce lot. Elle permet à un retour de fonds de rendre <i>cette</i> livraison (voir
+     * {@link #consommer(Article, Entrepot, BigDecimal, LigneMouvementStock, Long)}).
+     */
+    @Transactional
+    public void enregistrerEntree(Article article, Entrepot entrepot, java.time.LocalDate date, String fournisseur,
+                                   BigDecimal quantite, BigDecimal prixAchatUnitaire, BigDecimal prixTransportUnitaire,
+                                   LigneMouvementStock ligne, LigneNoteFrais ligneNote) {
         if (!suivi(article) || quantite == null || quantite.signum() <= 0) {
             return;
         }
@@ -65,6 +77,7 @@ public class LotStockService {
             .article(article)
             .entrepot(entrepot)
             .ligneMouvement(ligne)
+            .ligneNoteFrais(ligneNote)
             .dateEntree(date)
             .fournisseur(fournisseur)
             .quantiteInitiale(quantite)
@@ -89,6 +102,20 @@ public class LotStockService {
      */
     @Transactional
     public List<Part> consommer(Article article, Entrepot entrepot, BigDecimal quantite, LigneMouvementStock ligne) {
+        return consommer(article, entrepot, quantite, ligne, null);
+    }
+
+    /**
+     * Comme ci-dessus pour une sortie qui rend au fournisseur une partie d'une livraison précise (retour d'achat) :
+     * {@code ligneNoteOrigineId} est la ligne de la note de frais qui avait financé cette livraison. Son lot est servi
+     * <b>d'abord</b>, quelle que soit la méthode : le fournisseur reprend des bouteilles ou des kilos de SA livraison,
+     * et c'est elle qui doit diminuer — pas le plus ancien lot de l'article, qui est celui d'un autre achat. Si ce lot
+     * ne couvre pas tout (une partie en a déjà été vendue, ou la ligne n'a pas de lot connu), le reste se prélève sur
+     * les autres lots selon la méthode habituelle. Avec {@code null}, strictement la sortie ordinaire.
+     */
+    @Transactional
+    public List<Part> consommer(Article article, Entrepot entrepot, BigDecimal quantite, LigneMouvementStock ligne,
+                                Long ligneNoteOrigineId) {
         if (!suivi(article) || quantite == null || quantite.signum() <= 0) {
             return List.of();
         }
@@ -97,9 +124,7 @@ public class LotStockService {
         // Au millième, l'échelle des quantités en base : une quantité saisie
         // plus finement ferait sinon échouer la répartition au prorata.
         BigDecimal demande = quantite.setScale(ECHELLE_QUANTITE, RoundingMode.HALF_UP);
-        List<BigDecimal> prises = methode(article) == MethodeSortieLots.CMP
-            ? prisesAuProrata(lots, demande)
-            : prisesDansLOrdre(lots, demande);
+        List<BigDecimal> prises = repartir(methode(article), lots, demande, ligneNoteOrigineId);
         List<Part> parts = new ArrayList<>();
         BigDecimal servi = BigDecimal.ZERO;
         for (int i = 0; i < lots.size(); i++) {
@@ -124,6 +149,32 @@ public class LotStockService {
     }
 
     private static final int ECHELLE_QUANTITE = 3;
+
+    /**
+     * Prise de chaque lot, dans l'ordre de {@code lots} : selon la méthode du type d'article, ou — pour un retour
+     * d'achat — d'abord sur les lots de la ligne de note d'origine (du plus ancien au plus récent, bornés à ce qu'ils
+     * contiennent), puis le reste sur les autres lots selon la méthode.
+     */
+    private static List<BigDecimal> repartir(MethodeSortieLots methode, List<LotStock> lots, BigDecimal demande,
+                                             Long ligneNoteOrigineId) {
+        if (ligneNoteOrigineId == null) {
+            return methode == MethodeSortieLots.CMP ? prisesAuProrata(lots, demande) : prisesDansLOrdre(lots, demande);
+        }
+        List<LotStock> origine = lots.stream().filter(l -> estDeLaLigne(l, ligneNoteOrigineId)).toList();
+        List<LotStock> autres = lots.stream().filter(l -> !estDeLaLigne(l, ligneNoteOrigineId)).toList();
+        List<BigDecimal> prisesOrigine = prisesDansLOrdre(origine, demande);
+        BigDecimal reste = demande.subtract(prisesOrigine.stream().reduce(BigDecimal.ZERO, BigDecimal::add));
+        List<BigDecimal> prisesAutres = methode == MethodeSortieLots.CMP
+            ? prisesAuProrata(autres, reste)
+            : prisesDansLOrdre(autres, reste);
+        java.util.Iterator<BigDecimal> deOrigine = prisesOrigine.iterator();
+        java.util.Iterator<BigDecimal> desAutres = prisesAutres.iterator();
+        return lots.stream().map(l -> estDeLaLigne(l, ligneNoteOrigineId) ? deOrigine.next() : desAutres.next()).toList();
+    }
+
+    private static boolean estDeLaLigne(LotStock lot, Long ligneNoteId) {
+        return lot.getLigneNoteFrais() != null && ligneNoteId.equals(lot.getLigneNoteFrais().getId());
+    }
 
     /** FIFO : épuise les lots l'un après l'autre, du plus ancien au plus récent. */
     private static List<BigDecimal> prisesDansLOrdre(List<LotStock> lots, BigDecimal demande) {

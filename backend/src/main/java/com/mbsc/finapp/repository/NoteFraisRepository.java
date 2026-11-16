@@ -71,6 +71,7 @@ public interface NoteFraisRepository extends JpaRepository<NoteFrais, Long> {
         select distinct n from NoteFrais n
         left join fetch n.lignes l
         left join fetch l.compteImputation
+        left join fetch n.service
         where n.statut in :statuts
           and n.sens = com.mbsc.finapp.domain.enums.SensTransaction.DECAISSEMENT
           and n.dateCreation >= :du and n.dateCreation < :au
@@ -82,6 +83,7 @@ public interface NoteFraisRepository extends JpaRepository<NoteFrais, Long> {
     @Query("""
         select n from NoteFrais n
         left join fetch n.createur
+        left join fetch n.service
         where n.statutBudget in :statuts
           and n.statut <> com.mbsc.finapp.domain.enums.StatutNote.ANNULEE
           and n.dateCreation >= :du and n.dateCreation < :au
@@ -89,4 +91,19 @@ public interface NoteFraisRepository extends JpaRepository<NoteFrais, Long> {
     """)
     List<NoteFrais> findHorsBudgetEntre(@Param("statuts") java.util.Collection<com.mbsc.finapp.domain.enums.StatutControleBudget> statuts,
                                          @Param("du") java.time.Instant du, @Param("au") java.time.Instant au);
+
+    /**
+     * Notes de decaissement d'une periode rattachees a un service (hors brouillons et notes annulees) : depenses
+     * suivies par service dans le suivi d'un budget.
+     */
+    @Query("""
+        select n from NoteFrais n
+        join fetch n.service
+        where n.sens = com.mbsc.finapp.domain.enums.SensTransaction.DECAISSEMENT
+          and n.statut not in (com.mbsc.finapp.domain.enums.StatutNote.BROUILLON,
+                               com.mbsc.finapp.domain.enums.StatutNote.ANNULEE)
+          and n.dateCreation >= :du and n.dateCreation < :au
+        order by n.dateCreation desc
+    """)
+    List<NoteFrais> findDecaissementsDesServicesEntre(@Param("du") java.time.Instant du, @Param("au") java.time.Instant au);
 }

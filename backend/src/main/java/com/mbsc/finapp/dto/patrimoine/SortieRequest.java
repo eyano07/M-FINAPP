@@ -10,10 +10,13 @@ import java.time.LocalDate;
  * Sortie d'un bien du patrimoine.
  *
  * @param valeurCession prix de cession ; 0 ou absent vaut mise au rebut
- * @param compteContrepartieNumero ou encaisser le prix (caisse, banque, client)
+ * @param compteContrepartieNumero créance sur le cessionnaire, 4851 par défaut ; jamais un compte de trésorerie :
+ *                                 l'encaissement du prix passe par la caisse ou la banque (audit SYSCOHADA C-08)
+ * @param typeCession cession courante (654/754) ou hors activités ordinaires (812/822, par défaut)
  */
 public record SortieRequest(
     @NotNull LocalDate dateSortie,
     @PositiveOrZero BigDecimal valeurCession,
-    String compteContrepartieNumero
+    String compteContrepartieNumero,
+    com.mbsc.finapp.domain.enums.TypeCession typeCession
 ) {}

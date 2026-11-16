@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN'] })
 
 /**
  * Editeur visuel du plan des salles et tables (façon Odoo Point de Vente) :
@@ -48,6 +48,7 @@ interface Salle {
 }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
 onMounted(() => { parametresStore.charger() })
@@ -57,12 +58,12 @@ const canWrite = computed(() => auth.hasRole('ADMIN'))
 const peutGererStatut = computed(() => auth.hasAnyRole(['ADMIN', 'RESP_RESTAURANT', 'CAISSIER']))
 /**
  * Règlement de l'addition : distinct de peutGererStatut ci-dessus — le
- * serveur (VenteService.reglerAdditionTable) le réserve à CAISSIER/ADMIN,
- * le responsable restaurant n'y a pas accès. Utiliser peutGererStatut ici
+ * serveur (VenteService.reglerAdditionTable) le réserve au CAISSIER,
+ * ni le responsable restaurant ni l'administrateur n'y ont accès. Utiliser peutGererStatut ici
  * affichait le bouton puis le refusait après une saisie complète (canal,
  * date) : la garde doit correspondre exactement à celle du serveur.
  */
-const peutEncaisser = computed(() => auth.hasAnyRole(['ADMIN', 'CAISSIER']))
+const peutEncaisser = computed(() => auth.hasAnyRole(['CAISSIER']))
 
 /** Pas de la grille magnetique (px) — doit rester egal a --plan-grille dans le CSS ci-dessous. */
 const PAS_GRILLE = 22
@@ -126,9 +127,16 @@ function rechargerTablesEnCours() {
   modifie.value = false
 }
 
-function choisirSalle(id: number) {
+async function choisirSalle(id: number) {
   if (id === salleActiveId.value) return
-  if (modifie.value && !confirm('Les modifications non enregistrées de cette salle seront perdues. Continuer ?')) {
+  if (modifie.value && !(await dialogues.confirmer({
+    titre: 'Quitter cette salle sans enregistrer ?',
+    message: 'Les modifications non enregistrées de cette salle seront perdues.',
+    bouton: 'Quitter sans enregistrer',
+    abandon: 'Rester',
+    nature: 'attention',
+    icone: 'mdi-content-save-alert-outline',
+  }))) {
     return
   }
   salleActiveId.value = id
@@ -183,7 +191,14 @@ async function enregistrerSalle() {
 }
 async function supprimerSalleActive() {
   if (!salleActive.value) return
-  if (!confirm(`Supprimer la salle « ${salleActive.value.nom} » et toutes ses tables ?`)) return
+  const confirme = await dialogues.confirmer({
+    titre: `Supprimer la salle « ${salleActive.value.nom} » ?`,
+    message: 'Toutes ses tables seront supprimées avec elle.',
+    bouton: 'Supprimer la salle',
+    nature: 'danger',
+    icone: 'mdi-trash-can-outline',
+  })
+  if (!confirme) return
   erreur.value = ''
   try {
     await api(`/restaurant/salles/${salleActive.value.id}`, { method: 'DELETE' })
@@ -224,16 +239,17 @@ function supprimerTableSelectionnee() {
 // ── Glisser pour déplacer ─────────────────────────────────────────────────
 let drag: { index: number; startX: number; startY: number; origX: number; origY: number } | null = null
 
-function demarrerDeplacement(e: MouseEvent, i: number) {
+function demarrerDeplacement(e: PointerEvent, i: number) {
   // Toujours selectionner (le responsable restaurant doit pouvoir choisir une
   // table pour en changer le statut), meme s'il ne peut pas la deplacer.
   selectionIndex.value = i
   if (!canWrite.value) return
   drag = { index: i, startX: e.clientX, startY: e.clientY, origX: tablesEnCours.value[i].posX, origY: tablesEnCours.value[i].posY }
-  window.addEventListener('mousemove', surDeplacement)
-  window.addEventListener('mouseup', arreterDeplacement)
+  window.addEventListener('pointermove', surDeplacement)
+  window.addEventListener('pointerup', arreterDeplacement)
+  window.addEventListener('pointercancel', arreterDeplacement)
 }
-function surDeplacement(e: MouseEvent) {
+function surDeplacement(e: PointerEvent) {
   if (!drag) return
   const t = tablesEnCours.value[drag.index]
   t.posX = aimanter(Math.max(0, drag.origX + (e.clientX - drag.startX)))
@@ -242,22 +258,24 @@ function surDeplacement(e: MouseEvent) {
 }
 function arreterDeplacement() {
   drag = null
-  window.removeEventListener('mousemove', surDeplacement)
-  window.removeEventListener('mouseup', arreterDeplacement)
+  window.removeEventListener('pointermove', surDeplacement)
+  window.removeEventListener('pointerup', arreterDeplacement)
+  window.removeEventListener('pointercancel', arreterDeplacement)
 }
 
 // ── Poignées pour redimensionner ──────────────────────────────────────────
 const TAILLE_MIN = 40
 let resize: { index: number; coin: string; startX: number; startY: number; orig: TableItem } | null = null
 
-function demarrerRedimension(e: MouseEvent, i: number, coin: string) {
+function demarrerRedimension(e: PointerEvent, i: number, coin: string) {
   if (!canWrite.value) return
   selectionIndex.value = i
   resize = { index: i, coin, startX: e.clientX, startY: e.clientY, orig: { ...tablesEnCours.value[i] } }
-  window.addEventListener('mousemove', surRedimension)
-  window.addEventListener('mouseup', arreterRedimension)
+  window.addEventListener('pointermove', surRedimension)
+  window.addEventListener('pointerup', arreterRedimension)
+  window.addEventListener('pointercancel', arreterRedimension)
 }
-function surRedimension(e: MouseEvent) {
+function surRedimension(e: PointerEvent) {
   if (!resize) return
   const dx = e.clientX - resize.startX
   const dy = e.clientY - resize.startY
@@ -288,15 +306,18 @@ function surRedimension(e: MouseEvent) {
 }
 function arreterRedimension() {
   resize = null
-  window.removeEventListener('mousemove', surRedimension)
-  window.removeEventListener('mouseup', arreterRedimension)
+  window.removeEventListener('pointermove', surRedimension)
+  window.removeEventListener('pointerup', arreterRedimension)
+  window.removeEventListener('pointercancel', arreterRedimension)
 }
 
 onBeforeUnmount(() => {
-  window.removeEventListener('mousemove', surDeplacement)
-  window.removeEventListener('mouseup', arreterDeplacement)
-  window.removeEventListener('mousemove', surRedimension)
-  window.removeEventListener('mouseup', arreterRedimension)
+  window.removeEventListener('pointermove', surDeplacement)
+  window.removeEventListener('pointerup', arreterDeplacement)
+  window.removeEventListener('pointercancel', arreterDeplacement)
+  window.removeEventListener('pointermove', surRedimension)
+  window.removeEventListener('pointerup', arreterRedimension)
+  window.removeEventListener('pointercancel', arreterRedimension)
 })
 
 async function enregistrerPlan() {
@@ -375,7 +396,10 @@ function toggleCommande(id: number) {
 }
 
 // ── Addition : recapitulatif + reglement groupe de la table ───────────────
-const commandesNonPayees = computed(() => commandesTable.value.filter(c => !c.reglee))
+// L'addition regroupe les créances validées non soldées : ce sont les seules que le serveur encaisse en une fois
+// (VenteService.reglerAdditionTable). Un brouillon est « à payer » lui aussi, mais il doit d'abord être validé par
+// le caissier : il n'entre ni dans le total ni dans le ticket.
+const commandesNonPayees = computed(() => commandesTable.value.filter(c => c.statut === 'VALIDEE' && !c.reglee))
 
 /** Somme par devise : une addition peut cumuler des commandes saisies en CDF et en USD. */
 const totauxAdditionParDevise = computed(() => {
@@ -579,7 +603,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
       </div>
 
       <div class="plan-layout">
-      <div class="plan-salle" @mousedown.self="selectionIndex = null">
+      <div class="plan-salle" @pointerdown.self="selectionIndex = null">
         <div
           v-for="(t, i) in tablesEnCours" :key="i"
           class="table-item"
@@ -587,9 +611,10 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
             'table-item--ronde': t.forme === 'ROND',
             'table-item--selected': i === selectionIndex,
             'table-item--occupee': t.occupee,
+            'table-item--deplacable': canWrite,
           }"
           :style="{ left: t.posX + 'px', top: t.posY + 'px', width: t.largeur + 'px', height: t.hauteur + 'px' }"
-          @mousedown="demarrerDeplacement($event, i)"
+          @pointerdown="demarrerDeplacement($event, i)"
         >
           <img
             v-for="(c, ci) in positionsChaises(t)" :key="ci"
@@ -611,10 +636,10 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
             title="Commande payée"
           />
           <template v-if="i === selectionIndex && canWrite">
-            <span class="poignee poignee--nw" @mousedown.stop="demarrerRedimension($event, i, 'nw')" />
-            <span class="poignee poignee--ne" @mousedown.stop="demarrerRedimension($event, i, 'ne')" />
-            <span class="poignee poignee--sw" @mousedown.stop="demarrerRedimension($event, i, 'sw')" />
-            <span class="poignee poignee--se" @mousedown.stop="demarrerRedimension($event, i, 'se')" />
+            <span class="poignee poignee--nw" @pointerdown.stop="demarrerRedimension($event, i, 'nw')" />
+            <span class="poignee poignee--ne" @pointerdown.stop="demarrerRedimension($event, i, 'ne')" />
+            <span class="poignee poignee--sw" @pointerdown.stop="demarrerRedimension($event, i, 'sw')" />
+            <span class="poignee poignee--se" @pointerdown.stop="demarrerRedimension($event, i, 'se')" />
           </template>
         </div>
         <p v-if="!tablesEnCours.length" class="plan-salle__vide">
@@ -678,9 +703,13 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
               <span class="commande-ligne__ref">{{ c.reference }}</span>
               <span class="commande-ligne__montant">{{ fmtCommande(c) }}</span>
               <v-chip :color="c.reglee ? 'success' : 'error'" size="x-small" variant="tonal">
-                {{ c.reglee ? 'Payée' : 'Non payée' }}
+                {{ c.reglee ? 'Payée' : 'À payer' }}
               </v-chip>
             </button>
+            <p v-if="c.statut === 'BROUILLON'" class="commande-brouillon">
+              En attente : pas encore validée, donc pas encaissée ; ce qu'elle commande est mis de côté pour cette table.
+              Le caissier la valide pour l'encaisser, ou y retire un article rendu.
+            </p>
             <div v-if="commandeOuverteId === c.id" class="commande-detail">
               <div v-for="(l, li) in c.lignes" :key="li" class="commande-detail__ligne">
                 <span class="commande-detail__designation">{{ l.designation }} × {{ l.quantite }}</span>
@@ -689,6 +718,10 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
               <p v-if="!c.lignes.length" class="text-caption text-medium-emphasis ma-0">
                 Détail indisponible.
               </p>
+              <v-btn v-if="peutEncaisser" size="small" variant="tonal" color="primary" class="mt-2" prepend-icon="mdi-open-in-new"
+                :to="`/ventes/${c.id}`">
+                {{ c.statut === 'BROUILLON' ? 'Gérer la commande (retirer, valider…)' : 'Ouvrir la vente (retour…)' }}
+              </v-btn>
             </div>
           </div>
 
@@ -879,6 +912,8 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
   user-select: none;
 }
 .table-item--ronde { border-radius: 50%; }
+/* Au doigt, glisser une table (modification du plan) ne doit pas faire défiler la page. */
+.table-item--deplacable { touch-action: none; }
 .table-item--selected {
   border-color: #1d4ed8;
   box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.25);
@@ -936,6 +971,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
 .commande-ligne__ref { font-weight: 600; font-size: 0.8125rem; }
 .commande-ligne__montant { margin-left: auto; font-size: 0.8125rem; color: var(--ink-soft); }
 
+.commande-brouillon { margin: 0; padding: 0 0 8px 26px; font-size: 0.72rem; line-height: 1.3; color: var(--ink-soft); }
 .commande-detail { padding: 0 0 10px 26px; }
 .commande-detail__ligne {
   display: flex;
@@ -969,6 +1005,14 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
 .poignee--ne { top: -7px; right: -7px; cursor: nesw-resize; }
 .poignee--sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
 .poignee--se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+@media (pointer: coarse) {
+  /* Au doigt : poignées de 26 px (au lieu de 14 px) autour de chaque coin. */
+  .poignee { width: 26px; height: 26px; touch-action: none; }
+  .poignee--nw { top: -13px; left: -13px; }
+  .poignee--ne { top: -13px; right: -13px; }
+  .poignee--sw { bottom: -13px; left: -13px; }
+  .poignee--se { bottom: -13px; right: -13px; }
+}
 
 /* ── Recapitulatif de l'addition (a l'ecran, dans le dialog) ────────── */
 .addition-recap { max-height: 320px; overflow-y: auto; }

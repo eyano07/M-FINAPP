@@ -1,6 +1,7 @@
 package com.mbsc.finapp.service;
 
 import com.mbsc.finapp.domain.BulletinPaie;
+import com.mbsc.finapp.domain.enums.OrganismePaie;
 import com.mbsc.finapp.domain.enums.StatutBulletin;
 import com.mbsc.finapp.dto.drh.DeclarationSocialeResponse;
 import com.mbsc.finapp.dto.drh.DeclarationSocialeResponse.LigneAgent;
@@ -74,13 +75,16 @@ public class DeclarationSocialeService {
         // Les comptes cites sont ceux ou l'ecriture de cloture de paie porte la
         // dette (voir PaieComptabilisationService) : le bordereau et le grand
         // livre se rapprochent ainsi ligne a ligne.
+        // Depuis le 16/11/2026 (audit DRH du 15/11, D-07 et D-08) : CNSS par branche (4311 prestations familiales,
+        // 4312 risques professionnels, 4313 retraite), ONEM et INPP sous 4428 ; base cotisable = appointements + gains
+        // imposables, commune à la CNSS, l'ONEM et l'INPP.
         List<LigneOrganisme> organismes = List.of(
-            new LigneOrganisme("CNSS", "Base cotisable (salaire brut − indemnités)",
-                baseCotisable, cnssOuv, cnssPat, cnssOuv.add(cnssPat), "431.1"),
+            new LigneOrganisme("CNSS", "Base cotisable (appointements + gains imposables)",
+                baseCotisable, cnssOuv, cnssPat, cnssOuv.add(cnssPat), OrganismePaie.CNSS.compte()),
             new LigneOrganisme("ONEM", "Base cotisable",
-                baseCotisable, BigDecimal.ZERO, onem, onem, "4478.1"),
-            new LigneOrganisme("INPP", "Base cotisable + primes et gains",
-                baseInpp, BigDecimal.ZERO, inpp, inpp, "4478.2"),
+                baseCotisable, BigDecimal.ZERO, onem, onem, OrganismePaie.ONEM.compte()),
+            new LigneOrganisme("INPP", "Base cotisable (taux selon l'effectif)",
+                baseInpp, BigDecimal.ZERO, inpp, inpp, OrganismePaie.INPP.compte()),
             new LigneOrganisme("IPR — Direction Générale des Impôts", "Base imposable IPR",
                 baseIpr, ipr, BigDecimal.ZERO, ipr, "4472"));
 

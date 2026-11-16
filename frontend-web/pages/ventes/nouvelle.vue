@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'VENTES', niveau: 'ECRITURE' })
+definePageMeta({ module: 'VENTES', niveau: 'ECRITURE', roles: ['CAISSIER'] })
 
 interface Article {
   id: number
@@ -95,6 +95,53 @@ const form = reactive({
   // plusieurs billets, dans une devise differente de celle de la vente
   // (courant en RDC, ex. 2 billets de 20$ + 1 billet de 5000 FC).
   billetsRecus: [] as BilletRecu[],
+})
+
+// ── Pavé numérique (tablette tactile) ────────────────────────────
+// Le pavé écrit dans le champ quantité / prix actif. `saisie` garde le texte
+// brut pour conserver un point final ("12.") que le nombre ne peut pas porter.
+type ChampLigne = 'quantite' | 'prixUnitaire'
+const champActif = ref<{ i: number; champ: ChampLigne } | null>(null)
+const saisie = ref('')
+// Sur écran tactile, le clavier du système est masqué : le pavé le remplace.
+const tactile = ref(false)
+onMounted(() => {
+  tactile.value = window.matchMedia?.('(pointer: coarse)').matches ?? false
+})
+
+function activerChamp(i: number, champ: ChampLigne) {
+  champActif.value = { i, champ }
+  const v = form.lignes[i][champ]
+  saisie.value = v == null ? '' : String(v)
+}
+function appliquerSaisie() {
+  const c = champActif.value
+  if (!c) return
+  form.lignes[c.i][c.champ] = saisie.value === '' || saisie.value === '.' ? null : Number(saisie.value)
+}
+function toucheNumerique(k: string) {
+  const c = champActif.value
+  if (!c) return
+  if (k === 'suivant') {
+    // quantité -> prix de la même ligne -> quantité de la ligne suivante
+    if (c.champ === 'quantite') activerChamp(c.i, 'prixUnitaire')
+    else if (c.i + 1 < form.lignes.length) activerChamp(c.i + 1, 'quantite')
+    else champActif.value = null
+    return
+  }
+  if (k === 'clear') saisie.value = ''
+  else if (k === 'back') saisie.value = saisie.value.slice(0, -1)
+  else if (k === '.') {
+    if (!saisie.value.includes('.')) saisie.value = (saisie.value || '0') + '.'
+  } else if (saisie.value === '0' && k !== '00') saisie.value = k
+  else if (saisie.value !== '' && saisie.value !== '0' || k !== '00') saisie.value += k
+  appliquerSaisie()
+}
+const libelleChamp = computed(() => {
+  const c = champActif.value
+  if (!c) return ''
+  const nom = c.champ === 'quantite' ? 'Quantité' : `Prix (${form.devise === 'USD' ? 'USD' : 'FC'})`
+  return `${nom} · ligne ${c.i + 1}`
 })
 
 async function charger() {
@@ -414,8 +461,8 @@ const LIBELLES_REGLEMENT: Record<string, string> = {
 }
 const nomClientChoisi = computed(() =>
   modeClient.value === 'REPERTOIRE'
-    ? (clients.value.find((c) => c.id === form.clientId)?.nom ?? '—')
-    : (form.clientNom || '—'))
+    ? (clients.value.find((c) => c.id === form.clientId)?.nom ?? '-')
+    : ((form.clientNom || '').trim() || '-'))
 async function confirmerCreationValidation() {
   await enregistrer(true)
   confirmationValidation.value = false
@@ -529,7 +576,7 @@ const contreValeur = computed(() => {
         density="comfortable"
         rounded="lg"
         clearable
-        hint="Facultatif : laissez vide pour une vente au comptoir"
+        hint="Facultatif : laissez vide pour une vente au comptoir (client « - »)"
         persistent-hint
         class="mb-4"
       />
@@ -537,7 +584,9 @@ const contreValeur = computed(() => {
         v-else
         v-model="form.clientNom"
         label="Nom du client"
-        placeholder="ex : Client comptoir"
+        placeholder="ex : Jean Mukendi"
+        hint="Facultatif : laissez vide, la vente portera « - »"
+        persistent-hint
         prepend-inner-icon="mdi-account-outline"
         variant="outlined"
         density="comfortable"
@@ -649,8 +698,9 @@ const contreValeur = computed(() => {
       </template>
     </v-card>
 
-    <!-- ── Lignes ──────────────────────────────────────────── -->
-    <v-card class="classroom-card pa-6 mb-4">
+    <!-- ── Lignes + pavé numérique ─────────────────────────── -->
+    <div class="vn-saisie">
+    <v-card class="classroom-card pa-6 mb-4 vn-saisie__lignes">
       <div class="d-flex align-center mb-3">
         <p class="vn-section mb-0">Articles vendus</p>
         <v-spacer />
@@ -698,6 +748,8 @@ const contreValeur = computed(() => {
           v-model.number="ligne.quantite"
           label="Quantité"
           type="number"
+          :inputmode="tactile ? 'none' : undefined"
+          @focus="activerChamp(i, 'quantite')"
           min="0.001"
           step="1"
           variant="outlined"
@@ -710,6 +762,8 @@ const contreValeur = computed(() => {
           v-model.number="ligne.prixUnitaire"
           :label="form.devise === 'USD' ? 'P.U. HT (USD)' : 'P.U. HT (FC)'"
           type="number"
+          :inputmode="tactile ? 'none' : undefined"
+          @focus="activerChamp(i, 'prixUnitaire')"
           min="0"
           :step="form.devise === 'USD' ? '0.01' : '1'"
           :prepend-inner-icon="form.devise === 'USD' ? 'mdi-currency-usd' : 'mdi-cash'"
@@ -827,6 +881,16 @@ const contreValeur = computed(() => {
       </div>
     </v-card>
 
+    <aside class="vn-saisie__pave">
+      <VentesPaveNumerique
+        :titre="libelleChamp || 'Saisie du montant'"
+        :valeur="saisie"
+        :actif="!!champActif"
+        @touche="toucheNumerique"
+      />
+    </aside>
+    </div>
+
     <v-alert
       v-if="raisonsBlocage.length"
       type="warning"
@@ -905,9 +969,6 @@ const contreValeur = computed(() => {
 
 <style scoped>
 .vn-page { max-width: 1100px; margin: 0 auto; padding-bottom: 48px; }
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
-.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 .vn-taux {
   font-size: 0.78rem;
   background: #ede9fe;
@@ -927,6 +988,12 @@ const contreValeur = computed(() => {
   margin: 0 0 12px;
 }
 
+.vn-saisie { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+.vn-saisie__pave { position: sticky; top: 76px; }
+@media (max-width: 700px) {
+  .vn-saisie { grid-template-columns: 1fr; }
+  .vn-saisie__pave { position: static; }
+}
 .vn-ligne {
   display: grid;
   grid-template-columns: 3fr 1fr 1.2fr 1.3fr auto;
@@ -1016,6 +1083,10 @@ const contreValeur = computed(() => {
   font-weight: 600;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+}
+@media screen and (max-width: 599px) {
+  .vn-billet-ligne { flex-wrap: wrap; }
+  .vn-billet-ligne .vn-billet-total { flex: 1 1 100%; text-align: right; }
 }
 .vn-hint { font-size: 0.75rem; color: var(--ink-soft); margin: 4px 0 0 16px; }
 

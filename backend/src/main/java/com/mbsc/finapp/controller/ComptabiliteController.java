@@ -1,12 +1,16 @@
 package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.comptabilite.*;
+import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.service.AnalyseFinanciereIaService;
-import com.mbsc.finapp.service.ClotureAnnuelleService;
+import com.mbsc.finapp.service.ArchiveClotureService;
+import com.mbsc.finapp.service.ExportEcrituresService;
+import com.mbsc.finapp.dto.admin.CompteResponse;
+import com.mbsc.finapp.service.ComptabiliteAnalytiqueService;
 import com.mbsc.finapp.service.ComptabiliteService;
+import com.mbsc.finapp.service.JournalCompteService;
 import com.mbsc.finapp.service.EtatsFinanciersExcelService;
 import com.mbsc.finapp.service.BalanceAgeeService;
-import com.mbsc.finapp.service.PeriodeComptableService;
 import com.mbsc.finapp.service.SoldesIntermediairesService;
 import com.mbsc.finapp.service.TvaService;
 import jakarta.validation.Valid;
@@ -28,13 +32,33 @@ import java.util.List;
 public class ComptabiliteController {
 
     private final ComptabiliteService service;
-    private final PeriodeComptableService periodeService;
+    private final JournalCompteService journalCompte;
     private final EtatsFinanciersExcelService excelService;
+    private final com.mbsc.finapp.service.ConversionPdfService conversionPdf;
     private final AnalyseFinanciereIaService analyseIaService;
-    private final ClotureAnnuelleService clotureAnnuelleService;
+    private final com.mbsc.finapp.service.ClotureGouvernanceService gouvernance;
+    private final com.mbsc.finapp.service.ArchiveClotureService archives;
+    private final com.mbsc.finapp.service.ExportEcrituresService exportEcritures;
+    private final com.mbsc.finapp.service.ConsultationEvenementsService evenementsService;
     private final TvaService tvaService;
     private final SoldesIntermediairesService sigService;
     private final BalanceAgeeService balanceAgeeService;
+    private final ComptabiliteAnalytiqueService analytiqueService;
+
+    /** Comptabilité analytique (SYSCOHADA classe 9, comptes 92 à 99) : soldes sur la période. */
+    @GetMapping("/analytique")
+    public EtatAnalytiqueResponse etatAnalytique(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au) {
+        return analytiqueService.etat(du, au);
+    }
+
+    /** Crée un sous-compte analytique (ex. 94 + 11 = 9411). */
+    @PostMapping("/analytique/comptes")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CompteResponse creerSousCompteAnalytique(@Valid @RequestBody SousCompteAnalytiqueRequest req) {
+        return analytiqueService.creerSousCompte(req);
+    }
 
     @PostMapping("/pieces")
     @ResponseStatus(HttpStatus.CREATED)
@@ -69,7 +93,7 @@ public class ComptabiliteController {
      */
     @PatchMapping("/pieces/{id}/solde-ouverture")
     public PieceResponse basculerSoldeOuverture(@PathVariable Long id, @Valid @RequestBody SoldeOuvertureRequest req) {
-        return service.basculerSoldeOuverture(id, req.soldeOuverture());
+        return service.basculerSoldeOuverture(id, req.soldeOuverture(), req.motif());
     }
 
     @DeleteMapping("/pieces/{id}")
@@ -78,9 +102,34 @@ public class ComptabiliteController {
         service.supprimerPiece(id);
     }
 
+    /**
+     * Restaure une pièce annulée par erreur : nouveau brouillon identique à faire valider par le DFIN (comptable), ou
+     * comptabilisation rétablie tout de suite (DFIN, administrateur).
+     */
+    @PostMapping("/pieces/{id}/restaurer")
+    public PieceResponse restaurerPiece(@PathVariable Long id) {
+        return service.restaurer(id);
+    }
+
+    /** Annule (extourne) une pièce comptabilisée : le comptable seul. */
     @PostMapping("/pieces/{id}/annuler")
     public PieceResponse annuler(@PathVariable Long id) {
         return service.annuler(id);
+    }
+
+    /**
+     * Journal d'un compte au choix ({@code compte} : numero du plan comptable, sous-comptes compris) du {@code du} au
+     * {@code au} (mois en cours par defaut) : une ligne par mouvement avec note, objet, beneficiaire, contrepartie et
+     * solde cumule ; {@code devise} : USD (par defaut) ou CDF.
+     */
+    @GetMapping("/journal-compte")
+    public JournalCompteResponse journalCompte(
+        @RequestParam String compte,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
+        @RequestParam(required = false) Devise devise
+    ) {
+        return journalCompte.journal(compte, du, au, devise);
     }
 
     @GetMapping("/grand-livre")
@@ -142,6 +191,24 @@ public class ComptabiliteController {
             .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nomFichier + "\"")
             .body(classeur);
+    }
+
+    /**
+     * Le même classeur, converti en PDF par LibreOffice : toutes les feuilles (page de garde, fiches R1 à R4,
+     * états, notes 1 à 36, journal, balance, ratios, graphiques), une feuille après l'autre (15/11/2026).
+     */
+    @GetMapping("/etats-financiers/export-pdf")
+    public ResponseEntity<byte[]> exporterEtatsFinanciersPdf(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        byte[] pdf = conversionPdf.classeurEnPdf(excelService.genererClasseur(du, au));
+        LocalDate fin = au != null ? au : LocalDate.now();
+        String nomFichier = "Etats_financiers_MBSC_" + fin.format(DateTimeFormatter.ISO_DATE) + ".pdf";
+        return ResponseEntity.ok()
+            .contentType(MediaType.APPLICATION_PDF)
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nomFichier + "\"")
+            .body(pdf);
     }
 
     /**
@@ -212,26 +279,108 @@ public class ComptabiliteController {
         return tvaService.declarer(du, au);
     }
 
-    // ── Clôture de période ───────────────────────────────────────────────
+    // ── Clôture de période et d'exercice (audit SYSCOHADA du 10/11/2026, C-03, C-06, C-10) ──
 
     @GetMapping("/cloture")
-    public ClotureResponse cloture() {
-        return new ClotureResponse(periodeService.dateCloture());
+    public EtatClotureResponse cloture() {
+        return gouvernance.etat();
     }
 
+    /** Avance le verrou (DFIN) ; le reculer ou le lever crée une demande à faire approuver par le DA ou le DG. */
     @PutMapping("/cloture")
-    public ClotureResponse definirCloture(@RequestBody ClotureRequest req) {
-        return new ClotureResponse(periodeService.definirDateCloture(req.dateCloture()));
+    public EtatClotureResponse definirCloture(@Valid @RequestBody ClotureRequest req) {
+        return gouvernance.definirVerrou(req.dateCloture(), req.motif());
+    }
+
+    /** Contrôles préalables à la clôture de l'exercice qui se termine à la date donnée. */
+    @GetMapping("/cloture/exercice/controles")
+    public List<ControleClotureResponse> controlesCloture(
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return gouvernance.controles(date);
     }
 
     /**
-     * Clôture annuelle formelle : réévalue les créances en devise étrangère,
-     * solde les comptes de gestion (classes 6/7) vers le résultat, verrouille
-     * la date. Distincte du simple verrou ci-dessus (utilisable seul pour un
-     * arrêté mensuel qui n'appelle pas de clôture de comptes).
+     * Demande de clôture définitive de l'exercice (DFIN) : réévaluation des soldes en devise, soldage des classes 6,
+     * 7 et 8 vers le résultat, verrou définitif et archive des livres — exécutés quand le DA ou le DG approuve.
      */
     @PostMapping("/cloture/exercice")
-    public ClotureExerciceResponse cloturerExercice(@Valid @RequestBody ClotureExerciceRequest req) {
-        return clotureAnnuelleService.cloturerExercice(req.dateCloture());
+    public EtatClotureResponse demanderClotureExercice(@Valid @RequestBody ClotureExerciceRequest req) {
+        return gouvernance.demanderClotureExercice(req.dateCloture(), req.motif());
+    }
+
+    @PostMapping("/cloture/demandes/{id}/approuver")
+    public ClotureExerciceResponse approuverDemande(@PathVariable Long id, @Valid @RequestBody DecisionRequest req) {
+        return gouvernance.approuver(id, req.commentaire());
+    }
+
+    @PostMapping("/cloture/demandes/{id}/refuser")
+    public EtatClotureResponse refuserDemande(@PathVariable Long id, @Valid @RequestBody DecisionRequest req) {
+        return gouvernance.refuser(id, req.commentaire());
+    }
+
+    @PostMapping("/cloture/demandes/{id}/retirer")
+    public EtatClotureResponse retirerDemande(@PathVariable Long id) {
+        return gouvernance.retirer(id);
+    }
+
+    /** Dérogation à la validation par une autre personne (DA, DG), motif obligatoire. */
+    @PutMapping("/cloture/auto-validation")
+    public EtatClotureResponse definirAutoValidation(@RequestParam boolean autorisee,
+                                                     @Valid @RequestBody DecisionRequest req) {
+        return gouvernance.definirAutoValidation(autorisee, req.commentaire());
+    }
+
+    /** Archives figées des clôtures d'exercice (C-13). */
+    @GetMapping("/cloture/archives")
+    public List<ArchiveClotureService.Archive> archivesCloture() {
+        return archives.lister();
+    }
+
+    @GetMapping("/cloture/archives/{id}")
+    public ResponseEntity<byte[]> telechargerArchive(@PathVariable Long id) {
+        byte[] contenu = archives.contenu(id);
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType("application/zip"))
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"archive_cloture_" + id + ".zip\"")
+            .body(contenu);
+    }
+
+    // ── Éditions et piste d'audit (C-09, C-19, C-25) ──────────────────────
+
+    /** Fichier de toutes les écritures de la période (CSV, une ligne par écriture). */
+    @GetMapping("/ecritures/export")
+    public ResponseEntity<byte[]> exporterEcritures(
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        byte[] fichier = exportEcritures.fichierEcritures(du, au);
+        String nom = "Ecritures_" + du.format(DateTimeFormatter.BASIC_ISO_DATE) + "_"
+            + au.format(DateTimeFormatter.BASIC_ISO_DATE) + ".csv";
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nom + "\"")
+            .body(fichier);
+    }
+
+    @GetMapping("/grand-livre-general")
+    public List<ExportEcrituresService.CompteGrandLivre> grandLivreGeneral(
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        return exportEcritures.grandLivreGeneral(du, au);
+    }
+
+    @GetMapping("/centralisation")
+    public List<ExportEcrituresService.LigneCentralisation> centralisation(
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        return exportEcritures.centralisation(du, au);
+    }
+
+    /** Journal des événements comptables (ajout seul, chaîné) et contrôle de sa chaîne d'empreintes. */
+    @GetMapping("/evenements")
+    public JournalEvenementsResponse evenements(@RequestParam(defaultValue = "200") int limite) {
+        return evenementsService.consulter(limite);
     }
 }

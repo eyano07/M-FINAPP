@@ -24,6 +24,7 @@ interface Etat {
 }
 
 const api = useApi()
+const dialogues = useDialogues()
 const etat = ref<Etat | null>(null)
 const chargement = ref(true)
 const erreur = ref('')
@@ -119,7 +120,13 @@ async function tester() {
 }
 
 async function retirerMotDePasse() {
-  if (!confirm('Retirer le mot de passe enregistré ?')) return
+  const confirme = await dialogues.confirmer({
+    titre: 'Retirer le mot de passe enregistré ?',
+    bouton: 'Retirer le mot de passe',
+    nature: 'danger',
+    icone: 'mdi-key-remove',
+  })
+  if (!confirme) return
   action.value = 'retirer'
   try {
     appliquer(await api<Etat>('/admin/mail/mot-de-passe', { method: 'DELETE' }))

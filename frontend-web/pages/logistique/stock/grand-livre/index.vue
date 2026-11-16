@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Meme restriction que les mouvements : lecture reservee aux roles
-// logistiques et financiers (StockService.grandLivreStock).
-definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] })
+// logistiques et financiers (StockService.grandLivreStock), plus les responsables
+// cuisine et bar, qui n'y voient que les articles de leur domaine.
+definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] })
 
 interface LigneStockGL {
   id: number

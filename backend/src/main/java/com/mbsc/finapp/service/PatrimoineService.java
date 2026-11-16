@@ -59,11 +59,16 @@ public class PatrimoineService {
 
     private static final Logger log = LoggerFactory.getLogger(PatrimoineService.class);
 
-    /** VNC et produit de cession des immobilisations corporelles (imputables). */
+    /** VNC et produit de cession hors activites ordinaires (imputables). */
     private static final String COMPTE_VNC_CESSION = "812";
     private static final String COMPTE_PRODUIT_CESSION = "822";
+    /** VNC et produit de cession courante (renouvellement ordinaire des equipements, C-18). */
+    private static final String COMPTE_VNC_CESSION_COURANTE = "6542";
+    private static final String COMPTE_PRODUIT_CESSION_COURANTE = "7542";
     /** Contrepartie d'acquisition par defaut : fournisseurs d'investissements. */
     private static final String COMPTE_FOURNISSEUR_INVEST = "4812";
+    /** Contrepartie de cession par defaut : creance sur cession d'immobilisation (C-18). */
+    private static final String COMPTE_CREANCE_CESSION = "4851";
 
     private final ImmobilisationRepository immobilisationRepository;
     private final LigneAmortissementRepository ligneRepository;
@@ -108,6 +113,18 @@ public class PatrimoineService {
     public ImmobilisationResponse creer(ImmobilisationRequest req) {
         User auteur = currentUser.requireUser();
         valider(req);
+        Immobilisation parent = null;
+        if (req.parentId() != null) {
+            parent = charger(req.parentId());
+            if (parent.estSorti()) {
+                throw new TransitionInvalideException("Le bien " + parent.getReference()
+                    + " est sorti du patrimoine : on ne lui ajoute plus de composant.");
+            }
+            if (parent.getParent() != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le bien " + parent.getReference()
+                    + " est lui-même un composant : rattachez ce composant au bien principal.");
+            }
+        }
 
         Immobilisation immo = Immobilisation.builder()
             .reference(referenceGenerator.pourImmobilisation())
@@ -132,6 +149,7 @@ public class PatrimoineService {
             .responsable(resoudreResponsable(req.responsableId()))
             .fournisseur(req.fournisseur())
             .numeroSerie(req.numeroSerie())
+            .parent(parent)
             .createdBy(auteur)
             .build();
 
@@ -194,10 +212,24 @@ public class PatrimoineService {
         LocalDate periode = immo.getDateMiseService().withDayOfMonth(1);
         BigDecimal cumul = BigDecimal.ZERO;
 
-        for (int i = 0; i < duree; i++) {
+        // Lineaire : prorata au jour pres de la mise en service (audit SYSCOHADA du 10/11/2026, C-18). Le premier
+        // mois ne compte que les jours d'utilisation ; le reliquat passe sur un mois de plus en fin de plan. Le
+        // degressif garde la regle fiscale du mois entier.
+        int joursDuMois = immo.getDateMiseService().lengthOfMonth();
+        int joursUtilises = joursDuMois - immo.getDateMiseService().getDayOfMonth() + 1;
+        boolean prorata = !degressif && joursUtilises < joursDuMois;
+        BigDecimal premiereMensualite = prorata
+            ? mensualiteLineaire.multiply(BigDecimal.valueOf(joursUtilises))
+                .divide(BigDecimal.valueOf(joursDuMois), 2, RoundingMode.HALF_UP)
+            : mensualiteLineaire;
+        int nbPeriodes = prorata ? duree + 1 : duree;
+
+        for (int i = 0; i < nbPeriodes; i++) {
             BigDecimal dotation;
-            if (i == duree - 1) {
+            if (i == nbPeriodes - 1) {
                 dotation = base.subtract(cumul);          // solde exact
+            } else if (i == 0 && prorata) {
+                dotation = premiereMensualite;
             } else if (degressif) {
                 BigDecimal restant = base.subtract(cumul);
                 BigDecimal parDegressif = restant.multiply(tauxMensuelDegressif).setScale(2, RoundingMode.HALF_UP);
@@ -304,6 +336,7 @@ public class PatrimoineService {
     private PieceComptable ecrireAcquisition(Immobilisation immo, String contrepartieNumero, User auteur) {
         CompteOHADA contrepartie = resoudreCompte(
             contrepartieNumero, COMPTE_FOURNISSEUR_INVEST, "contrepartie d'acquisition");
+        ComptabiliteService.exigerContrepartieHorsTresorerie(contrepartie.getNumero(), "contrepartie d'acquisition");
         String libelle = "Acquisition " + immo.getReference() + " - " + immo.getLibelle();
         List<EcritureGrandLivre> ecritures = List.of(
             ecriture(immo.getCompteImmobilisation(), immo.getValeurAcquisition(), BigDecimal.ZERO,
@@ -336,8 +369,18 @@ public class PatrimoineService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "La date de sortie ne peut pas preceder l'acquisition.");
         }
+        List<Immobilisation> composants = immobilisationRepository.findByParentId(immo.getId()).stream()
+            .filter(c -> !c.estSorti()).toList();
+        if (!composants.isEmpty()) {
+            throw new TransitionInvalideException("Sortez d'abord les composants de " + immo.getReference() + " : "
+                + String.join(", ", composants.stream().map(Immobilisation::getReference).toList()) + ".");
+        }
 
         BigDecimal prix = req.valeurCession() == null ? BigDecimal.ZERO : req.valeurCession();
+        TypeCession type = req.typeCession() == null ? TypeCession.HAO : req.typeCession();
+        // Dotation complementaire jusqu'au jour de la sortie (C-18) : sans elle, la valeur nette sortie en charge
+        // gardait l'amortissement non encore passe de l'exercice.
+        PieceComptable complement = dotationComplementaire(immo, req.dateSortie(), auteur);
         BigDecimal cumul = immo.cumulComptabilise();
         BigDecimal vnc = immo.getValeurAcquisition().subtract(cumul);
 
@@ -351,7 +394,8 @@ public class PatrimoineService {
         }
         // Valeur nette comptable sortie en charge.
         if (vnc.signum() > 0) {
-            ecritures.add(ecriture(exigerCompte(COMPTE_VNC_CESSION), vnc, BigDecimal.ZERO, libelle, req.dateSortie()));
+            ecritures.add(ecriture(exigerCompte(type == TypeCession.COURANTE ? COMPTE_VNC_CESSION_COURANTE
+                : COMPTE_VNC_CESSION), vnc, BigDecimal.ZERO, libelle, req.dateSortie()));
         }
         // Sortie de la valeur brute.
         ecritures.add(ecriture(immo.getCompteImmobilisation(), BigDecimal.ZERO,
@@ -359,9 +403,11 @@ public class PatrimoineService {
         // Volet vente, le cas echeant.
         if (prix.signum() > 0) {
             CompteOHADA contrepartie = resoudreCompte(
-                req.compteContrepartieNumero(), COMPTE_FOURNISSEUR_INVEST, "contrepartie de cession");
+                req.compteContrepartieNumero(), COMPTE_CREANCE_CESSION, "contrepartie de cession");
+            ComptabiliteService.exigerContrepartieHorsTresorerie(contrepartie.getNumero(), "contrepartie de cession");
             ecritures.add(ecriture(contrepartie, prix, BigDecimal.ZERO, libelle, req.dateSortie()));
-            ecritures.add(ecriture(exigerCompte(COMPTE_PRODUIT_CESSION), BigDecimal.ZERO, prix, libelle, req.dateSortie()));
+            ecritures.add(ecriture(exigerCompte(type == TypeCession.COURANTE ? COMPTE_PRODUIT_CESSION_COURANTE
+                : COMPTE_PRODUIT_CESSION), BigDecimal.ZERO, prix, libelle, req.dateSortie()));
         }
 
         PieceComptable piece = comptabilite.creerPieceInterne(
@@ -370,11 +416,60 @@ public class PatrimoineService {
         immo.setStatut(prix.signum() > 0 ? StatutImmobilisation.CEDE : StatutImmobilisation.REBUT);
         immo.setDateSortie(req.dateSortie());
         immo.setValeurCession(prix);
+        immo.setTypeCession(type);
         immo.setPieceSortie(piece);
 
-        log.info("Immobilisation sortie [ref={}, statut={}, vnc={}, prix={}, piece={}]",
-            immo.getReference(), immo.getStatut(), vnc, prix, piece.getReference());
+        log.info("Immobilisation sortie [ref={}, statut={}, type={}, vnc={}, prix={}, piece={}, complement={}]",
+            immo.getReference(), immo.getStatut(), type, vnc, prix, piece.getReference(),
+            complement == null ? "-" : complement.getReference());
         return ImmobilisationResponse.from(immo);
+    }
+
+    /**
+     * Passe l'amortissement non encore comptabilise jusqu'au jour de la sortie : mois entiers avant le mois de
+     * sortie, prorata au jour pour ce mois-la. Les mensualites posterieures sont retirees du plan : le bien ne
+     * s'amortit plus. Retourne la piece passee, ou null s'il n'y avait rien a passer.
+     */
+    PieceComptable dotationComplementaire(Immobilisation immo, LocalDate dateSortie, User auteur) {
+        LocalDate moisSortie = dateSortie.withDayOfMonth(1);
+        BigDecimal montant = BigDecimal.ZERO;
+        List<LigneAmortissement> passees = new ArrayList<>();
+        List<LigneAmortissement> retirees = new ArrayList<>();
+        for (LigneAmortissement l : immo.getPlanAmortissement()) {
+            if (l.isComptabilise()) continue;
+            if (l.getPeriode().isBefore(moisSortie)) {
+                montant = montant.add(l.getDotation());
+                passees.add(l);
+            } else if (l.getPeriode().equals(moisSortie)) {
+                BigDecimal prorata = l.getDotation().multiply(BigDecimal.valueOf(dateSortie.getDayOfMonth()))
+                    .divide(BigDecimal.valueOf(dateSortie.lengthOfMonth()), 2, RoundingMode.HALF_UP);
+                l.setDotation(prorata);
+                montant = montant.add(prorata);
+                passees.add(l);
+            } else {
+                retirees.add(l);
+            }
+        }
+        immo.getPlanAmortissement().removeAll(retirees);
+        if (montant.signum() <= 0 || immo.getCompteDotation() == null || immo.getCompteAmortissement() == null) {
+            return null;
+        }
+        String libelle = "Dotation complementaire a la sortie " + immo.getReference() + " - " + immo.getLibelle();
+        PieceComptable piece = comptabilite.creerPieceInterne(JournalComptable.OPERATIONS_DIVERSES, libelle,
+            dateSortie, List.of(
+                ecriture(immo.getCompteDotation(), montant, BigDecimal.ZERO, libelle, dateSortie),
+                ecriture(immo.getCompteAmortissement(), BigDecimal.ZERO, montant, libelle, dateSortie)), auteur);
+        Instant maintenant = Instant.now();
+        BigDecimal cumul = immo.cumulComptabilise();
+        for (LigneAmortissement l : passees) {
+            cumul = cumul.add(l.getDotation());
+            l.setCumul(cumul);
+            l.setValeurNette(immo.getValeurAcquisition().subtract(cumul));
+            l.setComptabilise(true);
+            l.setPiece(piece);
+            l.setDateComptabilisation(maintenant);
+        }
+        return piece;
     }
 
     // -----------------------------------------------------------------

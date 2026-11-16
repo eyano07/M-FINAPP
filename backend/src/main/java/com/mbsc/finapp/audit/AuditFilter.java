@@ -74,9 +74,12 @@ public class AuditFilter extends OncePerRequestFilter {
         if (requete != null) m.put("requete", requete);
         m.put("statut", statut);
         m.put("reussi", statut < 400);
+        // Détail métier déposé par le service appelé (voir AuditService.detailler) : note, montant, reçu...
+        Object detail = req.getAttribute(AuditService.ATTRIBUT_DETAIL);
+        if (detail != null) m.put("detail", detail.toString());
         m.put("dureeMs", dureeMs);
-        String agent = req.getHeader("User-Agent");
-        if (agent != null) m.put("agent", agent.length() > 160 ? agent.substring(0, 160) : agent);
+        String agent = AuditService.agent(req);
+        if (agent != null) m.put("agent", agent);
         audit.enregistrer(m);
     }
 }

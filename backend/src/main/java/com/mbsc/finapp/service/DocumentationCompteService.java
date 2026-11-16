@@ -84,6 +84,16 @@ public class DocumentationCompteService {
             + " lors de l'ajout de l'établissement « " + nom + " » (Administration → Établissements).");
     }
 
+    /** Sous-compte 4011… ouvert automatiquement pour un fournisseur du répertoire. */
+    public void documenterFournisseur(CompteOHADA compte, String nom, String code) {
+        if (compte.estCommente()) {
+            return;
+        }
+        documenterSousCompte(compte, "ouvert pour le fournisseur « " + nom + " »" + (code == null ? "" : " (" + code + ")"), null,
+            "Compte créé automatiquement le " + aujourdhui() + parQui()
+            + " à l'enregistrement du fournisseur « " + nom + " » (Logistique → Fournisseurs).");
+    }
+
     /**
      * Compte propre à un article du restaurant, ouvert sous la racine {@code racine}.
      *
@@ -111,7 +121,7 @@ public class DocumentationCompteService {
                 } + "\nInventaire permanent : le stock est suivi en continu, à chaque entrée et à chaque sortie.");
                 compte.setFonctionnement(switch (type) {
                     case PLAT -> "Débité à chaque production, pour le coût des provisions consommées (contrepartie : variation des stocks de produits finis 736x).\n"
-                        + "Crédité à chaque sortie (vente, perte, repas offert) au coût de production moyen.";
+                        + "Crédité à chaque sortie (vente, perte, plat offert, repas du personnel) au coût de production moyen.";
                     case PROVISION -> "Débité à l'entrée en stock, au paiement de la note d'achat de provisions (contrepartie : variation des stocks 6032x), frais d'approche compris.\n"
                         + "Crédité à chaque sortie (production de plats, péremption, perte) au coût moyen pondéré.";
                     default -> "Débité à l'entrée en stock, au paiement de la note d'achat de boissons (contrepartie : variation des stocks 6031x), frais d'approche compris.\n"
@@ -127,15 +137,22 @@ public class DocumentationCompteService {
                     case PROVISION -> "Variation du stock de la provision « " + libelleArticle + " »" + codeTxt
                         + " : avec son compte d'achat 6021x, il donne la consommation réelle de la provision sur la période.";
                     default -> "Variation du stock de la boisson « " + libelleArticle + " »" + codeTxt
-                        + " : avec son compte d'achat 6011x, il forme le coût d'achat des bouteilles vendues ou perdues sur la période.";
+                        + " : avec son compte d'achat 6011x, il forme le coût d'achat des bouteilles vendues ou cassées sur la période"
+                        + " (les boissons périmées vont en " + RestaurantService.COMPTE_BOISSONS_PERIMEES
+                        + ", les boissons offertes en " + RestaurantService.COMPTE_BOISSONS_OFFERTES + ").";
                 });
                 compte.setFonctionnement(switch (type) {
                     case PLAT -> "Crédité à chaque production (portions entrées en stock, contrepartie 361x).\n"
-                        + "Débité à chaque sortie (vente, perte, repas offert) au coût de production moyen.";
+                        + "Débité à chaque vente, au coût de production moyen. Les autres sorties de plats (périmé, moisi, renversé, brûlé, "
+                        + "offert, repas du personnel, autre) vont à leur propre compte (" + RestaurantService.COMPTE_PLATS_PERIMES + " à "
+                        + RestaurantService.COMPTE_AUTRES_SORTIES_PLATS + ", " + RestaurantService.COMPTE_PLATS_OFFERTS + " et "
+                        + RestaurantService.COMPTE_REPAS_PERSONNEL + "), pas ici.";
                     case PROVISION -> "Crédité à l'entrée en stock (contrepartie : stock 331x).\n"
                         + "Débité à chaque sortie (production de plats, péremption, perte) au coût moyen pondéré.";
                     default -> "Crédité à l'entrée en stock (contrepartie : stock 3111x), pour le coût d'achat frais d'approche compris.\n"
-                        + "Débité à chaque sortie (vente, casse, péremption, cadeau) au coût moyen pondéré.";
+                        + "Débité à chaque vente et à chaque casse d'une bouteille pleine, au coût moyen pondéré. Une boisson périmée est "
+                        + "débitée en " + RestaurantService.COMPTE_BOISSONS_PERIMEES + ", une boisson offerte en "
+                        + RestaurantService.COMPTE_BOISSONS_OFFERTES + ".";
                 });
                 compte.setControle("Rapprocher des entrées et sorties de stock " + article
                     + " sur la période (mouvements de stock et grand livre du stock).");

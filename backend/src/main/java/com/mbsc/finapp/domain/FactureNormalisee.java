@@ -36,6 +36,15 @@ public class FactureNormalisee {
     @Column(nullable = false, length = 10)
     private Type type;
 
+    /**
+     * Retour remboursé que couvre cet avoir partiel (V134) ; {@code null} pour la facture de la vente et pour l'avoir de
+     * son annulation complète, uniques par vente.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "retour_vente_id")
+    @ToString.Exclude
+    private RetourVente retour;
+
     /** Facture d'origine d'un avoir. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "origine_id")

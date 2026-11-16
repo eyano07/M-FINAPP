@@ -5,6 +5,9 @@ import com.mbsc.finapp.security.JwtAuthEntryPoint;
 import com.mbsc.finapp.security.JwtAuthenticationFilter;
 import com.mbsc.finapp.audit.AuditFilter;
 import com.mbsc.finapp.security.ModuleAccessFilter;
+import com.mbsc.finapp.security.MotDePasseProvisoireFilter;
+import com.mbsc.finapp.security.CleReplicationFilter;
+import com.mbsc.finapp.security.MiroirLectureSeuleFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -36,6 +39,10 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ModuleAccessFilter moduleAccessFilter;
+    private final MotDePasseProvisoireFilter motDePasseProvisoireFilter;
+    private final com.mbsc.finapp.security.DoubleAuthObligatoireFilter doubleAuthObligatoireFilter;
+    private final CleReplicationFilter cleReplicationFilter;
+    private final MiroirLectureSeuleFilter miroirLectureSeuleFilter;
     private final com.mbsc.finapp.audit.AuditFilter auditFilter;
     private final JwtAuthEntryPoint jwtAuthEntryPoint;
     private final AppUserDetailsService userDetailsService;
@@ -85,8 +92,16 @@ public class SecurityConfig {
             })
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            // Appels entre serveurs (/replication/**) : signes avec la cle d'appairage, sans compte utilisateur (V132).
+            .addFilterBefore(cleReplicationFilter, JwtAuthenticationFilter.class)
             .addFilterAfter(auditFilter, JwtAuthenticationFilter.class)
-            .addFilterAfter(moduleAccessFilter, AuditFilter.class);
+            // Serveur en lecture seule (copie en ligne d'un serveur local, ancien serveur local : V132) : saisies refusees (423).
+            .addFilterAfter(miroirLectureSeuleFilter, AuditFilter.class)
+            // Mot de passe provisoire (V131) : avant tout acces aux modules, seuls le profil et le changement de mot de passe.
+            .addFilterAfter(motDePasseProvisoireFilter, MiroirLectureSeuleFilter.class)
+            // Double authentification obligatoire pour les roles sensibles (audit SYSCOHADA, C-23).
+            .addFilterAfter(doubleAuthObligatoireFilter, MotDePasseProvisoireFilter.class)
+            .addFilterAfter(moduleAccessFilter, com.mbsc.finapp.security.DoubleAuthObligatoireFilter.class);
 
         return http.build();
     }

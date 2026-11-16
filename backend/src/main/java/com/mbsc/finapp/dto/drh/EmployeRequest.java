@@ -28,5 +28,7 @@ public record EmployeRequest(
     @PositiveOrZero BigDecimal rendementPct,
     boolean conforme,
     boolean superviseur,
-    boolean expatrie
+    boolean expatrie,
+    /** Compte 272… du prêt de l'agent (facultatif) ; le compte de rémunérations dues n'est jamais saisi. */
+    @Size(max = 20) String comptePret
 ) {}

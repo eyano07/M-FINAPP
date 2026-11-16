@@ -3,8 +3,10 @@ package com.mbsc.finapp.service.emcf;
 import com.mbsc.finapp.domain.Client;
 import com.mbsc.finapp.domain.FactureNormalisee;
 import com.mbsc.finapp.domain.GroupeTaxeDgi;
+import com.mbsc.finapp.domain.LigneRetourVente;
 import com.mbsc.finapp.domain.LigneVente;
 import com.mbsc.finapp.domain.ParametresEntreprise;
+import com.mbsc.finapp.domain.RetourVente;
 import com.mbsc.finapp.domain.Vente;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -49,16 +51,35 @@ public class FactureNormaliseeMapper {
             throw new ErreurEmcf("NIF du client « " + v.designationClient() + " » manquant : renseignez-le sur sa fiche client.", false, null);
         }
 
+        // Un avoir cite la facture d'origine : tant qu'elle n'est pas certifiee, il attend (retransmis plus tard).
+        if (avoir && (f.getOrigine() == null || !StringUtils.hasText(f.getOrigine().getUid()))) {
+            throw new ErreurEmcf("La facture d'origine de la vente " + v.getReference() + " n'est pas encore certifiée : l'avoir "
+                + "sera transmis après elle.", true, null);
+        }
+        // Avoir partiel d'un retour rembourse (V134) : seules les lignes et quantites rendues ; sinon toute la vente.
+        RetourVente retour = f.getRetour();
+        List<LigneDocument> source = new ArrayList<>();
+        if (retour != null) {
+            for (LigneRetourVente lr : retour.getLignes()) {
+                source.add(new LigneDocument(lr.getLigneVente(), lr.getQuantite(), lr.getMontantHt(), lr.getMontantTva()));
+            }
+        } else {
+            for (LigneVente l : v.getLignes()) {
+                source.add(new LigneDocument(l, l.getQuantite(), l.getMontantHt(), l.getMontantTva()));
+            }
+        }
+
         List<EmcfDemande.Ligne> lignes = new ArrayList<>();
         Map<String, BigDecimal[]> totaux = new LinkedHashMap<>();
-        for (LigneVente l : v.getLignes()) {
+        for (LigneDocument d : source) {
+            LigneVente l = d.ligne();
             String g = groupe(l);
             if (!parCode.containsKey(g) || !parCode.get(g).isActif()) {
                 throw new ErreurEmcf("Groupe de taxation « " + g + " » inconnu ou inactif (article « " + l.getDesignation() + " »).", false, null);
             }
-            BigDecimal ht = l.getMontantHt();
-            BigDecimal tva = l.getMontantTva();
-            lignes.add(new EmcfDemande.Ligne(l.getDesignation(), l.getQuantite(), l.getPrixUnitaire(), g, ht, tva, ht.add(tva)));
+            BigDecimal ht = d.ht();
+            BigDecimal tva = d.tva();
+            lignes.add(new EmcfDemande.Ligne(l.getDesignation(), d.quantite(), l.getPrixUnitaire(), g, ht, tva, ht.add(tva)));
             BigDecimal[] t = totaux.computeIfAbsent(g, k -> new BigDecimal[] {BigDecimal.ZERO, BigDecimal.ZERO});
             t[0] = t[0].add(ht);
             t[1] = t[1].add(tva);
@@ -68,13 +89,19 @@ public class FactureNormaliseeMapper {
 
         return new EmcfDemande(
             avoir ? "FA" : "FV",
-            v.getReference(),
+            retour != null ? retour.getReference() : v.getReference(),
             Instant.now(),
             v.getDevise().name(),
             new EmcfDemande.Emetteur(e.getNom(), e.getNif(), e.getRccm(), e.getIdNat(), e.getAdresse()),
             new EmcfDemande.Client(v.designationClient(), nifClient, typeClient),
             avoir && f.getOrigine() != null ? f.getOrigine().getUid() : null,
             v.getModeReglement().name(),
-            lignes, parGroupe, v.getTotalHt(), v.getTotalTva(), v.getTotalTtc());
+            lignes, parGroupe,
+            retour != null ? retour.getMontantHt() : v.getTotalHt(),
+            retour != null ? retour.getMontantTva() : v.getTotalTva(),
+            retour != null ? retour.getMontantTtc() : v.getTotalTtc());
     }
+
+    /** Une ligne du document : celle de la vente, ou la part rendue d'une ligne de vente pour l'avoir d'un retour. */
+    private record LigneDocument(LigneVente ligne, BigDecimal quantite, BigDecimal ht, BigDecimal tva) {}
 }

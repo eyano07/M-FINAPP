@@ -7,6 +7,7 @@ import com.mbsc.finapp.dto.budget.ControleBudgetaireRequest;
 import com.mbsc.finapp.dto.budget.ControleBudgetaireResponse;
 import com.mbsc.finapp.repository.BudgetRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
+import com.mbsc.finapp.repository.ServiceBudgetaireRepository;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -26,10 +27,10 @@ class ControleBudgetaireDesactiveTest {
         ModuleConfigService modules = mock(ModuleConfigService.class);
         when(modules.estActif(ModuleMetier.BUDGET)).thenReturn(false);
         ControleBudgetaireService service = new ControleBudgetaireService(budgets, mock(CompteOHADARepository.class),
-            mock(SuiviBudgetaireService.class), mock(ConversionDeviseService.class), modules);
+            mock(SuiviBudgetaireService.class), mock(ConversionDeviseService.class), modules, mock(ServiceBudgetaireRepository.class));
 
         ControleBudgetaireResponse r = service.controler(new ControleBudgetaireRequest(Devise.USD,
-            List.of(new ControleBudgetaireRequest.Depense("6058", new BigDecimal("500"), null, false)), null));
+            List.of(new ControleBudgetaireRequest.Depense("6058", new BigDecimal("500"), null, false)), null, null));
 
         assertThat(r.budgetActif()).isFalse();
         assertThat(r.statut()).isEqualTo(StatutControleBudget.NON_CONCERNE);

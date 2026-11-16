@@ -2,7 +2,8 @@
 // Creation d'une piece : reservee au DFIN cote serveur.
 // ADMIN ne modifie que les pages dediees a l'administration : la creation
 // reste reservee au DFIN.
-definePageMeta({ module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['DFIN'] })
+// Le comptable saisit la reprise, le DFIN la valide dans Pièces comptables (audit SYSCOHADA, C-06).
+definePageMeta({ module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['COMPTABLE'] })
 
 /**
  * Saisie des a-nouveaux en UNE pièce équilibrée.
@@ -68,7 +69,7 @@ async function enregistrer() {
       method: 'POST',
       body: {
         datePiece: form.datePiece,
-        journal: 'OPERATIONS_DIVERSES',
+        journal: 'A_NOUVEAUX',
         libelle: form.libelle,
         soldeOuverture: true,
         lignes: lignesValides.value.map(l => ({
@@ -79,10 +80,8 @@ async function enregistrer() {
         })),
       },
     })
-    // La reprise n'a d'effet sur les états qu'une fois comptabilisée : on
-    // enchaîne, sinon elle resterait en brouillon sans alimenter la balance.
-    await api(`/comptabilite/pieces/${piece.id}/comptabiliser`, { method: 'POST' })
-    succes.value = `Solde d'ouverture enregistré et comptabilisé (${piece.reference}).`
+    // La reprise n'a d'effet sur les états qu'une fois comptabilisée, par le DFIN (séparation des tâches).
+    succes.value = `Solde d'ouverture enregistré en brouillon (${piece.reference}) : le DFIN le valide dans Pièces comptables.`
     lignes.value = [
       { compteNumero: null, debit: null, credit: null },
       { compteNumero: null, debit: null, credit: null },
@@ -95,6 +94,12 @@ async function enregistrer() {
 }
 
 const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(v || 0)
+
+const messageEquilibre = computed(() => {
+  if (equilibre.value) return 'Pièce équilibrée : total débit = total crédit.'
+  if (totalDebit.value === 0 && totalCredit.value === 0) return 'Saisissez les soldes à reprendre : au moins deux lignes, débit et crédit égaux.'
+  return `Écart de ${fmt(Math.abs(ecart.value))} — ${ecart.value > 0 ? 'il manque du crédit' : 'il manque du débit'}.`
+})
 </script>
 
 <template>
@@ -122,7 +127,7 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
     <v-alert v-if="succes" type="success" variant="tonal" class="mb-4" closable @click:close="succes = ''">{{ succes }}</v-alert>
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4" closable @click:close="erreur = ''">{{ erreur }}</v-alert>
 
-    <v-card class="classroom-card pa-6 mb-4">
+    <v-card class="classroom-card pa-4 pa-sm-6 mb-4">
       <v-row>
         <v-col cols="12" md="4">
           <v-text-field v-model="form.datePiece" type="date" label="Date d'ouverture"
@@ -135,7 +140,7 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
       </v-row>
     </v-card>
 
-    <v-card class="classroom-card pa-5 mb-4">
+    <v-card class="classroom-card pa-4 pa-sm-5 mb-4">
       <div class="d-flex align-center justify-space-between mb-3">
         <span class="text-subtitle-2">Soldes à reprendre</span>
         <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-plus" @click="ajouterLigne">
@@ -143,19 +148,18 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
         </v-btn>
       </div>
 
-      <div v-for="(l, i) in lignes" :key="i" class="so-ligne">
-        <div class="so-compte">
+      <CommunLigneSaisie v-for="(l, i) in lignes" :key="i" :numero="i + 1" :retirable="lignes.length > 2"
+        @retirer="retirerLigne(i)">
+        <div class="ls-large">
           <ComptabiliteSelecteurCompte v-model="l.compteNumero" label="Compte" exclure-prefixe="5" />
         </div>
         <v-text-field v-model.number="l.debit" type="number" label="Débit" variant="outlined"
-          density="compact" hide-details class="so-montant" />
+          density="compact" hide-details class="ls-montant" />
         <v-text-field v-model.number="l.credit" type="number" label="Crédit" variant="outlined"
-          density="compact" hide-details class="so-montant" />
-        <v-btn icon="mdi-close" size="small" variant="text" :disabled="lignes.length <= 2"
-          @click="retirerLigne(i)" />
-      </div>
+          density="compact" hide-details class="ls-montant" />
+      </CommunLigneSaisie>
 
-      <div class="so-totaux">
+      <div class="so-totaux so-totaux--pc">
         <span>Totaux</span>
         <span class="so-total">{{ fmt(totalDebit) }}</span>
         <span class="so-total">{{ fmt(totalCredit) }}</span>
@@ -163,29 +167,35 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
       </div>
     </v-card>
 
-    <v-alert :type="equilibre ? 'success' : 'warning'" variant="tonal" class="mb-4">
-      {{ equilibre
-        ? 'Pièce équilibrée : total débit = total crédit.'
-        : (totalDebit === 0 && totalCredit === 0
-            ? 'Saisissez les soldes à reprendre : au moins deux lignes, débit et crédit égaux.'
-            : `Écart de ${fmt(Math.abs(ecart))} — ${ecart > 0 ? 'il manque du crédit' : 'il manque du débit'}.`) }}
-    </v-alert>
+    <div class="so-pied">
+      <!-- Téléphone et tablette : totaux et équilibre toujours à l'écran, avec le bouton d'enregistrement. -->
+      <div class="so-recap">
+        <div class="so-recap__case">
+          <span class="so-recap__etiquette">Total débit</span>
+          <span class="so-recap__valeur">{{ fmt(totalDebit) }}</span>
+        </div>
+        <div class="so-recap__case">
+          <span class="so-recap__etiquette">Total crédit</span>
+          <span class="so-recap__valeur">{{ fmt(totalCredit) }}</span>
+        </div>
+        <div class="so-recap__case" :class="equilibre ? 'so-recap__case--ok' : 'so-recap__case--ecart'">
+          <span class="so-recap__etiquette">Écart</span>
+          <span class="so-recap__valeur">{{ fmt(Math.abs(ecart)) }}</span>
+        </div>
+      </div>
 
-    <v-btn color="success" variant="flat" size="large" rounded="lg" prepend-icon="mdi-content-save"
-      :loading="saving" :disabled="!pretAEnregistrer" @click="enregistrer">
-      Enregistrer et comptabiliser
-    </v-btn>
+      <p class="so-recap__etat" :class="equilibre ? 'so-recap__etat--ok' : 'so-recap__etat--ecart'">{{ messageEquilibre }}</p>
+      <v-alert :type="equilibre ? 'success' : 'warning'" variant="tonal" class="mb-4 so-pied__alerte">{{ messageEquilibre }}</v-alert>
+
+      <v-btn color="success" variant="flat" size="large" rounded="lg" prepend-icon="mdi-content-save"
+        class="so-pied__bouton" :loading="saving" :disabled="!pretAEnregistrer" @click="enregistrer">
+        Enregistrer et comptabiliser
+      </v-btn>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
-.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
-
-.so-ligne { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; }
-.so-compte { flex: 1; min-width: 0; }
-.so-montant { max-width: 160px; }
 .so-totaux {
   display: flex; align-items: center; gap: 10px;
   margin-top: 10px; padding-top: 12px; border-top: 2px solid var(--hairline);
@@ -194,9 +204,34 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
 .so-totaux > :first-child { flex: 1; }
 .so-total { max-width: 160px; width: 160px; text-align: right; font-variant-numeric: tabular-nums; }
 
-@media (max-width: 700px) {
-  .so-ligne { flex-wrap: wrap; }
-  .so-montant { max-width: 45%; }
-  .so-totaux { display: none; }
+/* Récapitulatif collant : seulement sous 960 px (au-dessus, les totaux sont sous les colonnes et le bouton suit). */
+.so-recap, .so-recap__etat { display: none; }
+@media screen and (max-width: 959px) {
+  .so-totaux--pc { display: none; }
+  .so-pied {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    margin: 0 -12px -12px;
+    padding: 10px 12px 12px;
+    background: var(--surface);
+    border-top: 1px solid #e8ecef;
+    box-shadow: 0 -6px 16px rgba(15, 23, 42, 0.06);
+  }
+  .so-recap { display: flex; gap: 8px; margin-bottom: 8px; }
+  .so-recap__case { flex: 1 1 0; min-width: min-content; padding: 6px 10px 7px; background: #f6f8fa; border-radius: 10px; }
+  .so-recap__case--ok { background: color-mix(in srgb, #16a34a 12%, white); }
+  .so-recap__case--ecart { background: color-mix(in srgb, #f59e0b 16%, white); }
+  .so-recap__etiquette { display: block; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap; color: #94a3b8; }
+  .so-recap__valeur { display: block; margin-top: 1px; font-size: 0.95rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink); }
+  /* Le message d'équilibre tient en une ligne compacte (pas d'alerte) ; le bouton prend toute la largeur. */
+  .so-pied__alerte { display: none; }
+  .so-recap__etat { display: block; margin: 0 0 8px; font-size: 0.78rem; line-height: 1.3; }
+  .so-recap__etat--ok { color: #15803d; }
+  .so-recap__etat--ecart { color: #b45309; }
+  .so-pied__bouton { width: 100%; }
+}
+@media screen and (min-width: 600px) and (max-width: 959px) {
+  .so-pied { margin: 0 -16px -16px; padding-left: 16px; padding-right: 16px; }
 }
 </style>

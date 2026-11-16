@@ -3,10 +3,13 @@ package com.mbsc.finapp.service;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.PieceComptable;
+import com.mbsc.finapp.domain.SoldeOuverture;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.JournalComptable;
+import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.domain.enums.StatutPiece;
 import com.mbsc.finapp.domain.enums.TypeCompte;
+import com.mbsc.finapp.domain.enums.TypeNotification;
 import com.mbsc.finapp.dto.comptabilite.*;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
@@ -25,11 +28,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.text.NumberFormat;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -42,6 +49,9 @@ public class ComptabiliteService {
 
     private static final Logger log = LoggerFactory.getLogger(ComptabiliteService.class);
 
+    /** Classe SYSCOHADA des engagements hors bilan et de la comptabilité analytique : hors du bilan et du résultat. */
+    private static final int CLASSE_HORS_BILAN = 9;
+
     private final PieceComptableRepository pieceRepository;
     private final EcritureGrandLivreRepository ecritureRepository;
     private final CompteOHADARepository compteRepository;
@@ -53,12 +63,21 @@ public class ComptabiliteService {
     private final PeriodeComptableService periodeService;
     private final ConversionDeviseService conversionDevise;
     private final com.mbsc.finapp.repository.ReleveBancaireRepository releveRepository;
+    /** Piste d'audit en ajout seul des actions sur les pièces (audit SYSCOHADA du 10/11/2026, C-09). */
+    private final JournalEvenementsComptables evenements;
+    /**
+     * Circuit comptable (demande du 13/11/2026) : le DFIN est prévenu de ce que fait le comptable (saisie, restauration
+     * en brouillon, annulation), et le comptable de ce que fait le DFIN ou l'administrateur sur ses pièces
+     * (comptabilisation, comptabilisation rétablie).
+     */
+    private final NotificationService notifications;
 
     // ---------------------------------------------------------------------
     // Pièces comptables
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'ADMIN')")
+    // Audit SYSCOHADA du 10/11/2026, C-06 : le comptable saisit, le DFIN valide.
+    @PreAuthorize("hasRole('COMPTABLE')")
     @Transactional
     public PieceResponse creerPiece(PieceCreateRequest req) {
         User auteur = currentUser.requireUser();
@@ -92,13 +111,15 @@ public class ComptabiliteService {
                 "Une pièce identique vient d'être créée à l'instant — double soumission probable. "
                 + "Vérifiez la liste des pièces avant de réessayer.");
         }
+        // Numéro provisoire : le numéro définitif, continu par exercice, est attribué à la validation (C-05).
         PieceComptable piece = PieceComptable.builder()
-            .reference(referenceGenerator.pourPiece())
+            .reference(referenceGenerator.pourBrouillon())
             .datePiece(datePiece)
             .journal(req.journal())
             .libelle(req.libelle())
+            .beneficiaire(StringUtils.hasText(req.beneficiaire()) ? req.beneficiaire().trim() : null)
             .statut(StatutPiece.BROUILLON)
-            .soldeOuverture(req.soldeOuverture())
+            .soldeOuverture(estSoldeOuverture(req, datePiece))
             .totalDebit(totalDebit)
             .totalCredit(totalCredit)
             .createdBy(auteur)
@@ -119,7 +140,12 @@ public class ComptabiliteService {
         }
 
         PieceComptable saved = pieceRepository.save(piece);
+        evenements.piece("CREATION", saved, null, null, auteur);
         log.info("Pièce comptable créée [ref={}, par={}]", saved.getReference(), auteur.getEmail());
+        notifications.notifierPiece(List.of(RoleType.DFIN), null, auteur, TypeNotification.PIECE_A_COMPTABILISER,
+            "Pièce à comptabiliser",
+            nom(auteur) + " a saisi la pièce " + saved.getReference() + " " + resume(saved) + ". Elle attend votre validation.",
+            saved.getId());
         return PieceResponse.from(saved);
     }
 
@@ -128,7 +154,7 @@ public class ComptabiliteService {
      * corrigeable tant qu'il n'est pas validé). Une pièce comptabilisée est
      * immuable : seule l'extourne est possible.
      */
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('COMPTABLE')")
     @Transactional
     public PieceResponse modifierPiece(Long id, PieceCreateRequest req) {
         PieceComptable piece = chargerAvecLignes(id);
@@ -152,11 +178,13 @@ public class ComptabiliteService {
 
         LocalDate datePiece = req.datePiece() != null ? req.datePiece() : piece.getDatePiece();
         periodeService.verifierDateOuverte(datePiece);
+        java.util.Map<String, Object> avant = JournalEvenementsComptables.instantane(piece);
 
         piece.setDatePiece(datePiece);
         piece.setJournal(req.journal());
         piece.setLibelle(req.libelle());
-        piece.setSoldeOuverture(req.soldeOuverture());
+        piece.setBeneficiaire(StringUtils.hasText(req.beneficiaire()) ? req.beneficiaire().trim() : null);
+        piece.setSoldeOuverture(estSoldeOuverture(req, datePiece));
         piece.setTotalDebit(totalDebit);
         piece.setTotalCredit(totalCredit);
         piece.getLignes().clear();
@@ -173,6 +201,7 @@ public class ComptabiliteService {
                 .dateEcriture(datePiece)
                 .build());
         }
+        evenements.piece("MODIFICATION", piece, avant, null, currentUser.requireUser());
         log.info("Pièce brouillon modifiée [ref={}]", piece.getReference());
         return PieceResponse.from(piece);
     }
@@ -194,15 +223,29 @@ public class ComptabiliteService {
      */
     @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
     @Transactional
-    public PieceResponse basculerSoldeOuverture(Long id, boolean soldeOuverture) {
+    public PieceResponse basculerSoldeOuverture(Long id, boolean soldeOuverture, String motif) {
         PieceComptable piece = chargerAvecLignes(id);
+        if (piece.isSoldeOuverture() == soldeOuverture) {
+            return PieceResponse.from(piece);
+        }
+        // Audit SYSCOHADA du 10/11/2026, C-09 : reclasser une pièce comptabilisée change la balance et le
+        // résultat d'une période ; elle doit donc être ouverte, et le motif est gardé au journal des événements.
+        if (piece.getStatut() != StatutPiece.BROUILLON) {
+            periodeService.verifierDateOuverte(piece.getDatePiece());
+            if (!StringUtils.hasText(motif)) {
+                throw new IllegalArgumentException(
+                    "Indiquez le motif du reclassement : la pièce " + piece.getReference() + " est déjà comptabilisée.");
+            }
+        }
+        java.util.Map<String, Object> avant = JournalEvenementsComptables.instantane(piece);
         piece.setSoldeOuverture(soldeOuverture);
+        evenements.piece("BASCULE_SOLDE_OUVERTURE", piece, avant, motif, currentUser.requireUser());
         log.info("Marqueur solde d'ouverture {} [ref={}]", soldeOuverture ? "active" : "desactive", piece.getReference());
         return PieceResponse.from(piece);
     }
 
     /** Supprime une pièce encore au BROUILLON (jamais une pièce comptabilisée). */
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN')")
     @Transactional
     public void supprimerPiece(Long id) {
         PieceComptable piece = chargerAvecLignes(id);
@@ -211,8 +254,13 @@ public class ComptabiliteService {
                 "Seule une pièce BROUILLON peut être supprimée (état actuel : " + piece.getStatut()
                 + "). Une pièce comptabilisée doit être extournée.");
         }
+        java.util.Map<String, Object> avant = JournalEvenementsComptables.instantane(piece);
+        Long idPiece = piece.getId();
+        String reference = piece.getReference();
         pieceRepository.delete(piece);
-        log.info("Pièce brouillon supprimée [ref={}]", piece.getReference());
+        evenements.enregistrer("SUPPRESSION_BROUILLON", "PIECE", idPiece, reference, avant, null, null,
+            currentUser.requireUser());
+        log.info("Pièce brouillon supprimée [ref={}]", reference);
     }
 
     @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
@@ -222,13 +270,17 @@ public class ComptabiliteService {
         // comptabiliser() et annuler() les accepteront.
         java.util.Set<Long> liees = new java.util.HashSet<>(pieceRepository.idsPiecesLieesAUneOperation());
         java.util.Set<Long> tresorerie = new java.util.HashSet<>(pieceRepository.idsPiecesTresorerie());
+        java.util.Set<Long> restaurees = new java.util.HashSet<>(pieceRepository.idsPiecesRestaurees());
+        java.util.Set<Long> extournees = new java.util.HashSet<>(pieceRepository.idsPiecesAvecExtourneEnVigueur());
         return pieceRepository.findAllWithCreatedByOrderByDatePieceDesc().stream()
             .map(p -> {
                 boolean touche = tresorerie.contains(p.getId());
                 return PieceResponse.from(p, false,
                     p.getStatut() == StatutPiece.COMPTABILISEE && !liees.contains(p.getId()) && !touche,
                     p.getStatut() == StatutPiece.BROUILLON && !touche && !JOURNAUX_TRESORERIE.contains(p.getJournal()),
-                    touche);
+                    touche,
+                    estRestaurable(p, touche, liees.contains(p.getId()), restaurees.contains(p.getId()),
+                        extournees.contains(p.getId())));
             })
             .toList();
     }
@@ -239,7 +291,7 @@ public class ComptabiliteService {
         return PieceResponse.from(chargerAvecLignes(id));
     }
 
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public PieceResponse comptabiliser(Long id) {
         PieceComptable piece = chargerAvecLignes(id);
@@ -250,6 +302,17 @@ public class ComptabiliteService {
         // Un brouillon saisi avant cette règle ne doit pas pouvoir la
         // contourner au moment de sa validation.
         exigerHorsTresorerie(piece.getJournal(), piece.getLignes().stream().map(l -> l.getCompte().getNumero()).toList());
+        // Audit SYSCOHADA du 10/11/2026, C-26 : un brouillon daté d'une période close ne se comptabilise plus
+        // après la clôture (la base le refuse aussi, V135).
+        periodeService.verifierDateOuverte(piece.getDatePiece());
+        // C-06 : celui qui a saisi la pièce ne la valide pas lui-même, sauf dérogation posée par le DA ou le DG.
+        User valideur = currentUser.requireUser();
+        if (piece.getCreatedBy() != null && piece.getCreatedBy().getId() != null
+                && piece.getCreatedBy().getId().equals(valideur.getId())
+                && !periodeService.autoValidationAutorisee()) {
+            throw new TransitionInvalideException("Vous avez saisi la pièce " + piece.getReference()
+                + " : elle doit être comptabilisée par une autre personne (séparation des tâches).");
+        }
         // Le brouillon peut avoir été saisi puis validé plusieurs jours après :
         // c'est le taux du jour de la VALIDATION (pas de la saisie) qui fige
         // durablement chaque écriture en FC pour son affichage ultérieur en USD.
@@ -260,8 +323,23 @@ public class ComptabiliteService {
             }
         }
         verifierNonRapproche(piece.getLignes(), piece.getDatePiece());
+        java.util.Map<String, Object> avant = JournalEvenementsComptables.instantane(piece);
+        String referenceSaisie = piece.getReference();
+        if (ReferenceGenerator.estProvisoire(piece.getReference())) {
+            piece.setReference(referenceGenerator.pourPieceDefinitive(piece.getDatePiece()));
+        }
         piece.setStatut(StatutPiece.COMPTABILISEE);
+        piece.setComptabiliseePar(valideur);
+        piece.setComptabiliseeLe(Instant.now());
+        evenements.piece("COMPTABILISATION", piece, avant, null, valideur);
         log.info("Pièce comptabilisée [ref={}]", piece.getReference());
+        String brouillon = Objects.equals(referenceSaisie, piece.getReference()) ? ""
+            : " Numéro du brouillon : " + referenceSaisie + ".";
+        String reprise = piece.getPieceRestauree() == null ? ""
+            : " Elle rétablit la pièce annulée " + piece.getPieceRestauree().getReference() + ".";
+        prevenirComptable(piece.getCreatedBy(), valideur, TypeNotification.PIECE_COMPTABILISEE, "Pièce comptabilisée",
+            nom(valideur) + " a comptabilisé la pièce " + piece.getReference() + " " + resume(piece) + "." + brouillon
+            + reprise, piece.getId(), List.of());
         return PieceResponse.from(piece);
     }
 
@@ -284,11 +362,17 @@ public class ComptabiliteService {
      * n'en garderait aucune trace. Une imputation erronée se corrige par une
      * pièce de reclassement, un montant erroné par une note de frais.</p>
      *
-     * <p>Refuse enfin toute pièce qui mouvemente un compte de trésorerie,
-     * même sans opération derrière elle (journal historique importé) : voir
-     * {@link #exigerHorsTresorerie}.</p>
+     * <p>Refuse enfin toute pièce qui mouvemente un compte de trésorerie sans
+     * opération derrière elle (journal historique importé) : voir
+     * {@link #exigerHorsTresorerie}. Le DFIN ne s'en charge plus depuis la
+     * règle du 13/11/2026.</p>
+     *
+     * <p>Seul le comptable annule une comptabilisation (demande de l'utilisateur,
+     * 13/11/2026) : le DFIN et l'administrateur la rétablissent, par
+     * {@link #restaurer}, s'ils jugent l'annulation injustifiée. La pièce reste,
+     * ANNULEE, et son extourne la solde, comme le veut le SYSCOHADA révisé.</p>
      */
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('COMPTABLE')")
     @Transactional
     public PieceResponse annuler(Long id) {
         PieceComptable originale = chargerAvecLignes(id);
@@ -314,7 +398,162 @@ public class ComptabiliteService {
                 + "modifierait la caisse, la banque ou le mobile money sans passer par une note de frais. "
                 + "Une correction de trésorerie passe par une note de frais d'encaissement ou de décaissement.");
         }
-        return PieceResponse.from(extournerInterne(originale, currentUser.requireUser()));
+        User auteur = currentUser.requireUser();
+        PieceComptable extourne = extournerInterne(originale, auteur);
+        notifications.notifierPiece(List.of(RoleType.DFIN), null, auteur, TypeNotification.PIECE_ANNULEE, "Pièce annulée",
+            nom(auteur) + " a annulé la pièce " + originale.getReference() + " " + resume(originale) + " : l'extourne "
+            + extourne.getReference() + " la solde."
+            + (originale.getPieceOrigine() == null
+                ? " Si l'annulation n'est pas justifiée, rétablissez la comptabilisation avec « Restaurer »." : ""),
+            originale.getId());
+        return PieceResponse.from(originale);
+    }
+
+    /**
+     * Restaure une pièce annulée par erreur (demandes de l'utilisateur, 12 et 13/11/2026) : une pièce annulée ne
+     * revit pas — l'annulation et son extourne restent au journal, comme le veut le SYSCOHADA —, mais on obtient une
+     * nouvelle pièce identique à la pièce d'origine, reliée à elle :
+     * <ul>
+     *   <li>le comptable, qui saisit, obtient un <b>brouillon</b> que le DFIN valide comme toute autre pièce ;</li>
+     *   <li>le DFIN et l'administrateur, qui contrôlent, <b>rétablissent la comptabilisation</b> d'un coup : la
+     *       nouvelle pièce est comptabilisée tout de suite, aux mêmes comptes et aux mêmes montants. Rien n'étant
+     *       ressaisi, il n'y a rien d'autre à valider (et le DFIN ne pourrait pas valider sa propre pièce, C-06).</li>
+     * </ul>
+     * Seulement pour une pièce saisie en comptabilité (ni stock, ni vente, ni trésorerie) dont l'annulation est
+     * encore en vigueur (pas d'extourne d'extourne), et une seule restauration à la fois.
+     */
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'ADMIN')")
+    @Transactional
+    public PieceResponse restaurer(Long id) {
+        PieceComptable originale = chargerAvecLignes(id);
+        boolean touche = originale.getLignes().stream().anyMatch(l -> estCompteTresorerie(l.getCompte().getNumero()));
+        boolean liee = mouvementStockRepository.existsAvecPieceId(id) || venteRepository.existsAvecPieceId(id)
+            || ecritureRepository.existsTresorerieParPieceId(id);
+        if (!estRestaurable(originale, touche, liee, pieceRepository.existsRestaurationActive(id),
+                pieceRepository.existsExtourneEnVigueur(id))) {
+            throw new TransitionInvalideException("La pièce " + originale.getReference() + " ne peut pas être restaurée : "
+                + "seule une pièce annulée depuis la comptabilité, sans trésorerie, stock ni vente, dont l'annulation "
+                + "est encore en vigueur et qui n'est pas déjà restaurée, se restaure.");
+        }
+        User auteur = currentUser.requireUser();
+        boolean retablie = retablitDirectement();
+        LocalDate date = dateExtourne(originale.getDatePiece());
+        periodeService.verifierDateOuverte(date);
+        String libelle = "Restauration de " + originale.getReference()
+            + (StringUtils.hasText(originale.getLibelle()) ? " - " + originale.getLibelle() : "");
+        PieceComptable copie = PieceComptable.builder()
+            .reference(retablie ? referenceGenerator.pourPieceDefinitive(date) : referenceGenerator.pourBrouillon())
+            .datePiece(date)
+            .journal(originale.getJournal())
+            .libelle(libelle.length() > 255 ? libelle.substring(0, 255) : libelle)
+            .statut(retablie ? StatutPiece.COMPTABILISEE : StatutPiece.BROUILLON)
+            .soldeOuverture(originale.isSoldeOuverture())
+            .totalDebit(originale.getTotalDebit())
+            .totalCredit(originale.getTotalCredit())
+            .createdBy(auteur)
+            .pieceRestauree(originale)
+            .build();
+        if (retablie) {
+            copie.setComptabiliseePar(auteur);
+            copie.setComptabiliseeLe(Instant.now());
+        }
+        // Un brouillon reçoit son taux à la validation ; une pièce rétablie garde celui de la pièce d'origine (à défaut,
+        // le taux du jour), comme son extourne : la contre-valeur reste figée telle qu'à la première comptabilisation.
+        BigDecimal tauxDuJour = retablie ? conversionDevise.tauxCourant() : null;
+        for (EcritureGrandLivre l : originale.getLignes()) {
+            exigerCompteImputable(l.getCompte());
+            copie.addLigne(EcritureGrandLivre.builder()
+                .compte(l.getCompte()).debit(l.getDebit()).credit(l.getCredit()).libelle(l.getLibelle())
+                .dateEcriture(date).devise(l.getDevise()).montantDevise(l.getMontantDevise())
+                .tauxApplique(retablie ? (l.getTauxApplique() != null ? l.getTauxApplique() : tauxDuJour) : null)
+                .build());
+        }
+        PieceComptable saved = pieceRepository.save(copie);
+        evenements.piece("RESTAURATION", saved, null,
+            (retablie ? "Comptabilisation rétablie de " : "Restauration de ") + originale.getReference(), auteur);
+        log.info("Pièce {} {} [ref={}]", originale.getReference(),
+            retablie ? "rétablie en comptabilité" : "restaurée en brouillon", saved.getReference());
+        if (retablie) {
+            // Le comptable qui avait annulé la pièce (auteur de son extourne) apprend que l'annulation est levée ; le DFIN
+            // aussi, quand c'est l'administrateur qui la lève.
+            User annulateur = pieceRepository.findFirstByPieceOrigine_IdAndStatutOrderByIdDesc(id, StatutPiece.COMPTABILISEE)
+                .map(PieceComptable::getCreatedBy).orElse(null);
+            prevenirComptable(annulateur, auteur, TypeNotification.PIECE_RESTAUREE, "Comptabilisation rétablie",
+                nom(auteur) + " a rétabli la comptabilisation de la pièce " + originale.getReference() + " "
+                + resume(originale) + " : la nouvelle pièce " + saved.getReference() + " la reprend. L'annulation et son "
+                + "extourne restent au journal.", saved.getId(), aLeRole("DFIN") ? List.of() : List.of(RoleType.DFIN));
+        } else {
+            notifications.notifierPiece(List.of(RoleType.DFIN), null, auteur, TypeNotification.PIECE_A_COMPTABILISER,
+                "Restauration à comptabiliser",
+                nom(auteur) + " a restauré la pièce annulée " + originale.getReference() + " " + resume(originale)
+                + " en un nouveau brouillon " + saved.getReference() + ". Il attend votre validation.", saved.getId());
+        }
+        return PieceResponse.from(saved);
+    }
+
+    /**
+     * Pièce d'origine annulée, saisie en comptabilité, dont l'extourne est encore comptabilisée et qui n'a pas de
+     * restauration active : sans extourne en vigueur, la comptabilisation est déjà rétablie (extourne d'extourne).
+     */
+    private static boolean estRestaurable(PieceComptable p, boolean tresorerie, boolean liee, boolean dejaRestauree,
+                                          boolean extourneEnVigueur) {
+        return p.getStatut() == StatutPiece.ANNULEE && p.getPieceOrigine() == null && !p.isClotureExercice()
+            && !p.isReevaluationDevise() && !tresorerie && !liee && !dejaRestauree && extourneEnVigueur
+            && !JOURNAUX_TRESORERIE.contains(p.getJournal());
+    }
+
+    /**
+     * Le DFIN et l'administrateur rétablissent la comptabilisation d'une pièce annulée en une seule action ; le
+     * comptable n'obtient qu'un brouillon à faire valider.
+     */
+    private boolean retablitDirectement() {
+        return aLeRole("DFIN") || aLeRole("ADMIN");
+    }
+
+    private boolean aLeRole(String role) {
+        return currentUser.requirePrincipal().getAuthorities().stream()
+            .anyMatch(a -> ("ROLE_" + role).equals(a.getAuthority()));
+    }
+
+    /**
+     * Prévient le comptable concerné ({@code concerne} : celui qui a saisi la pièce, ou qui l'a annulée) et les rôles
+     * {@code aussi}. Si cette personne est inconnue, inactive, n'est pas comptable ou fait elle-même l'action, tous les
+     * comptables actifs sont prévenus (et elle aussi, si elle est active et n'est pas l'auteur de l'action).
+     */
+    private void prevenirComptable(User concerne, User acteur, TypeNotification type, String titre, String message,
+                                   Long pieceId, List<RoleType> aussi) {
+        boolean cible = concerne != null && concerne.isActif()
+            && (acteur == null || !Objects.equals(concerne.getId(), acteur.getId()))
+            && concerne.getRoles().stream().anyMatch(r -> r.getNom() == RoleType.COMPTABLE);
+        List<RoleType> roles = new ArrayList<>(aussi);
+        if (!cible) {
+            roles.add(RoleType.COMPTABLE);
+        }
+        notifications.notifierPiece(roles, concerne, acteur, type, titre, message, pieceId);
+    }
+
+    private static final DateTimeFormatter DATE_NOTIFICATION = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    /** « du 13/11/2026 : Pécules congés (1 440,00 USD) », pour les notifications. */
+    static String resume(PieceComptable p) {
+        NumberFormat format = NumberFormat.getNumberInstance(Locale.FRANCE);
+        format.setMinimumFractionDigits(2);
+        format.setMaximumFractionDigits(2);
+        String date = p.getDatePiece() == null ? "" : "du " + p.getDatePiece().format(DATE_NOTIFICATION);
+        String libelle = StringUtils.hasText(p.getLibelle()) ? " : " + p.getLibelle().strip() : "";
+        String montant = p.getTotalDebit() == null ? ""
+            : " (" + format.format(p.getTotalDebit()) + " " + ConversionDeviseService.DEVISE_BASE + ")";
+        return (date + libelle + montant).strip();
+    }
+
+    /** « Jean KABILA », à défaut l'adresse de connexion. */
+    static String nom(User u) {
+        if (u == null) {
+            return "Un utilisateur";
+        }
+        String complet = ((u.getPrenom() == null ? "" : u.getPrenom().strip()) + " "
+            + (u.getNom() == null ? "" : u.getNom().strip())).strip();
+        return complet.isEmpty() ? u.getEmail() : complet;
     }
 
     /**
@@ -344,6 +583,7 @@ public class ComptabiliteService {
         return dateOrigine;
     }
 
+    /** Annule {@code originale} (statut ANNULEE) par une pièce d'extourne comptabilisée, qui est renvoyée. */
     private PieceComptable extournerInterne(PieceComptable originale, User auteur) {
         if (originale.getStatut() != StatutPiece.COMPTABILISEE) {
             throw new TransitionInvalideException(
@@ -357,14 +597,19 @@ public class ComptabiliteService {
             + (StringUtils.hasText(originale.getLibelle()) ? " - " + originale.getLibelle() : "");
 
         PieceComptable extourne = PieceComptable.builder()
-            .reference(referenceGenerator.pourPiece())
+            .reference(referenceGenerator.pourPieceDefinitive(dateExtourne))
             .datePiece(dateExtourne)
             .journal(originale.getJournal())
             .libelle(libelleExtourne)
             .statut(StatutPiece.COMPTABILISEE)
+            // L'extourne d'une reprise des à-nouveaux reste dans les soldes d'ouverture : la reprise annulée en sort,
+            // au lieu de laisser l'ouverture intacte et une annulation dans les mouvements de la période.
+            .soldeOuverture(originale.isSoldeOuverture())
             .totalDebit(originale.getTotalCredit())
             .totalCredit(originale.getTotalDebit())
             .createdBy(auteur)
+            .comptabiliseePar(auteur)
+            .comptabiliseeLe(Instant.now())
             .pieceOrigine(originale)
             .build();
 
@@ -381,10 +626,12 @@ public class ComptabiliteService {
                 .build());
         }
 
+        java.util.Map<String, Object> avant = JournalEvenementsComptables.instantane(originale);
         originale.setStatut(StatutPiece.ANNULEE);
         pieceRepository.save(extourne);
+        evenements.piece("EXTOURNE", originale, avant, "Extourne " + extourne.getReference(), auteur);
         log.info("Pièce {} annulée par extourne [ref={}]", originale.getReference(), extourne.getReference());
-        return originale;
+        return extourne;
     }
 
     /**
@@ -404,6 +651,18 @@ public class ComptabiliteService {
     @Transactional
     public PieceComptable creerPieceInterne(JournalComptable journal, String libelle, LocalDate datePiece,
                                             List<EcritureGrandLivre> lignes, User auteur) {
+        return creerPieceInterne(journal, libelle, datePiece, lignes, auteur, true);
+    }
+
+    /**
+     * Variante sans le verrou du rapprochement bancaire : réservée à la réévaluation de clôture des soldes en
+     * devise, qui ajuste la contre-valeur en devise de base d'un compte de banque sans toucher à son solde en
+     * devise, donc sans rien changer à un relevé déjà rapproché.
+     */
+    @Transactional
+    public PieceComptable creerPieceInterne(JournalComptable journal, String libelle, LocalDate datePiece,
+                                            List<EcritureGrandLivre> lignes, User auteur,
+                                            boolean controlerRapprochement) {
         BigDecimal totalDebit = BigDecimal.ZERO;
         BigDecimal totalCredit = BigDecimal.ZERO;
         for (EcritureGrandLivre l : lignes) {
@@ -418,10 +677,12 @@ public class ComptabiliteService {
                 + ", libelle=" + libelle + ", débit=" + totalDebit + ", crédit=" + totalCredit + "]");
         }
         periodeService.verifierDateOuverte(datePiece);
-        verifierNonRapproche(lignes, datePiece);
+        if (controlerRapprochement) {
+            verifierNonRapproche(lignes, datePiece);
+        }
 
         PieceComptable piece = PieceComptable.builder()
-            .reference(referenceGenerator.pourPiece())
+            .reference(referenceGenerator.pourPieceDefinitive(datePiece))
             .datePiece(datePiece)
             .journal(journal)
             .libelle(libelle)
@@ -429,6 +690,8 @@ public class ComptabiliteService {
             .totalDebit(totalDebit)
             .totalCredit(totalCredit)
             .createdBy(auteur)
+            .comptabiliseePar(auteur)
+            .comptabiliseeLe(Instant.now())
             .build();
 
         // Pièce déjà COMPTABILISEE dès sa création : la saisie et la validation
@@ -484,7 +747,7 @@ public class ComptabiliteService {
         periodeService.verifierDateOuverte(datePiece);
 
         PieceComptable piece = PieceComptable.builder()
-            .reference(referenceGenerator.pourPiece())
+            .reference(referenceGenerator.pourBrouillon())
             .datePiece(datePiece)
             .journal(journal)
             .libelle(libelle)
@@ -670,6 +933,10 @@ public class ComptabiliteService {
      * Bilan à une date : actif (solde débiteur des comptes ACTIF) face au
      * passif (solde créditeur des comptes PASSIF), le résultat net cumulé
      * étant intégré aux capitaux propres pour assurer l'équilibre.
+     *
+     * <p>Les comptes de la classe 9 (engagements hors bilan 90x, comptabilité analytique de gestion 92 à 99) n'ont pas
+     * de type et ne relèvent pas du bilan : ils en sont écartés, comme du compte de résultat et de la clôture annuelle.
+     * Ils figuraient à tort à l'actif (le type absent valait « ACTIF »).</p>
      */
     @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
@@ -691,7 +958,22 @@ public class ComptabiliteService {
             BigDecimal debit = nz((BigDecimal) row[4]);
             BigDecimal credit = nz((BigDecimal) row[5]);
 
-            switch (type == null ? TypeCompte.ACTIF : type) {
+            if (type == null || (classe != null && classe == CLASSE_HORS_BILAN)) {
+                continue;
+            }
+            // Audit SYSCOHADA du 10/11/2026, C-16 : un compte de tiers (classe 4) ou de trésorerie (classe 5) se
+            // présente du côté que lui donne le sens de son solde — un client créditeur est une dette, une banque
+            // à découvert est une trésorerie-passif. Les dépréciations (49, 59) restent en moins de l'actif.
+            if (reclasseSelonSolde(numero, classe)) {
+                BigDecimal solde = debit.subtract(credit);
+                if (type == TypeCompte.ACTIF && solde.signum() < 0) {
+                    type = TypeCompte.PASSIF;
+                } else if (type == TypeCompte.PASSIF && solde.signum() > 0) {
+                    type = TypeCompte.ACTIF;
+                }
+            }
+
+            switch (type) {
                 case ACTIF -> {
                     BigDecimal montant = debit.subtract(credit);
                     if (montant.signum() != 0) {
@@ -723,6 +1005,31 @@ public class ComptabiliteService {
     // ---------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------
+
+    /** Comptes de tiers et de trésorerie, hors dépréciations : présentés au bilan selon le sens de leur solde. */
+    static boolean reclasseSelonSolde(String numero, Integer classe) {
+        return classe != null && (classe == 4 || classe == 5) && numero != null
+            && !numero.startsWith("49") && !numero.startsWith("59");
+    }
+
+    /**
+     * Disponibilité (classe 5 hors dépréciations 59x) : caisse, banque, mobile money, virements internes. Un flux
+     * interne qui laisse l'utilisateur choisir sa contrepartie (immobilisation, provision, entrée de stock) ne peut
+     * pas en prendre une : ce serait déplacer de l'argent sans opération de trésorerie ni note de frais (audit
+     * SYSCOHADA du 10/11/2026, C-08).
+     */
+    public static boolean estDisponibilite(String numero) {
+        return estCompteTresorerie(numero) && !numero.startsWith("59");
+    }
+
+    /** Refuse une contrepartie choisie par l'utilisateur qui serait un compte de disponibilités (C-08). */
+    public static void exigerContrepartieHorsTresorerie(String numero, String role) {
+        if (estDisponibilite(numero)) {
+            throw new IllegalArgumentException("Le compte " + numero + " est un compte de trésorerie : il ne peut pas "
+                + "servir de " + role + ". Un paiement passe par une note de frais, exécutée par la caisse, la banque "
+                + "ou le mobile money ; choisissez ici un compte de tiers (fournisseur, créance sur cession...).");
+        }
+    }
 
     /** Refuse toute imputation sur un compte de regroupement ou désactivé. */
     /**
@@ -812,6 +1119,15 @@ public class ComptabiliteService {
                 + ") : un encaissement ou un décaissement passe par une note de frais, vérifiée par le DFIN, "
                 + "approuvée par le DA et exécutée par la caisse.");
         }
+    }
+
+    /**
+     * Solde d'ouverture : la case « reprise des à-nouveaux » cochée par le comptable, ou la règle du 13/11/2026 — une
+     * pièce datée du 1er janvier qui ne porte que des comptes de bilan (voir {@link SoldeOuverture}).
+     */
+    private static boolean estSoldeOuverture(PieceCreateRequest req, LocalDate datePiece) {
+        return req.soldeOuverture() || SoldeOuverture.concerne(datePiece,
+            req.lignes().stream().map(LigneEcritureRequest::compteNumero).toList());
     }
 
     private void validerLignes(List<LigneEcritureRequest> lignes) {

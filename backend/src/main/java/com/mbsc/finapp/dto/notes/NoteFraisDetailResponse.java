@@ -41,7 +41,16 @@ public record NoteFraisDetailResponse(
     com.mbsc.finapp.domain.enums.CategorieNote categorie,
     Integer paieMois,
     Integer paieAnnee,
-    com.mbsc.finapp.domain.enums.OrganismePaie organismePaie
+    com.mbsc.finapp.domain.enums.OrganismePaie organismePaie,
+    /** Service qui engage la depense (null : aucun), et son responsable. */
+    Long serviceId,
+    String serviceNom,
+    String serviceResponsable,
+    boolean serviceActif,
+    /** Retours de fonds demandes apres paiement (reductions de la note), du plus ancien au plus recent. */
+    List<RetourFondsResponse> retoursFonds,
+    /** true si une demande attend l'argent a la caisse. */
+    boolean retourEnAttente
 ) {
     public static NoteFraisDetailResponse from(NoteFrais n) {
         var createur = n.getCreateur();
@@ -84,7 +93,13 @@ public record NoteFraisDetailResponse(
             n.getCategorie(),
             n.getPaieMois(),
             n.getPaieAnnee(),
-            n.getOrganismePaie()
+            n.getOrganismePaie(),
+            n.getService() == null ? null : n.getService().getId(),
+            n.getService() == null ? null : n.getService().getNom(),
+            n.getService() == null ? null : n.getService().getResponsable(),
+            n.getService() != null && n.getService().isActif(),
+            n.getRetoursFonds().stream().map(RetourFondsResponse::from).toList(),
+            n.getRetoursFonds().stream().anyMatch(r -> r.getStatut() == com.mbsc.finapp.domain.enums.StatutRetourFonds.EN_ATTENTE)
         );
     }
 }

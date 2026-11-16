@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Voir pages/notes-frais/index.vue : ni le DRH ni LOGISTIQUE n'ont acces a cet ecran.
-definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'LOGISTIQUE'] })
+definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'LOGISTIQUE'] })
 
 interface Observation {
   auteurNom?: string
@@ -58,6 +58,11 @@ interface NoteDetail {
   statutBudget?: string | null
   justificationBudget?: string | null
   budgetReference?: string | null
+  /** Service qui engage la dépense (contrôlée et suivie sur son budget). */
+  serviceId?: number | null
+  serviceNom?: string | null
+  serviceResponsable?: string | null
+  serviceActif?: boolean
   /** Notes du module DRH : PAIE ou IMPOT_PAIE (comptes imposés), avec leur mois de paie. */
   categorie?: string | null
   paieMois?: number | null
@@ -66,19 +71,42 @@ interface NoteDetail {
   lignes: LigneNoteFrais[]
   piecesJointes: PieceJointe[]
   observations: Observation[]
+  /** Retours de fonds demandés après paiement (réductions de la note), du plus ancien au plus récent. */
+  retoursFonds?: RetourFonds[]
+  /** Une demande attend l'argent à la caisse. */
+  retourEnAttente?: boolean
 }
 
 import { useDisplay } from 'vuetify'
+import type { RetourFonds } from '~/components/notes-frais/DetailRetourFonds.vue'
+import { useInstanceStore } from '~/stores/instance'
 
 const route = useRoute()
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
+// Copie en ligne d'un serveur local (V133) : seules les actions du circuit (soumettre, vérifier, valider, rejeter,
+// transmettre, priorité, observation) y sont possibles ; elles sont mises en attente puis appliquées au serveur local.
+const instance = useInstanceStore()
+const surCopie = computed(() => instance.estCopie)
+interface ActionEnLigne { uuid: string, libelle: string, resume: string, statut: string, message: string | null, auteur: string, creeLe: string }
+const actionsEnLigne = ref<ActionEnLigne[]>([])
+async function chargerActionsEnLigne() {
+  if (!surCopie.value) { actionsEnLigne.value = []; return }
+  try {
+    actionsEnLigne.value = await api<ActionEnLigne[]>(`/actions-distantes/note/${id.value}`)
+  } catch {
+    actionsEnLigne.value = []
+  }
+}
 const { mobile } = useDisplay()
 const id = computed(() => route.params.id as string)
 const parametresStore = useParametresStore()
 onMounted(() => { parametresStore.charger() })
 
 const note = ref<NoteDetail | null>(null)
+// Barre d'application (téléphone) : la référence de la note, pas son objet (long) que la page affiche en grand titre.
+usePageTitle(() => (note.value ? `Note ${note.value.reference}` : 'Note de frais'))
 const loading = ref(false)
 const busy = ref(false)
 const erreur = ref('')
@@ -124,6 +152,7 @@ async function charger() {
   try {
     note.value = await api<NoteDetail>(`/notes-frais/${id.value}`)
     prioriteChoisie.value = note.value?.priorite ?? null
+    void chargerActionsEnLigne()
   } catch (e: any) {
     // 404 : note inexistante, ou que le rôle de l'utilisateur ne lui permet pas de voir — le serveur ne
     // distingue volontairement pas les deux (une note cachée ne doit pas révéler son existence).
@@ -162,17 +191,24 @@ const lDFIN = computed(() => rolesStore.libelle('DFIN'))
 const lDA = computed(() => rolesStore.libelle('DA'))
 const isDFIN = computed(() => auth.hasRole('DFIN'))
 const isDA = computed(() => auth.hasRole('DA'))
-const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER']))
+// Rôles que le serveur autorise à créer et soumettre une note (NoteFraisService.soumettre) : le responsable restaurant en
+// fait partie. Absent d'ici, il ne pouvait ni soumettre ni justifier une note restée en brouillon (échec de l'envoi
+// automatique depuis « Achat de boissons »), et le DFIN n'était jamais prévenu.
+const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']))
+// Rôles admis à émettre une note, administrateur compris (NoteFraisService.creer, RetourFondsService.EMETTEURS).
+const isCreateurOuAdmin = computed(() => isCreateur.value || auth.hasRole('ADMIN'))
 
 // Une note d'encaissement ne suit pas le circuit DFIN/DA : "Soumettre" ne
 // s'applique qu'au décaissement (isCreateur n'est qu'un contrôle de rôle,
 // pas de propriété — un caissier verrait sinon ce bouton sur ses propres
 // notes d'encaissement, alors que le backend rejette cette transition).
-const peutSoumettre    = computed(() =>
+// Sur la copie, une seule action en attente par note : le serveur local refuserait la suivante (la note aura changé).
+const actionEnAttente = computed(() => surCopie.value && actionsEnLigne.value.some(a => a.statut === 'EN_ATTENTE'))
+const peutSoumettre    = computed(() => !actionEnAttente.value &&
   isCreateur.value && !estEncaissement.value && ['BROUILLON','REJETEE_DA'].includes(statut.value || ''))
-const peutEncaisser    = computed(() =>
+const peutEncaisser    = computed(() => !surCopie.value &&
   auth.hasRole('CAISSIER') && estEncaissement.value && statut.value === 'BROUILLON')
-const peutVerifier     = computed(() => isDFIN.value && statut.value === 'SOUMISE')
+const peutVerifier     = computed(() => !actionEnAttente.value && isDFIN.value && statut.value === 'SOUMISE')
 // Le DFIN peut corriger le compte d'imputation des lignes pendant sa
 // vérification (note SOUMISE), qu'il en soit ou non le créateur — voir
 // NoteFraisService.modifierComptesLignes côté backend.
@@ -180,22 +216,23 @@ const peutVerifier     = computed(() => isDFIN.value && statut.value === 'SOUMIS
 // reimputer : le compte de chaque ligne decoule de son article.
 // Notes de paie et notes fiscales (module DRH) : comptes imposés par le système, jamais réimputés.
 const categorieDrh = computed(() => libelleCategorieNote(note.value))
-const peutModifierComptes = computed(() => isDFIN.value && statut.value === 'SOUMISE' && !categorieDrh.value
+const peutModifierComptes = computed(() => !surCopie.value && isDFIN.value && statut.value === 'SOUMISE' && !categorieDrh.value
   && (note.value?.lignes || []).some(l => !l.achatMarchandise))
 // Meme fenetre que peutModifierComptes : le DFIN corrige une saisie
 // maladroite de l'employe pendant sa verification, sans renvoyer la note
 // pour un nouveau cycle de soumission — voir NoteFraisService.modifierObjet.
-const peutModifierObjet = computed(() => isDFIN.value && statut.value === 'SOUMISE')
-const peutValiderRejeter = computed(() => isDA.value && statut.value === 'VERIFIEE_DFIN')
-const peutPrioriser    = computed(() => isDA.value && ['VALIDEE_DA', 'TRANSMISE_CAISSE'].includes(statut.value || ''))
-const peutTransmettre  = computed(() => isDFIN.value && statut.value === 'VALIDEE_DA')
-const peutAnnuler      = computed(() =>
-  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','RESP_RESTAURANT','LOGISTIQUE','ADMIN']) &&
+const peutModifierObjet = computed(() => !surCopie.value && isDFIN.value && statut.value === 'SOUMISE')
+const peutValiderRejeter = computed(() => !actionEnAttente.value && isDA.value && statut.value === 'VERIFIEE_DFIN')
+const peutPrioriser    = computed(() => !actionEnAttente.value && isDA.value && ['VALIDEE_DA', 'TRANSMISE_CAISSE'].includes(statut.value || ''))
+const peutTransmettre  = computed(() => !actionEnAttente.value && isDFIN.value && statut.value === 'VALIDEE_DA')
+const peutAnnuler      = computed(() => !surCopie.value &&
+  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','RESP_RESTAURANT','RESP_CUISINE','RESP_BAR','LOGISTIQUE','ADMIN']) &&
   ['BROUILLON','SOUMISE','VERIFIEE_DFIN','VALIDEE_DA','REJETEE_DA'].includes(statut.value || ''))
 
 /** Message contextuel quand aucune action n'est disponible. */
 const messageAucuneAction = computed(() => {
   const s = statut.value || ''
+  if (actionEnAttente.value) return 'Une action faite en ligne attend la synchronisation : les suivantes seront possibles une fois appliquée par le serveur local.'
   if (s === 'BROUILLON' && estEncaissement.value) return "Seul le caissier peut encaisser cette note directement (sans validation "+lDFIN.value+"/"+lDA.value+")."
   if (s === 'TRANSMISE_CAISSE') return 'Cette note est transmise à la trésorerie et attend son paiement (caisse, banque ou mobile money).'
   if (s === 'PAYEE')            return estEncaissement.value ? 'Cette note a déjà été encaissée. Aucune action requise.' : 'Cette note a déjà été payée. Aucune action requise.'
@@ -208,6 +245,60 @@ const messageAucuneAction = computed(() => {
     return `Note validée par ${lDA.value}. En attente de transmission à la trésorerie par ${lDFIN.value}.`
   return 'Aucune action disponible pour votre rôle à ce stade.'
 })
+
+// ── Retour de fonds : l'émetteur réduit sa note payée, le caissier valide à la réception de l'argent ──
+// Seul l'émetteur de la note la réduit (RetourFondsService.exigerEmetteur) ; l'identifiant de connexion ne tient pas
+// compte de la casse (IdentifiantConnexion côté serveur).
+const estEmetteur = computed(() => {
+  const emetteur = note.value?.demandeurEmail?.toLowerCase()
+  return !!emetteur && emetteur === auth.user?.email?.toLowerCase()
+})
+const retourEnAttente = computed(() => (note.value?.retoursFonds || []).find(r => r.statut === 'EN_ATTENTE') || null)
+const retoursValides = computed(() => (note.value?.retoursFonds || []).filter(r => r.statut === 'VALIDE'))
+/** Total déjà rendu à la caisse : le montant payé à l'origine est le montant actuel de la note plus ce total. */
+const montantRendu = computed(() => retoursValides.value.reduce((s, r) => s + Number(r.montant || 0), 0))
+const peutReduire = computed(() => !surCopie.value && estEmetteur.value && isCreateurOuAdmin.value && !estEncaissement.value
+  && statut.value === 'PAYEE' && !categorieDrh.value && !retourEnAttente.value)
+const peutAnnulerRetour = computed(() => !surCopie.value && estEmetteur.value && isCreateurOuAdmin.value && !!retourEnAttente.value)
+const reductionOuverte = ref(false)
+const succes = ref('')
+
+function ouvrirReduction() {
+  erreur.value = ''
+  succes.value = ''
+  reductionOuverte.value = true
+}
+
+async function retourEnvoye(r: RetourFonds) {
+  succes.value = `Demande envoyée : ${fmtMontant(r.montant)} ${r.devise || ''} à remettre en espèces au caissier. `
+    + "La note sera réduite quand il aura validé la réception de l'argent."
+  await charger()
+}
+
+async function annulerRetour() {
+  const r = retourEnAttente.value
+  if (!r) return
+  const confirme = await dialogues.confirmer({
+    titre: `Retirer la demande de retour de fonds de ${fmtMontant(r.montant)} ${r.devise || ''} ?`.replace('  ', ' '),
+    message: 'La note reste inchangée.',
+    bouton: 'Retirer la demande',
+    nature: 'danger',
+    icone: 'mdi-undo-variant',
+  })
+  if (!confirme) return
+  busy.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    await api(`/notes-frais/retours-fonds/${r.id}/annuler`, { method: 'POST' })
+    succes.value = 'Demande de retour de fonds retirée : la note reste inchangée.'
+    await charger()
+  } catch (e: any) {
+    erreur.value = e?.data?.message || "La demande n'a pas pu être retirée."
+  } finally {
+    busy.value = false
+  }
+}
 
 /**
  * Après une action de vérification/validation/transmission, enchaîne
@@ -230,16 +321,52 @@ async function allerNoteSuivante(statutFile: string, noteActuelleId: string) {
 }
 
 // ── Contrôle budgétaire ──────────────────────────────────────────────
-// Contrôle à jour (composant BudgetControleBudgetaire) : une note non couverte par le budget doit être
-// justifiée avant la soumission, et le DA doit motiver sa validation.
+// Contrôle à jour (composant BudgetControleBudgetaire) : une note non couverte par le budget n'est jamais
+// bloquée à la soumission : elle part chez le DFIN, signalée « hors budget », et c'est le DA qui décide et
+// qui doit motiver sa validation. Le demandeur peut ajouter une justification, facultative.
 const controleNote = ref<any | null>(null)
 const rafraichirControle = ref(0)
 const justificationSaisie = ref('')
 const enregistrementJustification = ref(false)
 const horsBudget = computed(() => !!controleNote.value?.justificationRequise)
-const peutJustifier = computed(() =>
+const peutJustifier = computed(() => !surCopie.value &&
   isCreateur.value && !estEncaissement.value && ['BROUILLON', 'REJETEE_DA'].includes(statut.value || ''))
 watch(() => note.value?.justificationBudget, (v) => { justificationSaisie.value = v || '' }, { immediate: true })
+
+// ── Service budgétaire : le créateur avant la soumission, le DFIN pendant la vérification ──
+const peutModifierService = computed(() => !surCopie.value && !estEncaissement.value && (
+  (isCreateur.value && ['BROUILLON', 'REJETEE_DA'].includes(statut.value || '')) || (isDFIN.value && statut.value === 'SOUMISE')))
+const editionService = ref(false)
+const serviceChoisi = ref<number | null>(null)
+const enregistrementService = ref(false)
+const servicesDisponibles = ref<{ id: number, nom: string, responsable: string, actif: boolean }[]>([])
+const servicesChoix = computed(() => servicesDisponibles.value
+  .filter(s => s.actif || s.id === note.value?.serviceId)
+  .map(s => ({ id: s.id, titre: `${s.nom} — ${s.responsable}${s.actif ? '' : ' (désactivé)'}` })))
+
+async function activerEditionService() {
+  serviceChoisi.value = note.value?.serviceId ?? null
+  editionService.value = true
+  try {
+    servicesDisponibles.value = await api<any[]>('/services-budgetaires')
+  } catch {
+    servicesDisponibles.value = []
+  }
+}
+
+async function enregistrerService() {
+  enregistrementService.value = true
+  erreur.value = ''
+  try {
+    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/service`, { method: 'PUT', body: { serviceId: serviceChoisi.value } })
+    editionService.value = false
+    rafraichirControle.value++
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Le service n'a pas pu être enregistré.")
+  } finally {
+    enregistrementService.value = false
+  }
+}
 
 async function enregistrerJustification() {
   enregistrementJustification.value = true
@@ -255,15 +382,18 @@ async function enregistrerJustification() {
   }
 }
 
+/** Sur la copie en ligne, l'action vient d'être mise en attente : le dire, et l'afficher dans la file de la note. */
+function signalerSiRelayee() {
+  if (!surCopie.value) return
+  succes.value = "Action enregistrée : elle sera appliquée au serveur principal à la prochaine synchronisation (vous serez prévenu)."
+  void chargerActionsEnLigne()
+}
+
 async function action(chemin: string, requiertCommentaire = false, statutFileSuivante?: string) {
   if (requiertCommentaire && !observation.value.trim()) {
     erreur.value = chemin === 'valider'
       ? "Cette note n'est pas couverte par le budget : motivez votre validation dans le champ Observation."
       : 'Un motif est obligatoire pour cette action.'
-    return
-  }
-  if (chemin === 'soumettre' && horsBudget.value && !(note.value?.justificationBudget || '').trim()) {
-    erreur.value = "Cette dépense n'est pas couverte par le budget : enregistrez d'abord la justification budgétaire (encadré « Contrôle budgétaire »)."
     return
   }
   busy.value = true
@@ -275,6 +405,7 @@ async function action(chemin: string, requiertCommentaire = false, statutFileSui
       body: { commentaire: observation.value || null },
     })
     observation.value = ''
+    signalerSiRelayee()
     prioriteChoisie.value = note.value?.priorite ?? null
     rafraichirControle.value++
     if (statutFileSuivante) {
@@ -316,6 +447,7 @@ async function definirPriorite() {
       body: { priorite: prioriteChoisie.value, commentaire: observation.value || null },
     })
     observation.value = ''
+    signalerSiRelayee()
     if (venaitDEtreValidee) {
       await allerNoteSuivante('VERIFIEE_DFIN', noteActuelleId)
     }
@@ -334,6 +466,7 @@ async function ajouterObservation() {
       body: { commentaire: observation.value },
     })
     observation.value = ''
+    signalerSiRelayee()
   } catch (e: any) {
     erreur.value = e?.data?.message || "Echec."
   } finally { busy.value = false }
@@ -555,7 +688,7 @@ async function supprimerPiece(piece: PieceJointe) {
   }
 }
 
-const peutGererPieces = computed(() =>
+const peutGererPieces = computed(() => !surCopie.value &&
   auth.hasAnyRole(['DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'ADMIN']))
 </script>
 
@@ -591,6 +724,28 @@ const peutGererPieces = computed(() =>
         Note de versement fiscal générée depuis la paie : elle solde la dette constatée au paiement de la note de paie.
         Ses comptes et montants ne se modifient pas.
       </template>
+    </v-alert>
+
+    <v-alert v-if="succes" type="success" variant="tonal" rounded="lg" class="mb-4 nd-noprint" closable @click:close="succes = ''">
+      {{ succes }}
+    </v-alert>
+    <!-- Copie en ligne : actions faites ici, en attente du serveur principal (ou traitées récemment) -->
+    <v-alert v-if="actionsEnLigne.length" type="info" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-cloud-sync-outline">
+      <p class="font-weight-bold mb-1">Actions faites en ligne</p>
+      <div v-for="a in actionsEnLigne" :key="a.uuid" class="nd-action-en-ligne">
+        <span class="nd-action-en-ligne__statut" :class="'nd-action-en-ligne__statut--' + a.statut.toLowerCase()">
+          {{ a.statut === 'EN_ATTENTE' ? 'En attente de synchronisation' : a.statut === 'APPLIQUEE' ? 'Appliquée' : 'Refusée' }}
+        </span>
+        {{ a.libelle }} — {{ a.auteur }}, {{ new Date(a.creeLe).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+        <span v-if="a.message && a.statut !== 'EN_ATTENTE'" class="nd-action-en-ligne__message"> : {{ a.message }}</span>
+      </div>
+    </v-alert>
+    <v-alert v-if="note && retourEnAttente" type="warning" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-cash-refund">
+      <strong>Retour de fonds en attente de la caisse :</strong>
+      {{ fmtMontant(retourEnAttente.montant) }} {{ note.devise || 'CDF' }} à remettre en espèces au caissier
+      (demande de {{ retourEnAttente.demandeurNom || '—' }}<template v-if="retourEnAttente.dateDemande"> du {{ fmtDate(retourEnAttente.dateDemande) }}</template>).
+      La note ne sera réduite qu'à la validation du caissier.
+      <nuxt-link v-if="auth.hasRole('CAISSIER')" to="/caisse" class="nd-lien-caisse">Recevoir à la caisse</nuxt-link>
     </v-alert>
 
     <v-skeleton-loader v-if="loading" type="card, article" class="mt-4" />
@@ -680,6 +835,10 @@ const peutGererPieces = computed(() =>
                 :disabled="enregistrementObjet" title="Annuler" @click="annulerEditionObjet" />
             </div>
             <p class="nd-hero__montant">{{ montantFmt }}</p>
+            <p v-if="montantRendu > 0" class="nd-hero__rendu">
+              Payé à l'origine : {{ fmtMontant(note.montant + montantRendu) }} {{ note.devise || 'CDF' }}
+              · rendu à la caisse : {{ fmtMontant(montantRendu) }} {{ note.devise || 'CDF' }}
+            </p>
           </div>
         </div>
 
@@ -705,10 +864,29 @@ const peutGererPieces = computed(() =>
               </div>
             </div>
             <div class="nd-info-row">
-              <div class="nd-info-icon"><v-icon icon="mdi-email-outline" size="16" /></div>
+              <div class="nd-info-icon"><v-icon icon="mdi-account-key-outline" size="16" /></div>
               <div>
-                <span class="nd-info-label">Email</span>
+                <span class="nd-info-label">Identifiant</span>
                 <span class="nd-info-val">{{ note.demandeurEmail || '—' }}</span>
+              </div>
+            </div>
+            <div v-if="!estEncaissement" class="nd-info-row">
+              <div class="nd-info-icon"><v-icon icon="mdi-account-group-outline" size="16" /></div>
+              <div class="nd-service">
+                <span class="nd-info-label">Service</span>
+                <span v-if="!editionService" class="nd-info-val">
+                  <template v-if="note.serviceNom">{{ note.serviceNom }}<span class="nd-fonction"> · {{ note.serviceResponsable }}</span></template>
+                  <template v-else>Aucun service</template>
+                  <button v-if="peutModifierService" type="button" class="nd-service__btn nd-noprint" @click="activerEditionService">
+                    <v-icon icon="mdi-pencil-outline" size="13" /> {{ note.serviceNom ? 'Changer' : 'Choisir' }}
+                  </button>
+                </span>
+                <div v-else class="nd-service__edit nd-noprint">
+                  <v-select v-model="serviceChoisi" :items="servicesChoix" item-title="titre" item-value="id" placeholder="Aucun service"
+                    clearable density="compact" hide-details aria-label="Service de la note" />
+                  <v-btn size="small" color="primary" :loading="enregistrementService" @click="enregistrerService">Enregistrer</v-btn>
+                  <v-btn size="small" variant="text" @click="editionService = false">Annuler</v-btn>
+                </div>
               </div>
             </div>
             <div v-if="note.description" class="nd-info-row nd-info-row--full">
@@ -786,18 +964,30 @@ const peutGererPieces = computed(() =>
           </div>
         </div>
 
+        <!-- Retours de fonds : réductions de la note après paiement. À l'impression, seuls les retours reçus par la
+             caisse figurent (ils expliquent l'écart avec le montant payé à l'origine). -->
+        <div v-if="note.retoursFonds?.length" class="nd-card" :class="{ 'nd-noprint': !retoursValides.length }">
+          <p class="nd-card__section-title">Retours de fonds ({{ note.retoursFonds.length }})</p>
+          <div class="nd-retours">
+            <NotesFraisDetailRetourFonds
+              v-for="r in note.retoursFonds" :key="r.id" :retour="r"
+              class="nd-retour" :class="{ 'nd-noprint': r.statut !== 'VALIDE' }"
+            />
+          </div>
+        </div>
+
         <!-- Contrôle budgétaire : chaque dépense doit être couverte par le budget en exécution, sinon justifiée. -->
         <div v-if="!estEncaissement" class="nd-card nd-card--budget">
           <div class="nd-card__body">
             <BudgetControleBudgetaire :note-id="note.id" :sens="note.sens" :rafraichir="rafraichirControle" @resultat="(r: any) => controleNote = r" />
             <div v-if="peutJustifier && (horsBudget || note.justificationBudget)" class="nd-justif">
-              <label class="nd-label">Justification budgétaire {{ horsBudget ? '*' : '' }}</label>
+              <label class="nd-label">Justification budgétaire (facultative)</label>
               <v-textarea
                 v-model="justificationSaisie"
                 rows="2"
                 auto-grow
                 hide-details
-                placeholder="Pourquoi cette dépense n'est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...)"
+                placeholder="Pourquoi cette dépense n'est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...) Facultatif : la note sera transmise dans tous les cas."
               />
               <v-btn class="mt-2" size="small" color="primary" variant="tonal" prepend-icon="mdi-content-save-outline"
                 :loading="enregistrementJustification" :disabled="justificationSaisie === (note.justificationBudget || '')"
@@ -1013,7 +1203,22 @@ const peutGererPieces = computed(() =>
                 Annuler la note
               </v-btn>
 
-              <div v-if="!peutSoumettre && !peutEncaisser && !peutVerifier && !peutValiderRejeter && !peutPrioriser && !peutTransmettre && !peutAnnuler"
+              <template v-if="peutReduire">
+                <p class="nd-hint-retour">
+                  Moins acheté ou dépensé que prévu ? Réduisez la note et rendez la différence en espèces à la caisse.
+                </p>
+                <v-btn color="teal" block rounded="lg" variant="tonal"
+                  prepend-icon="mdi-cash-refund" :disabled="busy" @click="ouvrirReduction">
+                  Réduire la note (retour de fonds)
+                </v-btn>
+              </template>
+
+              <v-btn v-if="peutAnnulerRetour" color="grey" block rounded="lg" variant="text"
+                prepend-icon="mdi-undo" :loading="busy" @click="annulerRetour">
+                Retirer la demande de retour
+              </v-btn>
+
+              <div v-if="!peutSoumettre && !peutEncaisser && !peutVerifier && !peutValiderRejeter && !peutPrioriser && !peutTransmettre && !peutAnnuler && !peutReduire && !peutAnnulerRetour"
                 class="nd-no-action">
                 <v-icon icon="mdi-lock-outline" size="20" color="#d1d5db" />
                 <p>{{ messageAucuneAction }}</p>
@@ -1023,6 +1228,15 @@ const peutGererPieces = computed(() =>
         </div>
       </div>
     </div>
+
+    <NotesFraisReductionNoteDialog
+      v-if="note"
+      v-model="reductionOuverte"
+      :note-id="note.id"
+      :reference="note.reference"
+      :devise="note.devise || 'CDF'"
+      @envoyee="retourEnvoye"
+    />
 
     <!-- Aperçu d'une pièce jointe : plein écran sur mobile (bouton "X" pour
          quitter), fenêtre centrée sur desktop — évite d'avoir à télécharger
@@ -1188,6 +1402,7 @@ const peutGererPieces = computed(() =>
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+.nd-hero__rendu { position: relative; margin: 4px 0 0; font-size: 0.8rem; color: rgba(255, 255, 255, 0.85); }
 
 /* ── Info card ───────────────────────────────────────────── */
 .nd-card {
@@ -1413,6 +1628,10 @@ const peutGererPieces = computed(() =>
 }
 /* Fonction de l'utilisateur, devant son nom : « Directeur Financier · Jean Dupont ». */
 .nd-fonction { color: var(--ink-soft); font-weight: 500; }
+.nd-service { flex: 1; min-width: 0; }
+.nd-service__btn { margin-left: 8px; font-size: 0.75rem; color: var(--color-primary); background: none; border: none; cursor: pointer; padding: 0; }
+.nd-service__edit { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.nd-service__edit .v-select { min-width: 220px; flex: 1 1 220px; }
 .nd-timeline-item__who { min-width: 0; overflow-wrap: anywhere; }
 .nd-timeline-item__who .nd-fonction { font-size: 0.8rem; }
 .nd-timeline-item__author { font-size: 0.875rem; color: var(--ink); }
@@ -1579,6 +1798,7 @@ const peutGererPieces = computed(() =>
     font-size: 1.35rem;
     letter-spacing: -0.5px;
   }
+  .nd-hero__rendu { color: var(--print-text, #111827) !important; font-size: 0.66rem; opacity: 0.85; }
   .nd-badge {
     font-size: 0.62rem;
     padding: 2px 10px;
@@ -1740,4 +1960,16 @@ const peutGererPieces = computed(() =>
 .nd-justif { margin-top: 6px; }
 .nd-justif--lecture p { margin: 4px 0 0; font-size: 0.85rem; color: var(--ink-2); white-space: pre-line; }
 .nd-hint-budget { font-size: 0.78rem; color: #b45309; margin: 0 0 6px; font-weight: 600; }
+.nd-hint-retour { font-size: 0.78rem; color: #0f766e; margin: 4px 0 0; }
+.nd-retours { padding: 8px 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+.nd-retour:not(:last-child) { padding-bottom: 12px; border-bottom: 1px solid var(--hairline); }
+.nd-lien-caisse { margin-left: 6px; font-weight: 600; color: inherit; }
+
+/* Actions faites sur la copie en ligne (V133) */
+.nd-action-en-ligne { font-size: 0.86rem; line-height: 1.5; }
+.nd-action-en-ligne__statut { display: inline-block; margin-right: 6px; padding: 0 8px; border-radius: 100px; font-size: 0.74rem; font-weight: 700; }
+.nd-action-en-ligne__statut--en_attente { background: #dbeafe; color: #1d4ed8; }
+.nd-action-en-ligne__statut--appliquee { background: #dcfce7; color: #15803d; }
+.nd-action-en-ligne__statut--refusee { background: #fee2e2; color: #b91c1c; }
+.nd-action-en-ligne__message { color: #475569; }
 </style>

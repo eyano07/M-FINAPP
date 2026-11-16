@@ -26,13 +26,18 @@ public record EmployeResponse(
     boolean conforme,
     boolean superviseur,
     boolean expatrie,
-    boolean actif
+    boolean actif,
+    String compteRemuneration,
+    String comptePret,
+    /** Compte d'avances de l'agent sous 4211 (audit DRH du 15/11/2026, D-06). */
+    String compteAvance
 ) {
     public static EmployeResponse from(Employe e) {
         return new EmployeResponse(
             e.getId(), e.getMatricule(), e.getNomComplet(), e.getCategorie(), e.getPoste(), e.getAffectation(),
             e.getEmail(), e.getTelephone(), e.getDateEmbauche(), e.getDateNaissance(), e.getSalaireBaseUsd(),
             e.getSituationFamiliale(), e.getNombreEnfants(), e.getDiplome(), e.getAncienneteAnnees(),
-            e.getRendementPct(), e.isConforme(), e.isSuperviseur(), e.isExpatrie(), e.isActif());
+            e.getRendementPct(), e.isConforme(), e.isSuperviseur(), e.isExpatrie(), e.isActif(),
+            e.getCompteRemuneration(), e.getComptePret(), e.getCompteAvance());
     }
 }

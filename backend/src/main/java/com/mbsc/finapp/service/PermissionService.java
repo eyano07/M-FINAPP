@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Resolution des droits d'acces aux modules metier desactivables, a partir
@@ -40,6 +41,8 @@ public class PermissionService {
     private final ModuleConfigRepository moduleConfigRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final CurrentUserProvider currentUser;
+    /** Copie en ligne ou ancien serveur local (V132) : aucun module au-dessus de LECTURE. */
+    private final InstanceService instance;
 
     /** Les roles de l'utilisateur courant (entite metier, pas les autorites Spring). */
     private List<RoleType> mesRoles() {
@@ -68,6 +71,12 @@ public class PermissionService {
     }
 
     private NiveauPermission niveauEffectif(ModuleMetier module) {
+        NiveauPermission niveau = niveauSelonRoles(module);
+        // Serveur en lecture seule (copie en ligne d'un serveur local, ancien serveur local) : on consulte, on ne saisit pas.
+        return niveau == NiveauPermission.ECRITURE && instance.lectureSeule() ? NiveauPermission.LECTURE : niveau;
+    }
+
+    private NiveauPermission niveauSelonRoles(ModuleMetier module) {
         // Un module desactive coupe l'acces pour tout le monde, ADMIN inclus :
         // c'est une action deliberee de l'administrateur, pas une
         // mauvaise config accidentelle a compenser. /admin/modules reste
@@ -78,10 +87,14 @@ public class PermissionService {
         // Cascade hierarchique (DRH et ses sous-modules) : un sous-module ne
         // peut jamais etre plus permissif que son parent. Le parent lui-meme
         // n'a pas de parentModule, donc cette verification ne boucle pas.
-        if (actif && config != null && config.getParentModule() != null) {
-            actif = moduleConfigRepository.findById(config.getParentModule())
-                .map(ModuleConfig::isActif)
-                .orElse(true);
+        if (actif) {
+            // Parent de la ligne, ou celui de la hierarchie du code si la ligne manque ou l'a perdu.
+            ModuleMetier parent = EtatModules.parentDe(config, module);
+            if (parent != null) {
+                actif = moduleConfigRepository.findById(parent)
+                    .map(ModuleConfig::isActif)
+                    .orElse(true);
+            }
         }
         if (!actif) {
             return NiveauPermission.AUCUN;
@@ -124,7 +137,8 @@ public class PermissionService {
     /** ADMIN est exclu de la grille : acces total fixe, non editable (voir la Javadoc de la classe). */
     private static final List<RoleType> ROLES_CONFIGURABLES = List.of(
         RoleType.DG, RoleType.DA, RoleType.DFIN, RoleType.DIRECTEUR, RoleType.CAISSIER, RoleType.COMPTABLE,
-        RoleType.LOGISTIQUE, RoleType.GEST_PATRIMOINE, RoleType.RESP_DRH, RoleType.RESP_RESTAURANT);
+        RoleType.LOGISTIQUE, RoleType.GEST_PATRIMOINE, RoleType.RESP_DRH, RoleType.RESP_RESTAURANT,
+        RoleType.RESP_CUISINE, RoleType.RESP_BAR);
 
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional

@@ -116,12 +116,9 @@ controle() { # libelle code_attendu code_obtenu
   if [ "$3" = "$2" ]; then info "OK  $1"; else echec "$1 : code $3 au lieu de $2."; fi
 }
 URL="http://127.0.0.1:${PORT_HTTP}"
-for essai in 1 2 3 4 5 6 7 8 9 10; do
-  [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL/api/health" || true)" = 200 ] && break
-  sleep 3
-done
-controle "serveur en bonne sante (/api/health)" 200 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL/api/health" || true)"
-controle "page de connexion" 200 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL/login" || true)"
+# nginx vient de redemarrer : ces deux adresses sont reessayees pendant 60 s (attendre_url) avant de conclure.
+controle "serveur en bonne sante (/api/health)" 200 "$(attendre_url "$URL/api/health" || true)"
+controle "page de connexion" 200 "$(attendre_url "$URL/login" || true)"
 controle "API protegee sans connexion" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL/api/notes-frais" || true)"
 controle "documentation de l'API fermee" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL/api/v3/api-docs" || true)"
 controle "mauvais identifiants refuses" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$URL/api/auth/login" -H 'Content-Type: application/json' -d '{"email":"inconnu@exemple.test","motDePasse":"mauvais-mot-de-passe"}' || true)"

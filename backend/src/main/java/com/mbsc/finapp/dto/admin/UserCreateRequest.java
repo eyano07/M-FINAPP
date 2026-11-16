@@ -1,6 +1,6 @@
 package com.mbsc.finapp.dto.admin;
 
-import jakarta.validation.constraints.Email;
+import com.mbsc.finapp.security.IdentifiantConnexion;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
@@ -17,11 +17,18 @@ import java.util.List;
  * à l'ADMIN de préremplir le téléphone d'un nouvel employé qui ne s'est pas
  * encore connecté pour le renseigner lui-même (voir aussi /profil, la même
  * donnée en auto-service).</p>
+ *
+ * <p>{@code email} est l'identifiant de connexion : une adresse e-mail OU un
+ * nom d'utilisateur (ex. dfin_bruno) — voir {@link IdentifiantConnexion}. Le
+ * champ garde son nom pour les clients existants. Les courriels, eux, ne
+ * partent qu'à {@code emailNotification}.</p>
  */
 public record UserCreateRequest(
     @NotBlank @Size(max = 100) String nom,
     @NotBlank @Size(max = 100) String prenom,
-    @NotBlank @Email @Size(max = 150) String email,
+    @NotBlank
+    @Pattern(regexp = IdentifiantConnexion.MOTIF_CREATION, message = IdentifiantConnexion.MESSAGE_CREATION)
+    String email,
     @NotBlank @Size(min = 8, max = 100) String motDePasse,
     // Vide/absent autorise : chiffres, espaces et + - ( ) uniquement (meme regle que ProfilUpdateRequest).
     @Pattern(regexp = "^[0-9+()\\-\\s]{0,30}$", message = "Numero de telephone invalide")

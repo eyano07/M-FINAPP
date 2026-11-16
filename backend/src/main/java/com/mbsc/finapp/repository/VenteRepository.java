@@ -3,6 +3,7 @@ package com.mbsc.finapp.repository;
 import com.mbsc.finapp.domain.LigneVente;
 import com.mbsc.finapp.domain.Vente;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -15,19 +16,41 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
 
     /**
      * true si cette pièce comptable est référencée par une vente (sa propre
-     * pièce de vente, son règlement de créance, ou une réévaluation) —
-     * utilisé pour refuser son extourne directe depuis l'écran Comptabilité
-     * (voir ComptabiliteService.annuler) : seule VenteService sait rejouer
-     * correctement le statut de la vente en cohérence avec l'extourne.
+     * pièce de vente, son règlement de créance, une réévaluation ou son
+     * reflet analytique) — utilisé pour refuser son extourne directe depuis
+     * l'écran Comptabilité (voir ComptabiliteService.annuler) : seule
+     * VenteService sait rejouer correctement le statut de la vente en
+     * cohérence avec l'extourne.
      */
     @Query("""
         select count(v) > 0 from Vente v
         left join v.piece p
         left join v.pieceReglement pr
         left join v.pieceReevaluation pe
-        where p.id = :pieceId or pr.id = :pieceId or pe.id = :pieceId
+        left join v.pieceAnalytique pa
+        where p.id = :pieceId or pr.id = :pieceId or pe.id = :pieceId or pa.id = :pieceId
     """)
     boolean existsAvecPieceId(@Param("pieceId") Long pieceId);
+
+    /**
+     * Ventes validées dont la pièce de vente existe mais qui ne sont pas encore reflétées en comptabilité analytique
+     * (ventes antérieures à ce reflet, ou restées sans reflet) — reprises au démarrage, voir AnalytiqueVentesService.
+     */
+    @Query("""
+        select v.id from Vente v
+        where v.statut = com.mbsc.finapp.domain.enums.StatutVente.VALIDEE
+          and v.piece is not null and v.pieceAnalytique is null
+        order by v.dateVente, v.id
+    """)
+    List<Long> idsValideesSansRefletAnalytique();
+
+    /**
+     * Rattache sa pièce analytique à une vente qui n'en a pas encore — sans toucher la version de la vente (une
+     * opération en cours sur la vente n'échoue pas pour autant). Retourne 0 si la vente était déjà reflétée.
+     */
+    @Modifying
+    @Query("update Vente v set v.pieceAnalytique = :piece where v.id = :id and v.pieceAnalytique is null")
+    int lierPieceAnalytique(@Param("id") Long id, @Param("piece") com.mbsc.finapp.domain.PieceComptable piece);
 
     /** Référence de la vente dont ce mouvement est la sortie de stock, s'il y en a une. */
     @Query("select v.reference from Vente v join v.mouvement m where m.id = :mouvementId")
@@ -179,4 +202,40 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
         order by v.dateVente
     """)
     List<LigneVente> ligneVentesCartePeriode(@Param("du") LocalDate du, @Param("au") LocalDate au);
+
+    // ---------------------------------------------------------------------
+    // Commandes en attente (ventes BROUILLON) : stock mis de cote (V134)
+    // ---------------------------------------------------------------------
+
+    /** Quantite qu'immobilisent les commandes en attente pour cet article dans cet entrepot, hors une vente donnee. */
+    @Query("""
+        select coalesce(sum(l.quantite), 0) from LigneVente l
+        where l.vente.statut = com.mbsc.finapp.domain.enums.StatutVente.BROUILLON
+          and l.vente.entrepot.id = :entrepotId
+          and l.article.id = :articleId
+          and l.vente.id <> :venteExclue
+    """)
+    java.math.BigDecimal quantiteReservee(@Param("articleId") Long articleId, @Param("entrepotId") Long entrepotId,
+                                          @Param("venteExclue") Long venteExclue);
+
+    /** References des commandes en attente qui immobilisent cet article (pour le dire au caissier). */
+    @Query("""
+        select distinct l.vente.reference from LigneVente l
+        where l.vente.statut = com.mbsc.finapp.domain.enums.StatutVente.BROUILLON
+          and l.vente.entrepot.id = :entrepotId
+          and l.article.id = :articleId
+          and l.vente.id <> :venteExclue
+        order by l.vente.reference
+    """)
+    List<String> referencesReservant(@Param("articleId") Long articleId, @Param("entrepotId") Long entrepotId,
+                                     @Param("venteExclue") Long venteExclue);
+
+    /** Tout le stock mis de cote : [id de l'article, id de l'entrepot, quantite]. */
+    @Query("""
+        select l.article.id, l.vente.entrepot.id, sum(l.quantite) from LigneVente l
+        where l.vente.statut = com.mbsc.finapp.domain.enums.StatutVente.BROUILLON
+          and l.vente.entrepot is not null
+        group by l.article.id, l.vente.entrepot.id
+    """)
+    List<Object[]> reservations();
 }

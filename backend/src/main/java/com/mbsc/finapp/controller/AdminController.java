@@ -13,8 +13,10 @@ import com.mbsc.finapp.dto.admin.TauxTvaResponse;
 import com.mbsc.finapp.dto.admin.UserCreateRequest;
 import com.mbsc.finapp.dto.admin.UserResponse;
 import com.mbsc.finapp.dto.admin.UserUpdateRequest;
+import com.mbsc.finapp.dto.parametrage.InformationsLiasse;
 import com.mbsc.finapp.dto.parametrage.ModuleActifRequest;
 import com.mbsc.finapp.dto.parametrage.ModuleConfigResponse;
+import com.mbsc.finapp.dto.parametrage.ModuleImpactResponse;
 import com.mbsc.finapp.dto.parametrage.NiveauPermissionRequest;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseRequest;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseResponse;
@@ -23,6 +25,8 @@ import com.mbsc.finapp.dto.parametrage.RolePermissionResponse;
 import com.mbsc.finapp.domain.enums.ModuleMetier;
 import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.service.AdminService;
+import com.mbsc.finapp.service.instance.ActionsDistantesService;
+import com.mbsc.finapp.service.instance.InstanceService;
 import com.mbsc.finapp.service.ModuleConfigService;
 import com.mbsc.finapp.service.ParametresEntrepriseService;
 import com.mbsc.finapp.service.ImportJournalService;
@@ -52,6 +56,9 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminService service;
+    /** Copie en ligne d'un serveur local (V133) : l'activation d'un compte y est immediate puis relayee. */
+    private final InstanceService instance;
+    private final ActionsDistantesService relais;
     private final TauxTvaService tauxTvaService;
     private final ParametresEntrepriseService parametresService;
     private final ModuleConfigService moduleConfigService;
@@ -119,7 +126,8 @@ public class AdminController {
     /** Active ou désactive un utilisateur (ADMIN). */
     @PatchMapping("/admin/users/{id}/actif")
     public UserResponse toggleActif(@PathVariable Long id) {
-        return service.toggleActif(id);
+        // Copie en ligne : effet immediat ici (connexion bloquee), puis applique par le serveur local.
+        return instance.estMiroir() ? relais.enregistrerActivation(id) : service.toggleActif(id);
     }
 
     /** Taux de change actuel + historique (tout utilisateur authentifie). */
@@ -170,6 +178,18 @@ public class AdminController {
         return parametresService.mettreAJour(req);
     }
 
+    /** Renseignements de la liasse OHADA : page de garde, fiches R1 à R3 (ADMIN). */
+    @GetMapping("/parametres/liasse")
+    public InformationsLiasse liasse() {
+        return parametresService.obtenirLiasse();
+    }
+
+    /** Enregistre les renseignements de la liasse OHADA, tous facultatifs (ADMIN). */
+    @PutMapping("/parametres/liasse")
+    public InformationsLiasse modifierLiasse(@Valid @RequestBody InformationsLiasse infos) {
+        return parametresService.mettreAJourLiasse(infos);
+    }
+
     /** Remplace le logo (ADMIN). */
     @PostMapping(value = "/parametres/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ParametresEntrepriseResponse remplacerLogo(@RequestParam("fichier") MultipartFile fichier) {
@@ -213,6 +233,15 @@ public class AdminController {
         return moduleConfigService.definir(module, req.actif());
     }
 
+    /**
+     * Apercu d'une bascule de module (ADMIN) : roles qui disparaitraient et comptes qui seraient desactives.
+     * Lecture seule — l'ecran l'affiche avant de demander confirmation.
+     */
+    @GetMapping("/admin/modules/{module}/impact")
+    public ModuleImpactResponse impactModule(@PathVariable ModuleMetier module, @RequestParam(defaultValue = "false") boolean actif) {
+        return moduleConfigService.impact(module, actif);
+    }
+
     // ---------------------------------------------------------------------
     // Grille de permissions role x module (ADMIN)
     // ---------------------------------------------------------------------
@@ -235,6 +264,15 @@ public class AdminController {
     @GetMapping("/roles/libelles")
     public Map<RoleType, String> libellesRoles() {
         return roleLibelleService.lister();
+    }
+
+    /**
+     * Roles qu'on peut attribuer aujourd'hui (ADMIN) : ceux dont le module n'est pas desactive. Un role lie a un
+     * module desactive disparait de la gestion des utilisateurs jusqu'a la reactivation du module.
+     */
+    @GetMapping("/admin/roles/disponibles")
+    public List<RoleType> rolesDisponibles() {
+        return service.rolesDisponibles();
     }
 
     /** Renomme l'affichage d'un role, sans toucher a ses droits (ADMIN). Libelle vide = defaut. */
@@ -270,7 +308,9 @@ public class AdminController {
             ImportJournalService.ModeRegroupement regroupement,
         @RequestParam(name = "devise", defaultValue = "CDF")
             com.mbsc.finapp.domain.enums.Devise devise,
-        @RequestParam(name = "modeImport", defaultValue = "REMPLACER")
+        // Sans choix explicite, on AJOUTE : effacer des ecritures doit toujours etre demande. Le defaut etait
+        // REMPLACER alors que l'ecran n'envoyait pas ce parametre : choisir « Ajouter » effacait quand meme tout.
+        @RequestParam(name = "modeImport", defaultValue = "AJOUTER")
             ImportJournalService.ModeImport modeImport
     ) {
         return importJournalService.importer(fichier, simulation,

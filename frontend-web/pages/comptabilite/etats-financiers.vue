@@ -82,6 +82,23 @@ async function exporterExcel() {
   }
 }
 
+// Bouton PDF (15/11/2026) : le classeur Excel entier (page de garde, fiches, états, notes, graphiques)
+// converti en PDF par le serveur. Une centaine de pages : compter jusqu'à une minute.
+const pdfEnCours = ref(false)
+async function telechargerPdf() {
+  pdfEnCours.value = true
+  erreur.value = ''
+  try {
+    const p = new URLSearchParams({ du: filtres.du, au: filtres.au })
+    await telechargerFichier(api, `/comptabilite/etats-financiers/export-pdf?${p}`,
+      `Etats_financiers_${filtres.au}.pdf`)
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Impossible de générer le PDF.')
+  } finally {
+    pdfEnCours.value = false
+  }
+}
+
 const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v || 0)
 const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '')
 </script>
@@ -97,6 +114,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
         <v-btn v-if="peutExporter" color="success" variant="flat" rounded="lg"
           prepend-icon="mdi-file-excel-outline" :loading="exportEnCours" @click="exporterExcel">
           Classeur Excel
+        </v-btn>
+        <v-btn v-if="peutExporter" color="error" variant="flat" rounded="lg" prepend-icon="mdi-file-pdf-box"
+          :loading="pdfEnCours" @click="telechargerPdf">
+          PDF
         </v-btn>
         <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-printer-outline"
           :disabled="!bilan" @click="imprimer">
@@ -209,7 +230,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
       <!-- ── BALANCE ───────────────────────────────────────── -->
       <section class="etat-bloc">
         <h2 class="etat-titre">Balance de vérification</h2>
-        <table class="etat-table">
+        <!-- Sous 960 px : une carte par compte (classe table-cartes) ; sur PC, en-tête fixe (tableau-fixe) : voir assets/styles/responsive.scss. -->
+        <div class="tableau-fixe">
+        <table class="etat-table table-cartes">
           <thead>
             <tr>
               <th>Compte</th><th>Libellé</th>
@@ -219,22 +242,24 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
           </thead>
           <tbody>
             <tr v-for="l in balance.lignes" :key="'b'+l.compteNumero">
-              <td>{{ l.compteNumero }}</td><td>{{ l.compteLibelle }}</td>
-              <td class="num">{{ fmt(l.totalDebit) }}</td><td class="num">{{ fmt(l.totalCredit) }}</td>
-              <td class="num">{{ l.soldeDebiteur ? fmt(l.soldeDebiteur) : '—' }}</td>
-              <td class="num">{{ l.soldeCrediteur ? fmt(l.soldeCrediteur) : '—' }}</td>
+              <td>{{ l.compteNumero }}</td><td class="cellule-titre">{{ l.compteLibelle }}</td>
+              <td class="num" data-label="Débit">{{ fmt(l.totalDebit) }}</td>
+              <td class="num" data-label="Crédit">{{ fmt(l.totalCredit) }}</td>
+              <td class="num" data-label="Solde débiteur">{{ l.soldeDebiteur ? fmt(l.soldeDebiteur) : '—' }}</td>
+              <td class="num" data-label="Solde créditeur">{{ l.soldeCrediteur ? fmt(l.soldeCrediteur) : '—' }}</td>
             </tr>
           </tbody>
           <tfoot>
             <tr>
-              <td colspan="2">Totaux</td>
-              <td class="num">{{ fmt(balance.totalDebit) }}</td>
-              <td class="num">{{ fmt(balance.totalCredit) }}</td>
-              <td class="num">{{ fmt(balance.totalSoldeDebiteur) }}</td>
-              <td class="num">{{ fmt(balance.totalSoldeCrediteur) }}</td>
+              <td colspan="2" class="cellule-titre">Totaux</td>
+              <td class="num" data-label="Débit">{{ fmt(balance.totalDebit) }}</td>
+              <td class="num" data-label="Crédit">{{ fmt(balance.totalCredit) }}</td>
+              <td class="num" data-label="Solde débiteur">{{ fmt(balance.totalSoldeDebiteur) }}</td>
+              <td class="num" data-label="Solde créditeur">{{ fmt(balance.totalSoldeCrediteur) }}</td>
             </tr>
           </tfoot>
         </table>
+        </div>
       </section>
 
       <!-- ── ANALYSE IA ────────────────────────────────────── -->
@@ -246,9 +271,6 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
-.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 
 .etat-bloc { margin-bottom: 28px; }
 .etat-titre {

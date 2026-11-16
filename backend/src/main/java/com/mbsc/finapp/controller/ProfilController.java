@@ -1,6 +1,7 @@
 package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.profil.ChangerMotDePasseRequest;
+import com.mbsc.finapp.dto.profil.PreferenceRequest;
 import com.mbsc.finapp.dto.profil.ProfilResponse;
 import com.mbsc.finapp.dto.profil.ProfilUpdateRequest;
 import com.mbsc.finapp.service.ProfilService;
@@ -13,6 +14,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Map;
 
 /**
  * Profil de l'utilisateur courant (auto-service). Toujours scope a
@@ -34,6 +37,18 @@ public class ProfilController {
     @PutMapping
     public ProfilResponse mettreAJour(@Valid @RequestBody ProfilUpdateRequest req) {
         return service.mettreAJour(req);
+    }
+
+    /** Preferences d'affichage de l'appelant (ex. notes.affichage = TABLEAU), lues a l'ouverture de session. */
+    @GetMapping("/preferences")
+    public Map<String, String> preferences() {
+        return service.preferences();
+    }
+
+    /** Enregistre une preference d'affichage de l'appelant (cle et valeur de la liste blanche, sinon 400). */
+    @PutMapping("/preferences")
+    public Map<String, String> definirPreference(@Valid @RequestBody PreferenceRequest req) {
+        return service.definirPreference(req.cle(), req.valeur());
     }
 
     @PutMapping("/mot-de-passe")

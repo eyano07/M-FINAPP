@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Voir /logistique/articles : le module en LECTURE du caissier sert la vente,
 // pas la consultation des ecrans logistiques.
-definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN'] })
+definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] })
 
 interface Entrepot {
   id: number

@@ -25,6 +25,8 @@ interface ArticleCarte {
   soumisTva: boolean
   stockMin: number
   actif: boolean
+  /** Boisson sans consigne (whisky, vin, jus en carton…) : pas de casier ni de bouteilles vides (V134). */
+  sansConsigne?: boolean
 }
 
 const api = useApi()
@@ -97,6 +99,7 @@ const form = reactive({
   soumisTva: true,
   stockMin: 0,
   actif: true,
+  sansConsigne: false,
 })
 
 /** Équivalent indicatif dans l'autre devise, au taux du jour — n'influence ni la saisie ni l'enregistrement. */
@@ -126,6 +129,16 @@ watch([filtreType, filtreCategorie, recherche], () => { page.value = 1 })
 
 const nbPlats = computed(() => articles.value.filter(a => a.type === 'PLAT').length)
 const nbBoissons = computed(() => articles.value.filter(a => a.type === 'BOISSON').length)
+
+/**
+ * Le serveur ne renvoie à un responsable cuisine que les plats, à un responsable bar que les boissons (voir
+ * PerimetreRestaurant) : la bascule Tous / Plats / Boissons et le compteur de l'autre domaine n'ont alors rien à
+ * montrer. Les autres rôles (responsable restaurant, direction, caissier…) gardent les deux.
+ */
+const seulementCuisine = computed(() => auth.restaurantCuisine && !auth.restaurantBar)
+const seulementBar = computed(() => auth.restaurantBar && !auth.restaurantCuisine)
+const montrePlats = computed(() => !seulementBar.value)
+const montreBoissons = computed(() => !seulementCuisine.value)
 
 /** Categories reellement utilisees par le type actuellement affiche, pour le filtre. */
 const categoriesUtilisees = computed(() => {
@@ -187,7 +200,7 @@ function ouvrirCreation(type: 'PLAT' | 'BOISSON') {
     type, categorie: null, societe: '',
     compteStockNumero: d.stock, compteChargeNumero: d.charge, compteProduitNumero: d.produit,
     compteAchatNumero: d.achat,
-    devisePrixVente: 'CDF', prixVenteSaisi: null, soumisTva: true, stockMin: 0, actif: true,
+    devisePrixVente: 'CDF', prixVenteSaisi: null, soumisTva: true, stockMin: 0, actif: true, sansConsigne: false,
   })
   erreur.value = ''
   dialog.value = true
@@ -214,16 +227,18 @@ function ouvrirEdition(a: ArticleCarte) {
     soumisTva: a.soumisTva,
     stockMin: a.stockMin,
     actif: a.actif,
+    sansConsigne: !!a.sansConsigne,
   })
   erreur.value = ''
   dialog.value = true
 }
 
-// ── Code d'une nouvelle boisson ───────────────────────────────────────────────────────
-// Il n'est pas saisi : le serveur le compose d'après le libellé et la société (ex. « Primus 55CL »
-// de « Bracongo » : BRAC-PRIM-55CL) et s'assure qu'il est libre. Un plat, ou une boisson déjà
-// créée, garde un code modifiable à la main.
-const codeAutomatique = computed(() => form.type === 'BOISSON' && editId.value === null)
+// ── Code d'un nouvel article ──────────────────────────────────────────────────────────
+// Il n'est pas saisi : le serveur le compose d'après le libellé et, pour une boisson, la société
+// (ex. « Primus 55CL » de « Bracongo » : BRAC-PRIM-55CL ; un plat reçoit le préfixe PLAT :
+// « Omelette » donne PLAT-OMEL) et s'assure qu'il est libre. Un article déjà créé garde un code
+// modifiable à la main.
+const codeAutomatique = computed(() => editId.value === null)
 const codeEnCours = ref(false)
 let numeroSuggestion = 0
 let minuterieCode: ReturnType<typeof setTimeout> | undefined
@@ -237,8 +252,8 @@ async function suggererCode() {
   }
   codeEnCours.value = true
   try {
-    const query: Record<string, string> = { libelle: form.libelle.trim() }
-    if (form.societe.trim()) query.societe = form.societe.trim()
+    const query: Record<string, string> = { libelle: form.libelle.trim(), type: form.type }
+    if (form.type === 'BOISSON' && form.societe.trim()) query.societe = form.societe.trim()
     const reponse = await api<{ code: string }>('/restaurant/carte/code-suggere', { query })
     // Une saisie plus récente a pu relancer la demande entre-temps : seule la dernière compte.
     if (numero === numeroSuggestion) form.code = reponse.code || ''
@@ -261,10 +276,6 @@ watch([() => form.libelle, () => form.societe, () => form.type, dialog, editId],
   }
   codeEnCours.value = true
   minuterieCode = setTimeout(suggererCode, 300)
-})
-// Passer de « Boisson » à « Plat » en pleine création : le code généré n'a plus de sens pour un plat.
-watch(() => form.type, (type, avant) => {
-  if (dialog.value && editId.value === null && avant === 'BOISSON' && type === 'PLAT') form.code = ''
 })
 onBeforeUnmount(() => clearTimeout(minuterieCode))
 
@@ -307,6 +318,8 @@ async function enregistrer() {
       soumisTva: form.soumisTva,
       stockMin: form.stockMin,
       actif: form.actif,
+      // Consignée ou non : propre aux boissons (V134).
+      sansConsigne: form.type === 'BOISSON' ? form.sansConsigne : null,
     }
     if (editId.value) {
       await api(`/restaurant/carte/${editId.value}`, { method: 'PUT', body })
@@ -420,12 +433,12 @@ async function confirmerSuppression() {
     </v-alert>
 
     <div class="rst-stats mb-4">
-      <div class="rst-stat rst-stat--plats">
+      <div v-if="montrePlats" class="rst-stat rst-stat--plats">
         <v-icon icon="mdi-food-outline" size="18" />
         <span class="rst-stat__val">{{ nbPlats }}</span>
         <span class="rst-stat__lbl">Plats</span>
       </div>
-      <div class="rst-stat rst-stat--boissons">
+      <div v-if="montreBoissons" class="rst-stat rst-stat--boissons">
         <v-icon icon="mdi-bottle-soda-classic-outline" size="18" />
         <span class="rst-stat__val">{{ nbBoissons }}</span>
         <span class="rst-stat__lbl">Boissons</span>
@@ -434,7 +447,7 @@ async function confirmerSuppression() {
 
     <div class="d-flex flex-wrap align-center ga-3 mb-4">
       <!-- Densité par défaut = 48 px, la hauteur du champ de recherche voisin. -->
-      <v-btn-toggle v-model="filtreType" mandatory variant="outlined" rounded="lg">
+      <v-btn-toggle v-if="montrePlats && montreBoissons" v-model="filtreType" mandatory variant="outlined" rounded="lg">
         <v-btn value="TOUS">Tous</v-btn>
         <v-btn value="PLAT">Plats</v-btn>
         <v-btn value="BOISSON">Boissons</v-btn>
@@ -504,6 +517,7 @@ async function confirmerSuppression() {
         </template>
         <template #item.categorie="{ item }">
           <v-chip v-if="item.categorie" color="indigo" variant="tonal" size="small">{{ item.categorie }}</v-chip>
+          <v-chip v-if="item.type === 'BOISSON' && item.sansConsigne" color="teal" variant="tonal" size="small" class="ml-1">Sans consigne</v-chip>
           <span v-else class="text-medium-emphasis">—</span>
         </template>
         <!-- Un nom très long (100 caractères permis) est tronqué à l'affichage pour ne pas élargir le tableau ; le nom complet apparaît au survol. -->
@@ -523,8 +537,9 @@ async function confirmerSuppression() {
         </template>
         <template #item.actions="{ item }">
           <div class="d-flex justify-end flex-nowrap">
+          <!-- La fiche technique n'est pas une page du caissier (voir NavigationDrawer) : pas de lien mort. -->
           <v-btn
-            v-if="item.type === 'PLAT'"
+            v-if="item.type === 'PLAT' && auth.restaurantCuisine"
             size="small" variant="text" icon="mdi-clipboard-text-outline"
             title="Fiche technique" to="/restaurant/recettes"
           />
@@ -594,10 +609,11 @@ async function confirmerSuppression() {
           </v-btn>
         </v-btn-toggle>
 
-        <!-- Nouvelle boisson : le code se déduit du libellé et de la société, il vient donc après eux. -->
+        <!-- Nouvel article : le code se déduit du libellé (et de la société d'une boisson), il vient donc après eux. -->
         <template v-if="codeAutomatique">
           <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
           <v-text-field
+            v-if="form.type === 'BOISSON'"
             v-model="form.societe" label="Société (facultatif)" maxlength="100"
             hint="Brasserie, fabricant ou fournisseur, ex. Bracongo" persistent-hint
             variant="outlined" density="comfortable" class="mb-3"
@@ -605,8 +621,9 @@ async function confirmerSuppression() {
           <v-text-field
             :model-value="form.code" label="Code" readonly :loading="codeEnCours"
             prepend-inner-icon="mdi-auto-fix" bg-color="grey-lighten-5"
-            placeholder="Généré à partir du libellé et de la société"
-            hint="Généré automatiquement à partir du libellé et de la société" persistent-hint
+            :placeholder="form.type === 'BOISSON' ? 'Généré à partir du libellé et de la société' : 'Généré à partir du libellé'"
+            :hint="form.type === 'BOISSON' ? 'Généré automatiquement à partir du libellé et de la société' : 'Généré automatiquement à partir du libellé (préfixe PLAT)'"
+            persistent-hint
             variant="outlined" density="comfortable" class="mb-3"
           />
         </template>
@@ -621,6 +638,19 @@ async function confirmerSuppression() {
           />
         </template>
         <v-text-field v-model="form.uniteMesure" label="Unité (portion, bouteille...)" variant="outlined" density="comfortable" class="mb-3" />
+        <template v-if="form.type === 'BOISSON'">
+          <p class="carte-consigne__titre">Bouteilles vides</p>
+          <v-btn-toggle v-model="form.sansConsigne" mandatory color="primary" variant="outlined" rounded="lg" density="comfortable"
+            class="mb-1 w-100">
+            <v-btn :value="false" prepend-icon="mdi-bottle-wine-outline" class="flex-1-1">Consignée</v-btn>
+            <v-btn :value="true" prepend-icon="mdi-glass-tulip" class="flex-1-1">Sans consigne</v-btn>
+          </v-btn-toggle>
+          <p class="text-caption text-medium-emphasis mb-3">
+            {{ form.sansConsigne
+              ? 'Whisky, vin, champagne, jus en carton… : on ne gère pas les bouteilles vides. Achat par carton ou à l\'unité, sans échange de consigne.'
+              : 'Bière, sucrerie en casier… : chaque bouteille vendue revient en vides, l\'achat de casiers rend des vides (casier à définir dans Emballages).' }}
+          </p>
+        </template>
         <v-combobox
           v-model="form.categorie"
           :items="categoriesSuggerees"
@@ -708,4 +738,10 @@ async function confirmerSuppression() {
 .rst-stat--boissons { background: linear-gradient(135deg,#eef2ff,#e0e7ff); color: #4338ca; }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
+.carte-consigne__titre {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  margin: 0 0 4px;
+}
 </style>

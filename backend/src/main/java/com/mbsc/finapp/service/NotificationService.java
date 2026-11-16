@@ -1,5 +1,6 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.Budget;
 import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.Notification;
 import com.mbsc.finapp.domain.User;
@@ -20,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -121,7 +124,7 @@ public class NotificationService {
                                     String lien, NoteFrais note) {
         if (destinataire == null) return;
 
-        Notification notif = Notification.builder()
+        enregistrer(Notification.builder()
             .destinataire(destinataire)
             .type(type)
             .titre(titre)
@@ -129,11 +132,140 @@ public class NotificationService {
             .lien(lien)
             .noteFrais(note)
             .lue(false)
-            .build();
-        notif = notificationRepository.save(notif);
+            .build());
+    }
 
-        pousser(destinataire.getId(), NotificationResponse.from(notif));
-        mail.envoyerApresCommit(notif);
+    /**
+     * Notifie, au sujet d'un budget, les utilisateurs actifs des roles donnes et {@code aussi} (par exemple
+     * l'auteur du budget, s'il n'a pas ces roles) : une seule notification par personne, jamais a l'auteur de
+     * l'action ({@code acteur}). Le lien mene a la page du budget (a la liste des budgets sans budget).
+     */
+    @Transactional
+    public void notifierBudget(Collection<RoleType> roles, User aussi, User acteur, TypeNotification type,
+                               String titre, String message, Budget budget) {
+        String lien = budget == null || budget.getId() == null ? "/budgets" : "/budgets/" + budget.getId();
+        for (User destinataire : destinataires(roles, aussi, acteur)) {
+            enregistrer(Notification.builder()
+                .destinataire(destinataire)
+                .type(type)
+                .titre(titre)
+                .message(message)
+                .lien(lien)
+                .budget(budget)
+                .lue(false)
+                .build());
+        }
+    }
+
+    /**
+     * Notifie, au sujet d'une note de frais, les utilisateurs actifs des roles donnes et {@code aussi} (par exemple
+     * l'emetteur de la note) : une seule notification par personne, jamais a l'auteur de l'action ({@code acteur}). Le
+     * lien mene a la page de la note.
+     */
+    @Transactional
+    public void notifierNote(Collection<RoleType> roles, User aussi, User acteur, TypeNotification type,
+                             String titre, String message, NoteFrais note) {
+        notifierNote(roles, aussi, acteur, type, titre, message, note, Map.of());
+    }
+
+    /**
+     * {@link #notifierNote(Collection, User, User, TypeNotification, String, String, NoteFrais)} etendue a des
+     * destinataires qui ne voient pas forcement la note : les utilisateurs actifs de chaque role de {@code autres} (par
+     * exemple le responsable bar, qui ne voit que ses propres notes) recoivent la meme notification, avec le lien associe a
+     * leur role (par exemple le stock du bar) — sauf s'ils la recoivent deja par {@code roles} ou {@code aussi}, avec le
+     * lien de la note. Toujours une seule notification par personne, jamais a l'acteur.
+     */
+    @Transactional
+    public void notifierNote(Collection<RoleType> roles, User aussi, User acteur, TypeNotification type,
+                             String titre, String message, NoteFrais note, Map<RoleType, String> autres) {
+        String lienNote = note == null || note.getId() == null ? "/notes-frais" : "/notes-frais/" + note.getId();
+        Map<Long, User> personnes = new LinkedHashMap<>();
+        Map<Long, String> liens = new LinkedHashMap<>();
+        for (User u : destinataires(roles, aussi, acteur)) {
+            personnes.put(u.getId(), u);
+            liens.put(u.getId(), lienNote);
+        }
+        for (Map.Entry<RoleType, String> e : autres.entrySet()) {
+            for (User u : userRepository.findByRoles_NomAndActifTrue(e.getKey())) {
+                if ((acteur == null || !u.getId().equals(acteur.getId())) && personnes.putIfAbsent(u.getId(), u) == null) {
+                    liens.put(u.getId(), e.getValue());
+                }
+            }
+        }
+        for (User destinataire : personnes.values()) {
+            enregistrer(Notification.builder()
+                .destinataire(destinataire)
+                .type(type)
+                .titre(titre)
+                .message(message)
+                .lien(liens.get(destinataire.getId()))
+                .noteFrais(note)
+                .lue(false)
+                .build());
+        }
+    }
+
+    /**
+     * Notifie, au sujet d'une piece comptable, les utilisateurs actifs des roles donnes et {@code aussi} (le comptable
+     * qui a saisi ou annule la piece...) : une seule notification par personne, jamais a l'auteur de l'action. Le lien
+     * ouvre la liste des pieces sur cette piece, reperee par son identifiant (la reference d'un brouillon change quand
+     * il est comptabilise).
+     */
+    @Transactional
+    public void notifierPiece(Collection<RoleType> roles, User aussi, User acteur, TypeNotification type,
+                              String titre, String message, Long pieceId) {
+        String lien = pieceId == null ? "/comptabilite/pieces" : "/comptabilite/pieces?piece=" + pieceId;
+        for (User destinataire : destinataires(roles, aussi, acteur)) {
+            enregistrer(Notification.builder()
+                .destinataire(destinataire)
+                .type(type)
+                .titre(titre)
+                .message(message)
+                .lien(lien)
+                .lue(false)
+                .build());
+        }
+    }
+
+    /**
+     * Destinataires d'une notification de groupe : les utilisateurs actifs des roles donnes, plus {@code aussi} s'il est
+     * actif, chacun une seule fois (un compte qui cumule deux roles n'est pas notifie deux fois), sans l'auteur de
+     * l'action.
+     */
+    private Collection<User> destinataires(Collection<RoleType> roles, User aussi, User acteur) {
+        Map<Long, User> destinataires = new LinkedHashMap<>();
+        for (RoleType role : roles) {
+            for (User u : userRepository.findByRoles_NomAndActifTrue(role)) {
+                destinataires.putIfAbsent(u.getId(), u);
+            }
+        }
+        if (aussi != null && aussi.isActif()) {
+            destinataires.putIfAbsent(aussi.getId(), aussi);
+        }
+        if (acteur != null) {
+            destinataires.remove(acteur.getId());
+        }
+        return destinataires.values();
+    }
+
+    /**
+     * Enregistre, pousse en temps reel et copie par e-mail. Titre et message sont ramenes a la taille de leurs
+     * colonnes (200 et 500 caracteres) : un motif de rejet ou un objet long ne doit pas faire echouer l'action metier.
+     */
+    private void enregistrer(Notification notif) {
+        notif.setTitre(tronquer(notif.getTitre(), 200));
+        notif.setMessage(tronquer(notif.getMessage(), 500));
+        Notification enregistree = notificationRepository.save(notif);
+        pousser(enregistree.getDestinataire().getId(), NotificationResponse.from(enregistree));
+        mail.envoyerApresCommit(enregistree);
+    }
+
+    static String tronquer(String texte, int max) {
+        if (texte == null) {
+            return "";
+        }
+        String t = texte.strip();
+        return t.length() <= max ? t : t.substring(0, max - 1).stripTrailing() + "…";
     }
 
     // ---------------------------------------------------------------------

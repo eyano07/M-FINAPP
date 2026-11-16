@@ -63,4 +63,15 @@ class FournisseursIaTest {
             assertThat(OpenAiFournisseur.modeleDeTexte(ko)).as(ko).isFalse();
         }
     }
+
+    @Test
+    void openaiPlafonneLesJetonsDeReponseSelonLeModele() {
+        assertThat(OpenAiFournisseur.plafondReponse("gpt-4o-mini", 32000)).isEqualTo(16_384);
+        assertThat(OpenAiFournisseur.plafondReponse("gpt-4o-2024-08-06", 32000)).isEqualTo(16_384);
+        assertThat(OpenAiFournisseur.plafondReponse("gpt-4.1-mini", 40000)).isEqualTo(32_768);
+        assertThat(OpenAiFournisseur.plafondReponse("gpt-4o-mini", 6000)).isEqualTo(6000);
+        assertThat(OpenAiFournisseur.plafondReponse("o4-mini", 36000)).isEqualTo(36000);
+        assertThat(OpenAiFournisseur.plafondReponse("gpt-5", 32000)).isEqualTo(32000);
+        assertThat(OpenAiFournisseur.plafondReponse(null, 500)).isEqualTo(500);
+    }
 }

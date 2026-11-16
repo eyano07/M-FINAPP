@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Cree les comptes par defaut (un par role) si la base est vide,
@@ -40,6 +41,7 @@ public class DataSeeder implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbc;
+    private final InstanceService instance;
 
     @Value("${app.seed.enabled:false}")
     private boolean seedEnabled;
@@ -51,6 +53,10 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
+        // Copie en ligne (ou ancien serveur local) : rien n'est ecrit ici, les donnees viennent du serveur principal (V132).
+        if (instance.lectureSeule()) {
+            return;
+        }
         if (!seedEnabled) {
             log.info("Seeder desactive (app.seed.enabled=false)");
             return;

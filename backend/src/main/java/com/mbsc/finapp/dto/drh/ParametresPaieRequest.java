@@ -30,5 +30,15 @@ public record ParametresPaieRequest(
     @NotNull @DecimalMin("0") @DecimalMax("5") BigDecimal tauxMajorationHsFerie,
     @Size(max = 150) String directeurDrh,
     @Size(max = 150) String fonctionDirecteur,
-    @Size(max = 80) String villeSignature
+    @Size(max = 80) String villeSignature,
+    // Législation congolaise, corrections du 16/11/2026 (V147). Facultatifs : un ancien écran qui ne les envoie pas
+    // garde les valeurs enregistrées. tauxCnssPatronale ci-dessus est alors recalculé comme leur somme.
+    @DecimalMin("0") @DecimalMax("1") BigDecimal tauxCnssPensionPatronale,
+    @DecimalMin("0") @DecimalMax("1") BigDecimal tauxCnssPf,
+    @DecimalMin("0") @DecimalMax("1") BigDecimal tauxCnssRp,
+    @DecimalMin("0") @DecimalMax("1") BigDecimal tauxInpp51A300,
+    @DecimalMin("0") @DecimalMax("1") BigDecimal tauxInppPlus300,
+    Boolean conjointACharge,
+    @DecimalMin("0") @DecimalMax("10") BigDecimal joursCongeParMois,
+    @DecimalMin("0") @DecimalMax("10") BigDecimal joursCongeParTranche5Ans
 ) {}

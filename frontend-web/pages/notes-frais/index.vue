@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { useInstanceStore } from '~/stores/instance'
 // Ni le DRH (paie/RH, pas de notes personnelles) ni LOGISTIQUE (son suivi
 // passe par son propre tableau de bord, /logistique) ne gerent leurs notes
 // de frais via cet ecran (voir NavigationDrawer.vue, AVEC_NOTES_FRAIS) :
 // garde repetee ici pour que l'URL directe /notes-frais reste elle aussi fermee.
-definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'LOGISTIQUE'] })
+definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'LOGISTIQUE'] })
 
 const rolesStore = useRolesStore()
 interface NoteFrais {
@@ -20,32 +21,67 @@ interface NoteFrais {
 
 const api = useApi()
 const auth = useAuthStore()
+// Copie en ligne d'un serveur local (V133) : une nouvelle note part en un seul envoi (note, pièces jointes, soumission)
+// et le serveur local la crée avec sa vraie référence à la synchronisation suivante.
+const instance = useInstanceStore()
+const surCopie = computed(() => instance.estCopie)
+interface ActionEnLigne { uuid: string, type: string, libelle: string, resume: string, statut: string, message: string | null,
+  resultatNoteId: number | null, creeLe: string }
+const actionsEnLigne = ref<ActionEnLigne[]>([])
+const succesCreation = ref('')
+async function chargerActionsEnLigne() {
+  if (!surCopie.value) { actionsEnLigne.value = []; return }
+  try {
+    actionsEnLigne.value = await api<ActionEnLigne[]>('/actions-distantes')
+  } catch {
+    actionsEnLigne.value = []
+  }
+}
+watch(surCopie, chargerActionsEnLigne, { immediate: true })
 const route = useRoute()
 const dialog = ref(false)
-// Préfiltré si on arrive depuis une carte du tableau de bord (ex.
-// /notes-frais?statut=SOUMISE) — sinon aucun filtre, comportement historique.
-const filterStatut = ref<string | null>(
-  typeof route.query.statut === 'string' ? route.query.statut : null)
 
 // Période (date de création) : aujourd'hui par défaut des deux côtés — pas
 // un historique complet par défaut, qui ralentirait l'écran sans raison sur
 // une entreprise déjà active depuis longtemps. Vidée = borne ouverte.
 const aujourdhui = () => new Date().toISOString().slice(0, 10)
-const dateDu = ref(aujourdhui())
-const dateAu = ref(aujourdhui())
+
+// Filtres gardés pendant la session : ouvrir une note puis revenir à la liste
+// les retrouve tels quels, au lieu de repartir des valeurs par défaut.
+const filtresGardes = useState('notes-frais.filtres', () => ({
+  sens: 'DECAISSEMENT' as 'DECAISSEMENT' | 'ENCAISSEMENT',
+  statut: null as string | null,
+  du: aujourdhui(),
+  au: aujourdhui(),
+  reference: '',
+  libelle: '',
+  compte: '',
+  beneficiaire: '',
+}))
+
+// Préfiltré si on arrive depuis une carte du tableau de bord (ex.
+// /notes-frais?statut=SOUMISE) — sinon le dernier filtre choisi.
+const filterStatut = ref<string | null>(
+  typeof route.query.statut === 'string' ? route.query.statut : filtresGardes.value.statut)
+
+const dateDu = ref(filtresGardes.value.du)
+const dateAu = ref(filtresGardes.value.au)
 
 // Recherche textuelle, exécutée par le serveur (seul à connaître les lignes de chaque note) :
-// référence, libellé (objet) de la note, nom ou numéro d'un compte imputé sur l'une de ses lignes.
-// Elle se combine avec le statut et la période.
-const rechercheReference = ref('')
-const rechercheLibelle = ref('')
-const rechercheCompte = ref('')
+// référence, libellé (objet) de la note, nom du bénéficiaire, nom ou numéro d'un compte imputé
+// sur l'une de ses lignes. Elle se combine avec le statut et la période.
+const rechercheReference = ref(filtresGardes.value.reference)
+const rechercheLibelle = ref(filtresGardes.value.libelle)
+const rechercheCompte = ref(filtresGardes.value.compte)
+const rechercheBeneficiaire = ref(filtresGardes.value.beneficiaire)
 const rechercheActive = computed(() =>
-  !!(rechercheReference.value.trim() || rechercheLibelle.value.trim() || rechercheCompte.value.trim()))
+  !!(rechercheReference.value.trim() || rechercheLibelle.value.trim() || rechercheCompte.value.trim()
+    || rechercheBeneficiaire.value.trim()))
 function effacerRecherche() {
   rechercheReference.value = ''
   rechercheLibelle.value = ''
   rechercheCompte.value = ''
+  rechercheBeneficiaire.value = ''
 }
 
 // Règle de visibilité propre au rôle : selon lui, certaines notes ne sont pas accessibles. Les rôles à
@@ -78,7 +114,7 @@ const STATUTS_ENCAISSEMENT = ['BROUILLON', 'PAYEE', 'ANNULEE']
 // filtres valides pour lui (les siens en plus, ceux des autres createurs
 // restreints comme avant).
 
-const activeSens = ref<'DECAISSEMENT' | 'ENCAISSEMENT'>('DECAISSEMENT')
+const activeSens = ref<'DECAISSEMENT' | 'ENCAISSEMENT'>(filtresGardes.value.sens)
 const peutCreerEncaissement = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
 // Miroir de NoteFraisService.creer/soumettre cote backend : comptable et
 // caissier sont desormais les deux seuls a pouvoir emettre une note de
@@ -108,6 +144,7 @@ async function charger() {
     if (rechercheReference.value.trim()) query.reference = rechercheReference.value.trim()
     if (rechercheLibelle.value.trim()) query.libelle = rechercheLibelle.value.trim()
     if (rechercheCompte.value.trim()) query.compte = rechercheCompte.value.trim()
+    if (rechercheBeneficiaire.value.trim()) query.beneficiaire = rechercheBeneficiaire.value.trim()
     const resultat = await api<NoteFrais[]>('/notes-frais', { query: Object.keys(query).length ? query : undefined })
     if (numero !== derniereRequete) return
     notes.value = resultat
@@ -130,11 +167,19 @@ function effacerPeriode() {
 
 onMounted(charger)
 onMounted(chargerRegleVisibilite)
+
+// ── Affichage : cartes ou tableau (PC), choix enregistré sur le compte ─────────────────────────────────────
+// Sous 960 px (téléphone, tablette) la page n'affiche que les cartes.
+const prefs = usePreferencesStore()
+prefs.hydrater()
+const grandEcran = useGrandEcran()
+const affichage = computed(() => (grandEcran.value ? prefs.valeur('notes.affichage', 'CARTES') : 'CARTES'))
+const choisirAffichage = (mode: 'CARTES' | 'TABLEAU') => prefs.definir('notes.affichage', mode)
 watch(filterStatut, charger)
 watch([dateDu, dateAu], charger)
 // Recherche : une courte pause dans la frappe avant d'interroger le serveur.
 let minuterieRecherche: ReturnType<typeof setTimeout> | undefined
-watch([rechercheReference, rechercheLibelle, rechercheCompte], () => {
+watch([rechercheReference, rechercheLibelle, rechercheCompte, rechercheBeneficiaire], () => {
   clearTimeout(minuterieRecherche)
   minuterieRecherche = setTimeout(charger, 350)
 })
@@ -143,6 +188,10 @@ onBeforeUnmount(() => clearTimeout(minuterieRecherche))
 // proposée change (l'encaissement n'a pas de circuit DFIN/DA), un filtre
 // devenu invalide laisserait sinon une grille vide sans chip actif visible.
 watch(activeSens, () => { filterStatut.value = null })
+watch([activeSens, filterStatut, dateDu, dateAu, rechercheReference, rechercheLibelle, rechercheCompte,
+  rechercheBeneficiaire], ([sens, statut, du, au, reference, libelle, compte, beneficiaire]) => {
+  filtresGardes.value = { sens, statut, du, au, reference, libelle, compte, beneficiaire }
+})
 
 const lignesVides = () => [{
   montant: null as number | null, compteImputation: null as string | null, description: '',
@@ -155,7 +204,19 @@ const form = reactive({
   objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: 'DECAISSEMENT' as 'DECAISSEMENT' | 'ENCAISSEMENT',
   lignes: lignesVides(),
   justificationBudget: '',
+  serviceId: null as number | null,
 })
+
+// Services budgétaires actifs : la dépense se rattache au service qui l'engage (contrôlée et suivie sur son budget).
+const servicesActifs = ref<{ id: number, titre: string }[]>([])
+async function chargerServices() {
+  try {
+    const liste = await api<{ id: number, nom: string, responsable: string, actif: boolean }[]>('/services-budgetaires')
+    servicesActifs.value = liste.filter(s => s.actif).map(s => ({ id: s.id, titre: `${s.nom} — ${s.responsable}` }))
+  } catch {
+    servicesActifs.value = []
+  }
+}
 // Résultat du contrôle budgétaire des lignes en cours de saisie (composant BudgetControleBudgetaire) : une
 // dépense non couverte par le budget en exécution exige une justification avant la soumission.
 const controleCreation = ref<any | null>(null)
@@ -164,6 +225,7 @@ const devises = ['CDF', 'USD']
 function ouvrirDialog() {
   form.sens = activeSens.value
   dialog.value = true
+  chargerServices()
 }
 
 const lignesValides = computed(() =>
@@ -302,25 +364,69 @@ function utiliserPhoto() {
 }
 
 function resetForm() {
-  Object.assign(form, { objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: activeSens.value, lignes: lignesVides(), justificationBudget: '' })
+  Object.assign(form, { objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: activeSens.value, lignes: lignesVides(), justificationBudget: '', serviceId: null })
   controleCreation.value = null
   fichiersAJoindre.value = []
 }
 
 const soumission = ref(false)
 
+/** Corps de création d'une note (même contenu sur le serveur principal et sur la copie en ligne). */
+function corpsNote() {
+  return {
+    objet: form.objet,
+    beneficiaire: form.beneficiaire,
+    devise: form.devise,
+    description: form.description || null,
+    sens: form.sens,
+    justificationBudget: form.sens === 'DECAISSEMENT' && form.justificationBudget.trim() ? form.justificationBudget.trim() : null,
+    serviceId: form.sens === 'DECAISSEMENT' ? form.serviceId : null,
+    lignes: lignesValides.value.map(l => ({
+      montant: l.montant,
+      compteImputation: l.compteImputation || null,
+      description: l.description || null,
+      achatMarchandise: l.achatMarchandise,
+      quantiteMarchandise: l.achatMarchandise ? l.quantiteMarchandise : null,
+      articleId: l.achatMarchandise ? l.articleId : null,
+      articleNom: l.achatMarchandise ? l.articleNom : null,
+      soumisTva: l.soumisTva,
+    })),
+  }
+}
+
+/** Copie en ligne : note, pièces jointes et soumission partent ensemble ; un encaissement reste au serveur principal. */
+async function creerNoteSurCopie(executerEnsuite: boolean) {
+  try {
+    const donnees = new FormData()
+    donnees.append('note', new Blob([JSON.stringify(corpsNote())], { type: 'application/json' }))
+    for (const fichier of fichiersAJoindre.value) donnees.append('fichiers', fichier)
+    const soumettre = executerEnsuite && form.sens !== 'ENCAISSEMENT'
+    await api(`/actions-distantes/notes?soumettre=${soumettre}`, { method: 'POST', body: donnees })
+    dialog.value = false
+    resetForm()
+    succesCreation.value = 'Note enregistrée : elle sera créée sur le serveur principal (avec sa référence) à la prochaine '
+      + 'synchronisation' + (soumettre ? ', puis soumise.' : '.') + ' Vous serez prévenu.'
+    await chargerActionsEnLigne()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "La note n'a pas pu être enregistrée.")
+  } finally {
+    saving.value = false
+    soumission.value = false
+  }
+}
+
 async function creerNote(executerEnsuite: boolean) {
   if (!peutCreer.value) {
     erreur.value = 'Renseignez un objet, le bénéficiaire et au moins une ligne avec un montant.'
     return
   }
-  if (executerEnsuite && form.sens === 'DECAISSEMENT' && controleCreation.value?.justificationRequise && !form.justificationBudget.trim()) {
-    erreur.value = 'Cette dépense n’est pas couverte par le budget : précisez la justification budgétaire avant de soumettre la note.'
-    return
-  }
   if (executerEnsuite) soumission.value = true
   else saving.value = true
   erreur.value = ''
+  if (surCopie.value) {
+    await creerNoteSurCopie(executerEnsuite)
+    return
+  }
   try {
     const note = await api<{ id: number }>('/notes-frais', {
       method: 'POST',
@@ -331,6 +437,7 @@ async function creerNote(executerEnsuite: boolean) {
         description: form.description || null,
         sens: form.sens,
         justificationBudget: form.sens === 'DECAISSEMENT' && form.justificationBudget.trim() ? form.justificationBudget.trim() : null,
+        serviceId: form.sens === 'DECAISSEMENT' ? form.serviceId : null,
         lignes: lignesValides.value.map(l => ({
           montant: l.montant,
           compteImputation: l.compteImputation || null,
@@ -426,7 +533,8 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
       </p>
     </header>
 
-    <!-- ── Onglets Décaissement / Encaissement ─────────────── -->
+    <!-- ── Onglets Décaissement / Encaissement, et bascule Cartes / Tableau (PC) ─────────────── -->
+    <div class="nf-barre">
     <div class="nf-sens-tabs">
       <button
         class="nf-sens-tab"
@@ -444,6 +552,22 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
         <v-icon icon="mdi-cash-plus" size="17" class="mr-1" />
         Encaissement
       </button>
+    </div>
+
+    <div v-if="grandEcran" class="nf-affichage" role="group" aria-label="Mode d'affichage des notes">
+      <button
+        type="button" class="nf-affichage__btn" :class="{ 'nf-affichage__btn--actif': affichage === 'CARTES' }"
+        :aria-pressed="affichage === 'CARTES'" title="Afficher les notes en cartes" @click="choisirAffichage('CARTES')"
+      >
+        <v-icon icon="mdi-view-grid-outline" size="17" /><span>Cartes</span>
+      </button>
+      <button
+        type="button" class="nf-affichage__btn" :class="{ 'nf-affichage__btn--actif': affichage === 'TABLEAU' }"
+        :aria-pressed="affichage === 'TABLEAU'" title="Afficher les notes en tableau" @click="choisirAffichage('TABLEAU')"
+      >
+        <v-icon icon="mdi-table" size="17" /><span>Tableau</span>
+      </button>
+    </div>
     </div>
 
     <!-- ── Mini stats strip ────────────────────────────────── -->
@@ -512,7 +636,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
       </div>
     </div>
 
-    <!-- ── Recherche (référence, libellé, compte) ──────────── -->
+    <!-- ── Recherche (référence, libellé, bénéficiaire, compte) ── -->
     <div class="nf-filter nf-filter--recherche">
       <v-icon icon="mdi-magnify" size="18" color="#9ca3af" />
       <span class="nf-periode__label">Recherche</span>
@@ -526,6 +650,11 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
           v-model="rechercheLibelle" type="search" autocomplete="off"
           class="nf-periode__input nf-recherche__input"
           placeholder="Libellé de la note" aria-label="Rechercher une note par son libellé"
+        >
+        <input
+          v-model="rechercheBeneficiaire" type="search" autocomplete="off"
+          class="nf-periode__input nf-recherche__input"
+          placeholder="Nom du bénéficiaire" aria-label="Rechercher une note par le nom du bénéficiaire"
         >
         <input
           v-model="rechercheCompte" type="search" autocomplete="off"
@@ -546,9 +675,31 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
     </v-alert>
+    <v-alert v-if="succesCreation" type="success" variant="tonal" rounded="lg" class="mb-4" closable @click:close="succesCreation = ''">
+      {{ succesCreation }}
+    </v-alert>
+
+    <!-- Copie en ligne : mes actions en attente du serveur principal (ou traitées ces 7 derniers jours) -->
+    <div v-if="actionsEnLigne.length" class="nf-en-ligne mb-4">
+      <p class="nf-en-ligne__titre"><v-icon icon="mdi-cloud-sync-outline" size="18" /> Faites en ligne</p>
+      <div v-for="a in actionsEnLigne" :key="a.uuid" class="nf-en-ligne__item">
+        <span class="nf-en-ligne__statut" :class="'nf-en-ligne__statut--' + a.statut.toLowerCase()">
+          {{ a.statut === 'EN_ATTENTE' ? 'En attente de synchronisation' : a.statut === 'APPLIQUEE' ? 'Appliquée' : 'Refusée' }}
+        </span>
+        <span class="nf-en-ligne__resume">{{ a.resume }}</span>
+        <NuxtLink v-if="a.resultatNoteId" :to="`/notes-frais/${a.resultatNoteId}`" class="nf-en-ligne__lien">Ouvrir</NuxtLink>
+        <span v-if="a.message && a.statut !== 'EN_ATTENTE'" class="nf-en-ligne__message">{{ a.message }}</span>
+      </div>
+    </div>
 
     <!-- ── Cards grid ──────────────────────────────────────── -->
-    <v-skeleton-loader v-if="loading" type="card, card, card" />
+    <v-skeleton-loader v-if="loading || !prefs.connu" type="card, card, card" />
+
+    <NotesFraisTableauNotesFrais
+      v-else-if="notesFiltrees.length > 0 && affichage === 'TABLEAU'"
+      :notes="notesFiltrees"
+      @ouvrir="(id: number) => navigateTo(`/notes-frais/${id}`)"
+    />
 
     <div v-else-if="notesFiltrees.length > 0" class="nf-grid">
       <CardsNoteFraisCard
@@ -624,17 +775,32 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
             <v-textarea v-model="form.description" rows="2" placeholder="Détails supplémentaires..." hide-details="auto" />
           </div>
 
+          <div v-if="form.sens === 'DECAISSEMENT' && servicesActifs.length" class="nf-field">
+            <label class="nf-label">Service qui engage la dépense</label>
+            <v-select
+              v-model="form.serviceId"
+              :items="servicesActifs"
+              item-title="titre"
+              item-value="id"
+              placeholder="Aucun service"
+              prepend-inner-icon="mdi-account-group-outline"
+              clearable
+              hint="La dépense est contrôlée et suivie sur le budget de ce service."
+              persistent-hint
+            />
+          </div>
+
           <NotesFraisLignesNoteFrais v-model="form.lignes" :devise="form.devise" :sens="form.sens" />
 
-          <BudgetControleBudgetaire :lignes="form.lignes" :devise="form.devise" :sens="form.sens" @resultat="(r: any) => controleCreation = r" />
+          <BudgetControleBudgetaire :lignes="form.lignes" :devise="form.devise" :sens="form.sens" :service-id="form.serviceId" @resultat="(r: any) => controleCreation = r" />
           <div v-if="form.sens === 'DECAISSEMENT' && controleCreation?.justificationRequise" class="nf-field">
-            <label class="nf-label">Justification budgétaire *</label>
+            <label class="nf-label">Justification budgétaire (facultative)</label>
             <v-textarea
               v-model="form.justificationBudget"
               rows="2"
               auto-grow
               placeholder="Pourquoi cette dépense n’est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...)"
-              hint="Obligatoire pour soumettre la note ; le DA devra aussi motiver sa validation."
+              :hint="`Facultative : la note est transmise même hors budget. Le ${rolesStore.libelle('DA')} décide et doit motiver sa validation.`"
               persistent-hint
             />
           </div>
@@ -698,7 +864,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
             :disabled="!peutCreer || saving"
             @click="creerNote(true)"
           >
-            {{ form.sens === 'ENCAISSEMENT' ? 'Créer et encaisser' : 'Créer et soumettre' }}
+            {{ form.sens === 'ENCAISSEMENT' ? (surCopie ? 'Créer (encaissement au serveur principal)' : 'Créer et encaisser') : 'Créer et soumettre' }}
           </v-btn>
         </div>
       </div>
@@ -780,14 +946,24 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 }
 
 /* ── Onglets sens (Décaissement / Encaissement) ─────────────── */
+.nf-barre { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .nf-sens-tabs {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
   background: var(--surface-2);
   border-radius: 12px;
-  margin-bottom: 20px;
 }
+
+/* Bascule Cartes / Tableau (PC) */
+.nf-affichage { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2); border-radius: 12px; }
+.nf-affichage__btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border: none; border-radius: 9px; background: transparent;
+  font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: all 0.15s;
+}
+.nf-affichage__btn:hover { color: var(--ink-2); }
+.nf-affichage__btn--actif { background: var(--surface); color: var(--color-primary); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
 .nf-sens-tab {
   display: inline-flex;
   align-items: center;
@@ -888,7 +1064,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
    desordonne) alors qu'une grille a colonnes egales donne des rangees
    symetriques, plus lisibles sur un petit ecran. "Tous" reste a part, en
    pleine largeur, car c'est un reset plutot qu'un statut parmi d'autres. */
-@media (max-width: 640px) {
+@media screen and (max-width: 959px) {
   .nf-filter { flex-wrap: wrap; overflow-x: visible; }
   .nf-filter__chips { flex-wrap: wrap; width: 100%; gap: 8px; }
   .nf-filter__chip--tous { width: 100%; text-align: center; }
@@ -923,6 +1099,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   .nf-periode__input { width: 100%; }
   .nf-periode__actions { display: contents; }
   .nf-periode__actions .nf-filter__chip { width: 100%; text-align: center; justify-content: center; }
+
 }
 
 /* ── Grid ────────────────────────────────────────────────── */
@@ -1151,4 +1328,33 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 }
 .nf-btn--ghost:hover { background: var(--surface-2); }
 .nf-btn--ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Téléphone : surcharges placées APRÈS les règles de base de la recherche (même spécificité, l'ordre décide). */
+@media (max-width: 640px) {
+  /* Recherche : le libellé au-dessus, puis les trois champs pleine largeur (et non décalés à droite de l'étiquette). */
+  .nf-filter--recherche { margin-top: 0; }
+  .nf-recherche__body { flex: 1 1 100%; flex-direction: column; align-items: stretch; }
+  .nf-recherche__input { flex: 0 0 auto; width: 100%; }
+  .nf-periode__input { padding: 10px 12px; }
+
+  /* Information sous le titre : elle passe à la ligne au lieu de sortir de l'écran. */
+  .nf-header__hint { flex: 1 1 100%; white-space: normal; align-items: flex-start; }
+
+  /* Pied des boîtes de dialogue : l'action principale en haut, pleine largeur, puis les autres (ordre inversé de la rangée). */
+  .nf-dialog__footer { flex-direction: column-reverse; align-items: stretch; padding: 14px 16px; }
+  .nf-dialog__footer > .v-btn, .nf-dialog__footer > .nf-btn { width: 100%; justify-content: center; }
+}
+
+/* Copie en ligne (V133) : notes et actions faites ici, en attente du serveur principal */
+.nf-en-ligne { padding: 12px 14px; border: 1px solid #bfdbfe; border-radius: 14px; background: #eff6ff; }
+.nf-en-ligne__titre { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-weight: 700; color: #1e3a8a; }
+.nf-en-ligne__item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 4px 0; font-size: 0.88rem; border-top: 1px solid #dbeafe; }
+.nf-en-ligne__item:first-of-type { border-top: 0; }
+.nf-en-ligne__statut { padding: 0 8px; border-radius: 100px; font-size: 0.74rem; font-weight: 700; white-space: nowrap; }
+.nf-en-ligne__statut--en_attente { background: #dbeafe; color: #1d4ed8; }
+.nf-en-ligne__statut--appliquee { background: #dcfce7; color: #15803d; }
+.nf-en-ligne__statut--refusee { background: #fee2e2; color: #b91c1c; }
+.nf-en-ligne__resume { color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.nf-en-ligne__lien { font-weight: 600; color: var(--color-primary); }
+.nf-en-ligne__message { flex-basis: 100%; color: #475569; font-size: 0.82rem; }
 </style>

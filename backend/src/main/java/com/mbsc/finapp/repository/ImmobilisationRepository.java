@@ -39,4 +39,7 @@ public interface ImmobilisationRepository extends JpaRepository<Immobilisation, 
         where i.statut = :statut
         """)
     List<Immobilisation> findWithPlanByStatut(StatutImmobilisation statut);
+
+    /** Composants d'un bien principal (audit SYSCOHADA du 10/11/2026, C-18). */
+    java.util.List<com.mbsc.finapp.domain.Immobilisation> findByParentId(Long parentId);
 }

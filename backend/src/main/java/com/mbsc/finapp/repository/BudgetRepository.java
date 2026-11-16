@@ -14,14 +14,18 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
 
     List<Budget> findByExercice(Integer exercice);
 
-    @EntityGraph(attributePaths = {"lignes", "lignes.compte", "elaborePar", "approuvePar"})
+    @EntityGraph(attributePaths = {"lignes", "lignes.compte", "lignes.service", "elaborePar", "approuvePar"})
     Optional<Budget> findWithLignesById(Long id);
 
     List<Budget> findAllByOrderByExerciceDescDateCreationDesc();
 
-    /** Budget en execution d'un exercice (un seul : regle du service et index unique partiel, V100). */
-    @EntityGraph(attributePaths = {"lignes", "lignes.compte"})
-    Optional<Budget> findFirstByExerciceAndStatut(Integer exercice, StatutBudget statut);
+    /**
+     * Budgets d'un exercice dans un statut. En execution, ils ne couvrent jamais un meme mois (regle du service
+     * et contrainte d'exclusion ex_budgets_un_en_execution_par_mois, V122) : un budget annuel, ou plusieurs
+     * budgets de periodes disjointes (mois, trimestres, semestres).
+     */
+    @EntityGraph(attributePaths = {"lignes", "lignes.compte", "lignes.service"})
+    List<Budget> findByExerciceAndStatut(Integer exercice, StatutBudget statut);
 
     boolean existsByRevisionDeId(Long budgetId);
 }

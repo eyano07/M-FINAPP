@@ -59,5 +59,21 @@ public enum ModuleMetier {
      * (bouteilles, bacs). Module plat, sans sous-module : l'administrateur
      * l'active ou le coupe d'un seul geste, comme {@link #PATRIMOINE}.
      */
-    RESTAURANT
+    RESTAURANT;
+
+    /**
+     * Module parent dans la hierarchie (DRH et ses quatre sous-modules, COMPTABILITE avec BUDGET et RAPPROCHEMENT,
+     * VENTES avec FACTURATION_NORMALISEE), ou {@code null} pour un module autonome. C'est la meme hierarchie que la
+     * colonne {@code modules_config.parent_module} (V41, V104, V105, V113) — mais definie ici, dans le code : une
+     * ligne recree par une bascule, ou apres une purge de la table, n'avait plus son lien et le module restait actif
+     * quand son parent etait coupe. Voir {@link com.mbsc.finapp.service.EtatModules#parentDe}.
+     */
+    public ModuleMetier parent() {
+        return switch (this) {
+            case DRH_PERSONNEL, DRH_PRESENCES, DRH_PAIE, DRH_MISSIONS -> DRH;
+            case BUDGET, RAPPROCHEMENT -> COMPTABILITE;
+            case FACTURATION_NORMALISEE -> VENTES;
+            default -> null;
+        };
+    }
 }

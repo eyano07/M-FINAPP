@@ -25,6 +25,19 @@ public interface ProductionRepository extends JpaRepository<Production, Long> {
     """)
     List<Production> rechercherPeriode(@Param("du") LocalDate du, @Param("au") LocalDate au);
 
+    /**
+     * Productions validees d'un plat dans un entrepot, la plus recente en premier : la repartition du stock sur les
+     * productions (voir PeremptionPlats) les parcourt dans cet ordre.
+     */
+    @Query("""
+        select p from Production p
+        left join fetch p.mouvementEntree
+        where p.plat.id = :platId and p.entrepot.id = :entrepotId
+          and p.statut = com.mbsc.finapp.domain.enums.StatutProduction.VALIDEE
+        order by p.dateProduction desc, p.id desc
+    """)
+    List<Production> findValideesDuPlatDansEntrepot(@Param("platId") Long platId, @Param("entrepotId") Long entrepotId);
+
     @Query("""
         select p from Production p
         left join fetch p.lignes l

@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 /** Creation ou modification d'une fiche client. */
 public record ClientRequest(
 
-    @NotBlank(message = "Le code est obligatoire")
+    /** Ignoré : le code est attribué par l'application (CLI-0001…), demande du 15/11/2026. */
     @Size(max = 40)
     String code,
 

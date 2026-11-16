@@ -18,7 +18,9 @@ public record ProfilResponse(
     String telephone,
     String emailNotification,
     String photoUrl,
-    List<String> roles
+    List<String> roles,
+    /** Vrai tant que le mot de passe provisoire choisi par l'administrateur n'a pas ete remplace (V131). */
+    boolean doitChangerMotDePasse
 ) {
     public static ProfilResponse from(User u) {
         List<String> roles = u.getRoles().stream()
@@ -34,7 +36,8 @@ public record ProfilResponse(
             u.getTelephone(),
             u.getEmailNotification(),
             u.getPhotoCheminStockage() != null ? "/profil/photo" : null,
-            roles
+            roles,
+            u.isDoitChangerMotDePasse()
         );
     }
 }

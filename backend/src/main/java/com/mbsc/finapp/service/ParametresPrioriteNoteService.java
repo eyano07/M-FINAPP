@@ -41,13 +41,15 @@ public class ParametresPrioriteNoteService {
             .orElseGet(this::creerParDefaut);
     }
 
-    @PreAuthorize("hasAnyRole('DA', 'DFIN', 'CAISSIER', 'COMPTABLE', 'ADMIN')")
+    /** Lecture des seuils : les rôles de la chaîne de paiement, pas l'administrateur (la page est réservée au DA). */
+    @PreAuthorize("hasAnyRole('DA', 'DFIN', 'CAISSIER', 'COMPTABLE')")
     @Transactional(readOnly = true)
     public ParametresPrioriteNoteResponse consulter() {
         return ParametresPrioriteNoteResponse.from(get());
     }
 
-    @PreAuthorize("hasAnyRole('DA', 'ADMIN')")
+    /** Seul le DA fixe les seuils : l'arbitrage de trésorerie ne se délègue pas à l'administrateur. */
+    @PreAuthorize("hasRole('DA')")
     @Transactional
     public ParametresPrioriteNoteResponse enregistrer(ParametresPrioriteNoteRequest req) {
         ParametresPrioriteNote p = get();

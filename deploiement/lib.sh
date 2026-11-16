@@ -80,6 +80,22 @@ attendre_base() {
   done
 }
 
+# attendre_url URL [CODE] [SECONDES] : interroge l'adresse toutes les 2 s jusqu'a obtenir le code HTTP attendu (200 par
+# defaut), pendant SECONDES au plus (60 par defaut), puis affiche le dernier code obtenu (000 = aucune reponse) ; echoue
+# si ce n'est pas le code attendu. Juste apres un (re)demarrage, nginx peut refuser les connexions quelques secondes :
+# un essai unique conclurait a tort a une panne.
+attendre_url() {
+  local url="$1" attendu="${2:-200}" delai="${3:-60}" debut code
+  debut=$(date +%s)
+  while :; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$url" || true)
+    [ "$code" = "$attendu" ] && break
+    [ $(( $(date +%s) - debut )) -lt "$delai" ] || { echo "$code"; return 1; }
+    sleep 2
+  done
+  echo "$code"
+}
+
 # Nombre de tables de l'application dans la base (0 = base neuve). Echoue (au lieu de repondre vide) si la
 # base ne repond pas : une reponse vide ne doit jamais etre prise pour « base non vide ».
 nombre_tables() {

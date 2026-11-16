@@ -51,14 +51,74 @@ export const total = (mensuel: (number | string | null | undefined)[]) => centim
 export const cumul = (mensuel: (number | string | null | undefined)[], jusqua: number) =>
   centimes((mensuel || []).slice(0, Math.max(0, Math.min(12, jusqua))).reduce<number>((s, v) => s + n(v), 0))
 
-/** Parts égales au centime près, les centimes restants sur décembre (même règle que le serveur). */
-export function repartirUniformement(annuel: number): number[] {
-  const totalCentimes = Math.round(n(annuel) * 100)
-  const part = Math.floor(totalCentimes / 12)
-  const mois = Array(12).fill(part / 100)
-  mois[11] = (totalCentimes - part * 11) / 100
+/**
+ * Parts égales au centime près sur les mois `debut` à `fin` (1-12) d'une période, zéro ailleurs ; les centimes
+ * restants vont sur le dernier mois de la période (même règle que le serveur).
+ */
+export function repartirUniformement(montant: number, debut = 1, fin = 12): number[] {
+  const totalCentimes = Math.round(n(montant) * 100)
+  const nombre = fin - debut + 1
+  const part = Math.floor(totalCentimes / nombre)
+  const mois = Array(12).fill(0)
+  for (let m = debut; m < fin; m++) mois[m - 1] = part / 100
+  mois[fin - 1] = (totalCentimes - part * (nombre - 1)) / 100
   return mois
 }
+
+// ---------------------------------------------------------------------------------------------
+// Période couverte par un budget : l'exercice, un semestre, un trimestre ou un mois
+// ---------------------------------------------------------------------------------------------
+
+export const MOIS_LONGS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+
+export type DureeBudget = 'ANNUEL' | 'SEMESTRIEL' | 'TRIMESTRIEL' | 'MENSUEL'
+
+export const DUREES: { value: DureeBudget, title: string, mois: number }[] = [
+  { value: 'ANNUEL', title: 'Annuel (exercice entier)', mois: 12 },
+  { value: 'SEMESTRIEL', title: 'Semestriel (6 mois)', mois: 6 },
+  { value: 'TRIMESTRIEL', title: 'Trimestriel (3 mois)', mois: 3 },
+  { value: 'MENSUEL', title: 'Mensuel (1 mois)', mois: 1 },
+]
+
+const moisDeLaDuree = (d?: string | null) => DUREES.find(x => x.value === d)?.mois ?? 12
+const ordinal = (p: number) => (p === 1 ? '1er' : `${p}e`)
+
+/** Périodes possibles d'une durée : S1-S2, T1-T4, janvier-décembre (l'année n'en a qu'une). */
+export function periodesDe(d: DureeBudget): { value: number, title: string }[] {
+  const nombre = 12 / moisDeLaDuree(d)
+  return Array.from({ length: nombre }, (_, i) => {
+    const p = i + 1
+    const title = d === 'MENSUEL' ? MOIS_LONGS[i]
+      : d === 'TRIMESTRIEL' ? `${ordinal(p)} trimestre (${MOIS_COURTS[3 * i]} – ${MOIS_COURTS[3 * i + 2]})`
+        : d === 'SEMESTRIEL' ? `${ordinal(p)} semestre (${MOIS_COURTS[6 * i]} – ${MOIS_COURTS[6 * i + 5]})`
+          : 'Exercice entier'
+    return { value: p, title }
+  })
+}
+
+/** Premier et dernier mois (1-12) couverts par une période. */
+export function moisDeLaPeriode(d?: string | null, periode?: number | null): [number, number] {
+  const nombre = moisDeLaDuree(d)
+  const p = Math.max(1, Math.min(12 / nombre, Number(periode) || 1))
+  return [(p - 1) * nombre + 1, p * nombre]
+}
+
+/** « Exercice 2026 », « 2e semestre 2026 », « 4e trimestre 2026 », « Décembre 2026 » (même libellé que le serveur). */
+export function libellePeriode(d?: string | null, periode?: number | null, exercice?: number | null): string {
+  const p = Number(periode) || 1
+  switch (d) {
+    case 'SEMESTRIEL': return `${ordinal(p)} semestre ${exercice}`
+    case 'TRIMESTRIEL': return `${ordinal(p)} trimestre ${exercice}`
+    case 'MENSUEL': return `${MOIS_LONGS[p - 1] || ''} ${exercice}`
+    default: return `Exercice ${exercice}`
+  }
+}
+
+/** Nom court de la durée : « année », « semestre », « trimestre », « mois ». */
+export const motPeriode = (d?: string | null) => ({ SEMESTRIEL: 'semestre', TRIMESTRIEL: 'trimestre', MENSUEL: 'mois' } as Record<string, string>)[d || ''] || 'année'
+
+/** true si le mois (1-12) appartient à la période. */
+export const dansLaPeriode = (mois: number, debut: number, fin: number) => mois >= debut && mois <= fin
 
 const formatteur = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const formatteurEntier = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 })

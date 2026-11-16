@@ -45,5 +45,11 @@ public record NoteFraisRequest(
      * disponible, aucun budget) : exigee a la soumission dans ces cas (voir ControleBudgetaireService).
      */
     @Size(max = 1000)
-    String justificationBudget
+    String justificationBudget,
+
+    /**
+     * Service qui engage la depense (facultatif, decaissement seulement) : la note est controlee sur l'enveloppe de
+     * ce service et sa depense se suit sur son budget.
+     */
+    Long serviceId
 ) {}

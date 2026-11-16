@@ -85,9 +85,25 @@ public class ParametresPaieService {
         p.setDirecteurDrh(req.directeurDrh());
         p.setFonctionDirecteur(req.fonctionDirecteur());
         p.setVilleSignature(req.villeSignature());
+        // Corrections du 16/11/2026 (V147) : CNSS patronale par branche, INPP par tranche d'effectif, conjoint à
+        // charge, jours de congé. Une valeur absente garde la valeur enregistrée.
+        if (req.tauxCnssPensionPatronale() != null) p.setTauxCnssPensionPatronale(req.tauxCnssPensionPatronale());
+        if (req.tauxCnssPf() != null) p.setTauxCnssPf(req.tauxCnssPf());
+        if (req.tauxCnssRp() != null) p.setTauxCnssRp(req.tauxCnssRp());
+        if (req.tauxInpp51A300() != null) p.setTauxInpp51A300(req.tauxInpp51A300());
+        if (req.tauxInppPlus300() != null) p.setTauxInppPlus300(req.tauxInppPlus300());
+        if (req.conjointACharge() != null) p.setConjointACharge(req.conjointACharge());
+        if (req.joursCongeParMois() != null) p.setJoursCongeParMois(req.joursCongeParMois());
+        if (req.joursCongeParTranche5Ans() != null) p.setJoursCongeParTranche5Ans(req.joursCongeParTranche5Ans());
+        // Le taux patronal total est la somme des trois branches (la saisie du total est ignorée).
+        p.setTauxCnssPatronale(nz(p.getTauxCnssPensionPatronale()).add(nz(p.getTauxCnssPf())).add(nz(p.getTauxCnssRp())));
         p = repository.save(p);
         log.info("Paramètres de paie mis à jour");
         return ParametresPaieResponse.from(p);
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     private ParametresPaie creerParDefaut() {
@@ -96,7 +112,7 @@ public class ParametresPaieService {
             .tauxLogement(new BigDecimal("0.30"))
             .tauxTransport(new BigDecimal("0.10"))
             .tauxCnssOuvriere(new BigDecimal("0.05"))
-            .tauxCnssPatronale(new BigDecimal("0.13"))
+            .tauxCnssPatronale(new BigDecimal("0.13"))       // 5 % + 6,5 % + 1,5 % (branches : valeurs par défaut)
             .tauxOnem(new BigDecimal("0.005"))
             .tauxInpp(new BigDecimal("0.03"))
             .reductionIprParEnfant(new BigDecimal("0.02"))

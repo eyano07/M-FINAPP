@@ -15,7 +15,9 @@ public record ControleBudgetaireRequest(
     Devise devise,
     @NotNull @Valid List<Depense> lignes,
     /** Note deja enregistree que l'on modifie : ses propres engagements ne sont pas comptes deux fois. */
-    Long noteId
+    Long noteId,
+    /** Service qui engage la depense (null : aucun) : la note est controlee sur l'enveloppe de ce service. */
+    Long serviceId
 ) {
     public record Depense(
         String compteNumero,

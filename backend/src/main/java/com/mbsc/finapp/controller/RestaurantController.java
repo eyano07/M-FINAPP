@@ -2,27 +2,31 @@ package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.logistique.ArticleRequest;
 import com.mbsc.finapp.dto.logistique.ArticleResponse;
+import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.dto.logistique.CodeArticleSuggereResponse;
 import com.mbsc.finapp.dto.logistique.EntrepotResponse;
-import com.mbsc.finapp.dto.logistique.StockGrandLivreResponse;
 import com.mbsc.finapp.dto.logistique.StockNiveauResponse;
 import com.mbsc.finapp.dto.restaurant.AnalyseVentesResponse;
 import com.mbsc.finapp.dto.restaurant.EmballageRequest;
 import com.mbsc.finapp.dto.restaurant.EmballageResponse;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageRequest;
 import com.mbsc.finapp.dto.restaurant.MouvementEmballageResponse;
+import com.mbsc.finapp.dto.restaurant.MouvementProvisionResponse;
 import com.mbsc.finapp.dto.restaurant.LotStockResponse;
 import com.mbsc.finapp.dto.restaurant.PlanSalleRequest;
+import com.mbsc.finapp.dto.restaurant.PlatPerimeResponse;
 import com.mbsc.finapp.dto.restaurant.ProductionRequest;
 import com.mbsc.finapp.dto.restaurant.ProductionResponse;
-import com.mbsc.finapp.dto.restaurant.ProvisionEntreeRequest;
 import com.mbsc.finapp.dto.restaurant.ProvisionSortieRequest;
 import com.mbsc.finapp.dto.restaurant.ModifierPrixVenteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteRequest;
 import com.mbsc.finapp.dto.restaurant.RecetteResponse;
+import com.mbsc.finapp.dto.restaurant.RetraitPerimesRequest;
 import com.mbsc.finapp.dto.restaurant.RestaurantAnalyseIaResponse;
 import com.mbsc.finapp.dto.restaurant.SalleRequest;
 import com.mbsc.finapp.dto.restaurant.SalleResponse;
+import com.mbsc.finapp.dto.restaurant.SortieBoissonRequest;
+import com.mbsc.finapp.dto.restaurant.SortieBoissonResponse;
 import com.mbsc.finapp.dto.restaurant.SortiePlatRequest;
 import com.mbsc.finapp.dto.restaurant.SortiePlatResponse;
 import com.mbsc.finapp.dto.restaurant.StatutTableRequest;
@@ -35,6 +39,9 @@ import com.mbsc.finapp.service.RestaurantAnalyseIaService;
 import com.mbsc.finapp.service.RestaurantService;
 import com.mbsc.finapp.service.VenteService;
 import jakarta.validation.Valid;
+import com.mbsc.finapp.dto.vente.DecisionRetourRequest;
+import com.mbsc.finapp.dto.vente.RetourVenteResponse;
+import com.mbsc.finapp.service.RetourVenteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -62,6 +69,7 @@ public class RestaurantController {
 
     private final RestaurantService service;
     private final VenteService venteService;
+    private final RetourVenteService retoursVentes;
     private final RestaurantAnalyseIaService analyseIaService;
 
     // ── Tableau de bord ───────────────────────────────────────────────────
@@ -113,12 +121,16 @@ public class RestaurantController {
         return service.listerCarte();
     }
 
-    /** Code proposé pour une nouvelle boisson, d'après son libellé et sa société (voir GenerateurCodeArticle). */
+    /**
+     * Code proposé pour un nouvel article de la carte : d'après son libellé et sa société pour une boisson (par
+     * défaut), d'après son libellé seul pour un plat ({@code type=PLAT}). Voir GenerateurCodeArticle.
+     */
     @GetMapping("/carte/code-suggere")
     public CodeArticleSuggereResponse suggererCodeArticle(
             @RequestParam(required = false) String libelle,
-            @RequestParam(required = false) String societe) {
-        return service.suggererCodeArticleCarte(libelle, societe);
+            @RequestParam(required = false) String societe,
+            @RequestParam(required = false) TypeArticle type) {
+        return service.suggererCodeArticleCarte(libelle, societe, type);
     }
 
     @PostMapping("/carte")
@@ -300,6 +312,12 @@ public class RestaurantController {
         return service.listerProvisions();
     }
 
+    /** Code proposé pour une nouvelle provision, d'après son libellé (préfixe PROV). Voir GenerateurCodeArticle. */
+    @GetMapping("/provisions/code-suggere")
+    public CodeArticleSuggereResponse suggererCodeProvision(@RequestParam(required = false) String libelle) {
+        return service.suggererCodeProvision(libelle);
+    }
+
     @PostMapping("/provisions")
     @ResponseStatus(HttpStatus.CREATED)
     public ArticleResponse creerProvision(@Valid @RequestBody ArticleRequest req) {
@@ -323,7 +341,7 @@ public class RestaurantController {
     }
 
     @GetMapping("/provisions/mouvements")
-    public List<StockGrandLivreResponse> grandLivreProvisions(
+    public List<MouvementProvisionResponse> grandLivreProvisions(
         @RequestParam(required = false) Long articleId,
         @RequestParam(required = false) Long entrepotId,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
@@ -332,12 +350,10 @@ public class RestaurantController {
         return service.grandLivreProvisions(articleId, entrepotId, du, au);
     }
 
-    @PostMapping("/provisions/entrees")
-    @ResponseStatus(HttpStatus.CREATED)
-    public void recevoirProvision(@Valid @RequestBody ProvisionEntreeRequest req) {
-        service.recevoirProvision(req);
-    }
-
+    /**
+     * Sortie d'une provision (type choisi dans une liste, observation libre). Il n'y a pas de route d'entrée : les
+     * entrées de provisions passent toujours par l'achat (note de frais), jamais par une réception saisie ici.
+     */
     @PostMapping("/provisions/sorties")
     @ResponseStatus(HttpStatus.CREATED)
     public void enregistrerSortieProvision(@Valid @RequestBody ProvisionSortieRequest req) {
@@ -354,7 +370,25 @@ public class RestaurantController {
         return service.listerSortiesPlats(du, au);
     }
 
-    /** Sortie comptabilisée au coût de production moyen (D 736x / C 361x). */
+    /**
+     * Plats périmés encore en stock : la date d'expiration de leur production (durée de conservation de la fiche
+     * technique) est passée sans que les portions aient été vendues.
+     */
+    @GetMapping("/plats/perimes")
+    public List<PlatPerimeResponse> listerPlatsPerimes() {
+        return service.listerPlatsPerimes();
+    }
+
+    /** Retire du stock les portions périmées : sortie « Périmé » avec son écriture, comme une sortie saisie à la main. */
+    @PostMapping("/plats/perimes/retirer")
+    public List<SortiePlatResponse> retirerPlatsPerimes(@RequestBody(required = false) RetraitPerimesRequest req) {
+        return service.retirerPlatsPerimes(req == null ? new RetraitPerimesRequest(null, null) : req);
+    }
+
+    /**
+     * Sortie comptabilisée au coût de production moyen, au compte de son motif (D 7361 à 7365, 62762 pour un plat offert
+     * ou 66171 pour un repas du personnel / C 361x).
+     */
     @PostMapping("/plats/sorties")
     @ResponseStatus(HttpStatus.CREATED)
     public SortiePlatResponse enregistrerSortiePlat(@Valid @RequestBody SortiePlatRequest req) {
@@ -365,6 +399,47 @@ public class RestaurantController {
     @PostMapping("/plats/sorties/{id}/annuler")
     public SortiePlatResponse annulerSortiePlat(@PathVariable Long id) {
         return service.annulerSortiePlat(id);
+    }
+
+    // ── Pertes des boissons sans consigne (casse, périmée, offerte : V134) ──
+
+    @GetMapping("/boissons/sorties")
+    public List<SortieBoissonResponse> listerSortiesBoissons(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au
+    ) {
+        return service.listerSortiesBoissons(du, au);
+    }
+
+    /** Sortie au coût moyen, au compte de la perte (casse : compte de la boisson ; périmée 60312 ; offerte 62761). */
+    @PostMapping("/boissons/sorties")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SortieBoissonResponse enregistrerSortieBoisson(@Valid @RequestBody SortieBoissonRequest req) {
+        return service.enregistrerSortieBoisson(req);
+    }
+
+    /** Remet la boisson en stock et extourne la pièce ; la perte reste dans l'historique, annulée. */
+    @PostMapping("/boissons/sorties/{id}/annuler")
+    public SortieBoissonResponse annulerSortieBoisson(@PathVariable Long id) {
+        return service.annulerSortieBoisson(id);
+    }
+
+    // ── Retours de ventes payées à approuver par les responsables (V134) ──
+
+    @GetMapping("/retours-ventes")
+    public List<RetourVenteResponse> listerRetoursVentes() {
+        return retoursVentes.listerPourResponsable();
+    }
+
+    @PostMapping("/retours-ventes/{id}/approuver")
+    public RetourVenteResponse approuverRetourVente(@PathVariable Long id,
+                                                    @Valid @RequestBody(required = false) DecisionRetourRequest req) {
+        return retoursVentes.approuver(id, req);
+    }
+
+    @PostMapping("/retours-ventes/{id}/refuser")
+    public RetourVenteResponse refuserRetourVente(@PathVariable Long id, @Valid @RequestBody DecisionRetourRequest req) {
+        return retoursVentes.refuser(id, req);
     }
 
     /** Annule une réception directe ou une sortie de provision saisie par erreur. */

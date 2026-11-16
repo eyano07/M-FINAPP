@@ -75,6 +75,40 @@ public class StorageService {
         return new FileSystemResource(fichier);
     }
 
+    /** Vrai si un fichier existe a ce chemin relatif (synchronisation entre serveurs). */
+    public boolean existe(String cheminRelatif) {
+        Path fichier = sousLaRacine(cheminRelatif);
+        return Files.isRegularFile(fichier);
+    }
+
+    /**
+     * Ecrit un fichier a un chemin relatif donne : copie d'un fichier de l'autre serveur (synchronisation), au meme
+     * chemin que celui enregistre en base. Un fichier deja present n'est jamais remplace.
+     */
+    public void ecrireA(String cheminRelatif, java.io.InputStream contenu) {
+        Path fichier = sousLaRacine(cheminRelatif);
+        try {
+            if (Files.exists(fichier)) return;
+            Files.createDirectories(fichier.getParent());
+            Path partiel = fichier.resolveSibling(fichier.getFileName() + ".partiel");
+            Files.copy(contenu, partiel, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.move(partiel, fichier, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Echec de l'ecriture du fichier " + cheminRelatif, e);
+        }
+    }
+
+    private Path sousLaRacine(String cheminRelatif) {
+        if (!StringUtils.hasText(cheminRelatif) || Path.of(cheminRelatif).isAbsolute()) {
+            throw new IllegalArgumentException("Chemin de stockage invalide");
+        }
+        Path fichier = racine.resolve(cheminRelatif).normalize();
+        if (!fichier.startsWith(racine) || fichier.equals(racine)) {
+            throw new IllegalArgumentException("Chemin de stockage invalide");
+        }
+        return fichier;
+    }
+
     /** Supprime un fichier precedemment stocke (best-effort). */
     public void supprimer(String cheminRelatif) {
         try {

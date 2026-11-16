@@ -14,11 +14,14 @@ import java.util.List;
  *                           CMP du plat.
  * @param mouvementSortieRef mouvement de sortie des ingredients (journal STOCK).
  * @param mouvementEntreeRef mouvement d'entree des portions (journal STOCK).
+ * @param dateExpiration     date d'expiration des portions (production + duree de conservation de la fiche) ;
+ *                           null quand le plat ne se perime pas.
  */
 public record ProductionResponse(
     Long id,
     String reference,
     LocalDate dateProduction,
+    LocalDate dateExpiration,
     Long platId,
     String platCode,
     String platLibelle,
@@ -47,6 +50,7 @@ public record ProductionResponse(
             p.getId(),
             p.getReference(),
             p.getDateProduction(),
+            p.getDateExpiration(),
             plat.getId(), plat.getCode(), plat.getLibelle(), plat.getUniteMesure(),
             entrepot.getId(), entrepot.getNom(),
             p.getQuantite(),

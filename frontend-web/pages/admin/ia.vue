@@ -22,6 +22,7 @@ interface Fournisseur {
 interface Modeles { modeleActuel: string, modeleParDefaut: string, modeles: string[] }
 
 const api = useApi()
+const dialogues = useDialogues()
 const iaDesactivee = ref(false)
 const fournisseurs = ref<Fournisseur[]>([])
 const chargement = ref(true)
@@ -99,7 +100,16 @@ async function enregistrer(f: Fournisseur) {
 }
 
 async function retirer(f: Fournisseur) {
-  if (!confirm(`Retirer la clé ${f.libelle} ? ${f.id === 'anthropic' ? 'Les analyses passeront sur OpenAI.' : 'Les fonctions IA courantes n’auront plus de fournisseur (hors clé Anthropic).'}`)) return
+  const confirme = await dialogues.confirmer({
+    titre: `Retirer la clé ${f.libelle} ?`,
+    message: f.id === 'anthropic'
+      ? 'Les analyses passeront sur OpenAI.'
+      : 'Les fonctions IA courantes n’auront plus de fournisseur (hors clé Anthropic).',
+    bouton: 'Retirer la clé',
+    nature: 'danger',
+    icone: 'mdi-key-remove',
+  })
+  if (!confirme) return
   action[f.id] = 'retirer'
   erreur.value = ''
   try {

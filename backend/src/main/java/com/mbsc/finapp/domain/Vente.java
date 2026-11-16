@@ -122,6 +122,16 @@ public class Vente {
     @ToString.Exclude
     private PieceComptable piece;
 
+    /**
+     * Piece du journal ANALYTIQUE qui reflete cette vente en classe 9 (chiffre d'affaires HT et cout des ventes par
+     * activite) — voir AnalytiqueVentesService. {@code null} tant qu'elle n'est pas refletee : la reprise faite au
+     * demarrage de l'application rattrape alors la vente.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "piece_analytique_id")
+    @ToString.Exclude
+    private PieceComptable pieceAnalytique;
+
     /** Mouvement de sortie de stock (cout des ventes), null pour une vente de services seuls. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "mouvement_id")
@@ -204,16 +214,23 @@ public class Vente {
         this.lignes.add(ligne);
     }
 
-    /** Libelle du client, quelle que soit la facon dont il a ete renseigne. */
+    /** Designation d'une vente sans client : un simple tiret (libelles, facture, recu, journal). */
+    public static final String CLIENT_NON_RENSEIGNE = "-";
+
+    /** Libelle du client, quelle que soit la facon dont il a ete renseigne ; « - » s'il ne l'a pas ete. */
     public String designationClient() {
         if (client != null) {
             return client.getNom();
         }
-        return clientNom == null || clientNom.isBlank() ? "Client comptoir" : clientNom;
+        return clientNom == null || clientNom.isBlank() ? CLIENT_NON_RENSEIGNE : clientNom.trim();
     }
 
-    /** true si la creance est soldee (ou si la vente n'en genere pas). */
+    /**
+     * true si la vente est encaissee : validee, et sa creance soldee (ou aucune creance a regler, pour un
+     * reglement comptant). Un brouillon n'est jamais regle : rien n'est comptabilise, le client n'a pas paye.
+     */
     public boolean estReglee() {
-        return modeReglement != ModeReglement.CREDIT || pieceReglement != null;
+        return statut != StatutVente.BROUILLON
+            && (modeReglement != ModeReglement.CREDIT || pieceReglement != null);
     }
 }

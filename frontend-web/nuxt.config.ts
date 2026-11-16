@@ -33,6 +33,7 @@ export default defineNuxtConfig({
     '@mdi/font/css/materialdesignicons.min.css',
     'vuetify/styles',
     '~/assets/styles/classroom.scss',
+    '~/assets/styles/responsive.scss',
   ],
 
   vite: {
@@ -57,6 +58,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
+      // Version affichée dans le pied du menu (modifiable sans recompiler : NUXT_PUBLIC_APP_VERSION).
+      appVersion: '2.8',
     },
   },
 })

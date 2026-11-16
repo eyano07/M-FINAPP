@@ -3,15 +3,26 @@ definePageMeta({ layout: 'blank' })
 
 import { useParametresStore } from '~/stores/parametres'
 
-const email = ref('')
+// Identifiant de connexion : nom d'utilisateur OU adresse e-mail (le champ API s'appelle toujours « email »).
+const identifiant = ref('')
 const motDePasse = ref('')
 const loading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
+// Double authentification (audit SYSCOHADA du 10/11/2026, C-23) : le serveur demande le code après le mot de passe.
+const codeDemande = ref(false)
+const code = ref('')
 
 const { login } = useAuth()
+// Retour de la page « Choisissez votre mot de passe » (mot de passe provisoire remplacé) : on se reconnecte.
+const motDePasseChange = useRoute().query.motDePasse === 'change'
+// Activation du mode local lancée depuis cet onglet : les comptes viennent maintenant du serveur en ligne.
+const apresActivation = ref(false)
 const parametresStore = useParametresStore()
-onMounted(() => { parametresStore.charger() })
+onMounted(() => {
+  parametresStore.charger()
+  apresActivation.value = activationModeLocalRecente()
+})
 
 const year = new Date().getFullYear()
 
@@ -23,11 +34,22 @@ async function submit() {
   error.value = ''
   loading.value = true
   try {
-    await login(email.value, motDePasse.value)
+    await login(identifiant.value.trim(), motDePasse.value, codeDemande.value ? code.value.trim() : undefined)
+    if (apresActivation.value) {
+      oublierActivationModeLocal()
+      await navigateTo('/admin/synchronisation')
+      return
+    }
     await navigateTo('/dashboard')
   } catch (e: any) {
-    error.value =
-      e?.data?.message || 'Identifiants invalides. Veuillez réessayer.'
+    const codeErreur = e?.data?.code
+    if (codeErreur === 'DOUBLE_AUTH_REQUISE' || codeErreur === 'CODE_DOUBLE_AUTH_INCORRECT') {
+      codeDemande.value = true
+      code.value = ''
+      error.value = codeErreur === 'DOUBLE_AUTH_REQUISE' ? '' : messageErreurApi(e, 'Code incorrect.')
+      return
+    }
+    error.value = messageErreurApi(e, 'Identifiants invalides. Veuillez réessayer.')
   } finally {
     loading.value = false
   }
@@ -91,21 +113,34 @@ async function submit() {
         <h2 class="acces__titre">Connexion</h2>
         <p class="acces__sous">Entrez vos identifiants pour ouvrir votre espace.</p>
 
+        <v-alert v-if="motDePasseChange && !error" type="success" variant="tonal" density="compact" rounded="lg" class="mb-6">
+          Mot de passe enregistré : connectez-vous avec votre nouveau mot de passe.
+        </v-alert>
+        <v-alert v-if="apresActivation && !error" type="info" variant="tonal" density="compact" rounded="lg" class="mb-6">
+          Mode local : les comptes de ce serveur viennent d'être remplacés par ceux du serveur en ligne. Connectez-vous
+          avec votre identifiant et votre mot de passe du serveur en ligne ; vous verrez ensuite le résultat de l'activation.
+        </v-alert>
         <v-alert v-if="error" type="error" variant="tonal" density="compact" rounded="lg" class="mb-6" role="alert">
           {{ error }}
         </v-alert>
 
         <v-form class="acces__form" @submit.prevent="submit">
           <div class="champ">
-            <label class="champ__label" for="login-email">Adresse e-mail</label>
-            <v-text-field id="login-email" v-model="email" placeholder="vous@exemple.com" type="email"
-              prepend-inner-icon="mdi-email-outline" autocomplete="username" required hide-details="auto" />
+            <label class="champ__label" for="login-email">Nom d'utilisateur ou adresse e-mail</label>
+            <v-text-field id="login-email" v-model="identifiant" placeholder="nom_utilisateur ou vous@exemple.com" type="text"
+              prepend-inner-icon="mdi-account-outline" autocomplete="username" autocapitalize="none" autocorrect="off"
+              spellcheck="false" required hide-details="auto" />
           </div>
           <div class="champ">
             <label class="champ__label" for="login-mdp">Mot de passe</label>
             <v-text-field id="login-mdp" v-model="motDePasse" :type="showPassword ? 'text' : 'password'"
               prepend-inner-icon="mdi-lock-outline" :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
               autocomplete="current-password" required hide-details="auto" @click:append-inner="showPassword = !showPassword" />
+          </div>
+          <div v-if="codeDemande" class="champ">
+            <label class="champ__label" for="login-code">Code de votre application d'authentification</label>
+            <v-text-field id="login-code" v-model="code" placeholder="123456" inputmode="numeric" maxlength="6"
+              prepend-inner-icon="mdi-shield-key-outline" autocomplete="one-time-code" autofocus hide-details="auto" />
           </div>
           <v-btn type="submit" color="primary" size="large" block :loading="loading" class="acces__btn" elevation="0">
             Se connecter

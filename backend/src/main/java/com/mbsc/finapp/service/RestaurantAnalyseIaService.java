@@ -61,7 +61,7 @@ public class RestaurantAnalyseIaService {
         "required", List.of("synthese", "pointsForts", "pointsAttention", "recommandations"),
         "additionalProperties", false);
 
-    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public RestaurantAnalyseIaResponse analyser(LocalDate du, LocalDate au) {
         LocalDate fin = au != null ? au : LocalDate.now();
@@ -88,7 +88,7 @@ public class RestaurantAnalyseIaService {
     }
 
     /** Pendant de {@link #analyser} pour le tableau de bord des provisions (vivres, épices, charbon...). */
-    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public RestaurantAnalyseIaResponse analyserProvisions(LocalDate du, LocalDate au) {
         LocalDate fin = au != null ? au : LocalDate.now();

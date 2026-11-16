@@ -3,6 +3,7 @@ definePageMeta({ roles: ['ADMIN'] })
 
 import { useParametresStore } from '~/stores/parametres'
 import { MODELES_ENTETE, MODELE_ENTETE_DEFAUT, type ModeleEntete } from '~/composables/useModeleEntete'
+import type { InformationsLiasse } from '~/composables/useLiasseFiscale'
 
 const api = useApi()
 const parametresStore = useParametresStore()
@@ -26,11 +27,51 @@ const form = reactive({
   modeleEntete: MODELE_ENTETE_DEFAUT as ModeleEntete,
 })
 
+// ── Liasse fiscale OHADA (fiches R1 à R3, facultatives) ─────────────────
+function liasseVide(): InformationsLiasse {
+  return {
+    pays: '', directionImpots: '', centreDepot: '', sigleUsuel: '', boitePostale: '', codePostal: '', ville: '',
+    dateArreteComptes: '', exercicePrecedentClos: '', dureeExercicePrecedentMois: null,
+    greffe: '', numeroRepertoireEntites: '', numeroCaisseSociale: '', codeImportateur: '', codeActivitePrincipale: '',
+    activitePrincipale: '', personneContact: '', professionnelComptable: '', visaExpertComptable: '',
+    etatsApprouvesAg: null, nomSignataire: '', qualiteSignataire: '', dateSignature: '', domiciliations: [],
+    formeJuridique: '', regimeFiscal: null, paysSiege: null, nbEtablissementsPays: null, nbEtablissementsHorsPays: null,
+    premiereAnneeExercice: null, controle: null, activites: [], dirigeants: [], administrateurs: [],
+  }
+}
+const liasse = ref<InformationsLiasse>(liasseVide())
+
+/** Fusionne la réponse du serveur (valeurs nulles) dans un formulaire aux champs tous définis. */
+function versFormulaire(r: Partial<InformationsLiasse> | null): InformationsLiasse {
+  const f = liasseVide() as Record<string, unknown>
+  for (const [k, v] of Object.entries(r || {})) {
+    if (v !== null && v !== undefined && k in f) f[k] = v
+  }
+  return f as unknown as InformationsLiasse
+}
+
+/** Chaînes vides → null ; lignes de liste entièrement vides retirées. */
+function versServeur(l: InformationsLiasse) {
+  const nettoyer = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [
+    k, typeof v === 'string' ? (v.trim() || null) : (v === '' ? null : v),
+  ]))
+  const nonVide = (o: Record<string, unknown>) => Object.values(o).some(v => v !== null && v !== undefined && v !== '')
+  const corps = nettoyer({ ...l, domiciliations: [], activites: [], dirigeants: [], administrateurs: [] })
+  for (const liste of ['domiciliations', 'activites', 'dirigeants', 'administrateurs'] as const) {
+    corps[liste] = (l[liste] as unknown as Record<string, unknown>[]).map(nettoyer).filter(nonVide)
+  }
+  return corps
+}
+
 async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    await parametresStore.charger()
+    const [, infosLiasse] = await Promise.all([
+      parametresStore.charger(),
+      api<Partial<InformationsLiasse>>('/parametres/liasse'),
+    ])
+    liasse.value = versFormulaire(infosLiasse)
     form.nom = parametresStore.parametres.nom || ''
     form.nomComplet = parametresStore.parametres.nomComplet || ''
     form.slogan = parametresStore.parametres.slogan || ''
@@ -73,6 +114,11 @@ async function enregistrer() {
         modeleEntete: form.modeleEntete,
       },
     })
+    const enregistree = await api<Partial<InformationsLiasse>>('/parametres/liasse', {
+      method: 'PUT',
+      body: versServeur(liasse.value),
+    })
+    liasse.value = versFormulaire(enregistree)
     await parametresStore.charger()
     succes.value = 'Paramètres enregistrés.'
   } catch (e: any) {
@@ -412,6 +458,22 @@ async function onLogoChoisi(e: Event) {
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- ── Liasse fiscale OHADA ───────────────────────────────── -->
+    <div class="param-card param-liasse mt-5">
+      <p class="param-card__title">
+        <v-icon icon="mdi-file-table-outline" size="16" class="mr-2" />
+        Liasse fiscale OHADA – fiches R1 à R3 (facultatif)
+      </p>
+      <p class="param-entete-intro">
+        Ces renseignements remplissent la page de garde et les fiches R1, R2 et R3 du classeur des états financiers.
+        Tous sont facultatifs : une case vide reste vide. La fiche R4 se coche seule d'après les notes renseignées.
+      </p>
+      <div v-if="loading" class="param-loading">
+        <v-progress-circular indeterminate color="primary" size="24" />
+      </div>
+      <ParametresLiasseFiscale v-else v-model="liasse" />
     </div>
 
     <v-btn
