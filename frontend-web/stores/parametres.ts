@@ -53,18 +53,28 @@ function assombrirRgbTriplet(rgb: string, facteur = 0.15): string {
  * Les badges de statut reellement semantiques (paye/valide/rejete...) sont
  * codes en hex direct ailleurs et restent donc inchanges par ce reglage.
  */
+/** Version éclaircie de la couleur de marque pour le thème nuit (mélange avec un vert très clair), en "#rrggbb". */
+function eclaircirPourNuit(hex: string): string {
+  const rgb = hexToRgbTriplet(hex)
+  if (!rgb) return '#3FBF7F'
+  const cible = [196, 246, 220]
+  return '#' + rgb.split(',').map((v, i) => Math.round(Number(v) * 0.6 + cible[i] * 0.4).toString(16).padStart(2, '0')).join('')
+}
+
 function appliquerCouleurPrimaire(couleur: string) {
   if (!import.meta.client || !couleur) return
+  const nuit = eclaircirPourNuit(couleur)
   document.documentElement.style.setProperty('--color-primary', couleur)
+  document.documentElement.style.setProperty('--color-primary-nuit', nuit)
 
-  let nomTheme = 'classroomLight'
   try {
     const theme = useTheme()
-    nomTheme = theme.name.value || nomTheme
-    const cible = theme.themes.value[nomTheme] ?? theme.themes.value.classroomLight
-    if (cible) {
-      cible.colors.primary = couleur
-      cible.colors.success = couleur
+    for (const [nom, c] of [['classroomLight', couleur], ['malachiteNuit', nuit]] as const) {
+      const cible = theme.themes.value[nom]
+      if (cible) {
+        cible.colors.primary = c
+        cible.colors.success = c
+      }
     }
   } catch {
     // useTheme() exige un contexte de composant actif : sans consequence si
@@ -79,11 +89,12 @@ function appliquerCouleurPrimaire(couleur: string) {
   // elements deja montes. On la patche donc directement via le CSSOM —
   // seul moyen d'atteindre tous les elements, presents et futurs, sans les
   // cibler un par un.
-  const rgb = hexToRgbTriplet(couleur)
   const sheet = (document.getElementById('vuetify-theme-stylesheet') as HTMLStyleElement | null)?.sheet
-  if (rgb && sheet) {
+  for (const [nom, c] of [['classroomLight', couleur], ['malachiteNuit', nuit]] as const) {
+    const rgb = hexToRgbTriplet(c)
+    if (!rgb || !sheet) continue
     const regle = Array.from(sheet.cssRules).find(
-      (r): r is CSSStyleRule => r instanceof CSSStyleRule && r.selectorText === `.v-theme--${nomTheme}`)
+      (r): r is CSSStyleRule => r instanceof CSSStyleRule && r.selectorText === `.v-theme--${nom}`)
     regle?.style.setProperty('--v-theme-primary', rgb)
     regle?.style.setProperty('--v-theme-success', rgb)
     regle?.style.setProperty('--v-theme-primary-darken-1', assombrirRgbTriplet(rgb))

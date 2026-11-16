@@ -415,7 +415,6 @@ function lignes(g: NavGroup): LigneMenu[] {
 <style scoped>
 /* Barre latérale « malachite » : fond vert très sombre dérivé de la couleur de marque ; la page active porte un filet vif. */
 .modern-drawer {
-  --nav-bg: color-mix(in srgb, var(--color-primary) 38%, #04120c);
   --nav-ink: rgba(255, 255, 255, 0.74);
   --nav-ink-strong: #ffffff;
   --nav-line: rgba(255, 255, 255, 0.09);

@@ -12,6 +12,14 @@
   --ink-soft: #55645c;
   --hairline: #dde5e1;
   --font-ui: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --surface: #ffffff;
+  --surface-2: #f7faf8;
+  --ink-2: #2b3a33;
+  --ink-faint: #7b8a82;
+  --color-primary-nuit: #3fbf7f;
+  /* Barre latérale et panneau de trésorerie (sombres dans les deux thèmes). */
+  --nav-bg: color-mix(in srgb, var(--color-primary) 38%, #04120c);
+  --hero-bg: color-mix(in srgb, var(--color-primary) 40%, #04120c);
   --mbsc-appbar-h: 60px;
   /* Couleur de marque personnalisable (admin > paramètres) — valeur de
      repli pour le tout premier rendu (SSR/avant hydratation), avant que
@@ -25,6 +33,36 @@
   --color-primary-light: color-mix(in srgb, var(--color-primary) 12%, white);
   --color-primary-lighter: color-mix(in srgb, var(--color-primary) 6%, white);
   --color-primary-mid: color-mix(in srgb, var(--color-primary) 45%, white);
+}
+
+/* ── Thème nuit « Malachite nuit » ─────────────────────────────
+   Écran seulement : une impression reste toujours en noir sur blanc. Le vert de marque est remplacé par sa version
+   éclaircie (calculée par stores/parametres.ts) ; !important car la couleur de marque est posée en style en ligne. */
+@media screen {
+  html[data-theme='dark'] {
+    --color-primary: var(--color-primary-nuit) !important;
+    --color-primary-dark: color-mix(in srgb, var(--color-primary) 80%, white);
+    --color-primary-darker: color-mix(in srgb, var(--color-primary) 55%, #07110d);
+    --color-primary-darkest: color-mix(in srgb, var(--color-primary) 30%, #07110d);
+    --color-primary-light: color-mix(in srgb, var(--color-primary) 16%, #0d1a14);
+    --color-primary-lighter: color-mix(in srgb, var(--color-primary) 9%, #0d1a14);
+    --color-primary-mid: color-mix(in srgb, var(--color-primary) 50%, #0d1a14);
+    --canvas: #07110d;
+    --surface: #0d1a14;
+    --surface-2: #12221a;
+    --hairline: #1f3329;
+    --mbsc-border: #1f3329;
+    --ink: #e7f0ea;
+    --ink-2: #c9d6ce;
+    --ink-soft: #97aa9f;
+    --ink-faint: #6c8075;
+    --mbsc-text-secondary: #97aa9f;
+    --nav-bg: #050c09;
+    --hero-bg: color-mix(in srgb, var(--color-primary) 22%, #08140f);
+    color-scheme: dark;
+  }
+  html[data-theme='dark'] .classroom-card:hover { box-shadow: 0 0 0 1px var(--hairline) !important; }
+  html[data-theme='dark'] img:not([src*='.svg']) { filter: brightness(0.92); }
 }
 
 html,
@@ -95,7 +133,7 @@ body {
   font-size: 0.78rem !important;
   font-weight: 600 !important;
   color: var(--ink-soft) !important;
-  background: color-mix(in srgb, var(--color-primary) 4%, white) !important;
+  background: var(--surface-2) !important;
 }
 .v-data-table .v-data-table__td {
   font-size: 0.875rem !important;
@@ -111,8 +149,8 @@ body {
 
   .v-data-table__tr--mobile {
     display: block;
-    background: #fff;
-    border: 1px solid #eef0f2;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
     border-left: 3px solid var(--color-primary);
     border-radius: 16px;
     margin: 0 0 14px;
@@ -129,16 +167,16 @@ body {
     gap: 14px;
     height: auto !important;
     padding: 12px 16px !important;
-    border-bottom: 1px solid #f4f5f6;
+    border-bottom: 1px solid var(--hairline);
   }
   .v-data-table__tr--mobile > .v-data-table__td:last-child { border-bottom: none; }
-  .v-data-table__tr--mobile > .v-data-table__td:nth-child(even) { background: #fafbfc; }
+  .v-data-table__tr--mobile > .v-data-table__td:nth-child(even) { background: var(--surface-2); }
 
   /* Premier champ = en-tete de la carte (identifiant principal de la ligne) */
   .v-data-table__tr--mobile > .v-data-table__td:first-child {
-    background: color-mix(in srgb, var(--color-primary) 5%, white);
+    background: var(--color-primary-lighter);
     padding: 14px 16px 13px !important;
-    border-bottom: 1px solid #eef2f0;
+    border-bottom: 1px solid var(--hairline);
   }
   .v-data-table__tr--mobile > .v-data-table__td:first-child .v-data-table__td-title {
     color: var(--color-primary);
@@ -146,12 +184,12 @@ body {
   .v-data-table__tr--mobile > .v-data-table__td:first-child .v-data-table__td-value {
     font-size: 1rem;
     font-weight: 800;
-    color: #0f172a;
+    color: var(--ink);
   }
 
   /* Colonne d'actions (boutons) : pleine largeur, alignes en ligne, sans etiquette repetee */
   .v-data-table__tr--mobile > .v-data-table__td:has(.v-btn) {
-    background: #fafbfc;
+    background: var(--surface-2);
   }
   .v-data-table__tr--mobile > .v-data-table__td:has(.v-btn) .v-data-table__td-title {
     display: none;
@@ -173,7 +211,7 @@ body {
   .v-data-table__tr--mobile .v-data-table__td-value {
     font-size: 0.85rem;
     font-weight: 600;
-    color: #111827;
+    color: var(--ink);
     text-align: right;
     overflow-wrap: anywhere;
     min-width: 0;

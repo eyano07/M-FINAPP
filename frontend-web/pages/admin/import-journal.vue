@@ -467,17 +467,17 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
 
 <style scoped>
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.25rem; font-weight: 700; color: #111827; margin-top: 4px; }
+.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
+.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.25rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
 .sugg-card { border-left: 3px solid #7c3aed !important; }
 .sugg-item { padding: 10px 0; border-bottom: 1px solid #f6f6f6; }
 .sugg-item:last-of-type { border-bottom: none; }
 .sugg-item__ligne { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sugg-avant { font-family: monospace; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 1px 8px; border-radius: 6px; }
 .sugg-apres { font-family: monospace; font-weight: 700; color: var(--color-primary-dark); background: var(--color-primary-light); padding: 1px 8px; border-radius: 6px; }
-.sugg-libelle { font-size: 0.8rem; color: #6b7280; }
+.sugg-libelle { font-size: 0.8rem; color: var(--ink-soft); }
 .sugg-badge { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px; color: #7c3aed; background: #ede9fe; padding: 2px 7px; border-radius: 100px; }
-.sugg-raison { font-size: 0.78rem; color: #6b7280; margin: 4px 0 0; }
+.sugg-raison { font-size: 0.78rem; color: var(--ink-soft); margin: 4px 0 0; }
 </style>

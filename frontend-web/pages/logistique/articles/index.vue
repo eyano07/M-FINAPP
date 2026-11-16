@@ -466,7 +466,7 @@ const fmtUSD = (fc?: number) =>
 .art-section {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #9ca3af;
+  color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 4px 0 10px;
@@ -478,7 +478,7 @@ const fmtUSD = (fc?: number) =>
   display: flex;
   gap: 4px;
   padding: 4px;
-  background: #f3f4f6;
+  background: var(--surface-2);
   border-radius: 12px;
 }
 .type-switch__btn {
@@ -491,20 +491,20 @@ const fmtUSD = (fc?: number) =>
   border: none;
   border-radius: 9px;
   background: transparent;
-  color: #6b7280;
+  color: var(--ink-soft);
   font-size: 0.84rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
-.type-switch__btn:hover { color: #374151; }
+.type-switch__btn:hover { color: var(--ink-2); }
 .minerai-toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   padding: 12px 14px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--hairline);
   border-radius: 12px;
   background: #fffbeb;
 }
@@ -513,7 +513,7 @@ const fmtUSD = (fc?: number) =>
 .minerai-toggle__desc { font-size: 0.75rem; color: #a16207; line-height: 1.35; }
 
 .type-switch__btn--active {
-  background: #fff;
+  background: var(--surface);
   color: var(--color-primary);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }

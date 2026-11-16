@@ -387,8 +387,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
   flex-wrap: wrap;
 }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
+.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
+.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 .dialog-card { overflow: hidden; }
 .dialog-header {
   padding: 28px 28px 20px;
@@ -404,21 +404,21 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
   align-items: center;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin-bottom: 6px;
 }
 .gl-card__numero { font-weight: 700; }
 .gl-card__compte { font-size: 0.9rem; margin-bottom: 4px; }
-.gl-card__libelle { font-size: 0.85rem; color: #374151; margin: 0 0 6px; }
-.gl-card__taux { font-size: 0.75rem; color: #9ca3af; margin-bottom: 8px; }
+.gl-card__libelle { font-size: 0.85rem; color: var(--ink-2); margin: 0 0 6px; }
+.gl-card__taux { font-size: 0.75rem; color: var(--ink-faint); margin-bottom: 8px; }
 .gl-card__montants {
   display: flex;
   gap: 12px;
   padding-top: 10px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
 }
 .gl-card__montant { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.gl-card__montant-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.4px; color: #9ca3af; }
-.gl-card--totaux { background: #f9fafb; }
+.gl-card__montant-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.4px; color: var(--ink-faint); }
+.gl-card--totaux { background: var(--surface-2); }
 .gl-card--totaux .gl-card__montants { border-top: none; padding-top: 0; }
 </style>

@@ -1077,11 +1077,11 @@ const peutGererPieces = computed(() =>
   align-items: center;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--ink-soft);
   text-decoration: none;
   transition: color 0.15s;
 }
-.nd-back:hover { color: #111827; }
+.nd-back:hover { color: var(--ink); }
 
 /* ── Entête et signatures d'impression (masqués à l'écran) ──── */
 .nd-print-header,
@@ -1191,8 +1191,8 @@ const peutGererPieces = computed(() =>
 
 /* ── Info card ───────────────────────────────────────────── */
 .nd-card {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 18px;
   overflow: hidden;
   margin-bottom: 16px;
@@ -1202,9 +1202,9 @@ const peutGererPieces = computed(() =>
   font-weight: 700;
   letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: var(--ink-faint);
   padding: 16px 20px 12px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
   margin: 0;
 }
 .nd-card__section-title--row {
@@ -1233,13 +1233,13 @@ const peutGererPieces = computed(() =>
   align-items: center;
   font-size: 0.82rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--ink-2);
 }
 .nd-ligne__compte-edit { grid-column: 1 / 2; max-width: 420px; padding: 4px 0; }
 .nd-ligne__desc {
   grid-column: 1 / 2;
   font-size: 0.78rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin: 0;
 }
 .nd-ligne__badges {
@@ -1254,7 +1254,7 @@ const peutGererPieces = computed(() =>
   grid-column: 2;
   font-size: 0.9rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1283,12 +1283,12 @@ const peutGererPieces = computed(() =>
 .nd-piece__nom {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nd-piece__meta { font-size: 0.72rem; color: #9ca3af; }
+.nd-piece__meta { font-size: 0.72rem; color: var(--ink-faint); }
 
 /* ── Aperçu pièce jointe ─────────────────────────────────── */
 .nd-apercu-card { display: flex; flex-direction: column; height: 100%; }
@@ -1298,13 +1298,13 @@ const peutGererPieces = computed(() =>
   justify-content: space-between;
   gap: 12px;
   padding: 10px 8px 10px 18px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--hairline);
   flex-shrink: 0;
 }
 .nd-apercu-head__nom {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1317,17 +1317,17 @@ const peutGererPieces = computed(() =>
   align-items: center;
   justify-content: center;
   overflow: auto;
-  background: #f3f4f6;
+  background: var(--surface-2);
   padding: 16px;
 }
 .nd-apercu-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
-.nd-apercu-pdf { width: 100%; height: 100%; border: none; background: #fff; }
+.nd-apercu-pdf { width: 100%; height: 100%; border: none; background: var(--surface); }
 .nd-apercu-non-supporte {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   text-align: center;
 }
 .nd-apercu-non-supporte p { margin: 0; }
@@ -1339,15 +1339,15 @@ const peutGererPieces = computed(() =>
   gap: 12px;
   padding: 12px 20px;
 }
-.nd-info-row:hover { background: #fafafa; }
+.nd-info-row:hover { background: var(--surface-2); }
 .nd-info-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 30px; height: 30px;
   border-radius: 8px;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--surface-2);
+  color: var(--ink-soft);
   flex-shrink: 0;
   margin-top: 1px;
 }
@@ -1355,14 +1355,14 @@ const peutGererPieces = computed(() =>
   display: block;
   font-size: 0.72rem;
   font-weight: 600;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin-bottom: 2px;
 }
 .nd-info-val {
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #111827;
+  color: var(--ink);
 }
 
 /* ── Timeline ────────────────────────────────────────────── */
@@ -1372,7 +1372,7 @@ const peutGererPieces = computed(() =>
   align-items: center;
   gap: 8px;
   padding: 32px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -1412,11 +1412,11 @@ const peutGererPieces = computed(() =>
   margin-bottom: 4px;
 }
 /* Fonction de l'utilisateur, devant son nom : « Directeur Financier · Jean Dupont ». */
-.nd-fonction { color: #6b7280; font-weight: 500; }
+.nd-fonction { color: var(--ink-soft); font-weight: 500; }
 .nd-timeline-item__who { min-width: 0; overflow-wrap: anywhere; }
 .nd-timeline-item__who .nd-fonction { font-size: 0.8rem; }
-.nd-timeline-item__author { font-size: 0.875rem; color: #111827; }
-.nd-timeline-item__date   { font-size: 0.72rem; color: #9ca3af; white-space: nowrap; }
+.nd-timeline-item__author { font-size: 0.875rem; color: var(--ink); }
+.nd-timeline-item__date   { font-size: 0.72rem; color: var(--ink-faint); white-space: nowrap; }
 .nd-timeline-item__statut {
   display: inline-block;
   font-size: 0.68rem;
@@ -1427,12 +1427,12 @@ const peutGererPieces = computed(() =>
   border-radius: 100px;
   margin-bottom: 4px;
 }
-.nd-timeline-item__comment { font-size: 0.85rem; color: #374151; margin: 0; }
+.nd-timeline-item__comment { font-size: 0.85rem; color: var(--ink-2); margin: 0; }
 
 /* ── Action card ─────────────────────────────────────────── */
 .nd-action-card {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 18px;
   overflow: hidden;
   position: sticky;
@@ -1445,9 +1445,9 @@ const peutGererPieces = computed(() =>
   font-weight: 700;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: var(--ink-faint);
   padding: 16px 20px 12px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
 }
 .nd-action-card__body {
   padding: 18px 18px 20px;
@@ -1459,9 +1459,9 @@ const peutGererPieces = computed(() =>
 .nd-actions-list { display: flex; flex-direction: column; gap: 8px; }
 
 .nd-field { display: flex; flex-direction: column; gap: 6px; }
-.nd-label { font-size: 0.8rem; font-weight: 600; color: #374151; }
+.nd-label { font-size: 0.8rem; font-weight: 600; color: var(--ink-2); }
 
-.nd-divider { height: 1px; background: #f3f4f6; }
+.nd-divider { height: 1px; background: var(--surface-2); }
 
 .nd-no-action {
   display: flex;
@@ -1470,7 +1470,7 @@ const peutGererPieces = computed(() =>
   gap: 8px;
   padding: 24px;
   text-align: center;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.82rem;
 }
 .nd-no-action p { margin: 0; }
@@ -1484,7 +1484,7 @@ const peutGererPieces = computed(() =>
 
   /* padding-bottom : degage la place du pied de page fixe (approbations)
      pour qu'aucun contenu ne passe dessous. */
-  .nd-page { max-width: 100%; padding: 0 0 95px; font-size: 11.5px; color: #1f2937; }
+  .nd-page { max-width: 100%; padding: 0 0 95px; font-size: 11.5px; color: var(--ink); }
   .nd-layout { display: block; }
   .nd-left { width: 100%; }
 
@@ -1514,9 +1514,9 @@ const peutGererPieces = computed(() =>
     flex-shrink: 0;
     overflow: hidden;
   }
-  .nd-print-header__logo--image { background: #fff; border: 1px solid #e5e7eb; }
+  .nd-print-header__logo--image { background: var(--surface); border: 1px solid var(--hairline); }
   .nd-print-header__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
-  .nd-print-header__company { display: block; font-size: 1.15rem; font-weight: 800; color: #111827; letter-spacing: -0.2px; }
+  .nd-print-header__company { display: block; font-size: 1.15rem; font-weight: 800; color: var(--ink); letter-spacing: -0.2px; }
   .nd-print-header__doc {
     display: block;
     font-size: 0.68rem;
@@ -1534,7 +1534,7 @@ const peutGererPieces = computed(() =>
   .nd-print-header__ref {
     font-size: 0.8rem;
     font-weight: 800;
-    color: #111827;
+    color: var(--ink);
     font-variant-numeric: tabular-nums;
   }
   .nd-print-status-pill {
@@ -1546,7 +1546,7 @@ const peutGererPieces = computed(() =>
     padding: 3px 11px;
     border-radius: 100px;
   }
-  .nd-print-header__date { font-size: 0.66rem; color: #9ca3af; }
+  .nd-print-header__date { font-size: 0.66rem; color: var(--ink-faint); }
 
   /* ── Banniere objet / montant, teintee selon le statut ───────── */
   .nd-hero {
@@ -1592,7 +1592,7 @@ const peutGererPieces = computed(() =>
   /* ── Cartes de section ────────────────────────────────────── */
   .nd-card {
     break-inside: avoid;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--hairline);
     border-radius: 10px;
     margin-bottom: 6px;
   }
@@ -1623,7 +1623,7 @@ const peutGererPieces = computed(() =>
   .nd-info-grid { padding: 0; }
   .nd-info-row { padding: 4px 14px; gap: 8px; }
   .nd-info-row:hover { background: none; }
-  .nd-info-icon { width: 22px; height: 22px; background: #f3f4f6 !important; }
+  .nd-info-icon { width: 22px; height: 22px; background: var(--surface-2) !important; }
   .nd-info-label { font-size: 0.62rem; margin-bottom: 0; }
   .nd-info-val { font-size: 0.78rem; }
 
@@ -1681,9 +1681,9 @@ const peutGererPieces = computed(() =>
     left: 0;
     right: 0;
     bottom: 0;
-    background: #fff;
+    background: var(--surface);
     padding: 10px 16px 9px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--hairline);
     border-radius: 10px;
     break-inside: avoid;
   }
@@ -1693,7 +1693,7 @@ const peutGererPieces = computed(() =>
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: #9ca3af;
+    color: var(--ink-faint);
   }
   /* wrap plutôt que d'écraser : 5 colonnes (Demandeur, Bénéficiaire, DFIN,
      DA, Caissier) sur une feuille A4 restent lisibles, mais mieux vaut
@@ -1716,12 +1716,12 @@ const peutGererPieces = computed(() =>
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: #374151;
+    color: var(--ink-2);
   }
   .nd-print-sign__name {
     display: block;
     font-size: 0.7rem;
-    color: #111827;
+    color: var(--ink);
     margin: auto 0 2px;
   }
   .nd-print-sign__line { border-top: 1px solid #111827; margin-top: auto; }
@@ -1729,7 +1729,7 @@ const peutGererPieces = computed(() =>
   .nd-print-sign__hint {
     display: block;
     font-size: 0.56rem;
-    color: #9ca3af;
+    color: var(--ink-faint);
     font-style: italic;
     margin-top: 3px;
   }
@@ -1738,6 +1738,6 @@ const peutGererPieces = computed(() =>
 /* ── Contrôle budgétaire ───────────────────────────────────── */
 .nd-card--budget .nd-card__body { padding: 4px 20px 14px; }
 .nd-justif { margin-top: 6px; }
-.nd-justif--lecture p { margin: 4px 0 0; font-size: 0.85rem; color: #374151; white-space: pre-line; }
+.nd-justif--lecture p { margin: 4px 0 0; font-size: 0.85rem; color: var(--ink-2); white-space: pre-line; }
 .nd-hint-budget { font-size: 0.78rem; color: #b45309; margin: 0 0 6px; font-weight: 600; }
 </style>

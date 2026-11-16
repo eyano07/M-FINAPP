@@ -247,24 +247,24 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 
 <style scoped>
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
+.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
+.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 
 .etat-bloc { margin-bottom: 28px; }
 .etat-titre {
-  font-size: 1.05rem; font-weight: 700; color: #111827;
+  font-size: 1.05rem; font-weight: 700; color: var(--ink);
   margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary);
 }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .etat-table th {
   text-align: left; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.4px; color: #6b7280; background: #fafafa;
-  padding: 7px 8px; border-bottom: 1px solid #e5e7eb;
+  letter-spacing: 0.4px; color: var(--ink-soft); background: var(--surface-2);
+  padding: 7px 8px; border-bottom: 1px solid var(--hairline);
 }
-.etat-table td { padding: 5px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
-.etat-table tfoot td { font-weight: 700; color: #111827; border-top: 2px solid #e5e7eb; background: #fafafa; }
+.etat-table td { padding: 5px 8px; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
+.etat-table tfoot td { font-weight: 700; color: var(--ink); border-top: 2px solid var(--hairline); background: var(--surface-2); }
 .etat-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.etat-resultat { margin: 10px 0 0; font-size: 0.9rem; color: #111827; }
+.etat-resultat { margin: 10px 0 0; font-size: 0.9rem; color: var(--ink); }
 
 @media print {
   /* Chaque etat demarre sur une page neuve : une liasse se lit et s'archive

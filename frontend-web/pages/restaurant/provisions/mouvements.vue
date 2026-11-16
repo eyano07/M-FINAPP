@@ -383,7 +383,7 @@ const fmtUSD = (montant?: number | null) =>
 <style scoped>
 .rst-forms { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 @media (max-width: 900px) { .rst-forms { grid-template-columns: 1fr; } }
-.rst-form-title { font-size: 0.85rem; font-weight: 700; color: #374151; margin: 0 0 16px; display: flex; align-items: center; }
+.rst-form-title { font-size: 0.85rem; font-weight: 700; color: var(--ink-2); margin: 0 0 16px; display: flex; align-items: center; }
 .rst-card-head {
   display: flex;
   align-items: center;
@@ -391,7 +391,7 @@ const fmtUSD = (montant?: number | null) =>
   font-weight: 700;
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--ink-soft);
   padding: 16px 20px 12px;
 }
 </style>

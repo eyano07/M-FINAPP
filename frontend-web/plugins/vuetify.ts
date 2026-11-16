@@ -24,6 +24,29 @@ const classroomLight = {
   },
 }
 
+/**
+ * « Malachite nuit » : forêt très sombre (jamais un noir pur), surfaces légèrement relevées, vert de marque éclairci pour
+ * rester lisible. Le vert de marque réel est réappliqué par stores/parametres.ts (version éclaircie pour la nuit).
+ */
+const malachiteNuit = {
+  dark: true,
+  colors: {
+    background: '#07110D',
+    surface: '#0D1A14',
+    'surface-bright': '#14251D',
+    'surface-variant': '#97AA9F',
+    primary: '#3FBF7F',
+    secondary: '#8DB7FF',
+    accent: '#F3D28A',
+    error: '#F87171',
+    info: '#8DB7FF',
+    success: '#3FBF7F',
+    warning: '#F5B04C',
+    'on-surface': '#E7F0EA',
+    'on-background': '#E7F0EA',
+  },
+}
+
 export default defineNuxtPlugin((nuxtApp) => {
   const vuetify = createVuetify({
     ssr: true,
@@ -36,7 +59,7 @@ export default defineNuxtPlugin((nuxtApp) => {
     },
     theme: {
       defaultTheme: 'classroomLight',
-      themes: { classroomLight },
+      themes: { classroomLight, malachiteNuit },
     },
     icons: {
       defaultSet: 'mdi',

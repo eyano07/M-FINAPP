@@ -678,16 +678,16 @@ function fmtDate(iso: string) {
 <style scoped>
 .rdb-card-head {
   display: flex; align-items: center; font-size: 0.8rem; font-weight: 700;
-  letter-spacing: 0.3px; text-transform: uppercase; color: #6b7280; padding: 16px 20px 12px;
+  letter-spacing: 0.3px; text-transform: uppercase; color: var(--ink-soft); padding: 16px 20px 12px;
 }
 .panier-ligne {
   display: flex; align-items: center; gap: 10px; padding: 8px 0;
-  border-bottom: 1px dashed #e5e7eb;
+  border-bottom: 1px dashed var(--hairline);
 }
 .panier-ligne__info { flex: 1 1 auto; min-width: 0; }
-.panier-ligne__titre { font-size: 0.875rem; font-weight: 600; color: #111827; margin: 0; }
-.panier-ligne__detail { font-size: 0.75rem; color: #6b7280; margin: 2px 0 0; }
-.panier-ligne__montant { font-size: 0.875rem; font-weight: 600; color: #374151; white-space: nowrap; }
+.panier-ligne__titre { font-size: 0.875rem; font-weight: 600; color: var(--ink); margin: 0; }
+.panier-ligne__detail { font-size: 0.75rem; color: var(--ink-soft); margin: 2px 0 0; }
+.panier-ligne__montant { font-size: 0.875rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
 .champ-fournisseur { flex: 2 1 260px; }
 .champ-frais { flex: 1 1 200px; }
 .panier-frais {
@@ -695,11 +695,11 @@ function fmtDate(iso: string) {
   justify-content: space-between;
   gap: 12px;
   font-size: 0.8125rem;
-  color: #4b5563;
+  color: var(--ink-soft);
   padding: 8px 0 0;
 }
 .panier-total {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 0 0; font-size: 0.9rem; color: #111827;
+  padding: 10px 0 0; font-size: 0.9rem; color: var(--ink);
 }
 </style>

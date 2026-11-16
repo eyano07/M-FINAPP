@@ -42,8 +42,8 @@ function onClick() {
   gap: 10px;
   height: 100%;
   padding: 18px 20px 18px 22px;
-  background: #fff;
-  border: 1px solid #e8ebe9;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-left: 4px solid var(--accent);
   border-radius: 12px;
   color: inherit;
@@ -51,7 +51,7 @@ function onClick() {
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 .stat-card--clickable { cursor: pointer; }
-.stat-card--clickable:hover { background: #fbfcfb; border-color: color-mix(in srgb, var(--accent) 45%, #e8ebe9); border-left-color: var(--accent); }
+.stat-card--clickable:hover { background: var(--surface-2); border-color: color-mix(in srgb, var(--accent) 45%, var(--hairline)); border-left-color: var(--accent); }
 .stat-card--clickable:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, white); outline-offset: 2px; }
 
 .stat-card--green, .stat-card--primary { --accent: var(--color-primary); }
@@ -67,13 +67,13 @@ function onClick() {
   gap: 8px;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: #4b5563;
+  color: var(--ink-soft);
 }
 .stat-card__icon { color: var(--accent); }
 .stat-card__value {
   font-size: clamp(1.45rem, 2.2vw, 1.85rem);
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   letter-spacing: -0.02em;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;

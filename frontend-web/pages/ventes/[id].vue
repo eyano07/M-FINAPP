@@ -1027,13 +1027,13 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 .vd-page { max-width: 1000px; margin: 0 auto; padding-bottom: 48px; }
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.4rem; font-weight: 700; color: #111827; margin: 0; display: flex; align-items: center; flex-wrap: wrap; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
+.page-title { font-size: 1.4rem; font-weight: 700; color: var(--ink); margin: 0; display: flex; align-items: center; flex-wrap: wrap; }
+.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 
 .vd-section {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #9ca3af;
+  color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 10px;
@@ -1041,8 +1041,8 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 
 .vd-infos { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
 .vd-info { display: flex; flex-direction: column; gap: 2px; }
-.vd-info__label { font-size: 0.72rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.4px; }
-.vd-info__value { font-size: 0.9rem; font-weight: 600; color: #111827; }
+.vd-info__label { font-size: 0.72rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.4px; }
+.vd-info__value { font-size: 0.9rem; font-weight: 600; color: var(--ink); }
 
 .vd-badge-service {
   font-size: 0.65rem;
@@ -1056,8 +1056,8 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
 
 .vd-totaux {
   padding: 16px 20px;
-  background: #f9fafb;
-  border: 1px solid #f0f0f0;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
   border-radius: 14px;
   max-width: 380px;
   margin-left: auto;
@@ -1068,24 +1068,24 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
   justify-content: space-between;
   gap: 16px;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   padding: 4px 0;
   font-variant-numeric: tabular-nums;
 }
-.vd-total-row strong { color: #111827; }
+.vd-total-row strong { color: var(--ink); }
 .vd-total-row--ttc {
   margin-top: 8px;
   padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--hairline);
   font-size: 1rem;
 }
 .vd-total-row--ttc strong { font-size: 1.15rem; color: var(--color-primary); }
-.vd-contre-valeur { text-align: right; font-size: 0.75rem; color: #9ca3af; padding-top: 4px; }
+.vd-contre-valeur { text-align: right; font-size: 0.75rem; color: var(--ink-faint); padding-top: 4px; }
 
 .vd-rendu-monnaie {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px dashed #e5e7eb;
+  border-top: 1px dashed var(--hairline);
 }
 .vd-rendu-monnaie__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .vd-rendu-monnaie--negatif strong { color: #dc2626 !important; }
@@ -1096,21 +1096,21 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
   align-items: center;
   gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
 }
 .vd-billet-coupure { max-width: 110px; }
 .vd-billet-qte { max-width: 72px; }
-.vd-billet-x { color: #9ca3af; font-size: 0.85rem; }
+.vd-billet-x { color: var(--ink-faint); font-size: 0.85rem; }
 .vd-billet-total {
   flex: 1;
   text-align: right;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
-.vd-lien { font-size: 0.82rem; color: #374151; display: flex; align-items: center; }
+.vd-lien { font-size: 0.82rem; color: var(--ink-2); display: flex; align-items: center; }
 .vd-lien code { margin-left: 4px; }
 
 /* En-tête de facture, signatures et ticket : impression uniquement */
@@ -1140,16 +1140,16 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
     flex-shrink: 0;
     overflow: hidden;
   }
-  .vd-print-header__logo--image { background: #fff; border: 1px solid #e5e7eb; }
+  .vd-print-header__logo--image { background: var(--surface); border: 1px solid var(--hairline); }
   .vd-print-header__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
-  .vd-print-header__marque { font-size: 1.2rem; color: #111827; margin: 0; }
-  .vd-print-header__doc { font-size: 0.85rem; color: #6b7280; margin: 2px 0 0; text-transform: uppercase; letter-spacing: 1px; }
-  .vd-print-header__meta { text-align: right; font-size: 0.8rem; color: #374151; }
+  .vd-print-header__marque { font-size: 1.2rem; color: var(--ink); margin: 0; }
+  .vd-print-header__doc { font-size: 0.85rem; color: var(--ink-soft); margin: 2px 0 0; text-transform: uppercase; letter-spacing: 1px; }
+  .vd-print-header__meta { text-align: right; font-size: 0.8rem; color: var(--ink-2); }
   .vd-print-header__meta p { margin: 0 0 2px; }
 
   .vd-page { max-width: none; padding: 0; }
-  .classroom-card { border: 1px solid #e5e7eb !important; box-shadow: none !important; }
-  .vd-totaux { background: #fff; }
+  .classroom-card { border: 1px solid var(--hairline) !important; box-shadow: none !important; }
+  .vd-totaux { background: var(--surface); }
 
   .vd-signature {
     display: flex;
@@ -1162,7 +1162,7 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
     border-top: 1px solid #9ca3af;
     padding-top: 6px;
     font-size: 0.78rem;
-    color: #6b7280;
+    color: var(--ink-soft);
     text-align: center;
   }
 

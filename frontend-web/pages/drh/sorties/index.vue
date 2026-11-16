@@ -236,8 +236,8 @@ const fmtDuree = (m: number | null) => (m === null || m === undefined ? '—' : 
 <style scoped>
 .print-only { display: none; }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-.etat-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--hairline); }
+.etat-table td { padding: 6px 8px; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
 
 @media print {
   .print-only { display: table; }

@@ -458,7 +458,7 @@ const fmtQte = (n?: number | null) =>
   flex: 0 0 100px;
   text-align: right;
   font-size: 0.8125rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   white-space: nowrap;
 }
 
@@ -471,5 +471,5 @@ const fmtQte = (n?: number | null) =>
   padding: 3px 0;
 }
 .fiche-total strong { font-size: 1.15rem; color: var(--color-primary); }
-.fiche-total--secondaire { font-size: 0.8125rem; color: #6b7280; }
+.fiche-total--secondaire { font-size: 0.8125rem; color: var(--ink-soft); }
 </style>

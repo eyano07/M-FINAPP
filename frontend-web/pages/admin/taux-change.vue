@@ -306,8 +306,8 @@ function fmtDate(d: string) {
 
 /* ── Cards ───────────────────────────────────────────────── */
 .tc-card {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 18px;
   padding: 22px;
 }
@@ -318,16 +318,16 @@ function fmtDate(d: string) {
   font-weight: 700;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin: 0 0 18px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
 }
 
 /* ── Form ────────────────────────────────────────────────── */
 .tc-fields { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
 .tc-field  { display: flex; flex-direction: column; gap: 6px; }
-.tc-label  { font-size: 0.8125rem; font-weight: 600; color: #374151; }
+.tc-label  { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
 .tc-save-btn { height: 50px !important; font-size: 0.9375rem !important; font-weight: 600 !important; }
 
 /* ── Historique ──────────────────────────────────────────── */
@@ -337,7 +337,7 @@ function fmtDate(d: string) {
   align-items: center;
   gap: 10px;
   padding: 32px 16px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -358,7 +358,7 @@ function fmtDate(d: string) {
   width: 12px; height: 12px;
   border-radius: 50%;
   background: #e5e7eb;
-  border: 2px solid #f3f4f6;
+  border: 2px solid var(--hairline);
   margin-top: 5px;
   flex-shrink: 0;
 }
@@ -375,7 +375,7 @@ function fmtDate(d: string) {
 .tc-hist-row__rate {
   font-size: 0.9rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 .tc-hist-row__badge {
@@ -389,24 +389,24 @@ function fmtDate(d: string) {
 .tc-hist-row__date {
   display: block;
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
 }
 .tc-hist-row__note {
   display: block;
   font-size: 0.78rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   font-style: italic;
   margin-top: 2px;
 }
 .tc-hist-row__source {
   display: block;
   font-size: 0.78rem;
-  color: #374151;
+  color: var(--ink-2);
   margin-top: 2px;
 }
 /* Un taux anterieur a l'obligation de source : signale sans alarmer. */
 .tc-hist-row__source--absente {
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-style: italic;
 }
 </style>

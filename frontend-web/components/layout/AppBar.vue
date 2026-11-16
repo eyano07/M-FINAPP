@@ -4,6 +4,14 @@ import { useNotificationsStore, type NotificationItem } from '~/stores/notificat
 import { useParametresStore } from '~/stores/parametres'
 
 defineProps<{ drawerOpen: boolean }>()
+
+// Mode d'affichage : clair, nuit ou celui du système (mémorisé sur ce navigateur).
+const { mode: modeAffichage, effectif: modeEffectif, choisir: choisirMode } = useModeAffichage()
+const MODES_AFFICHAGE = [
+  { valeur: 'clair', libelle: 'Clair', icone: 'mdi-white-balance-sunny' },
+  { valeur: 'sombre', libelle: 'Nuit', icone: 'mdi-weather-night' },
+  { valeur: 'systeme', libelle: 'Comme le système', icone: 'mdi-monitor' },
+] as const
 const emit = defineEmits<{ (e: 'toggle-drawer'): void }>()
 
 const auth = useAuthStore()
@@ -69,6 +77,19 @@ async function ouvrirNotification(n: NotificationItem) {
     </div>
 
     <v-spacer />
+
+    <v-menu location="bottom end">
+      <template #activator="{ props }">
+        <v-btn icon variant="text" size="small" class="modern-appbar__action" v-bind="props"
+          :aria-label="`Affichage : ${modeEffectif === 'sombre' ? 'nuit' : 'clair'}`">
+          <v-icon :icon="modeEffectif === 'sombre' ? 'mdi-weather-night' : 'mdi-white-balance-sunny'" size="20" />
+        </v-btn>
+      </template>
+      <v-list density="compact" class="mode-menu" aria-label="Mode d'affichage">
+        <v-list-item v-for="m in MODES_AFFICHAGE" :key="m.valeur" :prepend-icon="m.icone" :title="m.libelle"
+          :active="modeAffichage === m.valeur" color="primary" @click="choisirMode(m.valeur)" />
+      </v-list>
+    </v-menu>
 
     <v-btn icon variant="text" size="small" aria-label="Aide" class="modern-appbar__action">
       <v-icon icon="mdi-help-circle-outline" size="20" />
@@ -200,7 +221,7 @@ async function ouvrirNotification(n: NotificationItem) {
   flex-shrink: 0;
   overflow: hidden;
 }
-.modern-appbar__logo--image { background: #fff; border: 1px solid #f0f0f0; }
+.modern-appbar__logo--image { background: var(--surface); border: 1px solid var(--hairline); }
 .modern-appbar__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
 
 .modern-appbar__name {
@@ -211,7 +232,7 @@ async function ouvrirNotification(n: NotificationItem) {
 }
 .modern-appbar__name strong {
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
 }
 
 .modern-appbar__action {
@@ -240,8 +261,8 @@ async function ouvrirNotification(n: NotificationItem) {
 
 /* ── Notifications ───────────────────────────────────────── */
 .notif-panel {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 14px;
   width: 340px;
   max-height: 420px;
@@ -258,7 +279,7 @@ async function ouvrirNotification(n: NotificationItem) {
   padding: 14px 16px 10px;
   flex-shrink: 0;
 }
-.notif-panel__title { font-size: 0.9rem; font-weight: 700; color: #111827; }
+.notif-panel__title { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
 .notif-panel__mark-all {
   font-size: 0.72rem;
   font-weight: 600;
@@ -277,7 +298,7 @@ async function ouvrirNotification(n: NotificationItem) {
   gap: 8px;
   padding: 32px 20px 36px;
   text-align: center;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.82rem;
 }
 .notif-panel__empty p { margin: 0; }
@@ -299,7 +320,7 @@ async function ouvrirNotification(n: NotificationItem) {
   cursor: pointer;
   transition: background 0.15s;
 }
-.notif-item:hover { background: #f9fafb; }
+.notif-item:hover { background: var(--surface-2); }
 .notif-item--non-lue { background: var(--color-primary-lighter); }
 .notif-item--non-lue:hover { background: var(--color-primary-light); }
 
@@ -323,11 +344,11 @@ async function ouvrirNotification(n: NotificationItem) {
 .notif-item__titre {
   font-size: 0.82rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
 }
 .notif-item__message {
   font-size: 0.78rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -336,7 +357,7 @@ async function ouvrirNotification(n: NotificationItem) {
 }
 .notif-item__date {
   font-size: 0.68rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin-top: 2px;
 }
 .notif-item__dot {
@@ -350,8 +371,8 @@ async function ouvrirNotification(n: NotificationItem) {
 
 /* ── User Menu ───────────────────────────────────────────── */
 .user-menu {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 14px;
   padding: 6px;
   min-width: 260px;
@@ -384,12 +405,12 @@ async function ouvrirNotification(n: NotificationItem) {
 .user-menu__name {
   font-size: 0.875rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   margin: 0 0 2px;
 }
 .user-menu__email {
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin: 0;
 }
 
@@ -410,7 +431,7 @@ async function ouvrirNotification(n: NotificationItem) {
 
 .user-menu__divider {
   height: 1px;
-  background: #f3f4f6;
+  background: var(--surface-2);
   margin: 0 6px;
 }
 
@@ -422,7 +443,7 @@ async function ouvrirNotification(n: NotificationItem) {
   padding: 10px 10px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--ink-soft);
   background: none;
   border: none;
   border-radius: 8px;

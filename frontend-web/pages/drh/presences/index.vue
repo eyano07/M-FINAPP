@@ -245,21 +245,21 @@ const pourcentagePresence = (employeId: number) => {
 
 <style scoped>
 .legende { display: flex; flex-wrap: wrap; gap: 14px; }
-.legende__item { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #6b7280; }
+.legende__item { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--ink-soft); }
 .legende__badge { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 5px; font-size: 0.68rem; font-weight: 700; }
 
 .presence-scroll { overflow-x: auto; }
 .presence-grid { border-collapse: collapse; font-size: 0.78rem; width: 100%; }
-.presence-grid th, .presence-grid td { padding: 4px 6px; text-align: center; border-bottom: 1px solid #f3f4f6; }
+.presence-grid th, .presence-grid td { padding: 4px 6px; text-align: center; border-bottom: 1px solid var(--hairline); }
 .presence-grid__emp-head, .presence-grid__emp {
-  text-align: left; position: sticky; left: 0; background: #fff; white-space: nowrap; padding-right: 14px;
-  font-weight: 600; color: #111827;
+  text-align: left; position: sticky; left: 0; background: var(--surface); white-space: nowrap; padding-right: 14px;
+  font-weight: 600; color: var(--ink);
 }
-.presence-grid__day { font-size: 0.68rem; color: #9ca3af; font-weight: 700; min-width: 26px; }
-.presence-grid__pct { font-size: 0.68rem; color: #9ca3af; font-weight: 700; }
-.presence-grid__pct-val { font-weight: 700; color: #111827; }
+.presence-grid__day { font-size: 0.68rem; color: var(--ink-faint); font-weight: 700; min-width: 26px; }
+.presence-grid__pct { font-size: 0.68rem; color: var(--ink-faint); font-weight: 700; }
+.presence-grid__pct-val { font-weight: 700; color: var(--ink); }
 .presence-grid__cell { cursor: pointer; }
-.presence-grid__cell:hover { background: #f9fafb; }
+.presence-grid__cell:hover { background: var(--surface-2); }
 .presence-grid__badge {
   display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: 5px; font-size: 0.7rem; font-weight: 700;

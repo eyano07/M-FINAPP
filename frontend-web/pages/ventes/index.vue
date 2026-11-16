@@ -255,8 +255,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 <style scoped>
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
+.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
+.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 
 .vte-stats {
   display: grid;
@@ -269,9 +269,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
   gap: 14px;
   padding: 18px 20px;
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
 }
 .vte-stat__icon {
   display: flex;
@@ -284,15 +284,15 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 .vte-stat--ca  .vte-stat__icon { background: var(--color-primary-light); color: var(--color-primary); }
 .vte-stat--tva .vte-stat__icon { background: #ede9fe; color: #7c3aed; }
 .vte-stat--nb  .vte-stat__icon { background: #dbeafe; color: #2563eb; }
-.vte-stat__label { font-size: 0.78rem; color: #9ca3af; margin-bottom: 2px; }
-.vte-stat__value { font-size: 1.1rem; font-weight: 700; color: #111827; }
+.vte-stat__label { font-size: 0.78rem; color: var(--ink-faint); margin-bottom: 2px; }
+.vte-stat__value { font-size: 1.1rem; font-weight: 700; color: var(--ink); }
 
 .vte-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 40px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
 }
 .vte-empty p { margin: 0; }

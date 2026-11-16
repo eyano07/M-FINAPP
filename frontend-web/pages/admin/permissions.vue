@@ -220,12 +220,12 @@ async function modifier(role: string, module: string, niveau: string) {
 
 .perm-scroll {
   overflow-x: auto;
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 16px;
 }
 .perm-grid { width: 100%; min-width: 860px; border-collapse: collapse; font-size: 0.85rem; }
-.perm-grid thead tr { border-bottom: 1px solid #f3f4f6; }
+.perm-grid thead tr { border-bottom: 1px solid var(--hairline); }
 .perm-grid th {
   text-align: left;
   padding: 14px 12px;
@@ -233,13 +233,13 @@ async function modifier(role: string, module: string, niveau: string) {
   font-weight: 700;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: var(--ink-faint);
   white-space: nowrap;
 }
-.perm-grid__role-head { position: sticky; left: 0; background: #fff; }
+.perm-grid__role-head { position: sticky; left: 0; background: var(--surface); }
 .perm-grid__groupe {
   text-align: center;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
   color: #0d9488;
 }
 .perm-grid__groupe--vide { border-bottom: none; }
@@ -248,11 +248,11 @@ async function modifier(role: string, module: string, niveau: string) {
 .perm-grid td { padding: 8px 12px; vertical-align: middle; }
 .perm-grid__role {
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   white-space: nowrap;
   position: sticky;
   left: 0;
-  background: #fff;
+  background: var(--surface);
 }
 
 .perm-select {
@@ -262,12 +262,12 @@ async function modifier(role: string, module: string, niveau: string) {
   font-weight: 600;
   padding: 7px 10px;
   border-radius: 8px;
-  border: 1.5px solid #e5e7eb;
-  background: #fff;
-  color: #374151;
+  border: 1.5px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-2);
   cursor: pointer;
 }
-.perm-select--aucun { color: #9ca3af; border-color: #f0f0f0; }
+.perm-select--aucun { color: var(--ink-faint); border-color: var(--hairline); }
 .perm-select--lecture { color: #0891b2; border-color: #cffafe; background: #ecfeff; }
 .perm-select--ecriture { color: var(--color-primary); border-color: var(--color-primary-light); background: var(--color-primary-lighter); }
 </style>

@@ -204,17 +204,17 @@ const etape = computed(() => {
 <style scoped>
 .rp-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .rp-titre { font-size: 1rem; font-weight: 700; margin: 0; }
-.rp-etape { font-size: 0.82rem; color: #4b5563; margin: 2px 0 0; }
-.rp-section { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #4b5563; margin: 16px 0 6px; }
+.rp-etape { font-size: 0.82rem; color: var(--ink-soft); margin: 2px 0 0; }
+.rp-section { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin: 16px 0 6px; }
 .rp-ligne { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(220px, auto); gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid #eef0f3; border-radius: 10px; margin-top: 6px; }
 .rp-ligne--paie { background: var(--color-primary-lighter); border-color: var(--color-primary-mid); }
 .rp-ligne__texte { display: flex; flex-direction: column; min-width: 0; }
 .rp-ligne__titre { font-weight: 600; font-size: 0.9rem; }
-.rp-ligne__sous { font-size: 0.75rem; color: #4b5563; }
+.rp-ligne__sous { font-size: 0.75rem; color: var(--ink-soft); }
 .rp-montant { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rp-ligne__etat { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .rp-ref { font-family: ui-monospace, monospace; font-size: 0.8rem; white-space: nowrap; }
-.rp-annulees { font-size: 0.75rem; color: #4b5563; margin: 10px 0 0; }
+.rp-annulees { font-size: 0.75rem; color: var(--ink-soft); margin: 10px 0 0; }
 @media (max-width: 700px) {
   .rp-ligne { grid-template-columns: minmax(0, 1fr) auto; }
   .rp-ligne__etat { grid-column: 1 / -1; justify-content: flex-start; }

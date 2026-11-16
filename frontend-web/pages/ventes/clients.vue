@@ -261,15 +261,15 @@ async function enregistrer() {
 <style scoped>
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
+.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
+.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 
 .cl-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 40px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
 }
 .cl-empty p { margin: 0; }

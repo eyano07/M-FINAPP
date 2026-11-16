@@ -150,12 +150,12 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : 'â
 
 <style scoped>
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
-.calc-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
+.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
+.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
+.calc-label { font-size: 0.7rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.4px; }
 .etat-bloc { margin-bottom: 20px; }
-.etat-titre { font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary); }
+.etat-titre { font-size: 1.05rem; font-weight: 700; color: var(--ink); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary); }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-.etat-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--hairline); }
+.etat-table td { padding: 6px 8px; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
 </style>

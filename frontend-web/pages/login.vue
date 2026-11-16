@@ -15,6 +15,10 @@ onMounted(() => { parametresStore.charger() })
 
 const year = new Date().getFullYear()
 
+// Bascule clair / nuit dès la page de connexion (même choix que dans l'application).
+const { effectif: modeEffectif, choisir: choisirMode } = useModeAffichage()
+const basculerMode = () => choisirMode(modeEffectif.value === 'sombre' ? 'clair' : 'sombre')
+
 async function submit() {
   error.value = ''
   loading.value = true
@@ -31,291 +35,167 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login-root">
+  <div class="cx">
 
-    <!-- ── Gauche · Marque ─────────────────────────────────── -->
-    <div class="brand-panel">
-      <div class="brand-panel__content">
-        <div class="brand-mark">
-          <span class="brand-logo-wrap" :class="{ 'brand-logo-wrap--image': parametresStore.parametres.logoUrl }">
-            <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="">
-            <v-icon v-else icon="mdi-finance" size="24" color="white" />
-          </span>
-          <span class="brand-name">{{ parametresStore.parametres.nom }}</span>
-        </div>
+    <!-- ── Visuel : photo de bureau comptable, teintée aux couleurs de la marque ── -->
+    <aside class="visuel" aria-label="Présentation">
+      <div class="visuel__photo" role="img" aria-label="Calculatrice, stylo et documents comptables sur un bureau" />
 
-        <h1 v-if="parametresStore.parametres.slogan" class="brand-headline">
-          {{ parametresStore.parametres.slogan }}
-        </h1>
-        <h1 v-else class="brand-headline">
-          Chaque opération laisse une écriture juste.
-        </h1>
-        <p class="brand-sub">
-          Caisse, banque, notes de frais, ventes et paie : tout est comptabilisé selon le SYSCOHADA,
-          au moment où vous saisissez.
-        </p>
-
-        <!-- Spécimen : une écriture de vente, telle que l'application la génère -->
-        <figure class="ledger" aria-label="Exemple d'écriture comptable générée automatiquement">
-          <figcaption class="ledger__title">Exemple : une vente au comptant</figcaption>
-          <table class="ledger__table">
-            <thead>
-              <tr><th scope="col">Compte</th><th scope="col" class="num">Débit</th><th scope="col" class="num">Crédit</th></tr>
-            </thead>
-            <tbody>
-              <tr><td><span class="ledger__no">571</span> Caisse</td><td class="num">116,00</td><td class="num" /></tr>
-              <tr><td><span class="ledger__no">706</span> Services vendus</td><td class="num" /><td class="num">100,00</td></tr>
-              <tr><td><span class="ledger__no">4431</span> TVA facturée</td><td class="num" /><td class="num">16,00</td></tr>
-            </tbody>
-            <tfoot>
-              <tr><td>Total</td><td class="num">116,00</td><td class="num">116,00</td></tr>
-            </tfoot>
-          </table>
-        </figure>
+      <div class="visuel__marque">
+        <span class="logo" :class="{ 'logo--image': parametresStore.parametres.logoUrl }">
+          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="">
+          <v-icon v-else icon="mdi-finance" size="22" color="white" />
+        </span>
+        <span class="visuel__nom">{{ parametresStore.parametres.nom }}</span>
       </div>
-    </div>
 
-    <!-- ── Droite · Formulaire ─────────────────────────────── -->
-    <main class="form-panel">
-      <div class="form-panel__inner">
+      <!-- Spécimen : une écriture posée sur le bureau, comme un bordereau -->
+      <figure class="bordereau" aria-label="Exemple d'écriture comptable générée automatiquement">
+        <figcaption class="bordereau__titre">Vente au comptant — écriture générée</figcaption>
+        <table class="bordereau__table">
+          <thead><tr><th scope="col">Compte</th><th scope="col" class="num">Débit</th><th scope="col" class="num">Crédit</th></tr></thead>
+          <tbody>
+            <tr><td><b>571</b> Caisse</td><td class="num">116,00</td><td class="num" /></tr>
+            <tr><td><b>706</b> Services vendus</td><td class="num" /><td class="num">100,00</td></tr>
+            <tr><td><b>4431</b> TVA facturée</td><td class="num" /><td class="num">16,00</td></tr>
+          </tbody>
+          <tfoot><tr><td>Équilibrée</td><td class="num">116,00</td><td class="num">116,00</td></tr></tfoot>
+        </table>
+      </figure>
 
-        <div class="form-mark">
-          <span class="brand-logo-wrap brand-logo-wrap--image" :class="{ 'brand-logo-wrap--vide': !parametresStore.parametres.logoUrl }">
+      <div class="visuel__texte">
+        <h1 v-if="parametresStore.parametres.slogan" class="visuel__titre">{{ parametresStore.parametres.slogan }}</h1>
+        <h1 v-else class="visuel__titre">Votre comptabilité et votre gestion, dans un seul outil.</h1>
+        <p class="visuel__sous">
+          Caisse, banque, ventes, stocks, paie et budgets : chaque opération devient une écriture SYSCOHADA,
+          au moment où elle est saisie.
+        </p>
+      </div>
+    </aside>
+
+    <!-- ── Formulaire ─────────────────────────────────────── -->
+    <main class="acces">
+      <button type="button" class="acces__mode" :aria-label="modeEffectif === 'sombre' ? 'Passer en affichage clair' : 'Passer en affichage nuit'" @click="basculerMode">
+        <v-icon :icon="modeEffectif === 'sombre' ? 'mdi-white-balance-sunny' : 'mdi-weather-night'" size="20" />
+      </button>
+
+      <div class="acces__inner">
+        <div class="acces__marque">
+          <span class="logo logo--clair" :class="{ 'logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="">
-            <v-icon v-else icon="mdi-finance" size="22" color="primary" />
+            <v-icon v-else icon="mdi-finance" size="20" color="primary" />
           </span>
-          <span class="form-mark__name">{{ parametresStore.parametres.nom }}</span>
+          <span>{{ parametresStore.parametres.nom }}</span>
         </div>
 
-        <header class="form-header">
-          <h2 class="form-title">Connexion</h2>
-          <p class="form-subtitle">
-            Entrez vos identifiants pour accéder à votre espace.
-          </p>
-        </header>
+        <h2 class="acces__titre">Connexion</h2>
+        <p class="acces__sous">Entrez vos identifiants pour ouvrir votre espace.</p>
 
-        <v-alert
-          v-if="error"
-          type="error"
-          variant="tonal"
-          density="compact"
-          rounded="lg"
-          class="mb-6"
-          role="alert"
-        >
+        <v-alert v-if="error" type="error" variant="tonal" density="compact" rounded="lg" class="mb-6" role="alert">
           {{ error }}
         </v-alert>
 
-        <v-form @submit.prevent="submit" class="form-body">
-          <div class="field-group">
-            <label class="field-label" for="login-email">Adresse e-mail</label>
-            <v-text-field
-              id="login-email"
-              v-model="email"
-              placeholder="vous@exemple.com"
-              type="email"
-              prepend-inner-icon="mdi-email-outline"
-              autocomplete="username"
-              required
-              hide-details="auto"
-            />
+        <v-form class="acces__form" @submit.prevent="submit">
+          <div class="champ">
+            <label class="champ__label" for="login-email">Adresse e-mail</label>
+            <v-text-field id="login-email" v-model="email" placeholder="vous@exemple.com" type="email"
+              prepend-inner-icon="mdi-email-outline" autocomplete="username" required hide-details="auto" />
           </div>
-
-          <div class="field-group">
-            <label class="field-label" for="login-mdp">Mot de passe</label>
-            <v-text-field
-              id="login-mdp"
-              v-model="motDePasse"
-              :type="showPassword ? 'text' : 'password'"
-              prepend-inner-icon="mdi-lock-outline"
-              :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-              autocomplete="current-password"
-              required
-              hide-details="auto"
-              @click:append-inner="showPassword = !showPassword"
-            />
+          <div class="champ">
+            <label class="champ__label" for="login-mdp">Mot de passe</label>
+            <v-text-field id="login-mdp" v-model="motDePasse" :type="showPassword ? 'text' : 'password'"
+              prepend-inner-icon="mdi-lock-outline" :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+              autocomplete="current-password" required hide-details="auto" @click:append-inner="showPassword = !showPassword" />
           </div>
-
-          <v-btn
-            type="submit"
-            color="primary"
-            size="large"
-            block
-            :loading="loading"
-            class="submit-btn"
-            elevation="0"
-          >
+          <v-btn type="submit" color="primary" size="large" block :loading="loading" class="acces__btn" elevation="0">
             Se connecter
           </v-btn>
         </v-form>
 
-        <footer class="form-footer">
-          {{ parametresStore.parametres.nom }} &copy; {{ year }}
-        </footer>
+        <footer class="acces__pied">{{ parametresStore.parametres.nom }} &copy; {{ year }}</footer>
       </div>
     </main>
-
   </div>
 </template>
 
 <style scoped>
-/* ── Disposition ─────────────────────────────────────────── */
-.login-root {
-  display: flex;
-  min-height: 100dvh;
-  background: var(--canvas);
-}
+.cx { display: flex; min-height: 100dvh; background: var(--surface); color: var(--ink); }
 
-/* ── Panneau de marque (gauche) : un grand livre ─────────── */
-.brand-panel {
+/* ── Visuel ──────────────────────────────────────────────── */
+.visuel {
   position: relative;
+  flex: 0 0 56%;
   display: none;
-  flex: 0 0 46%;
-  background-color: var(--color-primary-darkest);
-  /* Lignes d'un registre comptable, et la marge verticale double du grand livre. */
-  background-image:
-    linear-gradient(to right, transparent 59px, rgba(255,255,255,0.16) 59px, rgba(255,255,255,0.16) 60px, transparent 60px,
-      transparent 63px, rgba(255,255,255,0.16) 63px, rgba(255,255,255,0.16) 64px, transparent 64px),
-    repeating-linear-gradient(to bottom, transparent 0, transparent 35px, rgba(255,255,255,0.07) 35px, rgba(255,255,255,0.07) 36px);
   overflow: hidden;
-  padding: 56px 56px 56px 96px;
-}
-@media (min-width: 960px) {
-  .brand-panel { display: flex; align-items: center; }
-}
-
-.brand-panel__content {
-  position: relative;
-  max-width: 460px;
+  background: var(--hero-bg);
   color: #fff;
 }
+@media (min-width: 960px) { .visuel { display: block; } }
 
-.brand-mark {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 48px;
+/* Photo en niveaux de gris fondue dans le vert de marque : une image réelle, mais aux couleurs de l'application. */
+.visuel__photo {
+  position: absolute; inset: 0;
+  background: url('/images/connexion-comptabilite.jpg') 35% 40% / cover no-repeat;
+  filter: grayscale(1) contrast(1.08);
+  mix-blend-mode: luminosity;
+  opacity: 0.62;
 }
-.brand-logo-wrap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px; height: 44px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-}
-.brand-logo-wrap--image { background: rgba(255, 255, 255, 0.94); }
-.brand-logo-wrap img { width: 100%; height: 100%; object-fit: contain; padding: 5px; }
-.brand-name {
-  font-size: 1.05rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+.visuel::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--hero-bg) 70%, transparent) 0%, transparent 22%),
+    linear-gradient(0deg, var(--hero-bg) 4%, color-mix(in srgb, var(--hero-bg) 82%, transparent) 30%, transparent 62%);
 }
 
-.brand-headline {
-  font-size: clamp(1.75rem, 2.7vw, 2.35rem);
-  font-weight: 700;
-  line-height: 1.18;
-  letter-spacing: -0.02em;
-  margin: 0 0 16px;
-  text-wrap: balance;
-}
-.brand-sub {
-  font-size: 0.95rem;
-  line-height: 1.65;
-  color: rgba(255, 255, 255, 0.78);
-  margin: 0 0 40px;
-  max-width: 420px;
-}
+.visuel__marque { position: absolute; z-index: 1; top: 40px; left: 48px; display: flex; align-items: center; gap: 12px; }
+.visuel__nom { font-size: 1.05rem; font-weight: 650; }
 
-/* ── Spécimen d'écriture ─────────────────────────────────── */
-.ledger {
-  margin: 0;
-  padding: 18px 20px 14px;
-  background: #fbfcfa;
-  color: #14211a;
-  border-radius: 8px;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.25);
-}
-.ledger__title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #3f4d45;
-  margin-bottom: 10px;
-}
-.ledger__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-  font-variant-numeric: tabular-nums;
-}
-.ledger__table th {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #5b685f;
-  text-align: left;
-  padding: 0 0 6px;
-  border-bottom: 1px solid #14211a;
-}
-.ledger__table td { padding: 7px 0; border-bottom: 1px solid #e3e8e4; }
-.ledger__table .num { text-align: right; width: 84px; }
-.ledger__table th.num { text-align: right; }
-.ledger__no {
-  display: inline-block;
-  min-width: 38px;
-  margin-right: 6px;
-  font-weight: 600;
-  color: var(--color-primary-dark);
-}
-.ledger__table tfoot td {
-  font-weight: 700;
-  border-bottom: 0;
-  border-top: 2px solid #14211a;
-  padding-top: 8px;
-}
+.logo { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 10px; background: rgba(255,255,255,0.14); overflow: hidden; flex-shrink: 0; }
+.logo--image { background: #fff; }
+.logo img { width: 100%; height: 100%; object-fit: contain; padding: 5px; }
+.logo--clair { background: var(--color-primary-light); }
 
-/* ── Panneau du formulaire (droite) ──────────────────────── */
-.form-panel {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 24px;
+.visuel__texte { position: absolute; z-index: 1; left: 48px; right: 48px; bottom: 48px; max-width: 560px; }
+.visuel__titre { font-size: clamp(2rem, 3.3vw, 3rem); font-weight: 700; line-height: 1.08; letter-spacing: -0.035em; margin: 0 0 16px; text-wrap: balance; }
+.visuel__sous { font-size: 1rem; line-height: 1.6; color: rgba(255,255,255,0.82); margin: 0; max-width: 48ch; }
+
+/* Bordereau d'écriture posé sur la photo */
+.bordereau {
+  position: absolute; z-index: 1; top: 112px; right: 48px; width: min(330px, 42%);
+  margin: 0; padding: 16px 18px 12px;
+  background: #fbfcfa; color: #14211a; border-radius: 8px;
+  box-shadow: 0 18px 40px -12px rgba(0,0,0,0.55);
 }
-.form-panel__inner { width: 100%; max-width: 400px; }
+.bordereau__titre { font-size: 0.8rem; font-weight: 600; color: #3f4d45; margin-bottom: 8px; }
+.bordereau__table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.bordereau__table th { font-size: 0.72rem; font-weight: 600; color: #5b685f; text-align: left; padding: 0 0 5px; border-bottom: 1px solid #14211a; }
+.bordereau__table td { padding: 6px 0; border-bottom: 1px solid #e3e8e4; }
+.bordereau__table b { display: inline-block; min-width: 34px; color: #1a6b45; }
+.bordereau__table .num { text-align: right; width: 64px; }
+.bordereau__table th.num { text-align: right; }
+.bordereau__table tfoot td { font-weight: 700; border-bottom: 0; border-top: 2px solid #14211a; padding-top: 7px; }
 
-.form-header { margin-bottom: 32px; }
-.form-title {
-  font-size: 1.85rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #111827;
-  margin: 0 0 8px;
+/* ── Formulaire ──────────────────────────────────────────── */
+.acces { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 24px; background: var(--surface); }
+.acces__inner { width: 100%; max-width: 380px; }
+.acces__mode {
+  position: absolute; top: 20px; right: 20px;
+  display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+  border: 1px solid var(--hairline); border-radius: 10px; background: transparent; color: var(--ink-soft); cursor: pointer;
 }
-.form-subtitle { font-size: 0.9375rem; color: #4b5563; margin: 0; line-height: 1.5; }
+.acces__mode:hover { color: var(--ink); border-color: var(--ink-faint); }
+.acces__mode:focus-visible { outline: 3px solid var(--color-primary-mid); outline-offset: 2px; }
+.acces__marque { display: flex; align-items: center; gap: 10px; margin-bottom: 36px; font-weight: 600; }
+@media (min-width: 960px) { .acces__marque { display: none; } }
+.acces__titre { font-size: 2rem; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 8px; }
+.acces__sous { font-size: 0.95rem; color: var(--ink-soft); margin: 0 0 32px; line-height: 1.5; }
+.acces__form { display: flex; flex-direction: column; gap: 20px; }
+.champ { display: flex; flex-direction: column; gap: 6px; }
+.champ__label { font-size: 0.875rem; font-weight: 600; color: var(--ink-2); }
+.acces__btn { margin-top: 4px; height: 52px !important; font-size: 1rem !important; font-weight: 600 !important; letter-spacing: 0 !important; border-radius: 10px !important; }
+.acces__pied { margin-top: 40px; font-size: 0.8125rem; color: var(--ink-faint); }
 
-.form-body { display: flex; flex-direction: column; gap: 20px; }
-.field-group { display: flex; flex-direction: column; gap: 6px; }
-.field-label { font-size: 0.875rem; font-weight: 600; color: #1f2937; }
-
-.submit-btn {
-  margin-top: 4px;
-  height: 52px !important;
-  font-size: 1rem !important;
-  font-weight: 600 !important;
-  letter-spacing: 0 !important;
-  border-radius: 10px !important;
-}
-
-.form-footer { margin-top: 36px; font-size: 0.8125rem; color: #6b7280; text-align: center; }
-
-/* Petits écrans : le panneau de marque est masqué, la marque passe en tête du formulaire. */
-.form-mark { display: none; align-items: center; gap: 10px; margin-bottom: 28px; }
-.form-mark__name { font-weight: 600; color: #1f2937; }
-.brand-logo-wrap--vide { background: var(--color-primary-light); }
 @media (max-width: 959px) {
-  .form-panel { align-items: flex-start; padding-top: 48px; }
-  .form-mark { display: flex; }
+  .acces { align-items: flex-start; padding-top: 72px; }
 }
 </style>

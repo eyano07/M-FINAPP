@@ -302,5 +302,5 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : 'â
 </template>
 
 <style scoped>
-.agent-row { padding: 12px; border: 1px solid #f0f0f0; border-radius: 12px; margin-bottom: 10px; }
+.agent-row { padding: 12px; border: 1px solid var(--hairline); border-radius: 12px; margin-bottom: 10px; }
 </style>

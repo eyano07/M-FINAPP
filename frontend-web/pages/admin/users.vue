@@ -443,7 +443,7 @@ const roleColor: Record<string, string> = {
 .usr-refresh-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; border-radius: 11px;
-  background: #f3f4f6; border: 1px solid #e5e7eb; color: #6b7280;
+  background: var(--surface-2); border: 1px solid var(--hairline); color: var(--ink-soft);
   cursor: pointer; transition: background 0.15s;
 }
 .usr-refresh-btn:hover:not(:disabled) { background: #e5e7eb; }
@@ -461,12 +461,12 @@ const roleColor: Record<string, string> = {
 
 /* ── Table card ──────────────────────────────────────────────────────────── */
 .usr-card {
-  background: #fff; border: 1px solid #f0f0f0; border-radius: 18px;
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: 18px;
   overflow: hidden;
 }
 .usr-loading, .usr-empty {
   display: flex; flex-direction: column; align-items: center;
-  gap: 10px; padding: 48px 16px; color: #9ca3af;
+  gap: 10px; padding: 48px 16px; color: var(--ink-faint);
   font-size: 0.85rem;
 }
 .usr-empty p { margin: 0; }
@@ -475,12 +475,12 @@ const roleColor: Record<string, string> = {
 .usr-table-scroll { overflow-x: auto; }
 .usr-table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 0.875rem; }
 .usr-table thead tr {
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
 }
 .usr-table th {
   padding: 12px 16px;
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.4px;
-  text-transform: uppercase; color: #9ca3af; text-align: left;
+  text-transform: uppercase; color: var(--ink-faint); text-align: left;
 }
 .usr-th-actions { text-align: right; }
 
@@ -489,7 +489,7 @@ const roleColor: Record<string, string> = {
   transition: background 0.12s;
 }
 .usr-table tbody tr:last-child { border-bottom: none; }
-.usr-table tbody tr:hover { background: #f9fafb; }
+.usr-table tbody tr:hover { background: var(--surface-2); }
 .usr-row--inactive { opacity: 0.65; }
 
 .usr-table td { padding: 12px 16px; vertical-align: middle; }
@@ -500,7 +500,7 @@ const roleColor: Record<string, string> = {
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
 }
-.usr-email { color: #6b7280; font-size: 0.8125rem; }
+.usr-email { color: var(--ink-soft); font-size: 0.8125rem; }
 
 /* roles */
 .usr-roles { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -520,7 +520,7 @@ const roleColor: Record<string, string> = {
 }
 .usr-status-chip--on  { background: var(--color-primary-light); color: var(--color-primary); }
 .usr-status-chip--on  .usr-status-dot  { background: var(--color-primary); }
-.usr-status-chip--off { background: #f3f4f6; color: #9ca3af; }
+.usr-status-chip--off { background: var(--surface-2); color: var(--ink-faint); }
 .usr-status-chip--off .usr-status-dot { background: #9ca3af; }
 
 /* actions */
@@ -542,7 +542,7 @@ const roleColor: Record<string, string> = {
 .usr-cards { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
 
 .usr-card-item {
-  background: #fff; border: 1px solid #eef0f2; border-left: 3px solid var(--color-primary); border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--hairline); border-left: 3px solid var(--color-primary); border-radius: 16px;
   padding: 14px 16px; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: box-shadow 0.15s;
 }
@@ -554,11 +554,11 @@ const roleColor: Record<string, string> = {
   padding-top: 2px;
 }
 .usr-card-item__name {
-  font-size: 0.9rem; font-weight: 700; color: #111827;
+  font-size: 0.9rem; font-weight: 700; color: var(--ink);
   overflow-wrap: anywhere;
 }
 .usr-card-item__email {
-  font-size: 0.78rem; color: #9ca3af; overflow-wrap: anywhere;
+  font-size: 0.78rem; color: var(--ink-faint); overflow-wrap: anywhere;
 }
 
 .usr-card-item__roles {
@@ -583,7 +583,7 @@ const roleColor: Record<string, string> = {
 .usr-card-item__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Dialog ──────────────────────────────────────────────────────────────── */
-.usr-dialog { background: #fff; border-radius: 20px; overflow: hidden; }
+.usr-dialog { background: var(--surface); border-radius: 20px; overflow: hidden; }
 
 .usr-dialog__head {
   position: relative; overflow: hidden;
@@ -628,26 +628,26 @@ const roleColor: Record<string, string> = {
 }
 .usr-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .usr-field { display: flex; flex-direction: column; gap: 6px; }
-.usr-label { font-size: 0.8125rem; font-weight: 600; color: #374151; }
-.usr-hint { font-size: 0.72rem; color: #9ca3af; margin: -8px 0 0; }
+.usr-label { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
+.usr-hint { font-size: 0.72rem; color: var(--ink-faint); margin: -8px 0 0; }
 
 /* rôles toggles */
 .usr-roles-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .usr-role-toggle {
   padding: 5px 14px; border-radius: 100px; font-size: 0.78rem; font-weight: 600;
-  border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280;
+  border: 1px solid var(--hairline); background: var(--surface-2); color: var(--ink-soft);
   cursor: pointer; transition: all 0.15s;
 }
-.usr-role-toggle:hover { border-color: #d1d5db; background: #f3f4f6; }
+.usr-role-toggle:hover { border-color: #d1d5db; background: var(--surface-2); }
 .usr-role-toggle--on { font-weight: 700; }
 
 .usr-dialog__footer {
   display: flex; align-items: center; justify-content: flex-end; gap: 10px;
-  padding: 16px 22px; border-top: 1px solid #f3f4f6;
+  padding: 16px 22px; border-top: 1px solid var(--hairline);
 }
 .usr-cancel-btn {
   padding: 0 18px; height: 40px; border-radius: 10px;
-  background: #f3f4f6; color: #374151; font-size: 0.875rem; font-weight: 600;
+  background: var(--surface-2); color: var(--ink-2); font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer; transition: background 0.15s;
 }
 .usr-cancel-btn:hover:not(:disabled) { background: #e5e7eb; }

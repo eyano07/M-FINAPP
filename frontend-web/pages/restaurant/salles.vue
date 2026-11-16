@@ -894,7 +894,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
 .table-item__numero {
   font-weight: 800;
   font-size: 1.05rem;
-  color: #1f2937;
+  color: var(--ink);
   pointer-events: none;
 }
 .table-item__verrou {
@@ -910,7 +910,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
   left: 4px;
   pointer-events: none;
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
   padding: 1px;
 }
 .table-item__badge-paiement--du { color: #b91c1c; }
@@ -923,7 +923,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--hairline);
   background: none;
   border-left: none;
   border-right: none;
@@ -934,7 +934,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
   text-align: left;
 }
 .commande-ligne__ref { font-weight: 600; font-size: 0.8125rem; }
-.commande-ligne__montant { margin-left: auto; font-size: 0.8125rem; color: #6b7280; }
+.commande-ligne__montant { margin-left: auto; font-size: 0.8125rem; color: var(--ink-soft); }
 
 .commande-detail { padding: 0 0 10px 26px; }
 .commande-detail__ligne {
@@ -942,7 +942,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
   justify-content: space-between;
   gap: 8px;
   font-size: 0.78rem;
-  color: #4b5563;
+  color: var(--ink-soft);
   padding: 2px 0;
 }
 .commande-detail__designation { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -961,7 +961,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
   position: absolute;
   width: 14px;
   height: 14px;
-  background: #fff;
+  background: var(--surface);
   border: 2px solid #1d4ed8;
   border-radius: 50%;
 }
@@ -979,7 +979,7 @@ function positionsChaises(t: TableItem): { x: number; y: number; rot: number }[]
   justify-content: space-between;
   gap: 8px;
   font-size: 0.8125rem;
-  color: #4b5563;
+  color: var(--ink-soft);
   padding: 2px 0 2px 10px;
 }
 .addition-recap__total { display: flex; justify-content: space-between; font-weight: 700; font-size: 0.9375rem; }

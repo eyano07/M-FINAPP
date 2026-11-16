@@ -455,7 +455,7 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
 </template>
 
 <style scoped>
-.calc-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
+.calc-label { font-size: 0.7rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.4px; }
 .conformite-liste { margin: 0; padding-left: 18px; font-size: 0.82rem; }
 .conformite-liste li + li { margin-top: 4px; }
 </style>

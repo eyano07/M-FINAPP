@@ -306,7 +306,7 @@ async function demander(q?: string) {
 .au-cartes { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 12px; }
 .au-carte { padding: 14px 16px; display: flex; flex-direction: column; }
 .au-carte__val { font-size: 1.7rem; font-weight: 800; line-height: 1.1; }
-.au-carte__lib { font-size: 0.78rem; color: #4b5563; }
+.au-carte__lib { font-size: 0.78rem; color: var(--ink-soft); }
 .au-carte--alerte .au-carte__val { color: #b91c1c; }
 .au-graphes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 .au-titre { font-size: 0.95rem; font-weight: 700; margin: 0 0 8px; }
@@ -319,13 +319,13 @@ async function demander(q?: string) {
 .au-echec { color: #b91c1c; }
 .au-table-wrap { overflow-x: auto; }
 .au-ligne { cursor: pointer; }
-.au-roles { color: #6b7280; margin-left: 4px; }
+.au-roles { color: var(--ink-soft); margin-left: 4px; }
 .au-pagination { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 0.82rem; }
 .au-detail { margin: 0; display: grid; gap: 8px; font-size: 0.86rem; }
 .au-detail div { display: flex; gap: 10px; }
 .au-detail dt { font-weight: 700; min-width: 90px; }
 .au-detail dd { margin: 0; word-break: break-all; }
-.au-aide { font-size: 0.78rem; color: #4b5563; margin: 0 0 10px; }
+.au-aide { font-size: 0.78rem; color: var(--ink-soft); margin: 0 0 10px; }
 .au-suggestions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .au-reponse { background: #f6f8f7; border-radius: 10px; padding: 14px 16px; }
 .au-reponse__texte { white-space: pre-wrap; margin: 0; line-height: 1.55; }

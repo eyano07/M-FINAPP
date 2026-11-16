@@ -248,14 +248,14 @@ function fmtDate(d: string) {
 
 <style scoped>
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
+.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
+.page-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 2px 0 0; }
 
 /* Recapitulatif de l'arrete, avant generation de la piece. */
-.decl-recap { display: flex; flex-direction: column; gap: 8px; background: #f9fafb; border-radius: 10px; padding: 14px 16px; }
-.decl-recap > div { display: flex; justify-content: space-between; gap: 20px; font-size: 0.9rem; color: #374151; }
-.decl-recap > div strong { font-variant-numeric: tabular-nums; color: #111827; }
-.decl-recap__net { border-top: 1px solid #e5e7eb; padding-top: 8px; font-weight: 600; }
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; color: #111827; }
+.decl-recap { display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); border-radius: 10px; padding: 14px 16px; }
+.decl-recap > div { display: flex; justify-content: space-between; gap: 20px; font-size: 0.9rem; color: var(--ink-2); }
+.decl-recap > div strong { font-variant-numeric: tabular-nums; color: var(--ink); }
+.decl-recap__net { border-top: 1px solid var(--hairline); padding-top: 8px; font-weight: 600; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; color: var(--ink); }
 </style>

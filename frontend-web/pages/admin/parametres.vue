@@ -474,27 +474,27 @@ async function onLogoChoisi(e: Event) {
 .param-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 760px) { .param-layout { grid-template-columns: 1fr; } }
 
-.param-card { background: #fff; border: 1px solid #f0f0f0; border-radius: 18px; padding: 22px; }
+.param-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 18px; padding: 22px; }
 .param-card__title {
   display: flex; align-items: center;
   font-size: 0.78rem; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
-  color: #9ca3af; margin: 0 0 18px; padding-bottom: 14px; border-bottom: 1px solid #f3f4f6;
+  color: var(--ink-faint); margin: 0 0 18px; padding-bottom: 14px; border-bottom: 1px solid var(--hairline);
 }
 
 .param-loading { display: flex; justify-content: center; padding: 32px 0; }
 
 .param-fields { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
 .param-field { display: flex; flex-direction: column; gap: 6px; }
-.param-label { font-size: 0.8125rem; font-weight: 600; color: #374151; }
+.param-label { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
 .param-save-btn { height: 50px !important; font-size: 0.9375rem !important; font-weight: 600 !important; }
 
 /* ── Logo ────────────────────────────────────────────────── */
 .param-logo-preview {
   display: flex; align-items: center; justify-content: center;
   height: 140px;
-  border: 1.5px dashed #e5e7eb;
+  border: 1.5px dashed var(--hairline);
   border-radius: 14px;
-  background: #fafafa;
+  background: var(--surface-2);
   overflow: hidden;
 }
 .param-logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; padding: 12px; }
@@ -503,8 +503,8 @@ async function onLogoChoisi(e: Event) {
   color: #d1d5db; font-size: 0.8rem;
 }
 .param-hidden-input { display: none; }
-.param-logo-hint { font-size: 0.75rem; color: #9ca3af; margin: 10px 0 0; text-align: center; }
-.param-registre-hint { font-size: 0.75rem; color: #9ca3af; margin: 14px 0 0; }
+.param-logo-hint { font-size: 0.75rem; color: var(--ink-faint); margin: 10px 0 0; text-align: center; }
+.param-registre-hint { font-size: 0.75rem; color: var(--ink-faint); margin: 14px 0 0; }
 
 /* ── Couleur de marque ───────────────────────────────────── */
 .param-color-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
@@ -513,7 +513,7 @@ async function onLogoChoisi(e: Event) {
   width: 44px; height: 44px;
   flex-shrink: 0;
   border-radius: 12px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--hairline);
   overflow: hidden;
   cursor: pointer;
 }
@@ -539,16 +539,16 @@ async function onLogoChoisi(e: Event) {
 .param-color-preset:hover { transform: scale(1.12); }
 .param-card--large { grid-column: 1 / -1; }
 .param-entete-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
-.param-entete-intro { font-size: 0.8125rem; color: #4b5563; margin: 0 0 16px; }
+.param-entete-intro { font-size: 0.8125rem; color: var(--ink-soft); margin: 0 0 16px; }
 .param-entete-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr)); gap: 14px; }
 .param-entete-choix {
   display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 10px; border-radius: 12px;
-  border: 2px solid #e5e7eb; background: #f9fafb; cursor: pointer; font: inherit; transition: border-color 0.15s, background 0.15s;
+  border: 2px solid var(--hairline); background: var(--surface-2); cursor: pointer; font: inherit; transition: border-color 0.15s, background 0.15s;
 }
 .param-entete-choix:hover { border-color: #9ca3af; }
 .param-entete-choix:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .param-entete-choix.is-active { border-color: var(--color-primary); background: var(--color-primary-lighter); }
-.param-entete-choix__titre { display: flex; align-items: center; gap: 4px; font-size: 0.875rem; font-weight: 700; color: #111827; margin-top: 4px; }
-.param-entete-choix__desc { font-size: 0.75rem; color: #4b5563; line-height: 1.35; }
+.param-entete-choix__titre { display: flex; align-items: center; gap: 4px; font-size: 0.875rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
+.param-entete-choix__desc { font-size: 0.75rem; color: var(--ink-soft); line-height: 1.35; }
 .param-color-preset.is-active { outline: 2px solid #111827; outline-offset: 1px; }
 </style>

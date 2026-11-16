@@ -239,8 +239,8 @@ function toggleDevise() {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: #f3f4f6;
-  border: 1.5px solid #e5e7eb;
+  background: var(--surface-2);
+  border: 1.5px solid var(--hairline);
   border-radius: 100px;
   padding: 4px 6px;
   cursor: pointer;
@@ -255,7 +255,7 @@ function toggleDevise() {
   top: 3px; left: 3px;
   width: 38px; height: calc(100% - 6px);
   border-radius: 100px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 4px rgba(0,0,0,0.12);
   transition: transform 0.22s cubic-bezier(.4,0,.2,1);
 }
@@ -265,11 +265,11 @@ function toggleDevise() {
   z-index: 1;
   width: 40px;
   text-align: center;
-  color: #9ca3af;
+  color: var(--ink-faint);
   transition: color 0.15s;
   user-select: none;
 }
-.bal-devise-toggle__label--active { color: #111827; }
+.bal-devise-toggle__label--active { color: var(--ink); }
 
 /* ── Grid ────────────────────────────────────────────────── */
 .bal-grid {
@@ -281,7 +281,7 @@ function toggleDevise() {
 
 /* ── Cards ───────────────────────────────────────────────── */
 .bal-card {
-  background: #fff;
+  background: var(--surface);
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
@@ -310,12 +310,12 @@ function toggleDevise() {
 .bal-card__title {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   margin: 0;
 }
 .bal-card__count {
   font-size: 0.72rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin: 0;
 }
 
@@ -340,10 +340,10 @@ function toggleDevise() {
   font-weight: 700;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: #9ca3af;
-  background: #fafafa;
-  border-top: 1px solid #f3f4f6;
-  border-bottom: 1px solid #f3f4f6;
+  color: var(--ink-faint);
+  background: var(--surface-2);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
 }
 .bal-table__num { text-align: right; }
 
@@ -355,7 +355,7 @@ function toggleDevise() {
   border-bottom: 1px solid #f9fafb;
   transition: background 0.12s;
 }
-.bal-table__row:hover { background: #fafafa; }
+.bal-table__row:hover { background: var(--surface-2); }
 
 .bal-table__empty {
   display: flex;
@@ -364,7 +364,7 @@ function toggleDevise() {
   gap: 8px;
   padding: 28px 20px;
   font-size: 0.85rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
 }
 
 .bal-table__code {
@@ -373,13 +373,13 @@ function toggleDevise() {
   font-weight: 700;
   padding: 3px 8px;
   border-radius: 6px;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--surface-2);
+  color: var(--ink-soft);
   width: fit-content;
 }
 .bal-table__label {
   font-size: 0.875rem;
-  color: #374151;
+  color: var(--ink-2);
   padding: 0 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -401,9 +401,9 @@ function toggleDevise() {
   padding: 13px 20px;
   font-weight: 700;
   font-size: 0.875rem;
-  border-top: 2px solid #f3f4f6;
+  border-top: 2px solid var(--hairline);
 }
-.bal-table__footer-label { color: #374151; }
+.bal-table__footer-label { color: var(--ink-2); }
 .bal-table__footer-val { font-variant-numeric: tabular-nums; }
 .bal-table__footer--charge  .bal-table__footer-val { color: #dc2626; }
 .bal-table__footer--produit .bal-table__footer-val { color: var(--color-primary); }

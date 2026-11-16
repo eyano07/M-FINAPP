@@ -226,7 +226,7 @@ const sparkline = computed(() => {
 
 // Circuit d'une note : les cinq étapes réelles, de la soumission au paiement.
 const ETAPES = ['SOUMISE', 'VERIFIEE_DFIN', 'VALIDEE_DA', 'TRANSMISE_CAISSE', 'PAYEE']
-const ETAPES_LIBELLES = ['Soumise', 'Vérifiée', 'Validée', 'Transmise', 'Payée']
+const ETAPES_LIBELLES = computed(() => ['Soumise', `Vérifiée ${rolesStore.libelle('DFIN')}`, `Validée ${rolesStore.libelle('DA')}`, 'Transmise caisse', 'Payée'])
 const etapeNote = (statut: string) => Math.max(ETAPES.indexOf(statut), 0)
 const montantNote = (n: Note) =>
   new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n.montant) + ' ' + (n.devise || 'CDF')
@@ -576,7 +576,8 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   display: flex; flex-direction: column; gap: 14px;
   padding: 28px 30px 24px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--color-primary) 40%, #04120c);
+  background: var(--hero-bg);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
   color: #fff;
 }
 .treso__label { font-size: 0.9rem; color: rgba(255,255,255,0.7); margin: 0; }
@@ -602,11 +603,11 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .side { display: grid; gap: 12px; align-content: start; }
 .tile {
   display: flex; flex-direction: column; gap: 6px; padding: 18px 20px;
-  background: #fff; border: 1px solid var(--hairline); border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
   color: var(--ink); text-decoration: none; transition: border-color 0.15s;
 }
 .tile:hover { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--hairline)); }
-.tile:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, white); outline-offset: 2px; }
+.tile:focus-visible { outline: 3px solid var(--color-primary-mid); outline-offset: 2px; }
 .tile__label { font-size: 0.875rem; color: var(--ink-soft); }
 .tile__value { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
 .tile__value--neg { color: #b42318; }
@@ -614,8 +615,11 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .tile--action { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
 .tile--action .tile__label, .tile--action .tile__hint { color: rgba(255,255,255,0.82); }
 .tile--action:hover { border-color: var(--color-primary-dark); background: var(--color-primary-dark); }
+/* Nuit : le vert de marque est éclairci ; la tuile d'action garde un fond assez sombre pour un texte blanc lisible. */
+:global(html[data-theme='dark'] .dash .tile--action) { background: color-mix(in srgb, var(--color-primary) 45%, #07110d); border-color: color-mix(in srgb, var(--color-primary) 60%, #07110d); }
+:global(html[data-theme='dark'] .dash .tile--action:hover) { background: color-mix(in srgb, var(--color-primary) 55%, #07110d); }
 .tile__spark { width: 100%; height: 34px; color: var(--color-primary); }
-.tile__gauge { display: block; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--color-primary) 14%, white); overflow: hidden; }
+.tile__gauge { display: block; height: 6px; border-radius: 3px; background: var(--color-primary-light); overflow: hidden; }
 .tile__gauge > span { display: block; height: 100%; background: var(--color-primary); }
 
 /* ── Sections ────────────────────────────────────────────── */
@@ -625,14 +629,14 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .dash__section-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 0; }
 
 /* ── File d'attente : une ligne par note, avec son circuit ── */
-.queue { list-style: none; margin: 0; padding: 0; background: #fff; border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden; }
+.queue { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden; }
 .queue > li + li { border-top: 1px solid var(--hairline); }
 .queue__row {
-  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.5fr) auto; align-items: center; gap: 20px;
+  display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.9fr) auto; align-items: center; gap: 20px;
   padding: 16px 22px; color: var(--ink); text-decoration: none; transition: background 0.12s;
 }
-.queue__row:hover { background: color-mix(in srgb, var(--color-primary) 4%, white); }
-.queue__row:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, white); outline-offset: -3px; }
+.queue__row:hover { background: var(--color-primary-lighter); }
+.queue__row:focus-visible { outline: 3px solid var(--color-primary-mid); outline-offset: -3px; }
 .queue__main { display: grid; gap: 1px; min-width: 0; }
 .queue__ref { font-size: 0.8125rem; color: var(--ink-soft); }
 .queue__objet { font-weight: 600; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -641,10 +645,10 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 
 .queue__track { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
 .queue__step { display: grid; gap: 5px; }
-.queue__pip { height: 4px; border-radius: 2px; background: #dde5e1; }
+.queue__pip { height: 4px; border-radius: 2px; background: var(--hairline); }
 .queue__step--done .queue__pip { background: var(--color-primary-mid); }
 .queue__step--now .queue__pip { background: var(--color-primary); height: 6px; margin-top: -1px; }
-.queue__step-nom { font-size: 0.72rem; color: #7b8a82; white-space: nowrap; }
+.queue__step-nom { font-size: 0.72rem; line-height: 1.25; color: var(--ink-faint); }
 .queue__step--now .queue__step-nom { color: var(--ink); font-weight: 700; }
 @media (max-width: 800px) {
   .queue__row { grid-template-columns: 1fr auto; gap: 10px 16px; }
@@ -653,7 +657,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   .queue__step--now .queue__step-nom { display: block; }
 }
 
-.dash__empty { padding: 36px 24px; background: #fff; border: 1px dashed #c6d3cd; border-radius: 12px; }
+.dash__empty { padding: 36px 24px; background: var(--surface); border: 1px dashed var(--hairline); border-radius: 12px; }
 .dash__empty-title { font-size: 1rem; font-weight: 600; color: var(--ink); margin: 0 0 4px; }
 .dash__empty-sub { font-size: 0.9rem; color: var(--ink-soft); margin: 0; max-width: 60ch; }
 
@@ -661,7 +665,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .cg-full { margin-bottom: 16px; }
 .cg-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 @media (max-width: 680px) { .cg-grid2 { grid-template-columns: 1fr; } }
-.cg-card { min-width: 0; background: #fff; border: 1px solid var(--hairline); border-radius: 12px; padding: 20px 22px; }
+.cg-card { min-width: 0; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 20px 22px; }
 .cg-title { font-size: 1rem; font-weight: 650; color: var(--ink); margin: 0 0 2px; }
 .cg-sub { font-size: 0.8125rem; color: var(--ink-soft); margin: 0 0 16px; }
 .cg-canvas { height: 260px; position: relative; }

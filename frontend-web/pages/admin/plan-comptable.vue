@@ -677,26 +677,26 @@ const parentOptions = computed(() =>
 
 <style scoped>
 /* ── Fiche du référentiel ────────────────────────────────────────────────── */
-.pc-fiche { background: #fff; border-radius: 18px; overflow: hidden; }
+.pc-fiche { background: var(--surface); border-radius: 18px; overflow: hidden; }
 .pc-fiche__head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
   padding: 22px 24px 18px;
   background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--hairline);
 }
 .pc-fiche__eyebrow {
   font-size: 0.66rem; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
   color: #6366f1; margin: 0 0 6px;
 }
-.pc-fiche__title { font-size: 1.08rem; font-weight: 700; color: #111827; margin: 0; }
+.pc-fiche__title { font-size: 1.08rem; font-weight: 700; color: var(--ink); margin: 0; }
 .pc-fiche__num {
   display: inline-block; font-family: ui-monospace, monospace; font-size: 0.95rem;
   background: #4338ca; color: #fff; border-radius: 6px; padding: 1px 8px; margin-right: 8px;
 }
-.pc-fiche__parent { font-size: 0.78rem; color: #6b7280; margin: 6px 0 0; }
+.pc-fiche__parent { font-size: 0.78rem; color: var(--ink-soft); margin: 6px 0 0; }
 .pc-fiche__body { padding: 20px 24px 26px; max-height: 68vh; overflow-y: auto; }
 .pc-fiche__loading { display: flex; justify-content: center; padding: 40px; }
-.pc-fiche__vide { color: #9ca3af; font-size: 0.86rem; text-align: center; padding: 24px; }
+.pc-fiche__vide { color: var(--ink-faint); font-size: 0.86rem; text-align: center; padding: 24px; }
 
 .pc-rub { margin-bottom: 18px; }
 .pc-rub__titre {
@@ -706,12 +706,12 @@ const parentOptions = computed(() =>
 }
 .pc-rub__corps {
   border-left: 3px solid; border-radius: 0 10px 10px 0;
-  background: #f9fafb; padding: 12px 16px;
+  background: var(--surface-2); padding: 12px 16px;
 }
-.pc-rub__para { font-size: 0.85rem; color: #374151; margin: 0 0 7px; line-height: 1.55; }
+.pc-rub__para { font-size: 0.85rem; color: var(--ink-2); margin: 0 0 7px; line-height: 1.55; }
 .pc-rub__para:last-child { margin-bottom: 0; }
 .pc-rub__puce {
-  font-size: 0.85rem; color: #374151; line-height: 1.55;
+  font-size: 0.85rem; color: var(--ink-2); line-height: 1.55;
   margin: 0 0 5px 18px; list-style: disc;
 }
 
@@ -729,7 +729,7 @@ const parentOptions = computed(() =>
 .pc-refresh-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; border-radius: 11px;
-  background: #f3f4f6; border: 1px solid #e5e7eb; color: #6b7280;
+  background: var(--surface-2); border: 1px solid var(--hairline); color: var(--ink-soft);
   cursor: pointer; transition: background 0.15s;
 }
 .pc-refresh-btn:hover:not(:disabled) { background: #e5e7eb; }
@@ -748,40 +748,40 @@ const parentOptions = computed(() =>
 .pc-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; align-items: flex-start; }
 .pc-search {
   display: flex; align-items: center; gap: 8px;
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 11px;
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: 11px;
   padding: 0 14px; height: 40px; min-width: 200px; flex: 1; max-width: 300px;
 }
 .pc-search__icon { flex-shrink: 0; }
-.pc-search__input { flex: 1; border: none; outline: none; font-size: 0.875rem; color: #111827; background: transparent; }
-.pc-search__input::placeholder { color: #9ca3af; }
+.pc-search__input { flex: 1; border: none; outline: none; font-size: 0.875rem; color: var(--ink); background: transparent; }
+.pc-search__input::placeholder { color: var(--ink-faint); }
 .pc-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .pc-chip {
   padding: 4px 12px; border-radius: 100px; font-size: 0.75rem; font-weight: 600;
-  border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280;
+  border: 1px solid var(--hairline); background: var(--surface-2); color: var(--ink-soft);
   cursor: pointer; transition: all 0.15s;
 }
-.pc-chip:hover { border-color: #d1d5db; background: #f3f4f6; }
+.pc-chip:hover { border-color: #d1d5db; background: var(--surface-2); }
 .pc-chip--on   { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.pc-count { font-size: 0.8rem; color: #9ca3af; margin: 0 0 12px; font-weight: 500; }
+.pc-count { font-size: 0.8rem; color: var(--ink-faint); margin: 0 0 12px; font-weight: 500; }
 
 /* ── Table card ──────────────────────────────────────────────────────────── */
-.pc-card { background: #fff; border: 1px solid #f0f0f0; border-radius: 18px; overflow: hidden; }
+.pc-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 18px; overflow: hidden; }
 .pc-loading, .pc-empty {
   display: flex; flex-direction: column; align-items: center;
-  gap: 10px; padding: 48px 16px; color: #9ca3af; font-size: 0.85rem;
+  gap: 10px; padding: 48px 16px; color: var(--ink-faint); font-size: 0.85rem;
 }
 .pc-empty p { margin: 0; }
 .pc-table-scroll { overflow-x: auto; }
 .pc-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 0.875rem; }
-.pc-table thead tr { border-bottom: 1px solid #f3f4f6; }
+.pc-table thead tr { border-bottom: 1px solid var(--hairline); }
 .pc-table th {
   padding: 12px 16px; font-size: 0.72rem; font-weight: 700;
-  letter-spacing: 0.4px; text-transform: uppercase; color: #9ca3af; text-align: left;
+  letter-spacing: 0.4px; text-transform: uppercase; color: var(--ink-faint); text-align: left;
 }
 .pc-th-action { width: 48px; }
 .pc-table tbody tr { border-bottom: 1px solid #f9fafb; transition: background 0.12s; }
 .pc-table tbody tr:last-child { border-bottom: none; }
-.pc-table tbody tr:hover { background: #fafafa; }
+.pc-table tbody tr:hover { background: var(--surface-2); }
 .pc-row--manuel { background: var(--color-primary-lighter); }
 .pc-row--manuel:hover { background: var(--color-primary-light) !important; }
 .pc-table td { padding: 10px 16px; vertical-align: middle; }
@@ -789,8 +789,8 @@ const parentOptions = computed(() =>
 .pc-num-cell { display: flex; align-items: center; gap: 6px; }
 .pc-numero {
   font-family: 'JetBrains Mono', 'Courier New', monospace;
-  font-size: 0.875rem; font-weight: 700; color: #111827;
-  background: #f9fafb; border: 1px solid #f0f0f0;
+  font-size: 0.875rem; font-weight: 700; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--hairline);
   padding: 2px 8px; border-radius: 6px; display: inline-block;
 }
 .pc-manuel-badge {
@@ -798,13 +798,13 @@ const parentOptions = computed(() =>
   border-radius: 100px; background: var(--color-primary-light); color: var(--color-primary);
   border: 1px solid var(--color-primary-mid); letter-spacing: 0.3px;
 }
-.pc-libelle { color: #374151; }
-.pc-parent-hint { font-size: 0.72rem; color: #9ca3af; margin-left: 6px; font-family: monospace; }
+.pc-libelle { color: var(--ink-2); }
+.pc-parent-hint { font-size: 0.72rem; color: var(--ink-faint); margin-left: 6px; font-family: monospace; }
 .pc-type-chip {
   display: inline-block; font-size: 0.65rem; font-weight: 700;
   padding: 3px 9px; border-radius: 100px; letter-spacing: 0.3px;
 }
-.pc-classe { font-size: 0.78rem; color: #6b7280; }
+.pc-classe { font-size: 0.78rem; color: var(--ink-soft); }
 
 .pc-row-actions { display: inline-flex; align-items: center; gap: 6px; }
 
@@ -830,8 +830,8 @@ const parentOptions = computed(() =>
 /* ── Cartes (mobile) ─────────────────────────────────────────────────────── */
 .pc-cards { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
 .pc-card-item {
-  background: #fff;
-  border: 1px solid #eef0f2;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-left: 3px solid var(--color-primary);
   border-radius: 16px;
   padding: 14px 16px;
@@ -852,7 +852,7 @@ const parentOptions = computed(() =>
 .pc-card-item__libelle {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   line-height: 1.4;
   margin: 0;
 }
@@ -874,7 +874,7 @@ const parentOptions = computed(() =>
 }
 
 /* ── Dialog ──────────────────────────────────────────────────────────────── */
-.pc-dialog { background: #fff; border-radius: 20px; overflow: hidden; }
+.pc-dialog { background: var(--surface); border-radius: 20px; overflow: hidden; }
 .pc-dialog__head {
   position: relative; overflow: hidden;
   display: flex; align-items: center; gap: 14px; padding: 22px;
@@ -893,7 +893,7 @@ const parentOptions = computed(() =>
   background: #fef2f2; border: 1px solid #fecaca;
   border-radius: 12px; padding: 14px 16px;
 }
-.pc-del-libelle { font-size: 0.9rem; font-weight: 600; color: #374151; }
+.pc-del-libelle { font-size: 0.9rem; font-weight: 600; color: var(--ink-2); }
 .pc-del-warning {
   display: flex; align-items: flex-start; gap: 4px;
   font-size: 0.8rem; color: #92400e;
@@ -932,24 +932,24 @@ const parentOptions = computed(() =>
 
 .pc-dialog__body { padding: 22px; display: flex; flex-direction: column; gap: 16px; }
 .pc-field { display: flex; flex-direction: column; gap: 6px; }
-.pc-label { font-size: 0.8125rem; font-weight: 600; color: #374151; }
+.pc-label { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
 
 /* Carte d'héritage */
 .pc-inherit-card {
-  background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 12px;
   padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;
 }
 .pc-inherit-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.pc-inherit-label { font-size: 0.78rem; font-weight: 600; color: #9ca3af; }
-.pc-inherit-val { font-size: 0.8rem; font-weight: 600; color: #374151; }
+.pc-inherit-label { font-size: 0.78rem; font-weight: 600; color: var(--ink-faint); }
+.pc-inherit-val { font-size: 0.8rem; font-weight: 600; color: var(--ink-2); }
 
 .pc-dialog__footer {
   display: flex; align-items: center; justify-content: flex-end; gap: 10px;
-  padding: 16px 22px; border-top: 1px solid #f3f4f6;
+  padding: 16px 22px; border-top: 1px solid var(--hairline);
 }
 .pc-cancel-btn {
   padding: 0 18px; height: 40px; border-radius: 10px;
-  background: #f3f4f6; color: #374151; font-size: 0.875rem; font-weight: 600;
+  background: var(--surface-2); color: var(--ink-2); font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer; transition: background 0.15s;
 }
 .pc-cancel-btn:hover:not(:disabled) { background: #e5e7eb; }

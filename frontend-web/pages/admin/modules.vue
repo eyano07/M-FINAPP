@@ -155,8 +155,8 @@ async function basculer(m: ModuleConfig) {
   align-items: center;
   gap: 14px;
   padding: 16px 18px;
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 16px;
   transition: opacity 0.15s;
 }
@@ -176,8 +176,8 @@ async function basculer(m: ModuleConfig) {
   flex-shrink: 0;
 }
 .mod-row__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mod-row__label { font-size: 0.9rem; font-weight: 700; color: #111827; }
-.mod-row__desc { font-size: 0.78rem; color: #9ca3af; }
+.mod-row__label { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
+.mod-row__desc { font-size: 0.78rem; color: var(--ink-faint); }
 
 .mod-row__statut {
   font-size: 0.7rem;
@@ -188,5 +188,5 @@ async function basculer(m: ModuleConfig) {
   white-space: nowrap;
 }
 .mod-row__statut--on { background: var(--color-primary-light); color: var(--color-primary); }
-.mod-row__statut--off { background: #f3f4f6; color: #9ca3af; }
+.mod-row__statut--off { background: var(--surface-2); color: var(--ink-faint); }
 </style>

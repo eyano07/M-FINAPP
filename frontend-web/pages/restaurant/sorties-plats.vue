@@ -354,7 +354,7 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
 .rst-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
 @media (max-width: 1200px) { .rst-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 600px) { .rst-grid { grid-template-columns: 1fr; } }
-.rst-form-title { font-size: 0.85rem; font-weight: 700; color: #374151; margin: 0 0 16px; display: flex; align-items: center; }
+.rst-form-title { font-size: 0.85rem; font-weight: 700; color: var(--ink-2); margin: 0 0 16px; display: flex; align-items: center; }
 .rst-card-head {
   display: flex;
   align-items: center;
@@ -362,7 +362,7 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
   font-weight: 700;
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--ink-soft);
   padding: 16px 20px 12px;
 }
 .rst-stats { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
