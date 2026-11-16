@@ -46,9 +46,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Sorties de plats hors vente (V121) : chaque motif est débité à son propre compte — 736.1 à 736.5 pour un plat périmé, moisi,
- * renversé, brûlé ou « autre » (variation des stocks de produits finis, à part de la sortie des plats vendus), 6276.2 pour un
- * plat offert, 6617.1 pour un repas du personnel — le compte de stock crédité restant celui du plat.
+ * Sorties de plats hors vente (V121) : chaque motif est débité à son propre compte — 7361 à 7365 pour un plat périmé, moisi,
+ * renversé, brûlé ou « autre » (variation des stocks de produits finis, à part de la sortie des plats vendus), 62762 pour un
+ * plat offert, 66171 pour un repas du personnel — le compte de stock crédité restant celui du plat.
  */
 class SortiePlatComptesTest {
 
@@ -57,13 +57,13 @@ class SortiePlatComptesTest {
 
     /** Le compte attendu pour chaque motif : l'énoncé de la règle, écrit en dur pour qu'un changement involontaire échoue. */
     private static final Map<MotifSortiePlat, String> COMPTES = new EnumMap<>(Map.of(
-        MotifSortiePlat.CADEAU, "6276.2",
-        MotifSortiePlat.REPAS_PERSONNEL, "6617.1",
-        MotifSortiePlat.PERIME, "736.1",
-        MotifSortiePlat.MOISI, "736.2",
-        MotifSortiePlat.RENVERSE, "736.3",
-        MotifSortiePlat.BRULE, "736.4",
-        MotifSortiePlat.AUTRE, "736.5"));
+        MotifSortiePlat.CADEAU, "62762",
+        MotifSortiePlat.REPAS_PERSONNEL, "66171",
+        MotifSortiePlat.PERIME, "7361",
+        MotifSortiePlat.MOISI, "7362",
+        MotifSortiePlat.RENVERSE, "7363",
+        MotifSortiePlat.BRULE, "7364",
+        MotifSortiePlat.AUTRE, "7365"));
 
     private RestaurantService service;
     private StockService stock;
@@ -72,7 +72,8 @@ class SortiePlatComptesTest {
     private final Entrepot entrepot = Entrepot.builder().id(1L).code("ENT-01").nom("Entrepôt Principal").build();
     private final Article omelette = Article.builder().id(10L).code("PLAT-OMEL").libelle("Omelette").uniteMesure("portion")
         .type(TypeArticle.PLAT)
-        .compteCharge(CompteOHADA.builder().numero("7361").build())
+        // 7361 est le plat périmé depuis V137 : le compte de variation du plat qui l'occupait a été décalé.
+        .compteCharge(CompteOHADA.builder().numero("7366").build())
         .compteStock(CompteOHADA.builder().numero("3611").build()).build();
 
     private static <T> T trouver(Object[] arguments, Class<T> type) {
@@ -145,8 +146,9 @@ class SortiePlatComptesTest {
             assertThat(numeros.add(numero)).as("compte partagé : " + numero).isTrue();
             assertThat(numero).isNotEqualTo(omelette.getCompteCharge().getNumero());
         }
-        // 736.1 à 736.5 : jamais un numéro que genererCompteDedie (736 + 1 à 99) attribuerait à un plat.
-        assertThat(numeros).noneMatch(n -> n.matches("736\\d+"));
+        // 7361 à 7365 (736.1 à 736.5 sans le point, V137) : genererCompteDedie saute les numéros déjà pris, et V137 a
+        // décalé tout compte de plat qui les occupait.
+        assertThat(numeros).containsExactlyInAnyOrder("7361", "7362", "7363", "7364", "7365", "62762", "66171");
     }
 
     @Test
@@ -191,11 +193,11 @@ class SortiePlatComptesTest {
 
     @Test
     void lesAutresMotifsNeDependentPasDuCompteDUnMotifAbsent() {
-        when(comptes.findByNumero("6276.2")).thenReturn(Optional.empty());
+        when(comptes.findByNumero("62762")).thenReturn(Optional.empty());
 
         sortie(MotifSortiePlat.RENVERSE);
 
-        assertThat(sortieDemandee().compteCharge().getNumero()).isEqualTo("736.3");
+        assertThat(sortieDemandee().compteCharge().getNumero()).isEqualTo("7363");
     }
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -205,7 +207,8 @@ class SortiePlatComptesTest {
     private static String migration() throws IOException {
         try (InputStream in = SortiePlatComptesTest.class.getResourceAsStream(MIGRATION)) {
             assertThat(in).as("migration V121").isNotNull();
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            // Numéros de comptes tels que V137 les a renumérotés (sans point).
+            return RenumerotationV137.appliquer(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         }
     }
 
@@ -257,7 +260,7 @@ class SortiePlatComptesTest {
         documentation.documenterCompteArticle(stockPlat, racineStock, RoleCompteArticle.STOCK, TypeArticle.PLAT, "PLAT-RIZ", "Riz");
 
         String phraseVariation = "Débité à chaque vente, au coût de production moyen. Les autres sorties de plats (périmé, moisi, "
-            + "renversé, brûlé, offert, repas du personnel, autre) vont à leur propre compte (736.1 à 736.5, 6276.2 et 6617.1), pas ici.";
+            + "renversé, brûlé, offert, repas du personnel, autre) vont à leur propre compte (7361 à 7365, 62762 et 66171), pas ici.";
         String phraseStock = "Crédité à chaque sortie (vente, perte, plat offert, repas du personnel) au coût de production moyen.";
         assertThat(variation.getFonctionnement()).contains(phraseVariation).doesNotContain("repas offert");
         assertThat(stockPlat.getFonctionnement()).contains(phraseStock).doesNotContain("repas offert");

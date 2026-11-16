@@ -29,7 +29,11 @@ public record ImmobilisationResponse(
     BigDecimal cumulAmortissements,
     BigDecimal valeurNetteComptable,
     LocalDate dateSortie,
-    BigDecimal valeurCession
+    BigDecimal valeurCession,
+    /** Bien principal dont celle-ci est un composant (null : bien principal). */
+    Long parentId,
+    String parentReference,
+    com.mbsc.finapp.domain.enums.TypeCession typeCession
 ) {
     public static ImmobilisationResponse from(Immobilisation i) {
         return new ImmobilisationResponse(
@@ -43,6 +47,9 @@ public record ImmobilisationResponse(
                 ? i.getResponsable().getPrenom() + " " + i.getResponsable().getNom() : null,
             i.getFournisseur(), i.getNumeroSerie(),
             i.cumulComptabilise(), i.valeurNetteComptable(),
-            i.getDateSortie(), i.getValeurCession());
+            i.getDateSortie(), i.getValeurCession(),
+            i.getParent() != null ? i.getParent().getId() : null,
+            i.getParent() != null ? i.getParent().getReference() : null,
+            i.getTypeCession());
     }
 }

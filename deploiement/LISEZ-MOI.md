@@ -88,7 +88,7 @@ Ouvrez `http://ADRESSE-DU-SERVEUR:9090` et connectez-vous avec le compte adminis
 
 ## 6. Sauvegardes et mises à jour
 
-**Sauvegarde** (base + fichiers téléversés + journal d'audit ; les sauvegardes de base et de fichiers de plus de 14 jours sont supprimées, **jamais** le journal d'audit) :
+**Sauvegarde** (base + fichiers téléversés + journal d'audit). Conservation : sauvegardes quotidiennes 30 jours, mensuelles 12 mois (`sauvegardes/mensuel/`), annuelles 10 ans (`sauvegardes/annuel/`), comme le veut la conservation décennale des livres ; le journal d'audit n'est **jamais** supprimé :
 
 ```bash
 cd /opt/mbsc && ./sauvegarder.sh                # dossier : /opt/mbsc/sauvegardes/
@@ -96,7 +96,9 @@ crontab -e                                       # puis ajouter, pour une sauveg
 0 2 * * * cd /opt/mbsc && ./sauvegarder.sh >> sauvegardes/journal.log 2>&1
 ```
 
-Une sauvegarde qui reste **sur** le serveur ne protège pas d'une panne du serveur : copiez régulièrement `sauvegardes/` ailleurs (par exemple, depuis un autre ordinateur : `rsync -av utilisateur@serveur:/opt/mbsc/sauvegardes/ ./sauvegardes-mbsc/`). Essayez une restauration de temps en temps.
+Une sauvegarde qui reste **sur** le serveur ne protège pas d'une panne du serveur : définissez `MBSC_COPIE_HORS_SITE` (un disque monté, ou une destination rsync `utilisateur@autre-serveur:/chemin`, accessible par clé SSH) et chaque sauvegarde y est recopiée, sans jamais rien y effacer ; dans la crontab : `0 2 * * * cd /opt/mbsc && MBSC_COPIE_HORS_SITE=utilisateur@autre-serveur:/sauvegardes-mbsc ./sauvegarder.sh >> sauvegardes/journal.log 2>&1`. Essayez une restauration au moins une fois par an.
+
+À chaque clôture d'exercice, l'application garde en plus dans la base une **archive figée** des livres de l'exercice (états financiers et fichier des écritures, avec son empreinte SHA-256), téléchargeable depuis Comptabilité › Clôture.
 
 **Restaurer** : `./restaurer-base.sh sauvegardes/base_AAAAMMJJ_HHMMSS.dump --remplacer` (l'application est arrêtée pendant l'opération ; une sauvegarde de sécurité est prise avant) puis `docker compose up -d`.
 

@@ -5,7 +5,7 @@ import type { LigneEcritureForm } from '~/components/comptabilite/LignesEcriture
 // ne modifie que les pages dediees a l'administration) : le DA a bien
 // LECTURE sur le module mais ne peut pas creer de piece, il recevait donc un
 // 403 apres avoir rempli tout le formulaire.
-definePageMeta({ module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['DFIN', 'COMPTABLE'] })
+definePageMeta({ module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['COMPTABLE'] })
 
 const api = useApi()
 const router = useRouter()
@@ -19,6 +19,7 @@ const journaux = [
   { title: 'Achats', value: 'ACHATS' },
   { title: 'Ventes', value: 'VENTES' },
   { title: 'Analytique (classe 9)', value: 'ANALYTIQUE' },
+  { title: 'À-nouveaux (reprise des soldes)', value: 'A_NOUVEAUX' },
 ]
 
 const LIBELLE_OUVERTURE = "Solde d'ouverture"
@@ -27,6 +28,7 @@ const form = reactive({
   datePiece: new Date().toISOString().slice(0, 10),
   journal: 'OPERATIONS_DIVERSES',
   libelle: '',
+  beneficiaire: '',
   soldeOuverture: false,
   lignes: [
     { compteNumero: null, debit: null, credit: null, libelle: '' },
@@ -37,6 +39,23 @@ const form = reactive({
 // Le libellé n'est plus ce qui déclenche le classement en ouverture (c'est la
 // case à cocher), mais on le pré-remplit pour que la pièce reste lisible dans
 // le journal et la liste. On ne touche jamais à un libellé déjà saisi.
+// Règle du 13/11/2026 : une pièce du 1er janvier (jour d'ouverture de l'exercice) qui ne porte que des comptes de
+// bilan est un solde d'ouverture. Le serveur applique la règle de toute façon ; la case se coche ici d'elle-même pour
+// que l'écran dise ce qui sera enregistré.
+const premierJanvier = computed(() => /^\d{4}-01-01$/.test(form.datePiece || ''))
+// La case cochée par la date se décoche avec elle : une date corrigée après coup ne doit pas laisser une pièce
+// ordinaire classée en solde d'ouverture. Une case cochée à la main, elle, reste comme le comptable l'a mise.
+let cocheeParLaDate = false
+watch(premierJanvier, (oui) => {
+  if (oui && !form.soldeOuverture) {
+    form.soldeOuverture = true
+    cocheeParLaDate = true
+  } else if (!oui && cocheeParLaDate) {
+    form.soldeOuverture = false
+    cocheeParLaDate = false
+  }
+}, { immediate: true })
+
 watch(() => form.soldeOuverture, (coche) => {
   if (coche && !form.libelle.trim()) {
     form.libelle = LIBELLE_OUVERTURE
@@ -80,6 +99,7 @@ async function enregistrer() {
         datePiece: form.datePiece,
         journal: form.journal,
         libelle: form.libelle.trim(),
+        beneficiaire: form.beneficiaire.trim() || null,
         soldeOuverture: form.soldeOuverture,
         lignes: form.lignes.map(l => ({
           compteNumero: l.compteNumero,
@@ -145,6 +165,17 @@ async function enregistrer() {
             density="comfortable"
           />
         </v-col>
+        <v-col cols="12" md="4">
+          <!-- 15/11/2026 : repris par le journal des comptes (colonne Bénéficiaire). -->
+          <v-text-field
+            v-model="form.beneficiaire"
+            label="Bénéficiaire (facultatif)"
+            prepend-inner-icon="mdi-account-outline"
+            variant="outlined"
+            density="comfortable"
+            maxlength="255"
+          />
+        </v-col>
       </v-row>
 
       <v-divider class="my-2" />
@@ -161,7 +192,12 @@ async function enregistrer() {
       </v-checkbox>
       <p class="ouverture-aide">
         <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
-        <template v-if="form.soldeOuverture">
+        <template v-if="premierJanvier">
+          Pièce du <strong>1er janvier</strong> : si elle ne porte que des comptes de bilan (classes 1 à 5), c'est
+          la reprise des à-nouveaux. Elle alimente les colonnes <strong>Soldes d'ouverture</strong> de la balance,
+          et son libellé se lit « … - Solde d'ouverture » au journal.
+        </template>
+        <template v-else-if="form.soldeOuverture">
           Cette pièce alimentera les colonnes <strong>Soldes d'ouverture</strong> de la balance
           et sera exclue des mouvements de la période — même si elle est datée dans l'exercice.
         </template>

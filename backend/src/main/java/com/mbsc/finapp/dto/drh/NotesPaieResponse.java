@@ -18,6 +18,9 @@ import java.util.List;
  * @param totalNet           total des salaires nets des bulletins éligibles
  * @param paiePayee          la note de paie est payée : constatation écrite, notes fiscales possibles
  * @param notesAnnulees      historique des notes annulées du mois
+ * @param comptabilisee      tous les bulletins validés du mois ont leur pièce de constatation (journal PAIE) ; faux
+ *                           pour un mois clôturé en mode de comptabilisation manuel que le DFIN n'a pas encore
+ *                           comptabilisé (audit DRH du 15/11/2026, D-01)
  */
 public record NotesPaieResponse(
     int mois,
@@ -30,12 +33,17 @@ public record NotesPaieResponse(
     NoteResume notePaie,
     boolean paiePayee,
     List<VersementFiscal> versements,
-    List<NoteResume> notesAnnulees
+    List<NoteResume> notesAnnulees,
+    boolean comptabilisee
 ) {
 
-    /** Montant dû à un organisme pour le mois, et sa note de versement si elle existe. */
+    /**
+     * Montant dû à un organisme pour le mois, et sa note de versement si elle existe. {@code comptes} : les comptes
+     * que la constatation a crédités pour lui (CNSS : 4311, 4312, 4313 ; 4315 pour une paie antérieure à la
+     * répartition par branche) ; {@code compte} : les mêmes, joints par « / », pour l'affichage.
+     */
     public record VersementFiscal(OrganismePaie organisme, String libelle, String beneficiaire, String compte,
-                                  BigDecimal montant, NoteResume note) {}
+                                  List<String> comptes, BigDecimal montant, NoteResume note) {}
 
     public record NoteResume(Long id, String reference, StatutNote statut, BigDecimal montant, String devise,
                              OrganismePaie organisme) {

@@ -53,6 +53,23 @@ interface Resultat {
   tauxChangeApplique: number
   netFc: number
   conformite: Conformite | null
+  // Législation congolaise (16/11/2026) : bases, CNSS par branche, INPP selon l'effectif, personnes à charge.
+  appointements?: number
+  baseImposableInss?: number
+  baseImposableIpr?: number
+  allocationExoneree?: number
+  cnssPatronalePension?: number
+  cnssPatronalePf?: number
+  cnssPatronaleRp?: number
+  tauxInppApplique?: number
+  effectif?: number | null
+  personnesACharge?: number
+}
+
+/** Avance ouverte de l'agent (audit DRH du 15/11/2026, D-06) : solde de son compte d'avances non encore retenu. */
+interface AvanceOuverte {
+  compte: string | null
+  solde: number
 }
 
 const MOIS = [
@@ -61,6 +78,7 @@ const MOIS = [
 ]
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const canWrite = computed(() => auth.hasAnyRole(['RESP_DRH']))
 
@@ -71,6 +89,7 @@ const annee = ref(aujourdhui.getFullYear())
 const loading = ref(false)
 const saving = ref(false)
 const clôturant = ref(false)
+const comptabilisant = ref(false)
 const exportEnCours = ref(false)
 const erreur = ref('')
 const succes = ref('')
@@ -129,14 +148,37 @@ async function charger() {
 onMounted(charger)
 watch([mois, annee], charger)
 
+const avanceOuverte = ref<AvanceOuverte | null>(null)
+
 function onEmployeChange() {
   const emp = employes.value.find(e => e.id === form.employeId)
   if (emp) form.salaireBaseUsd = emp.salaireBaseUsd
   resultat.value = null
+  chargerAvanceOuverte()
 }
+
+// Préremplit l'avance à retenir avec l'avance ouverte de l'agent (modifiable, à la baisse seulement : le serveur
+// refuse une retenue supérieure).
+async function chargerAvanceOuverte() {
+  avanceOuverte.value = null
+  const id = form.employeId
+  if (!id) return
+  try {
+    const a = await api<AvanceOuverte>(`/drh/employes/${id}/avance-ouverte`)
+    if (form.employeId !== id) return
+    avanceOuverte.value = a
+    form.avanceSalaire = Number(a.solde) || 0
+  } catch {
+    avanceOuverte.value = null
+  }
+}
+
+const avanceDepassee = computed(() => avanceOuverte.value !== null
+  && Number(form.avanceSalaire || 0) > Number(avanceOuverte.value.solde || 0))
 
 function ouvrirAjout() {
   Object.assign(form, formVide())
+  avanceOuverte.value = null
   resultat.value = null
   erreur.value = ''
   dialog.value = true
@@ -179,6 +221,10 @@ async function enregistrer() {
     erreur.value = 'Sélectionnez un employé.'
     return
   }
+  if (avanceDepassee.value) {
+    erreur.value = `L'avance à retenir dépasse l'avance ouverte de l'agent (${fmtUsd(avanceOuverte.value?.solde ?? 0)}).`
+    return
+  }
   if (!(tauxChange.value > 0)) {
     erreur.value = "Aucun taux de change n'est défini : l'IPR et le net en francs congolais seraient "
       + "calculés à zéro. Demandez à un administrateur d'enregistrer le taux du jour avant de créer ce bulletin."
@@ -212,7 +258,14 @@ async function action(b: Bulletin, verbe: 'valider' | 'devalider' | 'annuler') {
 }
 
 async function supprimer(b: Bulletin) {
-  if (!confirm(`Supprimer définitivement le bulletin de ${b.employeNomComplet} (${MOIS[b.mois - 1]} ${b.annee}) ? Cette action est irréversible.`)) return
+  const confirme = await dialogues.confirmer({
+    titre: `Supprimer le bulletin de ${b.employeNomComplet} ?`,
+    message: [`Bulletin de ${MOIS[b.mois - 1]} ${b.annee}.`, 'Cette action est irréversible.'],
+    bouton: 'Supprimer définitivement',
+    nature: 'danger',
+    icone: 'mdi-trash-can-outline',
+  })
+  if (!confirme) return
   saving.value = true
   erreur.value = ''
   try {
@@ -231,13 +284,47 @@ async function cloturer() {
   erreur.value = ''
   try {
     const res = await api<Bulletin[]>('/drh/bulletins/cloturer', { method: 'POST', params: { mois: mois.value, annee: annee.value } })
-    succes.value = `${res.length} bulletin(s) clôturé(s). Créez maintenant la note de paie du mois (Règlement de la paie).`
+    // Mode de comptabilisation (Paramètres de paie) : la réponse dit si la pièce de paie a été écrite.
+    succes.value = res.some(b => b.pieceReference)
+      ? `${res.length} bulletin(s) clôturé(s) et paie constatée en comptabilité (journal de paie). La DRH peut créer la note de paie du mois.`
+      : `${res.length} bulletin(s) clôturé(s), sans écriture (comptabilisation manuelle) : comptabilisez la paie du mois par le bouton « Comptabiliser la paie ». La DRH peut créer la note de paie du mois.`
     await charger()
     await reglement.value?.charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Échec de la clôture.')
   } finally {
     clôturant.value = false
+  }
+}
+
+/**
+ * Mode de comptabilisation manuel (audit DRH du 15/11/2026, D-01) : le DFIN écrit la pièce de paie d'un mois
+ * clôturé au journal PAIE.
+ */
+async function comptabiliser() {
+  const confirme = await dialogues.confirmer({
+    titre: `Comptabiliser la paie de ${MOIS[mois.value - 1]} ${annee.value} ?`,
+    message: [
+      `${aComptabiliser.value} bulletin(s) clôturé(s) seront constatés au journal PAIE, au dernier jour du mois :`
+        + ' charges de personnel, IPR, CNSS, INPP, ONEM et net à payer au compte de chaque agent.',
+      "La pièce ne s'annule ensuite qu'en rouvrant le mois.",
+    ],
+    bouton: 'Comptabiliser',
+    nature: 'attention',
+    icone: 'mdi-book-check-outline',
+  })
+  if (!confirme) return
+  comptabilisant.value = true
+  erreur.value = ''
+  try {
+    const res = await api<Bulletin[]>('/drh/bulletins/comptabiliser', { method: 'POST', params: { mois: mois.value, annee: annee.value } })
+    succes.value = `Paie de ${MOIS[mois.value - 1]} ${annee.value} comptabilisée : ${res.length} bulletin(s), pièce ${res[0]?.pieceReference ?? ''}.`
+    await charger()
+    await reglement.value?.charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Échec de la comptabilisation de la paie.')
+  } finally {
+    comptabilisant.value = false
   }
 }
 
@@ -266,6 +353,12 @@ const fmtFc = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDig
 const reglement = ref<{ charger: () => Promise<void> } | null>(null)
 
 const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALIDE' && !b.cloture).length)
+// Mois clôturé (tous les bulletins validés) dont des bulletins n'ont pas encore de pièce : mode manuel.
+const aComptabiliser = computed(() => {
+  const valides = bulletins.value.filter(b => b.statut === 'VALIDE')
+  if (!valides.length || valides.some(b => !b.cloture)) return 0
+  return valides.filter(b => !b.pieceReference).length
+})
 </script>
 
 <template>
@@ -280,9 +373,15 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
           :loading="exportEnCours" :disabled="!bulletins.length" @click="exporterExcel">
           DEBOURS MBSC
         </v-btn>
-        <v-btn v-if="canWrite" color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-lock-check-outline"
+        <!-- La DRH saisit et valide les bulletins ; le DFIN clôture le mois, ce qui constate la paie en comptabilité
+             (audit SYSCOHADA du 10/11/2026, C-14). -->
+        <v-btn v-if="auth.hasRole('DFIN')" color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-lock-check-outline"
           :loading="clôturant" :disabled="validables === 0" @click="cloturer">
           Clôturer la période ({{ validables }})
+        </v-btn>
+        <v-btn v-if="auth.hasRole('DFIN') && aComptabiliser > 0" color="primary" variant="flat" rounded="lg"
+          prepend-icon="mdi-book-check-outline" :loading="comptabilisant" @click="comptabiliser">
+          Comptabiliser la paie
         </v-btn>
         <v-btn v-if="canWrite" color="success" variant="flat" rounded="lg" prepend-icon="mdi-plus" @click="ouvrirAjout">
           Nouveau bulletin
@@ -388,7 +487,20 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
             <v-col cols="12" md="4"><v-text-field v-model.number="form.primeDiplome" type="number" label="Prime diplôme" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.primeAnciennete" type="number" label="Prime ancienneté" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.primeRendement" type="number" label="Prime rendement" variant="outlined" density="comfortable" /></v-col>
-            <v-col cols="12" md="6"><v-text-field v-model.number="form.avanceSalaire" type="number" label="Avance sur salaire à déduire" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="6">
+              <v-text-field v-model.number="form.avanceSalaire" type="number" label="Avance sur salaire à déduire"
+                variant="outlined" density="comfortable" min="0"
+                :error-messages="avanceDepassee ? 'Supérieure à l\'avance ouverte de l\'agent' : undefined" />
+              <p v-if="avanceOuverte" class="text-caption text-medium-emphasis mt-1 mb-0">
+                <template v-if="avanceOuverte.compte">
+                  Avance ouverte : <strong>{{ fmtUsd(avanceOuverte.solde) }}</strong> (compte {{ avanceOuverte.compte }}).
+                  Seule une avance versée par une note de frais imputée à ce compte peut être retenue.
+                </template>
+                <template v-else>
+                  Cet agent n'a pas encore de compte d'avances : enregistrez sa fiche pour en ouvrir un.
+                </template>
+              </p>
+            </v-col>
             <v-col cols="12" md="6"><v-text-field v-model.number="form.pret" type="number" label="Prêt à déduire" variant="outlined" density="comfortable" /></v-col>
           </v-row>
 
@@ -401,11 +513,30 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
               <v-col cols="6" md="4"><span class="calc-label">Salaire brut</span><br><strong>{{ fmtUsd(resultat.salaireBrut) }}</strong></v-col>
               <v-col cols="6" md="4"><span class="calc-label">Indemnité logement</span><br><strong>{{ fmtUsd(resultat.indemniteLogement) }}</strong></v-col>
               <v-col cols="6" md="4"><span class="calc-label">Indemnité transport</span><br><strong>{{ fmtUsd(resultat.indemniteTransport) }}</strong></v-col>
-              <v-col cols="6" md="4"><span class="calc-label">CNSS ouvrière</span><br><strong>{{ fmtUsd(resultat.cnssOuvriere) }}</strong></v-col>
-              <v-col cols="6" md="4"><span class="calc-label">CNSS patronale</span><br><strong>{{ fmtUsd(resultat.cnssPatronale) }}</strong></v-col>
+              <v-col v-if="resultat.appointements != null" cols="6" md="4"><span class="calc-label">Appointements</span><br><strong>{{ fmtUsd(resultat.appointements) }}</strong></v-col>
+              <v-col v-if="resultat.baseImposableInss != null" cols="6" md="4"><span class="calc-label">Base cotisable (CNSS, ONEM, INPP)</span><br><strong>{{ fmtUsd(resultat.baseImposableInss) }}</strong></v-col>
+              <v-col v-if="resultat.baseImposableIpr != null" cols="6" md="4"><span class="calc-label">Base IPR</span><br><strong>{{ fmtUsd(resultat.baseImposableIpr) }}</strong></v-col>
+              <v-col cols="6" md="4"><span class="calc-label">CNSS salariale</span><br><strong>{{ fmtUsd(resultat.cnssOuvriere) }}</strong></v-col>
+              <v-col cols="6" md="4">
+                <span class="calc-label">CNSS patronale</span><br><strong>{{ fmtUsd(resultat.cnssPatronale) }}</strong>
+                <span v-if="resultat.cnssPatronalePension != null" class="calc-label d-block">
+                  pensions {{ fmtUsd(resultat.cnssPatronalePension) }} · PF {{ fmtUsd(resultat.cnssPatronalePf ?? 0) }}
+                  · RP {{ fmtUsd(resultat.cnssPatronaleRp ?? 0) }}
+                </span>
+              </v-col>
               <v-col cols="6" md="4"><span class="calc-label">ONEM</span><br><strong>{{ fmtUsd(resultat.onem) }}</strong></v-col>
-              <v-col cols="6" md="4"><span class="calc-label">INPP</span><br><strong>{{ fmtUsd(resultat.inpp) }}</strong></v-col>
-              <v-col cols="6" md="4"><span class="calc-label">IPR</span><br><strong>{{ fmtUsd(resultat.ipr) }}</strong></v-col>
+              <v-col cols="6" md="4">
+                <span class="calc-label">INPP</span><br><strong>{{ fmtUsd(resultat.inpp) }}</strong>
+                <span v-if="resultat.tauxInppApplique != null" class="calc-label d-block">
+                  taux {{ (Number(resultat.tauxInppApplique) * 100).toLocaleString('fr-FR') }} %<template v-if="resultat.effectif"> · {{ resultat.effectif }} employé(s)</template>
+                </span>
+              </v-col>
+              <v-col cols="6" md="4">
+                <span class="calc-label">IPR</span><br><strong>{{ fmtUsd(resultat.ipr) }}</strong>
+                <span v-if="resultat.personnesACharge != null" class="calc-label d-block">
+                  {{ resultat.personnesACharge }} personne(s) à charge
+                </span>
+              </v-col>
               <v-col cols="6" md="4"><span class="calc-label">Taux de change appliqué</span><br><strong>{{ resultat.tauxChangeApplique }}</strong></v-col>
               <v-col cols="12" md="6"><span class="calc-label">Salaire net (USD)</span><br><strong class="text-h6">{{ fmtUsd(resultat.salaireNet) }}</strong></v-col>
               <v-col cols="12" md="6"><span class="calc-label">Salaire net (FC)</span><br><strong class="text-h6">{{ fmtFc(resultat.netFc) }}</strong></v-col>

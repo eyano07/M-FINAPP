@@ -241,6 +241,12 @@ async function changerMotDePasse() {
           </v-btn>
         </v-card-actions>
       </v-card>
+
+      <!-- Double authentification (audit SYSCOHADA du 10/11/2026, C-23) -->
+      <v-card class="classroom-card mt-4 pa-4" rounded="lg">
+        <div class="text-subtitle-1 font-weight-bold mb-2">Double authentification</div>
+        <CommunDoubleAuthentification />
+      </v-card>
     </template>
   </div>
 </template>

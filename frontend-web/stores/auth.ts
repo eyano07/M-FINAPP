@@ -48,6 +48,8 @@ export interface AuthUser {
    * serveur refuse le reste (403 MOT_DE_PASSE_A_CHANGER).
    */
   doitChangerMotDePasse?: boolean
+  /** Double authentification obligatoire pour ce rôle et pas encore activée : bloqué sur /double-authentification. */
+  doitActiverDoubleAuth?: boolean
 }
 
 interface AuthState {

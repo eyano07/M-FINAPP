@@ -23,6 +23,7 @@ public interface PieceComptableRepository extends JpaRepository<PieceComptable, 
     @Query("""
         select p from PieceComptable p
         left join fetch p.createdBy
+        left join fetch p.comptabiliseePar
         order by p.datePiece desc, p.id desc
     """)
     List<PieceComptable> findAllWithCreatedByOrderByDatePieceDesc();
@@ -143,4 +144,30 @@ public interface PieceComptableRepository extends JpaRepository<PieceComptable, 
                                     @Param("libelle") String libelle,
                                     @Param("totalDebit") java.math.BigDecimal totalDebit,
                                     @Param("depuis") java.time.Instant depuis);
+
+    /** Pièces annulées qui ont déjà une restauration en cours ou comptabilisée. */
+    @Query("select distinct p.pieceRestauree.id from PieceComptable p where p.pieceRestauree is not null "
+        + "and p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.ANNULEE")
+    List<Long> idsPiecesRestaurees();
+
+    @Query("select count(p) > 0 from PieceComptable p where p.pieceRestauree.id = :id "
+        + "and p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.ANNULEE")
+    boolean existsRestaurationActive(@org.springframework.data.repository.query.Param("id") Long id);
+
+    /**
+     * Pièces d'origine dont l'extourne est encore comptabilisée : leur annulation est toujours en vigueur, donc
+     * elles se restaurent. Si l'extourne a elle-même été annulée (extourne d'extourne), la comptabilisation est déjà
+     * rétablie : restaurer la pièce l'écrirait une seconde fois.
+     */
+    @Query("select distinct p.pieceOrigine.id from PieceComptable p where p.pieceOrigine is not null "
+        + "and p.statut = com.mbsc.finapp.domain.enums.StatutPiece.COMPTABILISEE")
+    List<Long> idsPiecesAvecExtourneEnVigueur();
+
+    @Query("select count(p) > 0 from PieceComptable p where p.pieceOrigine.id = :id "
+        + "and p.statut = com.mbsc.finapp.domain.enums.StatutPiece.COMPTABILISEE")
+    boolean existsExtourneEnVigueur(@org.springframework.data.repository.query.Param("id") Long id);
+
+    /** L'extourne la plus recente d'une piece, dans le statut donne : son auteur est celui qui a annule la piece. */
+    Optional<PieceComptable> findFirstByPieceOrigine_IdAndStatutOrderByIdDesc(
+        Long pieceOrigineId, com.mbsc.finapp.domain.enums.StatutPiece statut);
 }

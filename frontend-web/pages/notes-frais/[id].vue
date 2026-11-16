@@ -83,6 +83,7 @@ import { useInstanceStore } from '~/stores/instance'
 
 const route = useRoute()
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 // Copie en ligne d'un serveur local (V133) : seules les actions du circuit (soumettre, vérifier, valider, rejeter,
 // transmettre, priorité, observation) y sont possibles ; elles sont mises en attente puis appliquées au serveur local.
@@ -277,7 +278,14 @@ async function retourEnvoye(r: RetourFonds) {
 async function annulerRetour() {
   const r = retourEnAttente.value
   if (!r) return
-  if (!confirm(`Retirer la demande de retour de fonds de ${fmtMontant(r.montant)} ${r.devise || ''} ?`)) return
+  const confirme = await dialogues.confirmer({
+    titre: `Retirer la demande de retour de fonds de ${fmtMontant(r.montant)} ${r.devise || ''} ?`.replace('  ', ' '),
+    message: 'La note reste inchangée.',
+    bouton: 'Retirer la demande',
+    nature: 'danger',
+    icone: 'mdi-undo-variant',
+  })
+  if (!confirme) return
   busy.value = true
   erreur.value = ''
   succes.value = ''

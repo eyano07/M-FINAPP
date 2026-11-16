@@ -1,6 +1,7 @@
 package com.mbsc.finapp.dto.comptabilite;
 
 import com.mbsc.finapp.domain.EcritureGrandLivre;
+import com.mbsc.finapp.domain.SoldeOuverture;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,7 +29,7 @@ public record LigneGrandLivreResponse(
             e.getDateEcriture(),
             piece == null ? null : piece.getReference(),
             trx == null ? null : trx.getReference(),
-            e.getLibelle(),
+            SoldeOuverture.libelle(e),
             e.getDebit(),
             e.getCredit(),
             soldeProgressif,

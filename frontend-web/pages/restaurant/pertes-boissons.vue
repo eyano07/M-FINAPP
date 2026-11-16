@@ -41,8 +41,8 @@ interface SortieBoisson {
 /** Mêmes libellés que MotifSortieBoisson côté serveur. */
 const MOTIFS: { value: Motif; title: string; couleur: string; compte: string }[] = [
   { value: 'CASSE', title: 'Casse', couleur: 'error', compte: 'compte de variation de la boisson (6031)' },
-  { value: 'PERIME', title: 'Périmée', couleur: 'deep-orange', compte: '6031.2 Boissons périmées' },
-  { value: 'CADEAU', title: 'Offerte (cadeau)', couleur: 'pink', compte: '6276.1 Boissons offertes à la clientèle' },
+  { value: 'PERIME', title: 'Périmée', couleur: 'deep-orange', compte: '60312 Boissons périmées' },
+  { value: 'CADEAU', title: 'Offerte (cadeau)', couleur: 'pink', compte: '62761 Boissons offertes à la clientèle' },
 ]
 const metaMotif = (m: Motif) => MOTIFS.find(x => x.value === m)
 

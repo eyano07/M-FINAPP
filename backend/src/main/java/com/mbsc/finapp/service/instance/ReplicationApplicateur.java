@@ -44,9 +44,19 @@ public class ReplicationApplicateur {
         requetesSuppression.clear();
     }
 
-    /** Cles etrangeres controlees a la fin de la transaction courante (elles sont toutes differables). */
+    /**
+     * Cles etrangeres controlees a la fin de la transaction courante (elles sont toutes differables). Leve aussi,
+     * pour cette seule transaction, les verrous d'intangibilite de la comptabilite (V135) : la copie en ligne recoit
+     * les pieces telles que le serveur maitre les a ecrites, extournes et suppressions de brouillons comprises.
+     */
     public void differerContraintes() {
         jdbc.execute("set constraints all deferred");
+        leverVerrousComptables(jdbc);
+    }
+
+    /** Leve les verrous d'intangibilite comptable pour la transaction courante seulement (V135). */
+    public static void leverVerrousComptables(JdbcTemplate jdbc) {
+        jdbc.queryForObject("select set_config('app.reecriture_comptable', 'on', true)", String.class);
     }
 
     /** Insere ou met a jour une ligne (par sa cle primaire). */
@@ -111,6 +121,7 @@ public class ReplicationApplicateur {
      * @return le nombre de lignes inserees
      */
     public long remplacerToutes(boolean fusionner) {
+        leverVerrousComptables(jdbc);
         List<String> parentsDabord = schema.ordreParentsDabord();
         jdbc.execute("create index _replication_transit_nom on _replication_transit (nom_table)");
         boolean avecFusion = fusionner && schema.tables().containsKey("users") && schema.tables().containsKey("notifications");

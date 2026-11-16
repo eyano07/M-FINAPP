@@ -33,7 +33,7 @@ class ComptabiliteServiceBilanTest {
         mock(CompteOHADARepository.class), mock(MouvementStockRepository.class), mock(VenteRepository.class),
         mock(ReferenceGenerator.class), mock(CurrentUserProvider.class), mock(PeriodeComptableService.class),
         new ConversionDeviseService(mock(com.mbsc.finapp.repository.TauxChangeRepository.class)),
-        mock(ReleveBancaireRepository.class));
+        mock(ReleveBancaireRepository.class), mock(JournalEvenementsComptables.class), mock(NotificationService.class));
 
     private static Object[] ligne(String numero, String libelle, TypeCompte type, Integer classe, String debit, String credit) {
         return new Object[] {numero, libelle, type, classe, new BigDecimal(debit), new BigDecimal(credit)};
@@ -66,6 +66,26 @@ class ComptabiliteServiceBilanTest {
         assertThat(b.totalPassifHorsResultat()).isEqualByComparingTo("1000");
         assertThat(b.resultatNet()).isEqualByComparingTo("350");           // 450 - 100
         assertThat(b.totalPassif()).isEqualByComparingTo("1350");
+        assertThat(b.equilibre()).isTrue();
+    }
+
+    /**
+     * Audit SYSCOHADA du 10/11/2026, C-16 : un client créditeur (avance reçue) est une dette et une banque à découvert
+     * une trésorerie-passif ; une dépréciation (59x) reste en moins de l'actif.
+     */
+    @Test
+    void les_comptes_de_tiers_et_de_tresorerie_se_presentent_selon_le_sens_de_leur_solde() {
+        List<Object[]> lignes = new java.util.ArrayList<>(exercice());
+        lignes.add(ligne("4111", "Clients", TypeCompte.ACTIF, 4, "0", "80"));
+        lignes.add(ligne("5211", "Banque", TypeCompte.ACTIF, 5, "0", "70"));
+        lignes.add(ligne("592", "Dépréciation des comptes banques", TypeCompte.ACTIF, 5, "0", "10"));
+        lignes.add(ligne("6011", "Achats", TypeCompte.CHARGE, 6, "160", "0"));
+        when(ecritures.cumulParCompte(AU)).thenReturn(lignes);
+
+        BilanResponse b = service.bilan(AU);
+
+        assertThat(b.passifs()).extracting(EtatFinancierLigne::numero).contains("4111", "5211");
+        assertThat(b.actifs()).extracting(EtatFinancierLigne::numero).doesNotContain("4111", "5211").contains("592");
         assertThat(b.equilibre()).isTrue();
     }
 

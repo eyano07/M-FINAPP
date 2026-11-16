@@ -126,9 +126,11 @@ const form = reactive({ parentNumero: '', suffixe: '', libelle: '', note: '' })
 const parentChoisi = computed<Compte | null>(() =>
   form.parentNumero ? (comptes.value.find((c) => c.numero === form.parentNumero) ?? null) : null
 )
+// Codification décimale du SYSCOHADA (audit du 10/11/2026, C-17) : le sous-compte prolonge le numéro du parent par
+// des chiffres, sans point (4221 + 1 -> 42211).
 const numeroPreview = computed(() =>
   form.parentNumero && form.suffixe.trim()
-    ? `${form.parentNumero}.${form.suffixe.trim()}`
+    ? `${form.parentNumero}${form.suffixe.trim()}`
     : ''
 )
 
@@ -262,11 +264,8 @@ const typeColor: Record<string, { bg: string; color: string }> = {
   PRODUIT: { bg: 'var(--color-primary-light)', color: 'var(--color-primary)' },
 }
 const classeLabel = (n: number) => CLASSES.find((c) => c.num === n)?.label ?? ''
-const fmtNumero = (n: string) => {
-  if (n.length <= 2) return n
-  if (n[2] === '.') return n // point déjà en position 2 (ex: "10.11.1")
-  return n.slice(0, 2) + '.' + n.slice(2) // "1011" → "10.11", "1011.1" → "10.11.1"
-}
+// Numéro affiché tel qu'il est enregistré : un numéro SYSCOHADA s'écrit sans point (C-17).
+const fmtNumero = (n: string) => n
 
 // Autocomplete parents : tri par numéro
 const parentOptions = computed(() =>
@@ -579,7 +578,7 @@ const parentOptions = computed(() =>
             <label class="pc-label">Suffixe du nouveau compte *</label>
             <v-text-field
               v-model="form.suffixe"
-              placeholder="Ex: 1, 2, A…"
+              placeholder="Ex: 1, 2, 11 (chiffres seulement)"
               prepend-inner-icon="mdi-numeric-positive-1"
               hide-details="auto"
               :hint="numeroPreview ? `Numéro final : ${fmtNumero(numeroPreview)}` : ''"

@@ -65,6 +65,7 @@ interface Production {
 }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
 
@@ -240,9 +241,15 @@ async function produire() {
 }
 
 async function annuler(p: Production) {
-  if (!confirm(
-    `Annuler la production ${p.reference} ? Les ingrédients reviendront en stock et les `
-    + `${fmtQte(p.quantite)} portion(s) en sortiront.`)) return
+  const confirme = await dialogues.confirmer({
+    titre: `Annuler la production ${p.reference} ?`,
+    message: `Les ingrédients reviendront en stock et les ${fmtQte(p.quantite)} portion(s) en sortiront.`,
+    bouton: 'Annuler la production',
+    abandon: 'Retour',
+    nature: 'danger',
+    icone: 'mdi-cancel',
+  })
+  if (!confirme) return
   annulationId.value = p.id
   erreur.value = ''
   succes.value = ''

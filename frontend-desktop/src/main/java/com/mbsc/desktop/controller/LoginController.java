@@ -38,10 +38,15 @@ public class LoginController {
         final String email = emailField.getText().trim();
         final String pwd = passwordField.getText();
 
+        connecter(email, pwd, null);
+    }
+
+    /** Connexion ; si le serveur demande le code de double authentification, l'ecran le demande puis reessaie. */
+    private void connecter(String email, String pwd, String code) {
         Thread t = new Thread(() -> {
             try {
                 AuthDtos.AuthResponse auth =
-                    MainApp.apiClient().login(email, pwd);
+                    MainApp.apiClient().login(email, pwd, code);
                 SessionContext.setUser(auth.user());
                 MainApp.apiClient().chargerLibellesRoles();
 
@@ -52,6 +57,19 @@ public class LoginController {
                         showError("Erreur d'ouverture: " + e.getMessage());
                         loginButton.setDisable(false);
                     }
+                });
+            } catch (com.mbsc.desktop.api.ApiClient.DoubleAuthRequiseException e) {
+                Platform.runLater(() -> {
+                    javafx.scene.control.TextInputDialog dialogue = new javafx.scene.control.TextInputDialog();
+                    dialogue.setTitle("Double authentification");
+                    dialogue.setHeaderText(e.getMessage());
+                    dialogue.setContentText("Code à 6 chiffres :");
+                    dialogue.showAndWait().map(String::trim).filter(s -> !s.isEmpty()).ifPresentOrElse(
+                        saisi -> connecter(email, pwd, saisi),
+                        () -> {
+                            statusLabel.setText("");
+                            loginButton.setDisable(false);
+                        });
                 });
             } catch (Exception e) {
                 Platform.runLater(() -> {

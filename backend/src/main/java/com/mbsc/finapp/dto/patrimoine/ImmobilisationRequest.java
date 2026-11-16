@@ -31,6 +31,11 @@ public record ImmobilisationRequest(
     @Size(max = 100) String numeroSerie,
     /** true pour generer la piece d'acquisition (debit classe 2 / credit contrepartie). */
     boolean comptabiliserAcquisition,
-    /** Contrepartie de l'acquisition : 4812 fournisseurs d'investissement, 571 caisse... */
-    String compteContrepartieNumero
+    /**
+     * Contrepartie de l'acquisition : 4812 fournisseurs d'investissement par défaut, jamais un compte de trésorerie
+     * (le paiement passe par une note de frais, audit SYSCOHADA C-08).
+     */
+    String compteContrepartieNumero,
+    /** Immobilisation dont celle-ci est un composant, amorti sur sa propre durée (C-18) ; null : bien principal. */
+    Long parentId
 ) {}

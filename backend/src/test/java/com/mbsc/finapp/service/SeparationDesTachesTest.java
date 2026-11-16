@@ -10,11 +10,13 @@ import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Séparation des tâches : l'administrateur configure l'application mais n'encaisse pas, ne décaisse pas et ne vend
- * pas ; les seuils de priorité des notes sont fixés par le DA seul. Ces règles sont portées par {@code @PreAuthorize} :
- * le test les relit pour qu'un changement involontaire fasse échouer le build.
+ * pas ; les seuils de priorité des notes sont fixés par le DA seul ; seul le comptable annule une comptabilisation, le
+ * DFIN et l'administrateur la rétablissent. Ces règles sont portées par {@code @PreAuthorize} : le test les relit
+ * pour qu'un changement involontaire fasse échouer le build.
  */
 class SeparationDesTachesTest {
 
@@ -65,5 +67,21 @@ class SeparationDesTachesTest {
     void lesSeuilsDePrioriteSontReservesAuDa() {
         assertEquals("hasRole('DA')", regle(ParametresPrioriteNoteService.class, "enregistrer"));
         assertFalse(regle(ParametresPrioriteNoteService.class, "consulter").contains("ADMIN"));
+    }
+
+    /**
+     * Demande du 13/11/2026 : une comptabilisation annulée par le comptable peut être rétablie par le DFIN ou
+     * l'administrateur ; personne d'autre que le comptable ne l'annule (ni le DFIN, ni l'administrateur).
+     */
+    @Test
+    void seulLeComptableAnnuleUneComptabilisationEtLeDfinOuLAdministrateurLaRetablit() {
+        assertEquals("hasRole('COMPTABLE')", regle(ComptabiliteService.class, "annuler"));
+        String restaurer = regle(ComptabiliteService.class, "restaurer");
+        for (String role : List.of("COMPTABLE", "DFIN", "ADMIN")) {
+            assertTrue(restaurer.contains("'" + role + "'"), "ComptabiliteService.restaurer doit accepter " + role);
+        }
+        for (String role : List.of("DA", "DG", "CAISSIER")) {
+            assertFalse(restaurer.contains("'" + role + "'"), "ComptabiliteService.restaurer ne doit pas accepter " + role);
+        }
     }
 }

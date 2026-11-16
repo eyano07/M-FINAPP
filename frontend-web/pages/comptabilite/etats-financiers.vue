@@ -82,6 +82,23 @@ async function exporterExcel() {
   }
 }
 
+// Bouton PDF (15/11/2026) : le classeur Excel entier (page de garde, fiches, états, notes, graphiques)
+// converti en PDF par le serveur. Une centaine de pages : compter jusqu'à une minute.
+const pdfEnCours = ref(false)
+async function telechargerPdf() {
+  pdfEnCours.value = true
+  erreur.value = ''
+  try {
+    const p = new URLSearchParams({ du: filtres.du, au: filtres.au })
+    await telechargerFichier(api, `/comptabilite/etats-financiers/export-pdf?${p}`,
+      `Etats_financiers_${filtres.au}.pdf`)
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Impossible de générer le PDF.')
+  } finally {
+    pdfEnCours.value = false
+  }
+}
+
 const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v || 0)
 const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '')
 </script>
@@ -97,6 +114,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
         <v-btn v-if="peutExporter" color="success" variant="flat" rounded="lg"
           prepend-icon="mdi-file-excel-outline" :loading="exportEnCours" @click="exporterExcel">
           Classeur Excel
+        </v-btn>
+        <v-btn v-if="peutExporter" color="error" variant="flat" rounded="lg" prepend-icon="mdi-file-pdf-box"
+          :loading="pdfEnCours" @click="telechargerPdf">
+          PDF
         </v-btn>
         <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-printer-outline"
           :disabled="!bilan" @click="imprimer">

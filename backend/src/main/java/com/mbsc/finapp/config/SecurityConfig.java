@@ -40,6 +40,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ModuleAccessFilter moduleAccessFilter;
     private final MotDePasseProvisoireFilter motDePasseProvisoireFilter;
+    private final com.mbsc.finapp.security.DoubleAuthObligatoireFilter doubleAuthObligatoireFilter;
     private final CleReplicationFilter cleReplicationFilter;
     private final MiroirLectureSeuleFilter miroirLectureSeuleFilter;
     private final com.mbsc.finapp.audit.AuditFilter auditFilter;
@@ -98,7 +99,9 @@ public class SecurityConfig {
             .addFilterAfter(miroirLectureSeuleFilter, AuditFilter.class)
             // Mot de passe provisoire (V131) : avant tout acces aux modules, seuls le profil et le changement de mot de passe.
             .addFilterAfter(motDePasseProvisoireFilter, MiroirLectureSeuleFilter.class)
-            .addFilterAfter(moduleAccessFilter, MotDePasseProvisoireFilter.class);
+            // Double authentification obligatoire pour les roles sensibles (audit SYSCOHADA, C-23).
+            .addFilterAfter(doubleAuthObligatoireFilter, MotDePasseProvisoireFilter.class)
+            .addFilterAfter(moduleAccessFilter, com.mbsc.finapp.security.DoubleAuthObligatoireFilter.class);
 
         return http.build();
     }

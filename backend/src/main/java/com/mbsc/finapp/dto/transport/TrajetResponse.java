@@ -17,6 +17,7 @@ public record TrajetResponse(
     Instant dateArrivee,
     String origine,
     String destination,
+    String motif,
     BigDecimal distanceKm,
     StatutTrajet statut
 ) {
@@ -34,6 +35,7 @@ public record TrajetResponse(
             t.getDateArrivee(),
             t.getOrigine(),
             t.getDestination(),
+            t.getMotif(),
             t.getDistanceKm(),
             t.getStatut()
         );

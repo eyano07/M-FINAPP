@@ -37,23 +37,28 @@ public final class DroitsParDefaut {
     private static final Map<RoleType, Map<ModuleMetier, NiveauPermission>> PAR_ROLE = new EnumMap<>(RoleType.class);
 
     static {
+        // Audit SYSCOHADA du 10/11/2026, C-20 : le caissier ne rapproche pas ses propres opérations (lecture seule), et
+        // le DA, qui rouvre un mois rapproché, a l'écriture sur le module (V138).
         definir(RoleType.CAISSIER,
-            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, RESTAURANT, ModuleMetier.RAPPROCHEMENT),
-            modules(ModuleMetier.LOGISTIQUE));
+            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, RESTAURANT),
+            modules(ModuleMetier.LOGISTIQUE, ModuleMetier.RAPPROCHEMENT));
+        // Audit DRH du 15/11/2026, D-11 : le DFIN clôture, rouvre et comptabilise la paie (seul rôle autorisé depuis
+        // C-14) ; avec la seule lecture sur DRH_PAIE, ces actions étaient refusées à tout le monde (V146).
         definir(RoleType.DFIN,
-            modules(COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT, ModuleMetier.LOGISTIQUE),
-            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, TRANSPORT, PATRIMOINE, DRH_PAIE, RESTAURANT));
+            modules(COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT, ModuleMetier.LOGISTIQUE, DRH_PAIE),
+            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, TRANSPORT, PATRIMOINE, RESTAURANT));
         definir(RoleType.DA,
-            modules(COMPTABILITE, ModuleMetier.BUDGET),
-            modules(CAISSE, BANQUE, MOBILE_MONEY, ModuleMetier.RAPPROCHEMENT, VENTES, ModuleMetier.LOGISTIQUE, TRANSPORT, PATRIMOINE, RESTAURANT));
+            modules(COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT),
+            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, ModuleMetier.LOGISTIQUE, TRANSPORT, PATRIMOINE, RESTAURANT));
         definir(RoleType.DG,
             modules(),
             modules(CAISSE, BANQUE, MOBILE_MONEY, COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT, VENTES,
                 ModuleMetier.LOGISTIQUE,
                 TRANSPORT, PATRIMOINE, RESTAURANT));
+        // Le comptable saisit les pièces, le DFIN les valide (C-06) : la comptabilité en écriture (V138).
         definir(RoleType.COMPTABLE,
-            modules(ModuleMetier.RAPPROCHEMENT),
-            modules(CAISSE, COMPTABILITE, ModuleMetier.BUDGET, VENTES, ModuleMetier.LOGISTIQUE, PATRIMOINE, RESTAURANT));
+            modules(COMPTABILITE, ModuleMetier.RAPPROCHEMENT),
+            modules(CAISSE, ModuleMetier.BUDGET, VENTES, ModuleMetier.LOGISTIQUE, PATRIMOINE, RESTAURANT));
         definir(RoleType.LOGISTIQUE,
             modules(ModuleMetier.LOGISTIQUE, TRANSPORT),
             modules());

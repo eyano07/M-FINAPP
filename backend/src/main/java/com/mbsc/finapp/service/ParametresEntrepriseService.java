@@ -1,6 +1,9 @@
 package com.mbsc.finapp.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mbsc.finapp.domain.ParametresEntreprise;
+import com.mbsc.finapp.dto.parametrage.InformationsLiasse;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseRequest;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseResponse;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
@@ -30,6 +33,7 @@ public class ParametresEntrepriseService {
 
     private final ParametresEntrepriseRepository repository;
     private final StorageService storage;
+    private final ObjectMapper objectMapper;
 
     // Pas readOnly : premier appel sur une base sans ligne encore creee,
     // charger() doit pouvoir executer l'INSERT paresseux ci-dessous (une
@@ -71,6 +75,42 @@ public class ParametresEntrepriseService {
         }
         p = repository.save(p);
         return ParametresEntrepriseResponse.from(p);
+    }
+
+    /** Renseignements de la liasse OHADA (page de garde, fiches R1 à R3) — ADMIN. */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public InformationsLiasse obtenirLiasse() {
+        return lireLiasse(charger());
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public InformationsLiasse mettreAJourLiasse(InformationsLiasse infos) {
+        ParametresEntreprise p = charger();
+        try {
+            p.setInformationsLiasse(infos == null ? null : objectMapper.writeValueAsString(infos));
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Renseignements de la liasse illisibles", e);
+        }
+        return lireLiasse(repository.save(p));
+    }
+
+    /**
+     * Renseignements de la liasse de l'entité, jamais nuls : une valeur absente ou
+     * illisible (JSON d'une version antérieure abîmé) donne une liasse vide plutôt
+     * qu'un export d'états financiers en échec.
+     */
+    public InformationsLiasse lireLiasse(ParametresEntreprise p) {
+        String json = p == null ? null : p.getInformationsLiasse();
+        if (json == null || json.isBlank()) {
+            return InformationsLiasse.vide();
+        }
+        try {
+            return objectMapper.readValue(json, InformationsLiasse.class);
+        } catch (JsonProcessingException e) {
+            return InformationsLiasse.vide();
+        }
     }
 
     @PreAuthorize("hasRole('ADMIN')")

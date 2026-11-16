@@ -2,6 +2,8 @@ package com.mbsc.finapp.service;
 
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
+import com.mbsc.finapp.domain.ParametresEntreprise;
+import com.mbsc.finapp.domain.SoldeOuverture;
 import com.mbsc.finapp.domain.enums.TypeCompte;
 import com.mbsc.finapp.repository.EcritureGrandLivreRepository;
 import com.mbsc.finapp.repository.ParametresEntrepriseRepository;
@@ -10,6 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xddf.usermodel.XDDFColor;
+import org.apache.poi.xddf.usermodel.XDDFLineProperties;
+import org.apache.poi.xddf.usermodel.XDDFSolidFillProperties;
 import org.apache.poi.xddf.usermodel.chart.*;
 import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.apache.poi.xssf.usermodel.XSSFChart;
@@ -45,6 +50,11 @@ import java.util.stream.Collectors;
  * (le référentiel SYSCOHADA en compte 1300, très au-delà de la trentaine de
  * comptes du modèle). Les totaux et les contrôles d'équilibre restent des
  * formules Excel, sur des plages que le générateur connaît exactement.</p>
+ *
+ * <p>Depuis le 13/11/2026, le classeur part du modèle de liasse OHADA de
+ * l'entreprise ({@link LiasseOhada}) : page de garde, fiches R1 à R4, BILAN
+ * paysage et notes 1 à 36 y gardent leur mise en page d'origine ; les feuilles
+ * Journal, Balance, Ratios, Graphiques et Analyse IA suivent la liasse.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -55,6 +65,8 @@ public class EtatsFinanciersExcelService {
     private final EcritureGrandLivreRepository ecritureRepository;
     /** Raison sociale portee en en-tete de chaque feuille de note. */
     private final ParametresEntrepriseRepository parametresRepository;
+    /** Renseignements de la liasse (page de garde, fiches R1 à R3). */
+    private final ParametresEntrepriseService parametresService;
     /** Produit la synthese et les recommandations de la derniere feuille. */
     private final AnalyseFinanciereIaService analyseIa;
 
@@ -63,8 +75,18 @@ public class EtatsFinanciersExcelService {
 
     /** Une ligne de compte fusionnant ouverture + mouvements + clôture. */
     private record LigneCompte(String numero, String libelle, TypeCompte type, int classe,
-                                BigDecimal ouvD, BigDecimal ouvC, BigDecimal mvtD, BigDecimal mvtC) {
+                                BigDecimal ouvD, BigDecimal ouvC, BigDecimal mvtD, BigDecimal mvtC,
+                                BigDecimal n1D, BigDecimal n1C) {
         BigDecimal netOuverture() { return ouvD.subtract(ouvC); }
+        /** Solde d'ouverture tel que la balance l'imprime : débiteur ou créditeur, jamais les deux. */
+        BigDecimal ouvertureD() { return netOuverture().signum() > 0 ? netOuverture() : BigDecimal.ZERO; }
+        BigDecimal ouvertureC() { return netOuverture().signum() < 0 ? netOuverture().negate() : BigDecimal.ZERO; }
+        /**
+         * Mouvements de l'exercice précédent, sans sa pièce de clôture : la colonne N-1 du compte de résultat
+         * (audit SYSCOHADA du 10/11/2026, C-04). Le solde d'ouverture, lui, vaut zéro pour un compte de
+         * gestion dès que l'exercice précédent est clôturé.
+         */
+        BigDecimal netMouvementN1() { return n1D.subtract(n1C); }
         BigDecimal netMouvement() { return mvtD.subtract(mvtC); }
         BigDecimal netCloture() { return netOuverture().add(netMouvement()); }
         BigDecimal cloD() { return netCloture().signum() > 0 ? netCloture() : BigDecimal.ZERO; }
@@ -78,14 +100,32 @@ public class EtatsFinanciersExcelService {
     @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
     @Transactional(readOnly = true)
     public byte[] genererClasseur(LocalDate du, LocalDate au) {
+        return generer(du, au, true);
+    }
+
+    /**
+     * Classeur de l'archive de clôture (audit SYSCOHADA du 10/11/2026, C-13) : sans contrôle de rôle — la clôture
+     * est approuvée par le DA ou le DG — et sans la feuille d'analyse par intelligence artificielle, qui enverrait
+     * les comptes à un service extérieur et ne relève pas des livres à conserver.
+     */
+    public byte[] genererClasseurArchive(LocalDate du, LocalDate au) {
+        return generer(du, au, false);
+    }
+
+    private byte[] generer(LocalDate du, LocalDate au, boolean avecAnalyseIa) {
         LocalDate debut = du != null ? du : LocalDate.of(LocalDate.now().getYear(), 1, 1);
         LocalDate fin = au != null ? au : LocalDate.now();
 
         List<LigneCompte> comptes = chargerComptes(debut, fin);
         List<EcritureGrandLivre> journal = ecritureRepository.journalJusqua(fin);
 
-        try (XSSFWorkbook wb = new XSSFWorkbook()) {
-            Styles s = new Styles(wb);
+        // Le classeur part du modèle de liasse OHADA (page de garde, fiches R1 à R4,
+        // BILAN, notes 1 à 36, codes) ; l'application y ajoute ses propres feuilles.
+        try (XSSFWorkbook wb = LiasseOhada.ouvrirModele()) {
+            ParametresEntreprise entreprise = parametresRepository.findAll().stream().findFirst().orElse(null);
+            Styles s = new Styles(wb, EnTeteFeuille.Identite.de(entreprise, debut, fin));
+            List<XSSFSheet> feuillesModele = new ArrayList<>();
+            wb.forEach(f -> feuillesModele.add((XSSFSheet) f));
 
             construireJournal(wb, s, journal, debut, fin);
             int[] plageBalance = construireBalance(wb, s, comptes, debut, fin);
@@ -102,10 +142,19 @@ public class EtatsFinanciersExcelService {
             BilanTotals bilanTotals = new BilanTotals(
                 actif.actifImmobilise(), actif.actifCirculant(), actif.tresorerieActif(), actif.totalActif(),
                 passif.capitauxPropres(), passif.passifCirculant(), passif.tresoreriePassif(), passif.totalPassif());
-            construireNotes(wb, s, comptes, resultatNet, bilanTotals, debut, fin);
+            LiasseOhada.remplir(wb, new LiasseOhada.Contexte(debut, fin, entreprise,
+                parametresService.lireLiasse(entreprise), soldes(comptes),
+                k -> soldes(chargerComptes(debut.minusYears(k), fin.minusYears(k)))));
+            // Demande du 15/11/2026 : un seul gabarit d'en-tête, y compris sur les feuilles du modèle.
+            feuillesModele.forEach(s.entete::harmoniserModele);
             construireRatios(wb, s, comptes, resultatNet, debut, fin);
             construireGraphiques(wb, s, comptes, journal, resultatNet, bilanTotals, debut, fin);
-            construireAnalyseIa(wb, s, debut, fin);
+            if (avecAnalyseIa) {
+                construireAnalyseIa(wb, s, debut, fin);
+            }
+            ordonnerFeuilles(wb);
+            wb.forEach(EnTeteFeuille::piedDePage);
+            evaluerFormules(wb);
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             wb.write(out);
@@ -113,6 +162,117 @@ public class EtatsFinanciersExcelService {
         } catch (IOException e) {
             throw new UncheckedIOException("Impossible de générer le classeur des états financiers", e);
         }
+    }
+
+    /**
+     * Ordre de la liasse d'origine : page de garde, fiches R1 à R4, ACTIF, PASSIF,
+     * BILAN, RESULTAT, TFT, notes 1 à 36, codes ; puis les feuilles de travail de
+     * l'application (Journal, Balance, Ratios, Graphiques, Analyse IA).
+     */
+    private void ordonnerFeuilles(XSSFWorkbook wb) {
+        List<String> ordre = new ArrayList<>(List.of("PAGE DE GARDE", "FICHE R1", "FICHE R2", "FICHE R3", "FICHE R4",
+            "ACTIF", "PASSIF", "BILAN", "RESULTAT", "TFT"));
+        List<String> autres = new ArrayList<>();
+        for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+            String nom = wb.getSheetName(i);
+            if (nom.startsWith("NOTE ")) {
+                ordre.add(nom);
+            } else if (!ordre.contains(nom)) {
+                autres.add(nom);
+            }
+        }
+        autres.remove("CODES");
+        ordre.add("CODES");
+        ordre.addAll(autres);
+        int position = 0;
+        for (String nom : ordre) {
+            if (wb.getSheet(nom) != null) {
+                wb.setSheetOrder(nom, position++);
+            }
+        }
+        for (Sheet sh : wb) {
+            sh.setSelected(false);
+        }
+        wb.setActiveSheet(0);
+        wb.setSelectedTab(0);
+    }
+
+    /**
+     * Calcule les formules et en range le résultat dans le fichier : un tableur
+     * qui ne recalcule pas à l'ouverture (LibreOffice par défaut, aperçus des
+     * messageries) affiche ainsi les vrais montants. Une formule que POI ne sait
+     * pas calculer garde sa valeur vide ; Excel la recalcule de toute façon.
+     */
+    private void evaluerFormules(XSSFWorkbook wb) {
+        FormulaEvaluator ev = wb.getCreationHelper().createFormulaEvaluator();
+        for (Sheet sh : wb) {
+            for (Row row : sh) {
+                for (Cell c : row) {
+                    if (c.getCellType() == CellType.FORMULA) {
+                        try {
+                            ev.evaluateFormulaCell(c);
+                        } catch (RuntimeException e) {
+                            log.debug("Formule non calculée {}!{} : {}", sh.getSheetName(), c.getAddress(), e.getMessage());
+                        }
+                    }
+                }
+            }
+        }
+        wb.setForceFormulaRecalculation(true);
+    }
+
+    /** Vue des comptes chargés pour la liasse OHADA (soldes et mouvements par préfixe). */
+    private LiasseOhada.Soldes soldes(List<LigneCompte> comptes) {
+        return new LiasseOhada.Soldes() {
+            @Override
+            public BigDecimal solde(TypeCompte type, boolean ouverture, String... prefixes) {
+                BigDecimal t = BigDecimal.ZERO;
+                for (LigneCompte c : comptes) {
+                    if ((type == null || c.type() == type) && LiasseOhada.correspond(c.numero(), prefixes)) {
+                        t = t.add(ouverture ? c.netOuverture() : c.netCloture());
+                    }
+                }
+                return t;
+            }
+
+            @Override
+            public BigDecimal debits(String... prefixes) {
+                BigDecimal t = BigDecimal.ZERO;
+                for (LigneCompte c : comptes) {
+                    if (LiasseOhada.correspond(c.numero(), prefixes)) {
+                        t = t.add(c.mvtD());
+                    }
+                }
+                return t;
+            }
+
+            @Override
+            public BigDecimal credits(String... prefixes) {
+                BigDecimal t = BigDecimal.ZERO;
+                for (LigneCompte c : comptes) {
+                    if (LiasseOhada.correspond(c.numero(), prefixes)) {
+                        t = t.add(c.mvtC());
+                    }
+                }
+                return t;
+            }
+
+            @Override
+            public BigDecimal flux(boolean precedent, String... prefixes) {
+                BigDecimal t = BigDecimal.ZERO;
+                for (LigneCompte c : comptes) {
+                    if (LiasseOhada.correspond(c.numero(), prefixes)) {
+                        t = t.add(precedent ? c.netMouvementN1() : c.netMouvement());
+                    }
+                }
+                return t;
+            }
+
+            @Override
+            public boolean vide() {
+                return comptes.stream().allMatch(c -> c.netCloture().signum() == 0 && c.netMouvement().signum() == 0);
+            }
+        };
     }
 
     /**
@@ -126,10 +286,15 @@ public class EtatsFinanciersExcelService {
         LocalDate debut = du != null ? du : LocalDate.of(LocalDate.now().getYear(), 1, 1);
         LocalDate fin = au != null ? au : LocalDate.now();
 
-        List<EcritureGrandLivre> journal = ecritureRepository.journalJusqua(fin);
+        // Seulement les écritures de la période demandée : un journal partiel réimporté ne doit pas ramener
+        // les exercices antérieurs.
+        List<EcritureGrandLivre> journal = ecritureRepository.journalJusqua(fin).stream()
+            .filter(e -> e.getDateEcriture() == null || !e.getDateEcriture().isBefore(debut))
+            .toList();
 
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
-            construireJournal(wb, new Styles(wb), journal, debut, fin);
+            ParametresEntreprise entreprise = parametresRepository.findAll().stream().findFirst().orElse(null);
+            construireJournal(wb, new Styles(wb, EnTeteFeuille.Identite.de(entreprise, debut, fin)), journal, debut, fin);
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             wb.write(out);
@@ -152,16 +317,22 @@ public class EtatsFinanciersExcelService {
         for (Object[] row : ecritureRepository.mouvementsParCompte(du, au)) {
             mouvements.put((String) row[0], row);
         }
+        Map<String, Object[]> precedents = new HashMap<>();
+        for (Object[] row : ecritureRepository.mouvementsParCompte(du.minusYears(1), du.minusDays(1))) {
+            precedents.put((String) row[0], row);
+        }
 
         Set<String> numeros = new TreeSet<>();
         numeros.addAll(ouvertures.keySet());
         numeros.addAll(mouvements.keySet());
+        numeros.addAll(precedents.keySet());
 
         List<LigneCompte> resultat = new ArrayList<>();
         for (String numero : numeros) {
             Object[] o = ouvertures.get(numero);
             Object[] m = mouvements.get(numero);
-            Object[] reference = m != null ? m : o;
+            Object[] n1 = precedents.get(numero);
+            Object[] reference = m != null ? m : o != null ? o : n1;
             String libelle = (String) reference[1];
             TypeCompte type = (TypeCompte) reference[2];
             Integer classe = (Integer) reference[3];
@@ -170,7 +341,9 @@ public class EtatsFinanciersExcelService {
                 o != null ? (BigDecimal) o[4] : BigDecimal.ZERO,
                 o != null ? (BigDecimal) o[5] : BigDecimal.ZERO,
                 m != null ? (BigDecimal) m[4] : BigDecimal.ZERO,
-                m != null ? (BigDecimal) m[5] : BigDecimal.ZERO
+                m != null ? (BigDecimal) m[5] : BigDecimal.ZERO,
+                n1 != null ? (BigDecimal) n1[4] : BigDecimal.ZERO,
+                n1 != null ? (BigDecimal) n1[5] : BigDecimal.ZERO
             ));
         }
         return resultat;
@@ -198,10 +371,10 @@ public class EtatsFinanciersExcelService {
     private void construireJournal(XSSFWorkbook wb, Styles s, List<EcritureGrandLivre> lignes,
                                     LocalDate du, LocalDate au) {
         Sheet sh = wb.createSheet("Journal");
-        titre(sh, s, "JOURNAL COMPTABLE", "Toutes les écritures jusqu'au " + au.format(DATE_FR)
-            + " — période courante à partir du " + du.format(DATE_FR));
+        int r0 = titre(sh, s, "JOURNAL COMPTABLE", "Toutes les écritures jusqu'au " + au.format(DATE_FR)
+            + " — période courante à partir du " + du.format(DATE_FR), 8);
 
-        int r = 3;
+        int r = r0;
         Row header = sh.createRow(r++);
         String[] cols = {"Date", "N° Pièce", "Journal", "Compte", "Intitulé du compte",
             "Libellé écriture", "Débit", "Crédit", "Période"};
@@ -218,7 +391,8 @@ public class EtatsFinanciersExcelService {
             cell(row, 2, e.getPiece() != null ? e.getPiece().getJournal().name() : "", s.normal);
             cell(row, 3, compte.getNumero(), s.normal);
             cell(row, 4, compte.getLibelle(), s.normal);
-            cell(row, 5, e.getLibelle(), s.normal);
+            // Règle du 13/11/2026 : une écriture de reprise des à-nouveaux se lit « … - Solde d'ouverture ».
+            cell(row, 5, SoldeOuverture.libelle(e), s.normal);
             cellMontant(row, 6, e.getDebit(), s);
             cellMontant(row, 7, e.getCredit(), s);
             cell(row, 8, estOuverture(e, du) ? "Ouverture" : "Période", s.normal);
@@ -263,11 +437,11 @@ public class EtatsFinanciersExcelService {
     private int[] construireBalance(XSSFWorkbook wb, Styles s, List<LigneCompte> comptes,
                                      LocalDate du, LocalDate au) {
         Sheet sh = wb.createSheet("Balance");
-        titre(sh, s, "BALANCE GÉNÉRALE À 6 COLONNES – SYSCOHADA RÉVISÉ",
+        int r0 = titre(sh, s, "BALANCE GÉNÉRALE À 6 COLONNES – SYSCOHADA RÉVISÉ",
             "Du " + du.format(DATE_FR) + " au " + au.format(DATE_FR)
-            + " — comptes du Grand Livre ayant porté au moins une écriture");
+            + " — comptes du Grand Livre ayant porté au moins une écriture", 7);
 
-        int r = 3;
+        int r = r0;
         Row g1 = sh.createRow(r);
         cell(g1, 0, "Compte", s.enTete);
         cell(g1, 1, "Intitulé", s.enTete);
@@ -297,8 +471,10 @@ public class EtatsFinanciersExcelService {
                 Row row = sh.createRow(r++);
                 cell(row, 0, c.numero(), s.normal);
                 cell(row, 1, c.libelle(), s.normal);
-                cellMontant(row, 2, c.ouvD(), s);
-                cellMontant(row, 3, c.ouvC(), s);
+                // SYSCOHADA (balance générale des comptes) : le solde débiteur OU créditeur à l'ouverture de
+                // l'exercice, non les cumuls de débits et de crédits antérieurs.
+                cellMontant(row, 2, c.ouvertureD(), s);
+                cellMontant(row, 3, c.ouvertureC(), s);
                 cellMontant(row, 4, c.mvtD(), s);
                 cellMontant(row, 5, c.mvtC(), s);
                 cellMontant(row, 6, c.cloD(), s);
@@ -388,7 +564,7 @@ public class EtatsFinanciersExcelService {
     private BilanActifTotaux construireActif(XSSFWorkbook wb, Styles s, List<LigneCompte> comptes,
                                              LocalDate du, LocalDate au) {
         Sheet sh = wb.createSheet("ACTIF");
-        int r = enTeteLiasse(sh, s, "BILAN AU " + au.format(DATE_FR), du, au);
+        int r = enTeteLiasse(sh, s, "BILAN – ACTIF AU " + au.format(DATE_FR), 6);
 
         Row head = sh.createRow(r++);
         cell(head, C_REF, "REF", s.enTete);
@@ -675,24 +851,14 @@ public class EtatsFinanciersExcelService {
     }
 
     /** En-tête commun aux feuilles de la liasse (société, exercice, titre). */
-    private int enTeteLiasse(Sheet sh, Styles s, String titre, LocalDate du, LocalDate au) {
-        Row r0 = sh.createRow(0);
-        cell(r0, 0, nomSociete(), s.enTeteLiasseCell);
-        cell(r0, C_BRUT, "Exercice clos le " + au.format(DATE_FR), s.sousTitre);
-        Row r1 = sh.createRow(1);
-        cell(r1, 0, "États financiers annuels — SYSCOHADA révisé (Système Normal)", s.sousTitre);
-        cell(r1, C_BRUT, "Durée (en mois) : " + dureeEnMois(du, au), s.sousTitre);
-        Row r2 = sh.createRow(2);
-        cell(r2, 0, titre, s.titreLiasse);
-        return 4;
+    private int enTeteLiasse(Sheet sh, Styles s, String titre, int derniereColonne) {
+        return s.entete.poser(sh, titre, derniereColonne, SOUS_TITRE_LIASSE) + 1;
     }
+
+    private static final String SOUS_TITRE_LIASSE = "États financiers annuels — SYSCOHADA révisé (Système Normal)";
 
     private String exercicePrecedent(LocalDate du) {
         return du.minusDays(1).format(DATE_FR);
-    }
-
-    private long dureeEnMois(LocalDate du, LocalDate au) {
-        return java.time.temporal.ChronoUnit.MONTHS.between(du.withDayOfMonth(1), au.withDayOfMonth(1)) + 1;
     }
 
     // ---------------------------------------------------------------------
@@ -706,7 +872,7 @@ public class EtatsFinanciersExcelService {
                                                BigDecimal resultatNet, BigDecimal resultatNetN1,
                                                LocalDate du, LocalDate au) {
         Sheet sh = wb.createSheet("PASSIF");
-        int r = enTetePassif(sh, s, "BILAN AU " + au.format(DATE_FR), du, au);
+        int r = enTeteLiasse(sh, s, "BILAN – PASSIF AU " + au.format(DATE_FR), 4);
 
         Row head = sh.createRow(r++);
         cell(head, P_REF, "REF", s.enTete);
@@ -734,10 +900,13 @@ public class EtatsFinanciersExcelService {
             passifPoste(comptes, new String[]{"118"}));
         r = lignePassifLiasse(sh, s, r, "CH", "Report à nouveau (+ ou -)", "14",
             passifPoste(comptes, new String[]{"12"}));
-        // Le résultat net n'est pas lu au compte 13 : tant que l'exercice n'est
-        // pas clôturé il n'y est pas encore porté, il se déduit des classes 6/7.
+        // Résultat au bilan : celui de la période (classes 6, 7 et 8, sans la pièce de clôture), plus le
+        // résultat non encore affecté — porté au compte 13 par une clôture, ou resté dans les classes de
+        // gestion d'un exercice antérieur non clôturé. La pièce de clôture ne fait que déplacer le résultat
+        // des classes de gestion vers le 13 : le total ne dépend pas de ce que la période est close ou non.
         r = lignePassifLiasse(sh, s, r, "CJ", "Résultat net de l'exercice (bénéfice + ou perte -)", "",
-            new PostePassif(resultatNet, resultatNetN1));
+            new PostePassif(resultatNet.add(resultatNetN1).add(resultatEnInstance(comptes, true)),
+                resultatNetN1.add(resultatEnInstance(comptes, false))));
         r = lignePassifLiasse(sh, s, r, "CL", "Subventions d'investissement", "15",
             passifPoste(comptes, new String[]{"14"}));
         r = lignePassifLiasse(sh, s, r, "CM", "Provisions réglementées", "15",
@@ -882,18 +1051,6 @@ public class EtatsFinanciersExcelService {
         }
     }
 
-    private int enTetePassif(Sheet sh, Styles s, String titre, LocalDate du, LocalDate au) {
-        Row r0 = sh.createRow(0);
-        cell(r0, 0, nomSociete(), s.enTeteLiasseCell);
-        cell(r0, P_NET, "Exercice clos le " + au.format(DATE_FR), s.sousTitre);
-        Row r1 = sh.createRow(1);
-        cell(r1, 0, "États financiers annuels — SYSCOHADA révisé (Système Normal)", s.sousTitre);
-        cell(r1, P_NET, "Durée (en mois) : " + dureeEnMois(du, au), s.sousTitre);
-        Row r2 = sh.createRow(2);
-        cell(r2, 0, titre, s.titreLiasse);
-        return 4;
-    }
-
     // ---------------------------------------------------------------------
     // Feuille RESULTAT
     // ---------------------------------------------------------------------
@@ -914,16 +1071,7 @@ public class EtatsFinanciersExcelService {
     private BigDecimal construireResultat(XSSFWorkbook wb, Styles s, List<LigneCompte> comptes,
                                           LocalDate du, LocalDate au) {
         Sheet sh = wb.createSheet("RESULTAT");
-        Row r0 = sh.createRow(0);
-        cell(r0, 0, nomSociete(), s.enTeteLiasseCell);
-        cell(r0, R_NET, "Exercice clos le " + au.format(DATE_FR), s.sousTitre);
-        Row r1 = sh.createRow(1);
-        cell(r1, 0, "États financiers annuels — SYSCOHADA révisé (Système Normal)", s.sousTitre);
-        cell(r1, R_NET, "Durée (en mois) : " + dureeEnMois(du, au), s.sousTitre);
-        Row r2 = sh.createRow(2);
-        cell(r2, 0, "COMPTE DE RESULTAT", s.titreLiasse);
-
-        int r = 4;
+        int r = enTeteLiasse(sh, s, "COMPTE DE RÉSULTAT AU " + au.format(DATE_FR), R_NET1);
         Row head = sh.createRow(r++);
         cell(head, R_REF, "REF", s.enTete);
         cell(head, R_LIB, "LIBELLES", s.enTete);
@@ -1063,7 +1211,7 @@ public class EtatsFinanciersExcelService {
             for (String p : prefixes) {
                 if (c.numero().startsWith(p)) {
                     n = n.add(c.netMouvement().negate());
-                    n1 = n1.add(c.netOuverture().negate());
+                    n1 = n1.add(c.netMouvementN1().negate());
                     break;
                 }
             }
@@ -1088,7 +1236,7 @@ public class EtatsFinanciersExcelService {
             }
             if (!retenu) continue;
             n = n.add(c.netMouvement());
-            n1 = n1.add(c.netOuverture());
+            n1 = n1.add(c.netMouvementN1());
         }
         return new BigDecimal[]{n, n1};
     }
@@ -1106,7 +1254,10 @@ public class EtatsFinanciersExcelService {
         return produits.subtract(charges);
     }
 
-    /** Résultat net de l'exercice précédent, reconstitué depuis les soldes d'ouverture. */
+    /**
+     * Résultat resté dans les comptes de gestion à l'ouverture de la période : celui des exercices antérieurs
+     * non clôturés (zéro dès que l'exercice précédent est clôturé, sa pièce de clôture l'ayant porté au 13).
+     */
     private BigDecimal resultatNetN1(List<LigneCompte> comptes) {
         BigDecimal produits = BigDecimal.ZERO, charges = BigDecimal.ZERO;
         for (LigneCompte c : comptes) {
@@ -1117,6 +1268,17 @@ public class EtatsFinanciersExcelService {
             }
         }
         return produits.subtract(charges);
+    }
+
+    /** Solde créditeur des comptes 13 (résultat en instance d'affectation), à l'ouverture ou à la fin de la période. */
+    private BigDecimal resultatEnInstance(List<LigneCompte> comptes, boolean aLaFin) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (LigneCompte c : comptes) {
+            if (c.numero().startsWith("13")) {
+                total = total.add((aLaFin ? c.netCloture() : c.netOuverture()).negate());
+            }
+        }
+        return total;
     }
 
     // ---------------------------------------------------------------------
@@ -1142,16 +1304,7 @@ public class EtatsFinanciersExcelService {
                                BigDecimal resultatNet, BigDecimal tresorerieActifClo,
                                BigDecimal tresoreriePassifClo, LocalDate du, LocalDate au) {
         Sheet sh = wb.createSheet("TFT");
-        Row r0 = sh.createRow(0);
-        cell(r0, 0, nomSociete(), s.enTeteLiasseCell);
-        cell(r0, T_NET, "Exercice clos le " + au.format(DATE_FR), s.sousTitre);
-        Row r1 = sh.createRow(1);
-        cell(r1, 0, "États financiers annuels — SYSCOHADA révisé (Système Normal)", s.sousTitre);
-        cell(r1, T_NET, "Durée (en mois) : " + dureeEnMois(du, au), s.sousTitre);
-        Row r2 = sh.createRow(2);
-        cell(r2, 0, "TABLEAU DES FLUX DE TRESORERIE", s.grandTitre);
-
-        int r = 4;
+        int r = enTeteLiasse(sh, s, "TABLEAU DES FLUX DE TRÉSORERIE AU " + au.format(DATE_FR), T_NET1);
         Row head = sh.createRow(r++);
         cell(head, T_REF, "REF", s.enTete);
         cell(head, T_LIB, "LIBELLES", s.enTete);
@@ -1202,9 +1355,12 @@ public class EtatsFinanciersExcelService {
         r = ligneTft(sh, s, r, l, "FH", "- Décaissements liés aux acquisitions d'immobilisations financières", "",
             acquisitions(comptes, "26").add(acquisitions(comptes, "27")), BigDecimal.ZERO, Palier.NORMAL);
         r = ligneTft(sh, s, r, l, "FI", "+ Encaissements liés aux cessions d'immobilisations incorporelles et corporelles", "",
-            produitPrefixes(comptes, "82")[0], BigDecimal.ZERO, Palier.NORMAL);
+            produitPrefixes(comptes, "82")[0].subtract(produitPrefixes(comptes, "826")[0]), BigDecimal.ZERO, Palier.NORMAL);
+        // FJ : prix de cession des titres (826) et remboursements de prêts, dépôts et cautionnements (crédits des
+        // comptes 27). Ils manquaient : les prêts au personnel remboursés laissaient un écart entre la trésorerie
+        // finale du TFT et celle du bilan (audit du 15/11/2026, 895 sur l'exercice 2026).
         r = ligneTft(sh, s, r, l, "FJ", "+ Encaissements liés aux cessions d'immobilisations financières", "",
-            BigDecimal.ZERO, BigDecimal.ZERO, Palier.NORMAL);
+            produitPrefixes(comptes, "826")[0].add(mvtCreditPrefixe(comptes, "27")), BigDecimal.ZERO, Palier.NORMAL);
         r = soldeTft(sh, s, r, l, "ZC", "Flux de trésorerie provenant des activités d'investissement (somme FF à FJ)", "C",
             "-" + g(l, "FF") + "-" + g(l, "FG") + "-" + g(l, "FH") + "+" + g(l, "FI") + "+" + g(l, "FJ"), Palier.TOTAL_MAJEUR);
 
@@ -1438,8 +1594,8 @@ public class EtatsFinanciersExcelService {
     private void construireFlux(XSSFWorkbook wb, Styles s, List<LigneCompte> comptes,
                                 BigDecimal resultatNet, LocalDate du, LocalDate au) {
         Sheet sh = wb.createSheet("Flux de trésorerie");
-        titre(sh, s, "TABLEAU DES FLUX DE TRÉSORERIE – SYSCOHADA RÉVISÉ (méthode indirecte)",
-            "Période du " + du.format(DATE_FR) + " au " + au.format(DATE_FR));
+        int r0 = titre(sh, s, "TABLEAU DES FLUX DE TRÉSORERIE – SYSCOHADA RÉVISÉ (méthode indirecte)",
+            "Période du " + du.format(DATE_FR) + " au " + au.format(DATE_FR), 2);
 
         BigDecimal tresoreriePassifOuv = sommeParClasseType(comptes, 5, TypeCompte.PASSIF, c -> c.netOuverture().negate());
         BigDecimal tresorerieOuv = sommeParClasseType(comptes, 5, TypeCompte.ACTIF, LigneCompte::netOuverture)
@@ -1497,7 +1653,7 @@ public class EtatsFinanciersExcelService {
         BigDecimal operationnelTotal = variationTotale.subtract(investissement).subtract(financement);
         BigDecimal variationBfr = operationnelTotal.subtract(cafg);
 
-        int r = 3;
+        int r = r0;
         Row header = sh.createRow(r++);
         cell(header, 0, "Réf.", s.enTete);
         cell(header, 1, "Libellés", s.enTete);
@@ -1603,8 +1759,8 @@ public class EtatsFinanciersExcelService {
     private void construireRatios(XSSFWorkbook wb, Styles s, List<LigneCompte> comptes,
                                   BigDecimal resultatNet, LocalDate du, LocalDate au) {
         Sheet sh = wb.createSheet("Ratios");
-        titre(sh, s, "RATIOS FINANCIERS – SYSCOHADA RÉVISÉ",
-            "Calculés à partir du Bilan, du Compte de résultat et du Tableau des flux");
+        int r0 = titre(sh, s, "RATIOS FINANCIERS – SYSCOHADA RÉVISÉ",
+            "Calculés à partir du Bilan, du Compte de résultat et du Tableau des flux", 3);
 
         BigDecimal actifImmobilise = sommeParClasseType(comptes, 2, TypeCompte.ACTIF, c -> c.cloD().subtract(c.cloC()));
         BigDecimal actifCirculant = comptes.stream().filter(c -> (c.classe() == 3 || c.classe() == 4) && c.type() == TypeCompte.ACTIF)
@@ -1625,7 +1781,7 @@ public class EtatsFinanciersExcelService {
         BigDecimal mois = BigDecimal.valueOf(joursPeriode).divide(new BigDecimal("30.44"), 2, RoundingMode.HALF_UP);
         if (mois.signum() <= 0) mois = BigDecimal.ONE;
 
-        int r = 3;
+        int r = r0;
         Row header = sh.createRow(r++);
         cell(header, 0, "N°", s.enTete);
         cell(header, 1, "Ratio", s.enTete);
@@ -1682,526 +1838,6 @@ public class EtatsFinanciersExcelService {
         largeurs(sh, 1800, 13000, 4200, 18000);
     }
 
-    // ---------------------------------------------------------------------
-    // Feuille Notes (annexes)
-    // ---------------------------------------------------------------------
-
-    /**
-     * Notes annexes au format officiel SYSCOHADA : une fiche récapitulative
-     * (sur le modèle de celle publiée par les commissaires aux comptes, cases
-     * "Applicable" / "Non applicable" cochées) suivie de chaque note et
-     * tableau du référentiel. Les tableaux calculables à partir du Grand
-     * Livre (immobilisations, stocks, tiers, trésorerie, capitaux propres,
-     * dettes, détail des charges et produits, cinq derniers exercices, fiche
-     * de synthèse des indicateurs) sont renseignés ; ceux qui exigent des
-     * données hors du périmètre comptable de l'application (sûretés
-     * réelles, crédit-bail, réévaluations, engagements de retraite
-     * actuariels, effectifs et masse salariale par catégorie, production
-     * physique, informations ESG) sont marqués "Non applicable" avec le motif,
-     * plutôt qu'omis — cette fiche reste ainsi la même quelle que soit
-     * l'entité, seules les cases cochées diffèrent.
-     */
-    private void construireNotes(XSSFWorkbook wb, Styles s, List<LigneCompte> comptes, BigDecimal resultatNet,
-                                  BilanTotals bilan, LocalDate du, LocalDate au) {
-        String societe = nomSociete();
-        // Feuille de garde des annexes ; chaque note recoit ensuite sa propre
-        // feuille, comme dans la liasse OHADA officielle.
-        Sheet garde = wb.createSheet("Notes");
-        titre(garde, s, "NOTES ANNEXES AUX ÉTATS FINANCIERS",
-            "Exercice du " + du.format(DATE_FR) + " au " + au.format(DATE_FR) + " — référentiel SYSCOHADA révisé (Système Normal)");
-        Sheet[] feuille = { garde };
-
-        int r = 3;
-        r = ficheRecapitulative(feuille[0], s, r);
-        r += 2;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 1 – DETTES GARANTIES PAR DES SÛRETÉS RÉELLES", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le système ne assure pas le suivi des sûretés réelles (hypothèques, "
-            + "nantissements, gages, cautions) adossées aux dettes financières.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 2 – INFORMATIONS OBLIGATOIRES", societe, du, au);
-        r = noteParagraphe(feuille[0], s, r, "Les états financiers annuels sont préparés selon la méthode du coût "
-            + "historique, en conformité avec les règles et méthodes comptables édictées par l'Acte Uniforme "
-            + "de l'OHADA relatif au Droit Comptable et à l'Information Financière. Les immobilisations sont "
-            + "amorties selon le mode linéaire sur leur durée d'utilité estimée ; les stocks sont évalués au "
-            + "coût moyen pondéré (CMP) et dépréciés, le cas échéant, à la valeur nette de réalisation si "
-            + "celle-ci est inférieure au coût.");
-        String contenuHypBase = "Hypothèse de base — continuité d'exploitation : les états financiers ont été "
-            + "préparés en considérant que la société va poursuivre ses activités dans un avenir prévisible.";
-        if (bilan.totalCapitauxPropres().signum() < 0) {
-            contenuHypBase += " Les capitaux propres sont négatifs à la clôture de l'exercice (" + fmt(bilan.totalCapitauxPropres())
-                + "), inférieurs à la moitié du capital social : conformément aux articles 664 et 665 de l'Acte "
-                + "Uniforme relatif au Droit des Sociétés Commerciales et du Groupement d'Intérêt Économique, "
-                + "les associés devront être convoqués dans les quatre mois suivant l'approbation des comptes "
-                + "faisant apparaître cette perte, pour décider s'il y a lieu de dissoudre la société.";
-        }
-        r = noteParagraphe(feuille[0], s, r, contenuHypBase);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 3A – IMMOBILISATIONS BRUTES", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Brut ouverture", "Acquisitions", "Cessions", "Brut clôture");
-        Mvt incorpBrut = ventilerActif(comptes, "21");
-        Mvt corpBrut = combinerMvt(ventilerActif(comptes, "22"), ventilerActif(comptes, "23"),
-            ventilerActif(comptes, "24"), ventilerActif(comptes, "25"));
-        Mvt finBrut = combinerMvt(ventilerActif(comptes, "26"), ventilerActif(comptes, "27"));
-        r = ligneMvt(feuille[0], s, r, "Immobilisations incorporelles", incorpBrut, false);
-        r = ligneMvt(feuille[0], s, r, "Immobilisations corporelles", corpBrut, false);
-        r = ligneMvt(feuille[0], s, r, "Immobilisations financières", finBrut, false);
-        r = ligneMvt(feuille[0], s, r, "TOTAL GÉNÉRAL", combinerMvt(incorpBrut, corpBrut, finBrut), true);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 3B – BIENS PRIS EN LOCATION ACQUISITION", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "aucun contrat de crédit-bail (location-acquisition) n'est suivi dans le système.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 3C – IMMOBILISATIONS : AMORTISSEMENTS", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Cumul ouverture", "Dotations", "Diminutions", "Cumul clôture");
-        Mvt amortIncorp = ventilerActif(comptes, "281");
-        Mvt deprecIncorp = ventilerActif(comptes, "291");
-        Mvt amortCorp = combinerMvt(ventilerActif(comptes, "282"), ventilerActif(comptes, "283"), ventilerActif(comptes, "284"));
-        Mvt deprecCorp = combinerMvt(ventilerActif(comptes, "292"), ventilerActif(comptes, "293"),
-            ventilerActif(comptes, "294"), ventilerActif(comptes, "295"));
-        r = ligneMvt(feuille[0], s, r, "Amortissements des immobilisations incorporelles", amortIncorp, false);
-        r = ligneMvt(feuille[0], s, r, "Dépréciations des immobilisations incorporelles", deprecIncorp, false);
-        r = ligneMvt(feuille[0], s, r, "Amortissements des immobilisations corporelles", amortCorp, false);
-        r = ligneMvt(feuille[0], s, r, "Dépréciations des immobilisations corporelles", deprecCorp, false);
-        Mvt amortTotal = combinerMvt(amortIncorp, deprecIncorp, amortCorp, deprecCorp);
-        r = ligneMvt(feuille[0], s, r, "TOTAL GÉNÉRAL", amortTotal, true);
-        Row vnc = feuille[0].createRow(r++);
-        cell(vnc, 0, "VALEUR NETTE COMPTABLE DES IMMOBILISATIONS", s.totalLabel);
-        cellMontant(vnc, 4, bilan.actifImmobilise(), s.totalMontant);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 3D – IMMOBILISATIONS : PLUS ET MOINS-VALUES DE CESSION", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le système ne rapproche pas individuellement le prix de cession et la "
-            + "valeur nette comptable de chaque immobilisation cédée (seuls les montants globaux des comptes "
-            + "81 et 82 sont disponibles, cf. Tableau 30).");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 3E – INFORMATIONS SUR LES RÉÉVALUATIONS EFFECTUÉES PAR L'ENTITÉ", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "aucune réévaluation d'immobilisation n'est suivie dans le système.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 3F – TABLEAU D'ÉTALEMENT DES CHARGES IMMOBILISÉES", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le sous-plan des charges à étaler sur plusieurs exercices n'est pas "
-            + "distingué du reste des immobilisations incorporelles dans le système.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 4 – IMMOBILISATIONS FINANCIÈRES", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Augmentations", "Diminutions", "Clôture");
-        Mvt titresPart = ventilerActif(comptes, "26");
-        Mvt autresImmoFin = ventilerActif(comptes, "27");
-        r = ligneMvt(feuille[0], s, r, "Titres de participation", titresPart, false);
-        r = ligneMvt(feuille[0], s, r, "Autres immobilisations financières (prêts, dépôts et cautionnements)", autresImmoFin, false);
-        r = ligneMvt(feuille[0], s, r, "TOTAL BRUT", combinerMvt(titresPart, autresImmoFin), true);
-        r = ligneMvt(feuille[0], s, r, "Dépréciations (comptes 296/297)",
-            combinerMvt(ventilerActif(comptes, "296"), ventilerActif(comptes, "297")), false);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 5 – ACTIFS CIRCULANTS H.A.O.", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Augmentations", "Diminutions", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Créances hors activités ordinaires (comptes 48, côté actif)", ventilerActif(comptes, "48"), true);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 6 – STOCKS ET EN-COURS", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Entrées", "Sorties", "Clôture");
-        Mvt stocksBrut = soustraireMvt(ventilerActif(comptes, "3"), ventilerActif(comptes, "39"));
-        Mvt stocksDeprec = ventilerActif(comptes, "39");
-        r = ligneMvt(feuille[0], s, r, "Stocks et en-cours (valeur brute)", stocksBrut, false);
-        r = ligneMvt(feuille[0], s, r, "Dépréciations des stocks (compte 39)", stocksDeprec, false);
-        r = ligneMvt(feuille[0], s, r, "TOTAL NET", soustraireMvt(stocksBrut, stocksDeprec), true);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 7 – CLIENTS", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Ventes/Encaissements", "Encaissements/Ventes", "Clôture");
-        Mvt clientsBrut = ventilerActif(comptes, "41");
-        Mvt clientsDeprec = ventilerActif(comptes, "491");
-        r = ligneMvt(feuille[0], s, r, "Clients (valeur brute)", clientsBrut, false);
-        r = ligneMvt(feuille[0], s, r, "Dépréciations des comptes clients (compte 491)", clientsDeprec, false);
-        r = ligneMvt(feuille[0], s, r, "TOTAL NET", soustraireMvt(clientsBrut, clientsDeprec), true);
-        r = noteParagraphe(feuille[0], s, r, "Analyse par antériorité (créances à un an au plus / plus d'un an) non "
-            + "disponible : le système ne suit pas d'échéancier par créance individuelle.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 8 – AUTRES CRÉANCES", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Augmentations", "Diminutions", "Clôture");
-        Mvt autresCreancesBrut = soustraireMvt(ventilerActif(comptes, "4"),
-            ventilerActif(comptes, "409"), ventilerActif(comptes, "41"), ventilerActif(comptes, "48"), ventilerActif(comptes, "49"));
-        Mvt autresCreancesDeprec = soustraireMvt(ventilerActif(comptes, "49"), ventilerActif(comptes, "490"), ventilerActif(comptes, "491"));
-        r = ligneMvt(feuille[0], s, r, "Fournisseurs, avances versées (compte 409)", ventilerActif(comptes, "409"), false);
-        r = ligneMvt(feuille[0], s, r, "Autres créances diverses (valeur brute)", autresCreancesBrut, false);
-        r = ligneMvt(feuille[0], s, r, "Dépréciations sur autres créances", autresCreancesDeprec, false);
-        r = ligneMvt(feuille[0], s, r, "TOTAL NET",
-            soustraireMvt(combinerMvt(ventilerActif(comptes, "409"), autresCreancesBrut), autresCreancesDeprec), true);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 9 – TITRES DE PLACEMENTS", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Augmentations", "Diminutions", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Titres de placement (compte 50)", ventilerActif(comptes, "50"), true);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 10 – VALEURS À ENCAISSER", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Augmentations", "Diminutions", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Valeurs à encaisser (compte 51)", ventilerActif(comptes, "51"), true);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 11 – DISPONIBILITÉS", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Encaissements", "Décaissements", "Clôture");
-        Mvt banquesBrut = soustraireMvt(ventilerActif(comptes, "5"),
-            ventilerActif(comptes, "50"), ventilerActif(comptes, "51"), ventilerActif(comptes, "59"));
-        Mvt tresorerieDeprec = ventilerActif(comptes, "59");
-        r = ligneMvt(feuille[0], s, r, "Banques, chèques postaux, caisse (valeur brute)", banquesBrut, false);
-        r = ligneMvt(feuille[0], s, r, "Dépréciations (compte 59)", tresorerieDeprec, false);
-        r = ligneMvt(feuille[0], s, r, "TOTAL NET", soustraireMvt(banquesBrut, tresorerieDeprec), true);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 12 – ÉCARTS DE CONVERSION", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Augmentations", "Diminutions", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Écarts de conversion-actif (compte 478)", ventilerActif(comptes, "478"), false);
-        r = ligneMvt(feuille[0], s, r, "Écarts de conversion-passif (compte 479)", ventilerPassif(comptes, "479"), false);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 13 – CAPITAL : VALEUR NOMINALE DES ACTIONS OU PARTS", societe, du, au);
-        r = noteParagraphe(feuille[0], s, r, "Capital social au " + au.format(DATE_FR) + " : " + fmt(cloPassifPrefixe(comptes, "10")
-            .subtract(cloPassifPrefixe(comptes, "105")).subtract(cloPassifPrefixe(comptes, "106"))) + ". "
-            + "Répartition nominative par actionnaire (nom, nationalité, nombre de titres, valeur nominale) non "
-            + "disponible : le système ne tient pas de registre des actionnaires.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 14 – PRIMES ET RÉSERVES", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Augmentations", "Diminutions", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Primes liées au capital social (compte 105)", ventilerPassif(comptes, "105"), false);
-        r = ligneMvt(feuille[0], s, r, "Écarts de réévaluation (compte 106)", ventilerPassif(comptes, "106"), false);
-        r = ligneMvt(feuille[0], s, r, "Réserves (compte 11)", ventilerPassif(comptes, "11"), false);
-        r = ligneMvt(feuille[0], s, r, "Report à nouveau (compte 12)", ventilerPassif(comptes, "12"), false);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 15A – SUBVENTIONS ET PROVISIONS RÉGLEMENTÉES", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Dotations", "Reprises", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Subventions d'investissement (compte 14)", ventilerPassif(comptes, "14"), false);
-        r = ligneMvt(feuille[0], s, r, "Provisions réglementées et fonds assimilés (compte 15)", ventilerPassif(comptes, "15"), false);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 15B – AUTRES FONDS PROPRES", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "aucune sous-catégorie d'autres fonds propres n'est distinguée dans le système.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 16A – DETTES FINANCIÈRES ET RESSOURCES STABLES ASSIMILÉES", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Nouveaux emprunts", "Remboursements", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Emprunts et dettes financières diverses (compte 16)", ventilerPassif(comptes, "16"), false);
-        r = ligneMvt(feuille[0], s, r, "Dettes liées à des participations (compte 18)", ventilerPassif(comptes, "18"), false);
-        r = ligneMvt(feuille[0], s, r, "Dettes de location acquisition (compte 17)", ventilerPassif(comptes, "17"), false);
-        r = ligneMvt(feuille[0], s, r, "Provisions pour risques et charges (compte 19)", ventilerPassif(comptes, "19"), false);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 16B – ENGAGEMENT DE RETRAITE ET AVANTAGES ASSIMILÉS (MÉTHODE ACTUARIELLE)", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le système ne dispose pas de module de calcul actuariel des engagements "
-            + "de retraite (hypothèses démographiques et financières, taux d'actualisation).");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 16BIS – ENGAGEMENT DE RETRAITE ET AVANTAGES ASSIMILÉS (MÉTHODE SIMPLIFIÉE)", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le système ne dispose pas des données de paie nécessaires (ancienneté, "
-            + "salaire de référence) au calcul simplifié des engagements de retraite.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 16C – ACTIFS ET PASSIFS ÉVENTUELS", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le système ne suit pas de registre des litiges, garanties données ou "
-            + "engagements hors bilan.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 17 – FOURNISSEURS D'EXPLOITATION", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Règlements", "Achats", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Fournisseurs (compte 40, hors avances)",
-            soustraireMvt(ventilerPassif(comptes, "40"), ventilerPassif(comptes, "409")), false);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 18 – DETTES FISCALES ET SOCIALES", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Charges de la période", "Règlements", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Personnel (compte 42)", ventilerPassif(comptes, "42"), false);
-        r = ligneMvt(feuille[0], s, r, "Organismes sociaux (compte 43)", ventilerPassif(comptes, "43"), false);
-        r = ligneMvt(feuille[0], s, r, "État et collectivités publiques (compte 44)", ventilerPassif(comptes, "44"), false);
-        r = ligneMvt(feuille[0], s, r, "TOTAL",
-            combinerMvt(ventilerPassif(comptes, "42"), ventilerPassif(comptes, "43"), ventilerPassif(comptes, "44")), true);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 19 – AUTRES DETTES ET PROVISIONS POUR RISQUES À COURT TERME", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Augmentations", "Diminutions", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Organismes internationaux, associés et groupe (comptes 45/46)",
-            combinerMvt(ventilerPassif(comptes, "45"), ventilerPassif(comptes, "46")), false);
-        r = ligneMvt(feuille[0], s, r, "Débiteurs et créditeurs divers (compte 47)", ventilerPassif(comptes, "47"), false);
-        r = ligneMvt(feuille[0], s, r, "Provisions pour risques à court terme (compte 499)", ventilerPassif(comptes, "499"), false);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 20 – BANQUES, CRÉDITS D'ESCOMPTE ET DE TRÉSORERIE", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Tirages", "Remboursements", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Banques, crédits d'escompte et de trésorerie (compte 56)", ventilerPassif(comptes, "56"), false);
-        r = ligneMvt(feuille[0], s, r, "Autres concours bancaires de trésorerie",
-            soustraireMvt(ventilerPassif(comptes, "5"), ventilerPassif(comptes, "56")), false);
-        r++;
-
-        // ---- Détail des charges et produits : mêmes agrégats que le Compte de résultat. ----
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 21 – CHIFFRE D'AFFAIRES ET AUTRES PRODUITS", societe, du, au);
-        r = enteteValeur(feuille[0], s, r);
-        r = ligneValeur(feuille[0], s, r, "Ventes de marchandises (701)", sommeSiPrefixe(comptes, "701", true));
-        r = ligneValeur(feuille[0], s, r, "Ventes de produits fabriqués, travaux et services (702, 705-708)",
-            sommeSiPrefixe(comptes, "702", true).add(sommeSiPrefixe(comptes, "705", true))
-                .add(sommeSiPrefixe(comptes, "706", true)).add(sommeSiPrefixe(comptes, "707", true))
-                .add(sommeSiPrefixe(comptes, "708", true)));
-        r = ligneValeur(feuille[0], s, r, "Production stockée et immobilisée (72-73)",
-            sommeSiPrefixe(comptes, "72", true).add(sommeSiPrefixe(comptes, "73", true)));
-        r = ligneValeur(feuille[0], s, r, "Subventions d'exploitation (71)", sommeSiPrefixe(comptes, "71", true));
-        r = ligneValeur(feuille[0], s, r, "Autres produits (75)", sommeSiPrefixe(comptes, "75", true));
-        r = ligneValeur(feuille[0], s, r, "Transferts de charges d'exploitation (781)", sommeSiPrefixe(comptes, "781", true));
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 22 – ACHATS", societe, du, au);
-        r = enteteValeur(feuille[0], s, r);
-        r = ligneValeur(feuille[0], s, r, "Achats de marchandises (601)", sommeSiPrefixe(comptes, "601", false));
-        r = ligneValeur(feuille[0], s, r, "Achats de matières premières et fournitures liées (602)", sommeSiPrefixe(comptes, "602", false));
-        r = ligneValeur(feuille[0], s, r, "Variations de stocks achetés (603)",
-            sommeSiPrefixe(comptes, "603", false));
-        r = ligneValeur(feuille[0], s, r, "Autres achats (604, 605, 608)", sommeSiPrefixe(comptes, "60", false)
-            .subtract(sommeSiPrefixe(comptes, "601", false)).subtract(sommeSiPrefixe(comptes, "602", false))
-            .subtract(sommeSiPrefixe(comptes, "603", false)));
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 23 – TRANSPORT", societe, du, au);
-        r = enteteValeur(feuille[0], s, r);
-        r = ligneValeur(feuille[0], s, r, "Transports (compte 61)", sommeSiPrefixe(comptes, "61", false));
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 24 – SERVICES EXTÉRIEURS", societe, du, au);
-        r = enteteValeur(feuille[0], s, r);
-        r = ligneValeur(feuille[0], s, r, "Services extérieurs A (compte 62)", sommeSiPrefixe(comptes, "62", false));
-        r = ligneValeur(feuille[0], s, r, "Services extérieurs B (compte 63)", sommeSiPrefixe(comptes, "63", false));
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 25 – IMPÔTS ET TAXES", societe, du, au);
-        r = enteteValeur(feuille[0], s, r);
-        r = ligneValeur(feuille[0], s, r, "Impôts et taxes (compte 64)", sommeSiPrefixe(comptes, "64", false));
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 26 – AUTRES CHARGES", societe, du, au);
-        r = enteteValeur(feuille[0], s, r);
-        r = ligneValeur(feuille[0], s, r, "Autres charges (compte 65)", sommeSiPrefixe(comptes, "65", false));
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 27A – CHARGES DE PERSONNEL", societe, du, au);
-        r = enteteValeur(feuille[0], s, r);
-        BigDecimal chargesPersonnel = sommeSiPrefixe(comptes, "66", false);
-        r = ligneValeur(feuille[0], s, r, "Charges de personnel de l'exercice (compte 66)", chargesPersonnel);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 27B – EFFECTIFS, MASSE SALARIALE ET PERSONNEL EXTÉRIEUR", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le système ne dispose pas de module de gestion des ressources humaines "
-            + "(effectifs par catégorie/sexe/nationalité) ; seule la masse salariale globale (Tableau 27A) est "
-            + "disponible.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 28 – PROVISIONS ET DÉPRÉCIATIONS INSCRITES AU BILAN", societe, du, au);
-        r = enteteMvt(feuille[0], s, r, "Rubrique", "Ouverture", "Dotations", "Reprises", "Clôture");
-        r = ligneMvt(feuille[0], s, r, "Provisions réglementées (compte 15)", ventilerPassif(comptes, "15"), false);
-        r = ligneMvt(feuille[0], s, r, "Provisions pour risques et charges (compte 19)", ventilerPassif(comptes, "19"), false);
-        r = ligneMvt(feuille[0], s, r, "Amortissements et dépréciations des immobilisations (28/29)", amortTotal, false);
-        r = ligneMvt(feuille[0], s, r, "Dépréciations des stocks (compte 39)", stocksDeprec, false);
-        Mvt deprecTiers = ventilerActif(comptes, "49");
-        r = ligneMvt(feuille[0], s, r, "Dépréciations des comptes de tiers (compte 49, hors 499)",
-            soustraireMvt(deprecTiers, ventilerActif(comptes, "499")), false);
-        r = ligneMvt(feuille[0], s, r, "Provisions pour risques à court terme (compte 499)", ventilerPassif(comptes, "499"), false);
-        r = ligneMvt(feuille[0], s, r, "Dépréciations de trésorerie (compte 59)", tresorerieDeprec, false);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 29 – CHARGES ET REVENUS FINANCIERS", societe, du, au);
-        r = enteteValeur(feuille[0], s, r);
-        BigDecimal revenusFinanciers = sommeSiPrefixe(comptes, "77", true).subtract(sommeSiPrefixe(comptes, "779", true));
-        BigDecimal reprisesFinancieres = sommeSiPrefixe(comptes, "779", true).add(sommeSiPrefixe(comptes, "797", true));
-        BigDecimal fraisFinanciers = sommeSiPrefixe(comptes, "67", false).subtract(sommeSiPrefixe(comptes, "679", false));
-        BigDecimal dotationsFinancieresNote = sommeSiPrefixe(comptes, "679", false).add(sommeSiPrefixe(comptes, "697", false));
-        r = ligneValeur(feuille[0], s, r, "Revenus financiers et assimilés (77, hors 779)", revenusFinanciers);
-        r = ligneValeur(feuille[0], s, r, "Reprises de provisions et dépréciations financières (779, 797)", reprisesFinancieres);
-        r = ligneValeur(feuille[0], s, r, "Transferts de charges financières (787)", sommeSiPrefixe(comptes, "787", true));
-        r = ligneValeur(feuille[0], s, r, "Frais financiers et charges assimilées (67, hors 679)", fraisFinanciers.negate());
-        r = ligneValeur(feuille[0], s, r, "Dotations aux provisions et dépréciations financières (679, 697)", dotationsFinancieresNote.negate());
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 30 – AUTRES CHARGES ET PRODUITS HAO", societe, du, au);
-        r = enteteValeur(feuille[0], s, r);
-        r = ligneValeur(feuille[0], s, r, "Produits des cessions d'immobilisations (82)", sommeSiPrefixe(comptes, "82", true));
-        r = ligneValeur(feuille[0], s, r, "Autres produits HAO (84, 86, 88)", sommeSiPrefixe(comptes, "84", true)
-            .add(sommeSiPrefixe(comptes, "86", true)).add(sommeSiPrefixe(comptes, "88", true)));
-        r = ligneValeur(feuille[0], s, r, "Valeurs comptables des cessions d'immobilisations (81)", sommeSiPrefixe(comptes, "81", false).negate());
-        r = ligneValeur(feuille[0], s, r, "Autres charges HAO (83, 85)",
-            sommeSiPrefixe(comptes, "83", false).add(sommeSiPrefixe(comptes, "85", false)).negate());
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 31 – RÉPARTITION DU RÉSULTAT ET AUTRES ÉLÉMENTS DES CINQ DERNIERS EXERCICES", societe, du, au);
-        r = tableauCinqExercices(feuille[0], s, r, au);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 32 – PRODUCTION DE L'EXERCICE", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le système ne suit pas de quantités physiques produites (unités, "
-            + "tonnages) par article ou produit fini.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 33 – ACHATS DESTINÉS À LA PRODUCTION", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le système ne distingue pas les achats de matières destinées à la "
-            + "production des autres achats par quantité et origine.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 34 – FICHE DE SYNTHÈSE DES PRINCIPAUX INDICATEURS FINANCIERS", societe, du, au);
-        r = tableauSyntheseIndicateurs(feuille[0], s, r, comptes, resultatNet, bilan, du, au);
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 35 – LISTE DES INFORMATIONS SOCIALES, ENVIRONNEMENTALES ET SOCIÉTALES À FOURNIR", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "le système ne dispose pas de module de collecte des indicateurs "
-            + "RH/HSE/environnementaux (effectifs par zone, accidents du travail, émissions de gaz à effet de "
-            + "serre, actions sociétales, etc.).");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "NOTE 36 – TABLES DE CODES", societe, du, au);
-        r = noteNonApplicable(feuille[0], s, r, "tables de référence du référentiel SYSCOHADA, non applicables à un "
-            + "export dynamique construit depuis le Grand Livre.");
-        r++;
-
-        r = nouvelleFeuilleNote(feuille, wb, s, "ÉVÉNEMENTS POSTÉRIEURS À LA CLÔTURE", societe, du, au);
-        noteParagraphe(feuille[0], s, r, "Néant à la date d'édition du présent rapport.");
-
-        // Largeurs de la feuille de garde ; chaque feuille de note fixe les
-        // siennes dans nouvelleFeuilleNote.
-        largeurs(garde, 4600, 3600, 3600, 3600, 3600);
-    }
-
-    /** Fiche récapitulative des notes/tableaux présentés (sur le modèle publié par les commissaires aux comptes). */
-    private int ficheRecapitulative(Sheet sh, Styles s, int r) {
-        Row titreFiche = sh.createRow(r++);
-        cell(titreFiche, 0, "FICHE RÉCAPITULATIVE DES NOTES ANNEXES PRÉSENTÉES", s.sectionHeader);
-        sh.addMergedRegion(new CellRangeAddress(titreFiche.getRowNum(), titreFiche.getRowNum(), 0, 4));
-        Row hdr = sh.createRow(r++);
-        cell(hdr, 0, "Tableau", s.enTete);
-        cell(hdr, 1, "Intitulé", s.enTete);
-        cell(hdr, 2, "Applicable", s.enTete);
-        cell(hdr, 3, "Non applicable", s.enTete);
-        String[][] items = {
-            {"NOTE 1", "Dettes garanties par des sûretés réelles", "N"},
-            {"NOTE 2", "Informations obligatoires", "A"},
-            {"NOTE 3A", "Immobilisation brute", "A"},
-            {"NOTE 3B", "Biens pris en location acquisition", "N"},
-            {"NOTE 3C", "Immobilisations : amortissements", "A"},
-            {"NOTE 3D", "Immobilisations : plus-values et moins-values de cession", "N"},
-            {"NOTE 3E", "Informations sur les réévaluations effectuées par l'entité", "N"},
-            {"NOTE 3F", "Tableau d'étalement des charges immobilisées", "N"},
-            {"NOTE 4", "Immobilisations financières", "A"},
-            {"NOTE 5", "Actifs circulants H.A.O.", "A"},
-            {"NOTE 6", "Stocks et en-cours", "A"},
-            {"NOTE 7", "Clients", "A"},
-            {"NOTE 8", "Autres créances", "A"},
-            {"NOTE 9", "Titres de placements", "A"},
-            {"NOTE 10", "Valeurs à encaisser", "A"},
-            {"NOTE 11", "Disponibilités", "A"},
-            {"NOTE 12", "Écarts de conversion", "A"},
-            {"NOTE 13", "Capital : valeur nominale des actions ou parts", "N"},
-            {"NOTE 14", "Primes et réserves", "A"},
-            {"NOTE 15A", "Subventions et provisions réglementées", "A"},
-            {"NOTE 15B", "Autres fonds propres", "N"},
-            {"NOTE 16A", "Dettes financières et ressources stables assimilées", "A"},
-            {"NOTE 16B", "Engagement de retraite et avantages assimilés (méthode actuarielle)", "N"},
-            {"NOTE 16BIS", "Engagement de retraite et avantages assimilés (méthode simplifiée)", "N"},
-            {"NOTE 16C", "Actifs et passifs éventuels", "N"},
-            {"NOTE 17", "Fournisseurs d'exploitation", "A"},
-            {"NOTE 18", "Dettes fiscales et sociales", "A"},
-            {"NOTE 19", "Autres dettes et provisions pour risques à court terme", "A"},
-            {"NOTE 20", "Banques, crédits d'escompte et de trésorerie", "A"},
-            {"NOTE 21", "Chiffre d'affaires et autres produits", "A"},
-            {"NOTE 22", "Achats", "A"},
-            {"NOTE 23", "Transport", "A"},
-            {"NOTE 24", "Services extérieurs", "A"},
-            {"NOTE 25", "Impôts et taxes", "A"},
-            {"NOTE 26", "Autres charges", "A"},
-            {"NOTE 27A", "Charges de personnel", "A"},
-            {"NOTE 27B", "Effectifs, masse salariale et personnel extérieur", "N"},
-            {"NOTE 28", "Provisions et dépréciations inscrites au bilan", "A"},
-            {"NOTE 29", "Charges et revenus financiers", "A"},
-            {"NOTE 30", "Autres charges et produits H.A.O.", "A"},
-            {"NOTE 31", "Répartition du résultat et autres éléments des cinq derniers exercices", "A"},
-            {"NOTE 32", "Production de l'exercice", "N"},
-            {"NOTE 33", "Achats destinés à la production", "N"},
-            {"NOTE 34", "Fiche de synthèse des principaux indicateurs financiers", "A"},
-            {"NOTE 35", "Liste des informations sociales, environnementales et sociétales à fournir", "N"},
-            {"NOTE 36", "Tables de codes", "N"},
-        };
-        for (String[] item : items) {
-            Row row = sh.createRow(r++);
-            cell(row, 0, item[0], s.normal);
-            cell(row, 1, item[1], s.normal);
-            cell(row, 2, "A".equals(item[2]) ? "✔" : "", s.normal);
-            cell(row, 3, "N".equals(item[2]) ? "✔" : "", s.normal);
-        }
-        return r;
-    }
-
-    /**
-     * Ouvre une feuille dediee a une note et y ecrit l'en-tete de la liasse
-     * OHADA : raison sociale, exercice clos, duree, puis numero et intitule.
-     *
-     * <p>Les notes tenaient auparavant sur une feuille unique. La liasse
-     * officielle en consacre une par note : c'est ce qui permet de les
-     * imprimer, les transmettre ou les faire viser separement, et de s'y
-     * reperer par l'onglet plutot qu'en faisant defiler des centaines de
-     * lignes.</p>
-     *
-     * @return la ligne a partir de laquelle ecrire le contenu de la note
-     */
-    private int nouvelleFeuilleNote(Sheet[] feuille, XSSFWorkbook wb, Styles s, String intitule,
-                                     String societe, LocalDate du, LocalDate au) {
-        Sheet sh = wb.createSheet(nomOngletUnique(wb, intitule));
-        feuille[0] = sh;
-
-        Row r0 = sh.createRow(0);
-        cell(r0, 0, societe, s.totalLabel);
-        cell(r0, 4, "Exercice clos le " + au.format(DATE_FR), s.normal);
-        Row r1 = sh.createRow(1);
-        cell(r1, 4, "Durée (en mois) " + java.time.temporal.ChronoUnit.MONTHS.between(
-            du.withDayOfMonth(1), au.withDayOfMonth(1).plusMonths(1)), s.normal);
-
-        Row r2 = sh.createRow(2);
-        cell(r2, 0, intitule, s.sectionHeader);
-        sh.addMergedRegion(new CellRangeAddress(2, 2, 0, 6));
-
-        largeurs(sh, 14000, 4200, 4200, 4200, 4200, 4200, 4200);
-        return 4;
-    }
-
-    /**
-     * Nom d'onglet Excel derive de l'intitule : 31 caracteres maximum, sans
-     * les caracteres interdits, et unique dans le classeur.
-     */
-    private String nomOngletUnique(XSSFWorkbook wb, String intitule) {
-        String base = intitule.split("–")[0].trim();
-        if (base.isEmpty()) {
-            base = intitule;
-        }
-        base = base.replaceAll("[\\\\/*?\\[\\]:]", "-").trim();
-        if (base.length() > 28) {
-            base = base.substring(0, 28).trim();
-        }
-        String nom = base;
-        int suffixe = 2;
-        while (wb.getSheet(nom) != null) {
-            nom = base + " " + suffixe++;
-        }
-        return nom;
-    }
-
-    /** Raison sociale pour l'en-tete des notes, ou un libelle neutre a defaut. */
-    private String nomSociete() {
-        return parametresRepository.findAll().stream()
-            .findFirst()
-            .map(p -> p.getNom() == null ? "" : p.getNom())
-            .filter(n -> !n.isBlank())
-            .orElse("Entité");
-    }
-
     /**
      * Derniere feuille : lecture commentee des etats par l'agent IA.
      *
@@ -2218,11 +1854,11 @@ public class EtatsFinanciersExcelService {
      */
     private void construireAnalyseIa(XSSFWorkbook wb, Styles s, LocalDate du, LocalDate au) {
         Sheet sh = wb.createSheet("Analyse IA");
-        titre(sh, s, "ANALYSE ET RECOMMANDATIONS",
+        int r0 = titre(sh, s, "ANALYSE ET RECOMMANDATIONS",
             "Lecture commentee des etats financiers de la periode du " + du.format(DATE_FR)
-            + " au " + au.format(DATE_FR));
+            + " au " + au.format(DATE_FR), 5);
 
-        int r = 3;
+        int r = r0;
         com.mbsc.finapp.dto.comptabilite.AnalyseFinanciereResponse analyse;
         try {
             analyse = analyseIa.analyser(du, au);
@@ -2289,228 +1925,6 @@ public class EtatsFinanciersExcelService {
         return st;
     }
 
-    private int noteSection(Sheet sh, Styles s, int r, String titre) {
-        Row row = sh.createRow(r);
-        cell(row, 0, titre, s.sectionHeader);
-        sh.addMergedRegion(new CellRangeAddress(row.getRowNum(), row.getRowNum(), 0, 4));
-        return r + 1;
-    }
-
-    private int noteParagraphe(Sheet sh, Styles s, int r, String texte) {
-        Row row = sh.createRow(r);
-        cell(row, 0, texte, s.noteTexte);
-        sh.addMergedRegion(new CellRangeAddress(row.getRowNum(), row.getRowNum(), 0, 4));
-        row.setHeightInPoints(45f);
-        return r + 1;
-    }
-
-    private int noteNonApplicable(Sheet sh, Styles s, int r, String motif) {
-        return noteParagraphe(sh, s, r, "Non applicable dans cet export : " + motif);
-    }
-
-    /** Un montant en devise, formaté pour insertion dans un paragraphe de note. */
-    private String fmt(BigDecimal montant) {
-        return String.format(Locale.FRANCE, "%,.2f", montant.setScale(2, RoundingMode.HALF_UP));
-    }
-
-    // ---- Ventilation ouverture/mouvements/clôture par préfixe de compte, réutilisée par les notes. ----
-
-    private record Mvt(BigDecimal ouverture, BigDecimal augmentation, BigDecimal diminution, BigDecimal cloture) {}
-
-    private Mvt ventilerActif(List<LigneCompte> comptes, String prefixe) {
-        BigDecimal ouv = BigDecimal.ZERO, aug = BigDecimal.ZERO, dim = BigDecimal.ZERO;
-        for (LigneCompte c : comptes) {
-            if (c.type() == TypeCompte.ACTIF && c.numero().startsWith(prefixe)) {
-                ouv = ouv.add(c.netOuverture()); aug = aug.add(c.mvtD()); dim = dim.add(c.mvtC());
-            }
-        }
-        return new Mvt(ouv, aug, dim, ouv.add(aug).subtract(dim));
-    }
-
-    private Mvt ventilerPassif(List<LigneCompte> comptes, String prefixe) {
-        BigDecimal ouv = BigDecimal.ZERO, aug = BigDecimal.ZERO, dim = BigDecimal.ZERO;
-        for (LigneCompte c : comptes) {
-            if (c.type() == TypeCompte.PASSIF && c.numero().startsWith(prefixe)) {
-                ouv = ouv.add(c.netOuverture().negate()); aug = aug.add(c.mvtC()); dim = dim.add(c.mvtD());
-            }
-        }
-        return new Mvt(ouv, aug, dim, ouv.add(aug).subtract(dim));
-    }
-
-    private Mvt combinerMvt(Mvt... mvts) {
-        BigDecimal ouv = BigDecimal.ZERO, aug = BigDecimal.ZERO, dim = BigDecimal.ZERO, clo = BigDecimal.ZERO;
-        for (Mvt m : mvts) {
-            ouv = ouv.add(m.ouverture()); aug = aug.add(m.augmentation());
-            dim = dim.add(m.diminution()); clo = clo.add(m.cloture());
-        }
-        return new Mvt(ouv, aug, dim, clo);
-    }
-
-    private Mvt soustraireMvt(Mvt base, Mvt... aSoustraire) {
-        BigDecimal ouv = base.ouverture(), aug = base.augmentation(), dim = base.diminution(), clo = base.cloture();
-        for (Mvt m : aSoustraire) {
-            ouv = ouv.subtract(m.ouverture()); aug = aug.subtract(m.augmentation());
-            dim = dim.subtract(m.diminution()); clo = clo.subtract(m.cloture());
-        }
-        return new Mvt(ouv, aug, dim, clo);
-    }
-
-    private int enteteMvt(Sheet sh, Styles s, int r, String c0, String c1, String c2, String c3, String c4) {
-        Row row = sh.createRow(r);
-        cell(row, 0, c0, s.enTete); cell(row, 1, c1, s.enTete); cell(row, 2, c2, s.enTete);
-        cell(row, 3, c3, s.enTete); cell(row, 4, c4, s.enTete);
-        return r + 1;
-    }
-
-    private int ligneMvt(Sheet sh, Styles s, int r, String libelle, Mvt m, boolean total) {
-        Row row = sh.createRow(r);
-        cell(row, 0, libelle, total ? s.totalLabel : s.normal);
-        CellStyle st = total ? s.totalMontant : s.montant;
-        cellMontant(row, 1, m.ouverture(), st);
-        cellMontant(row, 2, m.augmentation(), st);
-        cellMontant(row, 3, m.diminution(), st);
-        cellMontant(row, 4, m.cloture(), st);
-        return r + 1;
-    }
-
-    private int enteteValeur(Sheet sh, Styles s, int r) {
-        Row row = sh.createRow(r);
-        cell(row, 0, "Rubrique", s.enTete);
-        cell(row, 1, "Montant", s.enTete);
-        return r + 1;
-    }
-
-    private int ligneValeur(Sheet sh, Styles s, int r, String libelle, BigDecimal montant) {
-        Row row = sh.createRow(r);
-        cell(row, 0, libelle, s.normal);
-        cellMontant(row, 1, montant, s);
-        return r + 1;
-    }
-
-    /**
-     * Résultat net recalculé pour un jeu de comptes arbitraire (utilisé pour
-     * les exercices antérieurs du Tableau 31) : reprend exactement la même
-     * décomposition que {@link #construireResultat}, sous forme compacte.
-     */
-    private BigDecimal resultatNetSeul(List<LigneCompte> comptes) {
-        BigDecimal produitsExploitation = sommeSiPrefixe(comptes, "70", true).add(sommeSiPrefixe(comptes, "71", true))
-            .add(sommeSiPrefixe(comptes, "72", true)).add(sommeSiPrefixe(comptes, "73", true))
-            .add(sommeSiPrefixe(comptes, "75", true)).add(sommeSiPrefixe(comptes, "781", true));
-        BigDecimal chargesExploitation = sommeSiPrefixe(comptes, "60", false).add(sommeSiPrefixe(comptes, "61", false))
-            .add(sommeSiPrefixe(comptes, "62", false)).add(sommeSiPrefixe(comptes, "63", false))
-            .add(sommeSiPrefixe(comptes, "64", false)).add(sommeSiPrefixe(comptes, "65", false))
-            .add(sommeSiPrefixe(comptes, "66", false));
-        BigDecimal reprisesExploitation = sommeSiPrefixe(comptes, "79", true).subtract(sommeSiPrefixe(comptes, "797", true));
-        BigDecimal dotationsExploitation = sommeSiPrefixe(comptes, "68", false).add(sommeSiPrefixe(comptes, "69", false))
-            .subtract(sommeSiPrefixe(comptes, "697", false));
-        BigDecimal resultatExploitation = produitsExploitation.subtract(chargesExploitation)
-            .add(reprisesExploitation).subtract(dotationsExploitation);
-
-        BigDecimal revenusFinanciers = sommeSiPrefixe(comptes, "77", true).subtract(sommeSiPrefixe(comptes, "779", true));
-        BigDecimal reprisesFinancieres = sommeSiPrefixe(comptes, "779", true).add(sommeSiPrefixe(comptes, "797", true));
-        BigDecimal transfertsChargesFinancieres = sommeSiPrefixe(comptes, "787", true);
-        BigDecimal fraisFinanciers = sommeSiPrefixe(comptes, "67", false).subtract(sommeSiPrefixe(comptes, "679", false));
-        BigDecimal dotationsFinancieres = sommeSiPrefixe(comptes, "679", false).add(sommeSiPrefixe(comptes, "697", false));
-        BigDecimal resultatFinancier = revenusFinanciers.add(reprisesFinancieres).add(transfertsChargesFinancieres)
-            .subtract(fraisFinanciers).subtract(dotationsFinancieres);
-
-        BigDecimal resultatActivitesOrdinaires = resultatExploitation.add(resultatFinancier);
-
-        BigDecimal produitsHao = sommeSiPrefixe(comptes, "82", true)
-            .add(sommeSiPrefixe(comptes, "84", true)).add(sommeSiPrefixe(comptes, "86", true)).add(sommeSiPrefixe(comptes, "88", true));
-        BigDecimal chargesHao = sommeSiPrefixe(comptes, "81", false).add(sommeSiPrefixe(comptes, "83", false)).add(sommeSiPrefixe(comptes, "85", false));
-        BigDecimal resultatHao = produitsHao.subtract(chargesHao);
-
-        BigDecimal participationTravailleurs = sommeSiPrefixe(comptes, "87", false);
-        BigDecimal impotResultat = sommeSiPrefixe(comptes, "89", false);
-
-        return resultatActivitesOrdinaires.add(resultatHao).subtract(participationTravailleurs).subtract(impotResultat);
-    }
-
-    /** Tableau 31 : capital, chiffre d'affaires et résultat net des cinq derniers exercices (calendaires). */
-    private int tableauCinqExercices(Sheet sh, Styles s, int r, LocalDate au) {
-        int anneeCourante = au.getYear();
-        int[] annees = {anneeCourante, anneeCourante - 1, anneeCourante - 2, anneeCourante - 3, anneeCourante - 4};
-
-        Row hdr = sh.createRow(r++);
-        cell(hdr, 0, "Indications", s.enTete);
-        for (int i = 0; i < annees.length; i++) cell(hdr, i + 1, String.valueOf(annees[i]), s.enTete);
-
-        BigDecimal[] capital = new BigDecimal[5], ca = new BigDecimal[5], resultat = new BigDecimal[5];
-        for (int i = 0; i < annees.length; i++) {
-            LocalDate debutAnnee = LocalDate.of(annees[i], 1, 1);
-            LocalDate finAnnee = annees[i] == anneeCourante ? au : LocalDate.of(annees[i], 12, 31);
-            List<LigneCompte> comptesAnnee = chargerComptes(debutAnnee, finAnnee);
-            capital[i] = cloPassifPrefixe(comptesAnnee, "10");
-            ca[i] = sommeSiPrefixe(comptesAnnee, "70", true);
-            resultat[i] = resultatNetSeul(comptesAnnee);
-        }
-        r = ligneCinqExercices(sh, s, r, "Capital social", capital);
-        r = ligneCinqExercices(sh, s, r, "Chiffre d'affaires", ca);
-        r = ligneCinqExercices(sh, s, r, "Résultat net", resultat);
-        r = noteParagraphe(sh, s, r, "Effectif moyen et masse salariale des exercices antérieurs : voir Tableau 27A "
-            + "pour l'exercice courant (le système ne conserve pas d'historique RH par exercice).");
-        return r;
-    }
-
-    private int ligneCinqExercices(Sheet sh, Styles s, int r, String libelle, BigDecimal[] valeurs) {
-        Row row = sh.createRow(r);
-        cell(row, 0, libelle, s.normal);
-        for (int i = 0; i < valeurs.length; i++) cellMontant(row, i + 1, valeurs[i], s);
-        return r + 1;
-    }
-
-    /** Tableau 34 : fiche de synthèse (SIG, CAFG, rentabilité, structure financière), sur le modèle publié. */
-    private int tableauSyntheseIndicateurs(Sheet sh, Styles s, int r, List<LigneCompte> comptes,
-                                            BigDecimal resultatNet, BilanTotals bilan, LocalDate du, LocalDate au) {
-        BigDecimal chiffreAffaires = sommeSiPrefixe(comptes, "70", true);
-        BigDecimal margeCommerciale = sommeSiPrefixe(comptes, "701", true).subtract(sommeSiPrefixe(comptes, "601", false))
-            .subtract(sommeSiPrefixe(comptes, "6031", false));
-        BigDecimal chargesExploitationHorsPersonnel = sommeSiPrefixe(comptes, "60", false).add(sommeSiPrefixe(comptes, "61", false))
-            .add(sommeSiPrefixe(comptes, "62", false)).add(sommeSiPrefixe(comptes, "63", false))
-            .add(sommeSiPrefixe(comptes, "64", false)).add(sommeSiPrefixe(comptes, "65", false));
-        BigDecimal produitsExploitationTotal = sommeSiPrefixe(comptes, "70", true).add(sommeSiPrefixe(comptes, "71", true))
-            .add(sommeSiPrefixe(comptes, "72", true)).add(sommeSiPrefixe(comptes, "73", true))
-            .add(sommeSiPrefixe(comptes, "75", true)).add(sommeSiPrefixe(comptes, "781", true));
-        BigDecimal valeurAjoutee = produitsExploitationTotal.subtract(chargesExploitationHorsPersonnel);
-        BigDecimal chargesPersonnel = sommeSiPrefixe(comptes, "66", false);
-        BigDecimal ebe = valeurAjoutee.subtract(chargesPersonnel);
-        BigDecimal dotationsExploitation = sommeSiPrefixe(comptes, "68", false).add(sommeSiPrefixe(comptes, "69", false))
-            .subtract(sommeSiPrefixe(comptes, "697", false));
-        BigDecimal reprisesExploitation = sommeSiPrefixe(comptes, "79", true).subtract(sommeSiPrefixe(comptes, "797", true));
-        BigDecimal resultatExploitation = ebe.add(reprisesExploitation).subtract(dotationsExploitation);
-        BigDecimal dotationsFinancieres = sommeSiPrefixe(comptes, "679", false).add(sommeSiPrefixe(comptes, "697", false));
-        BigDecimal cafg = resultatNet.add(dotationsExploitation).add(dotationsFinancieres);
-
-        r = enteteValeur(sh, s, r);
-        r = ligneValeur(sh, s, r, "Chiffre d'affaires", chiffreAffaires);
-        r = ligneValeur(sh, s, r, "Marge commerciale", margeCommerciale);
-        r = ligneValeur(sh, s, r, "Valeur ajoutée", valeurAjoutee);
-        r = ligneValeur(sh, s, r, "Excédent brut d'exploitation (EBE)", ebe);
-        r = ligneValeur(sh, s, r, "Résultat d'exploitation", resultatExploitation);
-        r = ligneValeur(sh, s, r, "Résultat net", resultatNet);
-        r = ligneValeur(sh, s, r, "Capacité d'autofinancement globale (C.A.F.G.)", cafg);
-
-        BigDecimal fr = bilan.totalCapitauxPropres().add(cloPassifPrefixe(comptes, "16")).add(cloPassifPrefixe(comptes, "17"))
-            .add(cloPassifPrefixe(comptes, "18")).add(cloPassifPrefixe(comptes, "19")).subtract(bilan.actifImmobilise());
-        BigDecimal bfr = bilan.actifCirculant().subtract(bilan.passifCirculant());
-        BigDecimal tn = bilan.tresorerieActif().subtract(bilan.tresoreriePassif());
-        r = ligneValeur(sh, s, r, "Fonds de roulement net global (FR)", fr);
-        r = ligneValeur(sh, s, r, "Besoin de financement d'exploitation (BFR)", bfr);
-        r = ligneValeur(sh, s, r, "Trésorerie nette (FR - BFR)", fr.subtract(bfr));
-        r = ligneValeur(sh, s, r, "Contrôle : Trésorerie-actif - Trésorerie-passif", tn);
-
-        BigDecimal dettesFinancieresBrutes = cloPassifPrefixe(comptes, "16").add(cloPassifPrefixe(comptes, "17"))
-            .add(cloPassifPrefixe(comptes, "18")).add(bilan.tresoreriePassif());
-        BigDecimal endettementNet = dettesFinancieresBrutes.subtract(bilan.tresorerieActif());
-        r = ligneValeur(sh, s, r, "Endettement financier net (dettes financières + trésorerie-passif - trésorerie-actif)", endettementNet);
-        r = ligneValeur(sh, s, r, "Rentabilité financière (Résultat net / Capitaux propres)",
-            ratio(resultatNet, bilan.totalCapitauxPropres()));
-        r = ligneValeur(sh, s, r, "Rentabilité économique (Résultat d'exploitation / (Capitaux propres + Dettes financières))",
-            ratio(resultatExploitation, bilan.totalCapitauxPropres().add(dettesFinancieresBrutes)));
-        return r;
-    }
-
     // ---------------------------------------------------------------------
     // Feuille Graphiques
     // ---------------------------------------------------------------------
@@ -2560,67 +1974,77 @@ public class EtatsFinanciersExcelService {
         return points;
     }
 
+    /** Intitulés SYSCOHADA des chapitres de charges (classe 6), pour la répartition par nature. */
+    private static final String[][] CHARGES_PAR_NATURE = {
+        {"60", "Achats et variations de stocks"}, {"61", "Transports"}, {"62", "Services extérieurs A"},
+        {"63", "Services extérieurs B"}, {"64", "Impôts et taxes"}, {"65", "Autres charges"},
+        {"66", "Charges de personnel"}, {"67", "Frais financiers"}, {"68", "Dotations aux amortissements"},
+        {"69", "Dotations aux provisions"},
+    };
+
+    /** Nombre de comptes de produits montrés un à un ; les suivants sont regroupés en « Autres produits ». */
+    private static final int PRODUITS_DETAILLES = 6;
+
+    /** Couleurs fixes des séries : un même indicateur garde sa couleur d'un graphique à l'autre. */
+    private static final String COUL_CA = "2E75B6", COUL_RESULTAT = "ED7D31", COUL_TRESORERIE = "70AD47",
+        COUL_BILAN = "4472C4", COUL_CHARGES = "C55A11", COUL_RATIOS = "7F6000";
+
+    /**
+     * Feuille « Graphiques » : à gauche les tableaux (évolution mensuelle, structure du bilan, ratios clés,
+     * charges par nature, produits par compte), à droite les graphiques, deux par rangée, chacun bâti sur les
+     * cellules du tableau correspondant — un graphique ne montre jamais un chiffre absent de la feuille.
+     */
     private void construireGraphiques(XSSFWorkbook wb, Styles s, List<LigneCompte> comptes,
                                       List<EcritureGrandLivre> journal, BigDecimal resultatNet,
                                       BilanTotals bilan, LocalDate du, LocalDate au) {
         XSSFSheet sh = wb.createSheet("Graphiques");
-        titre(sh, s, "GRAPHIQUES – TABLEAU DE BORD",
-            "Courbes et indicateurs calculés sur la période du " + du.format(DATE_FR) + " au " + au.format(DATE_FR));
-
         List<PointMensuel> points = pointsMensuels(journal, comptes, du, au);
         int nbMois = points.size();
+        int derniere = Math.max(G_COL_GRAPHES + 2 * G_LARGEUR_GRAPHE - 1, nbMois);
+        int r = titre(sh, s, "GRAPHIQUES – TABLEAU DE BORD",
+            "Courbes et indicateurs calculés sur la période du " + du.format(DATE_FR) + " au " + au.format(DATE_FR),
+            derniere);
 
-        int r = 3;
+        // --- Évolution mensuelle -------------------------------------------------------------------
         Row hdrEvol = sh.createRow(r++);
-        cell(hdrEvol, 0, "ÉVOLUTION MENSUELLE (cumulée)", s.sectionHeader);
+        cell(hdrEvol, 0, "ÉVOLUTION MENSUELLE", s.sectionHeader);
         sh.addMergedRegion(new CellRangeAddress(hdrEvol.getRowNum(), hdrEvol.getRowNum(), 0, Math.max(1, nbMois)));
-
         Row hdrMois = sh.createRow(r++);
         cell(hdrMois, 0, "Mois", s.enTete);
         for (int i = 0; i < nbMois; i++) cell(hdrMois, i + 1, points.get(i).libelle(), s.enTete);
         int ligneMois = hdrMois.getRowNum();
 
-        Row rowCa = sh.createRow(r++);
-        cell(rowCa, 0, "CA cumulé", s.totalLabel);
-        for (int i = 0; i < nbMois; i++) cellMontant(rowCa, i + 1, points.get(i).caCumule(), s);
-        int ligneCa = rowCa.getRowNum();
-
-        Row rowRes = sh.createRow(r++);
-        cell(rowRes, 0, "Résultat cumulé", s.totalLabel);
-        for (int i = 0; i < nbMois; i++) cellMontant(rowRes, i + 1, points.get(i).resultatCumule(), s);
-        int ligneRes = rowRes.getRowNum();
-
-        Row rowTre = sh.createRow(r++);
-        cell(rowTre, 0, "Trésorerie", s.totalLabel);
-        for (int i = 0; i < nbMois; i++) cellMontant(rowTre, i + 1, points.get(i).tresorerieCumulee(), s);
-        int ligneTre = rowTre.getRowNum();
-
+        String[] libellesEvol = {"CA du mois", "Résultat du mois", "CA cumulé", "Résultat cumulé",
+            "Trésorerie (fin de mois)"};
+        int[] lignesEvol = new int[libellesEvol.length];
+        for (int k = 0; k < libellesEvol.length; k++) {
+            Row row = sh.createRow(r++);
+            cell(row, 0, libellesEvol[k], s.totalLabel);
+            for (int i = 0; i < nbMois; i++) {
+                PointMensuel p = points.get(i);
+                PointMensuel prec = i == 0 ? null : points.get(i - 1);
+                BigDecimal v = switch (k) {
+                    case 0 -> prec == null ? p.caCumule() : p.caCumule().subtract(prec.caCumule());
+                    case 1 -> prec == null ? p.resultatCumule() : p.resultatCumule().subtract(prec.resultatCumule());
+                    case 2 -> p.caCumule();
+                    case 3 -> p.resultatCumule();
+                    default -> p.tresorerieCumulee();
+                };
+                cellMontant(row, i + 1, v, s);
+            }
+            lignesEvol[k] = row.getRowNum();
+        }
         r++;
-        Row hdrBilan = sh.createRow(r++);
-        cell(hdrBilan, 0, "STRUCTURE DU BILAN", s.sectionHeader);
-        sh.addMergedRegion(new CellRangeAddress(hdrBilan.getRowNum(), hdrBilan.getRowNum(), 0, 1));
-        Row hdrBilanCols = sh.createRow(r++);
-        cell(hdrBilanCols, 0, "Poste", s.enTete);
-        cell(hdrBilanCols, 1, "Montant", s.enTete);
+        int hautTableaux = r;
+
+        // --- Tableaux de gauche ----------------------------------------------------------------------
         String[] libellesBilan = {"Actif immobilisé", "Actif circulant", "Trésorerie-actif",
             "Capitaux propres", "Passif circulant", "Trésorerie-passif"};
         BigDecimal[] valeursBilan = {bilan.actifImmobilise(), bilan.actifCirculant(), bilan.tresorerieActif(),
             bilan.totalCapitauxPropres(), bilan.passifCirculant(), bilan.tresoreriePassif()};
-        int ligneBilanDebut = r;
-        for (int i = 0; i < libellesBilan.length; i++) {
-            Row row = sh.createRow(r++);
-            cell(row, 0, libellesBilan[i], s.normal);
-            cellMontant(row, 1, valeursBilan[i], s);
-        }
-        int ligneBilanFin = r - 1;
-
-        r++;
-        Row hdrRatios = sh.createRow(r++);
-        cell(hdrRatios, 0, "RATIOS CLÉS", s.sectionHeader);
-        sh.addMergedRegion(new CellRangeAddress(hdrRatios.getRowNum(), hdrRatios.getRowNum(), 0, 1));
-        Row hdrRatiosCols = sh.createRow(r++);
-        cell(hdrRatiosCols, 0, "Ratio", s.enTete);
-        cell(hdrRatiosCols, 1, "Valeur", s.enTete);
+        int[] plageBilan = tableauGraphique(sh, s, r, "STRUCTURE DU BILAN", "Poste", "Montant",
+            List.of(libellesBilan), List.of(valeursBilan), false);
+        r = plageBilan[1] + 2;
 
         BigDecimal chiffreAffaires = sommeSiPrefixe(comptes, "7", true).subtract(sommeSiPrefixe(comptes, "77", true));
         String[] libellesRatios = {"Autonomie financière", "Taux d'endettement", "Liquidité générale",
@@ -2632,111 +2056,247 @@ public class EtatsFinanciersExcelService {
             ratio(bilan.tresorerieActif(), bilan.passifCirculant()),
             chiffreAffaires.signum() == 0 ? BigDecimal.ZERO : ratio(resultatNet, chiffreAffaires),
         };
-        int ligneRatiosDebut = r;
-        for (int i = 0; i < libellesRatios.length; i++) {
-            Row row = sh.createRow(r++);
-            cell(row, 0, libellesRatios[i], s.normal);
-            Cell c = row.createCell(1);
-            c.setCellValue(valeursRatios[i].doubleValue());
-            c.setCellStyle(s.pourcentage);
+        int[] plageRatios = tableauGraphique(sh, s, r, "RATIOS CLÉS", "Ratio", "Valeur",
+            List.of(libellesRatios), List.of(valeursRatios), true);
+        r = plageRatios[1] + 2;
+
+        List<String> libCharges = new ArrayList<>();
+        List<BigDecimal> valCharges = new ArrayList<>();
+        for (String[] nature : CHARGES_PAR_NATURE) {
+            BigDecimal v = sommeSiPrefixe(comptes, nature[0], false);
+            if (v.signum() != 0) {
+                libCharges.add(nature[0] + " – " + nature[1]);
+                valCharges.add(v);
+            }
         }
-        int ligneRatiosFin = r - 1;
+        int[] plageCharges = tableauGraphique(sh, s, r, "CHARGES PAR NATURE (classe 6)", "Nature", "Montant",
+            libCharges, valCharges, false);
+        r = plageCharges[1] + 2;
 
-        largeurs(sh, 5000, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600);
+        List<LigneCompte> produits = comptes.stream()
+            .filter(c -> c.classe() == 7 && c.netMouvement().negate().signum() > 0)
+            .sorted(Comparator.comparing((LigneCompte c) -> c.netMouvement().negate()).reversed())
+            .toList();
+        List<String> libProduits = new ArrayList<>();
+        List<BigDecimal> valProduits = new ArrayList<>();
+        BigDecimal autres = BigDecimal.ZERO;
+        for (int i = 0; i < produits.size(); i++) {
+            LigneCompte c = produits.get(i);
+            if (i < PRODUITS_DETAILLES) {
+                libProduits.add(c.numero() + " – " + c.libelle());
+                valProduits.add(c.netMouvement().negate());
+            } else {
+                autres = autres.add(c.netMouvement().negate());
+            }
+        }
+        if (autres.signum() != 0) {
+            libProduits.add("Autres produits");
+            valProduits.add(autres);
+        }
+        int[] plageProduits = tableauGraphique(sh, s, r, "PRODUITS PAR COMPTE (classe 7)", "Compte", "Montant",
+            libProduits, valProduits, false);
 
-        int colDepart = Math.max(4, nbMois + 3);
-        ajouterGraphiques(sh, nbMois, ligneMois, ligneCa, ligneRes, ligneTre,
-            ligneBilanDebut, ligneBilanFin, ligneRatiosDebut, ligneRatiosFin, colDepart);
+        largeurs(sh, 9500, 3800, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600);
+        for (int c = 14; c <= derniere; c++) {
+            sh.setColumnWidth(c, 3600);
+        }
+
+        // --- Graphiques : deux par rangée, à droite des tableaux, sans chevauchement -----------------
+        XSSFDrawing dessin = sh.createDrawingPatriarch();
+        int[] place = {0};
+        java.util.function.Supplier<XSSFChart> suivant = () -> {
+            int i = place[0]++;
+            int col = G_COL_GRAPHES + (i % 2) * G_LARGEUR_GRAPHE;
+            int ligne = hautTableaux + (i / 2) * (G_HAUTEUR_GRAPHE + 1);
+            return dessin.createChart(dessin.createAnchor(0, 0, 0, 0, col, ligne,
+                col + G_LARGEUR_GRAPHE, ligne + G_HAUTEUR_GRAPHE));
+        };
+        if (nbMois > 0) {
+            XDDFCategoryDataSource mois = XDDFDataSourcesFactory.fromStringCellRange(sh,
+                new CellRangeAddress(ligneMois, ligneMois, 1, nbMois));
+            graphiqueBarres(suivant.get(), "CA et résultat du mois", mois, "Montant", "#,##0", false,
+                serie(sh, lignesEvol[0], nbMois, "CA du mois", COUL_CA),
+                serie(sh, lignesEvol[1], nbMois, "Résultat du mois", COUL_RESULTAT));
+            graphiqueCourbes(suivant.get(), "CA et résultat cumulés", mois,
+                serie(sh, lignesEvol[2], nbMois, "CA cumulé", COUL_CA),
+                serie(sh, lignesEvol[3], nbMois, "Résultat cumulé", COUL_RESULTAT));
+            graphiqueAires(suivant.get(), "Trésorerie en fin de mois", mois,
+                serie(sh, lignesEvol[4], nbMois, "Trésorerie", COUL_TRESORERIE));
+        }
+        graphiqueBarres(suivant.get(), "Structure du bilan", categories(sh, plageBilan), "Montant", "#,##0", false,
+            serieColonne(sh, plageBilan, "Montant", COUL_BILAN));
+        if (!libCharges.isEmpty()) {
+            graphiqueBarres(suivant.get(), "Charges par nature", categories(sh, plageCharges), "Montant", "#,##0",
+                true, serieColonne(sh, plageCharges, "Charges", COUL_CHARGES));
+        }
+        graphiqueBarres(suivant.get(), "Ratios clés", categories(sh, plageRatios), "Valeur", "0%", false,
+            serieColonne(sh, plageRatios, "Valeur", COUL_RATIOS));
+        // Deux rangées de graphiques par page : un saut de page entre la 2e et la 3e rangée, pour qu'aucun
+        // graphique ne soit coupé à l'impression (PDF du 15/11/2026).
+        if (place[0] + (libProduits.isEmpty() ? 0 : 1) > 4) {
+            sh.setRowBreak(hautTableaux + 2 * (G_HAUTEUR_GRAPHE + 1) - 1);
+        }
+        if (!libProduits.isEmpty()) {
+            graphiqueSecteurs(suivant.get(), "Répartition des produits", categories(sh, plageProduits),
+                XDDFDataSourcesFactory.fromNumericCellRange(sh,
+                    new CellRangeAddress(plageProduits[0], plageProduits[1], 1, 1)));
+        }
     }
 
-    private void ajouterGraphiques(XSSFSheet sh, int nbMois, int ligneMois, int ligneCa, int ligneRes, int ligneTre,
-                                   int ligneBilanDebut, int ligneBilanFin, int ligneRatiosDebut, int ligneRatiosFin,
-                                   int colDepart) {
-        XSSFDrawing drawing = sh.createDrawingPatriarch();
+    /** Colonne (base 0) où commencent les graphiques, largeur en colonnes et hauteur en lignes de chacun. */
+    private static final int G_COL_GRAPHES = 3, G_LARGEUR_GRAPHE = 6, G_HAUTEUR_GRAPHE = 18;
 
-        if (nbMois > 0) {
-            XDDFCategoryDataSource moisCat = XDDFDataSourcesFactory.fromStringCellRange(sh,
-                new CellRangeAddress(ligneMois, ligneMois, 1, nbMois));
-            XDDFNumericalDataSource<Double> caSrc = XDDFDataSourcesFactory.fromNumericCellRange(sh,
-                new CellRangeAddress(ligneCa, ligneCa, 1, nbMois));
-            XDDFNumericalDataSource<Double> resSrc = XDDFDataSourcesFactory.fromNumericCellRange(sh,
-                new CellRangeAddress(ligneRes, ligneRes, 1, nbMois));
-            XDDFNumericalDataSource<Double> treSrc = XDDFDataSourcesFactory.fromNumericCellRange(sh,
-                new CellRangeAddress(ligneTre, ligneTre, 1, nbMois));
-
-            XSSFChart perfChart = drawing.createChart(drawing.createAnchor(0, 0, 0, 0, colDepart, 0, colDepart + 8, 16));
-            perfChart.setTitleText("Courbe de performance (CA et résultat cumulés)");
-            perfChart.setTitleOverlay(false);
-            XDDFCategoryAxis perfCat = perfChart.createCategoryAxis(AxisPosition.BOTTOM);
-            XDDFValueAxis perfVal = perfChart.createValueAxis(AxisPosition.LEFT);
-            perfVal.setCrosses(AxisCrosses.AUTO_ZERO);
-            XDDFLineChartData perfData = (XDDFLineChartData) perfChart.createData(ChartTypes.LINE, perfCat, perfVal);
-            XDDFLineChartData.Series serieCa = (XDDFLineChartData.Series) perfData.addSeries(moisCat, caSrc);
-            serieCa.setTitle("CA cumulé", null);
-            serieCa.setSmooth(false);
-            serieCa.setMarkerStyle(MarkerStyle.CIRCLE);
-            XDDFLineChartData.Series serieRes = (XDDFLineChartData.Series) perfData.addSeries(moisCat, resSrc);
-            serieRes.setTitle("Résultat cumulé", null);
-            serieRes.setSmooth(false);
-            serieRes.setMarkerStyle(MarkerStyle.CIRCLE);
-            perfChart.plot(perfData);
-            perfChart.getOrAddLegend().setPosition(LegendPosition.BOTTOM);
-
-            XSSFChart treChart = drawing.createChart(
-                drawing.createAnchor(0, 0, 0, 0, colDepart + 9, 0, colDepart + 17, 16));
-            treChart.setTitleText("Évolution de la trésorerie");
-            treChart.setTitleOverlay(false);
-            XDDFCategoryAxis treCat = treChart.createCategoryAxis(AxisPosition.BOTTOM);
-            XDDFValueAxis treVal = treChart.createValueAxis(AxisPosition.LEFT);
-            treVal.setCrosses(AxisCrosses.AUTO_ZERO);
-            XDDFLineChartData treData = (XDDFLineChartData) treChart.createData(ChartTypes.LINE, treCat, treVal);
-            XDDFLineChartData.Series serieTre = (XDDFLineChartData.Series) treData.addSeries(moisCat, treSrc);
-            serieTre.setTitle("Trésorerie", null);
-            serieTre.setSmooth(false);
-            serieTre.setMarkerStyle(MarkerStyle.CIRCLE);
-            treChart.plot(treData);
-            treChart.getOrAddLegend().setPosition(LegendPosition.BOTTOM);
+    /**
+     * Petit tableau libellé / valeur des colonnes A et B de la feuille Graphiques.
+     *
+     * @return [première, dernière] ligne de données (base 0) ; dernière &lt; première s'il est vide
+     */
+    private int[] tableauGraphique(Sheet sh, Styles s, int r, String titre, String colLibelle, String colValeur,
+                                   List<String> libelles, List<BigDecimal> valeurs, boolean pourcentage) {
+        Row hdr = sh.createRow(r++);
+        cell(hdr, 0, titre, s.sectionHeader);
+        sh.addMergedRegion(new CellRangeAddress(hdr.getRowNum(), hdr.getRowNum(), 0, 1));
+        Row cols = sh.createRow(r++);
+        cell(cols, 0, colLibelle, s.enTete);
+        cell(cols, 1, colValeur, s.enTete);
+        int debut = r;
+        if (libelles.isEmpty()) {
+            Row vide = sh.createRow(r);
+            cell(vide, 0, "Aucun mouvement sur la période", s.normal);
+            return new int[]{debut, debut};
         }
-
-        if (ligneBilanFin >= ligneBilanDebut) {
-            XDDFCategoryDataSource bilanCat = XDDFDataSourcesFactory.fromStringCellRange(sh,
-                new CellRangeAddress(ligneBilanDebut, ligneBilanFin, 0, 0));
-            XDDFNumericalDataSource<Double> bilanVal = XDDFDataSourcesFactory.fromNumericCellRange(sh,
-                new CellRangeAddress(ligneBilanDebut, ligneBilanFin, 1, 1));
-
-            XSSFChart bilanChart = drawing.createChart(
-                drawing.createAnchor(0, 0, 0, 0, colDepart, 17, colDepart + 8, 33));
-            bilanChart.setTitleText("Structure du bilan");
-            bilanChart.setTitleOverlay(false);
-            XDDFCategoryAxis bCat = bilanChart.createCategoryAxis(AxisPosition.BOTTOM);
-            XDDFValueAxis bVal = bilanChart.createValueAxis(AxisPosition.LEFT);
-            bVal.setCrosses(AxisCrosses.AUTO_ZERO);
-            XDDFBarChartData bilanData = (XDDFBarChartData) bilanChart.createData(ChartTypes.BAR, bCat, bVal);
-            bilanData.setBarDirection(BarDirection.COL);
-            XDDFBarChartData.Series serieBilan = (XDDFBarChartData.Series) bilanData.addSeries(bilanCat, bilanVal);
-            serieBilan.setTitle("Montant", null);
-            bilanChart.plot(bilanData);
+        for (int i = 0; i < libelles.size(); i++) {
+            Row row = sh.createRow(r++);
+            cell(row, 0, libelles.get(i), s.normal);
+            if (pourcentage) {
+                Cell c = row.createCell(1);
+                c.setCellValue(valeurs.get(i).doubleValue());
+                c.setCellStyle(s.pourcentage);
+            } else {
+                cellMontant(row, 1, valeurs.get(i), s);
+            }
         }
+        return new int[]{debut, r - 1};
+    }
 
-        if (ligneRatiosFin >= ligneRatiosDebut) {
-            XDDFCategoryDataSource ratiosCat = XDDFDataSourcesFactory.fromStringCellRange(sh,
-                new CellRangeAddress(ligneRatiosDebut, ligneRatiosFin, 0, 0));
-            XDDFNumericalDataSource<Double> ratiosVal = XDDFDataSourcesFactory.fromNumericCellRange(sh,
-                new CellRangeAddress(ligneRatiosDebut, ligneRatiosFin, 1, 1));
+    private record SerieGraphique(XDDFNumericalDataSource<Double> valeurs, String titre, String couleur) {}
 
-            XSSFChart ratiosChart = drawing.createChart(
-                drawing.createAnchor(0, 0, 0, 0, colDepart + 9, 17, colDepart + 17, 33));
-            ratiosChart.setTitleText("Ratios clés");
-            ratiosChart.setTitleOverlay(false);
-            XDDFCategoryAxis rCat = ratiosChart.createCategoryAxis(AxisPosition.BOTTOM);
-            XDDFValueAxis rVal = ratiosChart.createValueAxis(AxisPosition.LEFT);
-            rVal.setCrosses(AxisCrosses.AUTO_ZERO);
-            XDDFBarChartData ratiosData = (XDDFBarChartData) ratiosChart.createData(ChartTypes.BAR, rCat, rVal);
-            ratiosData.setBarDirection(BarDirection.COL);
-            XDDFBarChartData.Series serieRatios = (XDDFBarChartData.Series) ratiosData.addSeries(ratiosCat, ratiosVal);
-            serieRatios.setTitle("Valeur", null);
-            ratiosChart.plot(ratiosData);
+    private SerieGraphique serie(XSSFSheet sh, int ligne, int nbMois, String titre, String couleur) {
+        return new SerieGraphique(XDDFDataSourcesFactory.fromNumericCellRange(sh,
+            new CellRangeAddress(ligne, ligne, 1, nbMois)), titre, couleur);
+    }
+
+    private SerieGraphique serieColonne(XSSFSheet sh, int[] plage, String titre, String couleur) {
+        return new SerieGraphique(XDDFDataSourcesFactory.fromNumericCellRange(sh,
+            new CellRangeAddress(plage[0], plage[1], 1, 1)), titre, couleur);
+    }
+
+    private XDDFCategoryDataSource categories(XSSFSheet sh, int[] plage) {
+        return XDDFDataSourcesFactory.fromStringCellRange(sh, new CellRangeAddress(plage[0], plage[1], 0, 0));
+    }
+
+    private static void titreGraphique(XSSFChart chart, String titre) {
+        chart.setTitleText(titre);
+        chart.setTitleOverlay(false);
+    }
+
+    private static XDDFSolidFillProperties remplissage(String hex) {
+        return new XDDFSolidFillProperties(XDDFColor.from(new byte[]{
+            (byte) Integer.parseInt(hex.substring(0, 2), 16),
+            (byte) Integer.parseInt(hex.substring(2, 4), 16),
+            (byte) Integer.parseInt(hex.substring(4, 6), 16)}));
+    }
+
+    private static XDDFLineProperties trait(String hex, double epaisseurPt) {
+        XDDFLineProperties l = new XDDFLineProperties(remplissage(hex));
+        l.setWidth(epaisseurPt);
+        return l;
+    }
+
+    /** Axes catégories en bas (ou à gauche pour des barres horizontales) et valeurs, titrés en français. */
+    private static XDDFValueAxis axes(XSSFChart chart, XDDFCategoryAxis[] cat, boolean horizontal,
+                                      String titreValeurs, String format) {
+        cat[0] = chart.createCategoryAxis(horizontal ? AxisPosition.LEFT : AxisPosition.BOTTOM);
+        cat[0].setTickLabelPosition(AxisTickLabelPosition.LOW);
+        XDDFValueAxis val = chart.createValueAxis(horizontal ? AxisPosition.BOTTOM : AxisPosition.LEFT);
+        val.setCrosses(AxisCrosses.AUTO_ZERO);
+        val.setTitle(titreValeurs);
+        val.setNumberFormat(format);
+        val.setMajorTickMark(AxisTickMark.OUT);
+        return val;
+    }
+
+    private void graphiqueBarres(XSSFChart chart, String titre, XDDFCategoryDataSource cat, String titreValeurs,
+                                 String format, boolean horizontal, SerieGraphique... series) {
+        titreGraphique(chart, titre);
+        XDDFCategoryAxis[] axeCat = new XDDFCategoryAxis[1];
+        XDDFValueAxis val = axes(chart, axeCat, horizontal, titreValeurs, format);
+        XDDFBarChartData data = (XDDFBarChartData) chart.createData(ChartTypes.BAR, axeCat[0], val);
+        data.setBarDirection(horizontal ? BarDirection.BAR : BarDirection.COL);
+        data.setBarGrouping(BarGrouping.CLUSTERED);
+        data.setGapWidth(60);
+        data.setVaryColors(false);
+        for (SerieGraphique sg : series) {
+            XDDFChartData.Series serie = data.addSeries(cat, sg.valeurs());
+            serie.setTitle(sg.titre(), null);
+            serie.setFillProperties(remplissage(sg.couleur()));
         }
+        chart.plot(data);
+        if (series.length > 1) {
+            chart.getOrAddLegend().setPosition(LegendPosition.BOTTOM);
+        }
+    }
+
+    private void graphiqueCourbes(XSSFChart chart, String titre, XDDFCategoryDataSource cat,
+                                  SerieGraphique... series) {
+        titreGraphique(chart, titre);
+        XDDFCategoryAxis[] axeCat = new XDDFCategoryAxis[1];
+        XDDFValueAxis val = axes(chart, axeCat, false, "Montant", "#,##0");
+        XDDFLineChartData data = (XDDFLineChartData) chart.createData(ChartTypes.LINE, axeCat[0], val);
+        data.setVaryColors(false);
+        for (SerieGraphique sg : series) {
+            XDDFLineChartData.Series serie = (XDDFLineChartData.Series) data.addSeries(cat, sg.valeurs());
+            serie.setTitle(sg.titre(), null);
+            serie.setSmooth(false);
+            // Ni taille de marqueur ni angle de départ des secteurs : leurs types de schéma manquent à POI « lite ».
+            serie.setMarkerStyle(MarkerStyle.CIRCLE);
+            serie.setLineProperties(trait(sg.couleur(), 2.25));
+        }
+        chart.plot(data);
+        chart.getOrAddLegend().setPosition(LegendPosition.BOTTOM);
+    }
+
+    private void graphiqueAires(XSSFChart chart, String titre, XDDFCategoryDataSource cat, SerieGraphique sg) {
+        titreGraphique(chart, titre);
+        XDDFCategoryAxis[] axeCat = new XDDFCategoryAxis[1];
+        XDDFValueAxis val = axes(chart, axeCat, false, "Montant", "#,##0");
+        XDDFAreaChartData data = (XDDFAreaChartData) chart.createData(ChartTypes.AREA, axeCat[0], val);
+        data.setVaryColors(false);
+        XDDFChartData.Series serie = data.addSeries(cat, sg.valeurs());
+        serie.setTitle(sg.titre(), null);
+        serie.setFillProperties(remplissage(sg.couleur()));
+        chart.plot(data);
+    }
+
+    private void graphiqueSecteurs(XSSFChart chart, String titre, XDDFCategoryDataSource cat,
+                                   XDDFNumericalDataSource<Double> valeurs) {
+        titreGraphique(chart, titre);
+        XDDFPieChartData data = (XDDFPieChartData) chart.createData(ChartTypes.PIE, null, null);
+        data.setVaryColors(true);
+        XDDFChartData.Series serie = data.addSeries(cat, valeurs);
+        serie.setTitle("Produits", null);
+        chart.plot(data);
+        // Pourcentage sur chaque part : sans lui, un camembert ne se lit qu'à l'œil.
+        var ser = chart.getCTChart().getPlotArea().getPieChartArray(0).getSerArray(0);
+        var lbl = ser.isSetDLbls() ? ser.getDLbls() : ser.addNewDLbls();
+        lbl.addNewShowLegendKey().setVal(false);
+        lbl.addNewShowVal().setVal(false);
+        lbl.addNewShowCatName().setVal(false);
+        lbl.addNewShowSerName().setVal(false);
+        lbl.addNewShowPercent().setVal(true);
+        lbl.addNewShowBubbleSize().setVal(false);
+        lbl.addNewShowLeaderLines().setVal(true);
+        chart.getOrAddLegend().setPosition(LegendPosition.RIGHT);
     }
 
     private BigDecimal ratio(BigDecimal numerateur, BigDecimal denominateur) {
@@ -2796,11 +2356,18 @@ public class EtatsFinanciersExcelService {
         sh.setMargin(Sheet.RightMargin, 0.3);
     }
 
-    private void titre(Sheet sh, Styles s, String titre, String sousTitre) {
-        Row t = sh.createRow(0);
-        cell(t, 1, titre, s.grandTitre);
-        Row st = sh.createRow(1);
-        cell(st, 1, sousTitre, s.sousTitre);
+    /** En-tête commun (bandeau, entité, exercice, durée) suivi du sous-titre de la feuille ; renvoie la première ligne libre. */
+    private int titre(Sheet sh, Styles s, String titre, String sousTitre, int derniereColonne) {
+        // Une page en largeur (paysage dès que la feuille est large) : le bandeau et les graphiques ne sont
+        // plus coupés à l'impression.
+        sh.setFitToPage(true);
+        sh.getPrintSetup().setFitWidth((short) 1);
+        sh.getPrintSetup().setFitHeight((short) 0);
+        sh.getPrintSetup().setPaperSize(PrintSetup.A4_PAPERSIZE);
+        sh.getPrintSetup().setLandscape(derniereColonne >= 6);
+        sh.setMargin(Sheet.LeftMargin, 0.3);
+        sh.setMargin(Sheet.RightMargin, 0.3);
+        return s.entete.poser(sh, titre, derniereColonne, sousTitre);
     }
 
     private void cell(Row row, int col, String valeur, CellStyle style) {
@@ -2858,7 +2425,6 @@ public class EtatsFinanciersExcelService {
     private static final String C_TOTAL_MAJEUR = "002060"; // totaux de masse / SIG (bleu marine)
     private static final String C_RESULTAT_INT = "F2EEE8"; // resultats intermediaires (creme)
     private static final String C_TOTAL_GENERAL = "7C984A"; // total general / resultat net (vert olive)
-    private static final String C_TITRE_DOC    = "0070C0"; // titre du document (bleu)
 
     /** Police de toute la liasse OHADA (le classeur de reference est en Arial). */
     private static final String POLICE_LIASSE = "Arial";
@@ -2874,7 +2440,7 @@ public class EtatsFinanciersExcelService {
 
     /** Styles Excel construits une fois par classeur. */
     private static final class Styles {
-        final CellStyle grandTitre, sousTitre, enTete, sousEntete, classeHeader, sectionHeader,
+        final CellStyle sousTitre, enTete, sousEntete, classeHeader, sectionHeader,
             normal, montant, totalLabel, totalMontant, controleFormule, controleOk, controleKo, interpretation,
             noteTexte, pourcentage;
 
@@ -2891,7 +2457,8 @@ public class EtatsFinanciersExcelService {
         final CellStyle totalMajeurLabel, totalMajeurMontant;
         final CellStyle resultatIntLabel, resultatIntMontant;
         final CellStyle totalGeneralLabel, totalGeneralMontant;
-        final CellStyle titreLiasse, enTeteLiasseCell;
+        /** En-tête commun à toutes les feuilles (bandeau, entité, exercice, durée). */
+        final EnTeteFeuille entete;
 
         private final XSSFWorkbook wb;
         private final DataFormat fmt;
@@ -2934,15 +2501,10 @@ public class EtatsFinanciersExcelService {
             return st;
         }
 
-        Styles(XSSFWorkbook wb) {
+        Styles(XSSFWorkbook wb, EnTeteFeuille.Identite identite) {
             this.wb = wb;
+            this.entete = new EnTeteFeuille(wb, identite);
             this.fmt = wb.createDataFormat();
-
-            Font fTitre = wb.createFont();
-            fTitre.setBold(true);
-            fTitre.setFontHeightInPoints((short) 14);
-            grandTitre = wb.createCellStyle();
-            grandTitre.setFont(fTitre);
 
             Font fSousTitre = wb.createFont();
             fSousTitre.setItalic(true);
@@ -3023,12 +2585,6 @@ public class EtatsFinanciersExcelService {
             totalGeneralLabel = palier(C_TOTAL_GENERAL, pGrasBlanc, false);
             totalGeneralMontant = palier(C_TOTAL_GENERAL, pGrasBlanc, true);
 
-            titreLiasse = wb.createCellStyle();
-            titreLiasse.setFont(policeLiasse(11, true, C_TITRE_DOC));
-
-            enTeteLiasseCell = wb.createCellStyle();
-            enTeteLiasseCell.setFont(policeLiasse(10, false, "000000"));
-
             Font fControle = wb.createFont();
             fControle.setBold(true);
             controleFormule = wb.createCellStyle();
@@ -3056,6 +2612,15 @@ public class EtatsFinanciersExcelService {
 
             noteTexte = wb.createCellStyle();
             noteTexte.setWrapText(true);
+            // Demande du 15/11/2026 : chaque tableau imprimé (Journal, Balance, Ratios, Graphiques…) porte le
+            // contour de chacune de ses cellules, comme les états de la liasse.
+            for (CellStyle st : new CellStyle[]{classeHeader, sectionHeader, normal, montant, pourcentage,
+                totalLabel, totalMontant, controleFormule, controleOk, controleKo, interpretation, noteTexte}) {
+                st.setBorderTop(BorderStyle.THIN);
+                st.setBorderBottom(BorderStyle.THIN);
+                st.setBorderLeft(BorderStyle.THIN);
+                st.setBorderRight(BorderStyle.THIN);
+            }
             noteTexte.setVerticalAlignment(VerticalAlignment.TOP);
         }
     }

@@ -50,5 +50,13 @@ public enum TypeNotification {
     /** Retour de vente refuse par le responsable (avec son motif) : caissiers et demandeur. */
     RETOUR_VENTE_REFUSE,
     /** Retour de vente rembourse par le caissier : responsables du bar, de la cuisine ou du restaurant. */
-    RETOUR_VENTE_REMBOURSE
+    RETOUR_VENTE_REMBOURSE,
+    /** Piece saisie, ou restauree en brouillon, par le comptable : le DFIN doit la comptabiliser. */
+    PIECE_A_COMPTABILISER,
+    /** Piece comptabilisee annulee (extournee) par le comptable : le DFIN est prevenu et peut la retablir. */
+    PIECE_ANNULEE,
+    /** Brouillon comptabilise par le DFIN : le comptable qui l'a saisi est prevenu. */
+    PIECE_COMPTABILISEE,
+    /** Comptabilisation annulee retablie par le DFIN ou l'administrateur : le comptable qui l'avait annulee est prevenu. */
+    PIECE_RESTAUREE
 }

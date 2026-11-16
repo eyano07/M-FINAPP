@@ -127,6 +127,9 @@ public class EffacementComptable {
         }
 
         jdbc.execute("set constraints all deferred");
+        // Les pieces comptabilisees sont intangibles en base (V135) : l'effacement qui precede un import
+        // « Remplacer » leve ce verrou pour sa seule transaction.
+        com.mbsc.finapp.service.instance.ReplicationApplicateur.leverVerrousComptables(jdbc);
         Map<String, Integer> bilan = new LinkedHashMap<>();
         for (String table : racines) {
             compter(bilan, table, jdbc.update("delete from " + ident(table)));

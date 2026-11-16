@@ -32,6 +32,7 @@ const rolesDisponibles = ref<string[]>([...ALL_ROLES])
 const rolesMasques = computed(() => ALL_ROLES.filter((r) => !rolesDisponibles.value.includes(r)))
 
 const api = useApi()
+const dialogues = useDialogues()
 // Copie en ligne d'un serveur local (V133) : seule l'activation / désactivation d'un compte y est possible (immédiate
 // ici, appliquée ensuite au serveur principal) ; création et modification se font sur le serveur principal.
 const instance = useInstanceStore()
@@ -194,6 +195,55 @@ async function toggleActif(u: UserRow) {
   }
 }
 
+// ── Double authentification (audit SYSCOHADA du 10/11/2026, C-23) ───────
+const doubleAuthObligatoire = ref(false)
+async function chargerDoubleAuth() {
+  try {
+    doubleAuthObligatoire.value = (await api<{ obligatoire: boolean }>('/admin/securite/double-auth')).obligatoire
+  } catch {
+    // réglage non lisible : on n'affiche que l'état par défaut
+  }
+}
+async function basculerDoubleAuthObligatoire() {
+  const cible = !doubleAuthObligatoire.value
+  if (cible && !(await dialogues.confirmer({
+    titre: 'Rendre la double authentification obligatoire ?',
+    message: [
+      'Elle sera exigée de DFIN, DA, DG, ADMIN et CAISSIER.',
+      'Ceux qui ne l’ont pas encore activée devront le faire à leur prochaine action, avec une application '
+      + 'd’authentification sur leur téléphone.',
+    ],
+    bouton: 'Rendre obligatoire',
+    nature: 'attention',
+    icone: 'mdi-shield-lock-outline',
+  }))) return
+  try {
+    doubleAuthObligatoire.value = (await api<{ obligatoire: boolean }>('/admin/securite/double-auth', {
+      method: 'PUT', query: { obligatoire: cible },
+    })).obligatoire
+    succes.value = cible ? 'Double authentification obligatoire pour les rôles sensibles.' : 'Double authentification facultative.'
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Modification impossible.')
+  }
+}
+async function reinitialiserDoubleAuth(u: UserRow) {
+  const confirme = await dialogues.confirmer({
+    titre: `Réinitialiser la double authentification de ${u.nomComplet} ?`,
+    message: 'À faire quand son téléphone est perdu ou changé : elle sera réactivée à sa prochaine connexion.',
+    bouton: 'Réinitialiser',
+    nature: 'attention',
+    icone: 'mdi-shield-refresh-outline',
+  })
+  if (!confirme) return
+  try {
+    await api(`/admin/utilisateurs/${u.id}/double-auth/reinitialiser`, { method: 'POST' })
+    succes.value = `Double authentification de ${u.nomComplet} réinitialisée : elle sera réactivée à sa prochaine connexion.`
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Réinitialisation impossible.')
+  }
+}
+onMounted(chargerDoubleAuth)
+
 const roleColor: Record<string, string> = {
   ADMIN: '#7c3aed', DG: '#0ea5e9', DA: '#f59e0b',
   DFIN: 'var(--color-primary)', DIRECTEUR: '#2563eb', CAISSIER: '#ea580c', COMPTABLE: '#be185d', LOGISTIQUE: '#0d9488',
@@ -227,6 +277,18 @@ const roleColor: Record<string, string> = {
     </v-alert>
     <v-alert v-if="erreur && !dialog" type="error" variant="tonal" rounded="lg" density="compact" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
+    </v-alert>
+    <v-alert type="info" variant="tonal" rounded="lg" density="compact" class="mb-4">
+      <div class="d-flex flex-wrap align-center ga-3">
+        <span>
+          Double authentification
+          <strong>{{ doubleAuthObligatoire ? 'obligatoire' : 'facultative' }}</strong>
+          pour DFIN, DA, DG, ADMIN et CAISSIER.
+        </span>
+        <v-btn v-if="!surCopie" size="small" variant="outlined" @click="basculerDoubleAuthObligatoire">
+          {{ doubleAuthObligatoire ? 'Rendre facultative' : 'Rendre obligatoire' }}
+        </v-btn>
+      </div>
     </v-alert>
     <v-alert v-if="rolesMasques.length" type="info" variant="tonal" rounded="lg" density="compact" class="mb-4">
       Rôles masqués, leur module étant désactivé :
@@ -307,6 +369,10 @@ const roleColor: Record<string, string> = {
               <div class="usr-actions">
                 <button v-if="!surCopie" class="usr-action-btn usr-action-btn--edit" title="Modifier" @click="ouvrirModifier(u)">
                   <v-icon icon="mdi-pencil-outline" size="16" />
+                </button>
+                <button class="usr-action-btn usr-action-btn--edit" title="Réinitialiser la double authentification"
+                        @click="reinitialiserDoubleAuth(u)">
+                  <v-icon icon="mdi-shield-refresh-outline" size="16" />
                 </button>
                 <button
                   class="usr-action-btn"

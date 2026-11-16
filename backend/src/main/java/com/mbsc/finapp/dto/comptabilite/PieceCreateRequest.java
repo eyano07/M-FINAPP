@@ -14,6 +14,9 @@ public record PieceCreateRequest(
     @NotNull JournalComptable journal,
     @Size(max = 255) String libelle,
 
+    /** Personne ou entité payée ou servie ; facultatif (V143). */
+    @Size(max = 255) String beneficiaire,
+
     /**
      * true = reprise des a-nouveaux : les ecritures alimentent les colonnes
      * « soldes d'ouverture » de la balance au lieu des mouvements de la

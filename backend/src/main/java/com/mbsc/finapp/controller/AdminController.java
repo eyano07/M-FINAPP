@@ -13,6 +13,7 @@ import com.mbsc.finapp.dto.admin.TauxTvaResponse;
 import com.mbsc.finapp.dto.admin.UserCreateRequest;
 import com.mbsc.finapp.dto.admin.UserResponse;
 import com.mbsc.finapp.dto.admin.UserUpdateRequest;
+import com.mbsc.finapp.dto.parametrage.InformationsLiasse;
 import com.mbsc.finapp.dto.parametrage.ModuleActifRequest;
 import com.mbsc.finapp.dto.parametrage.ModuleConfigResponse;
 import com.mbsc.finapp.dto.parametrage.ModuleImpactResponse;
@@ -175,6 +176,18 @@ public class AdminController {
     @PutMapping("/parametres")
     public ParametresEntrepriseResponse modifierParametres(@Valid @RequestBody ParametresEntrepriseRequest req) {
         return parametresService.mettreAJour(req);
+    }
+
+    /** Renseignements de la liasse OHADA : page de garde, fiches R1 à R3 (ADMIN). */
+    @GetMapping("/parametres/liasse")
+    public InformationsLiasse liasse() {
+        return parametresService.obtenirLiasse();
+    }
+
+    /** Enregistre les renseignements de la liasse OHADA, tous facultatifs (ADMIN). */
+    @PutMapping("/parametres/liasse")
+    public InformationsLiasse modifierLiasse(@Valid @RequestBody InformationsLiasse infos) {
+        return parametresService.mettreAJourLiasse(infos);
     }
 
     /** Remplace le logo (ADMIN). */

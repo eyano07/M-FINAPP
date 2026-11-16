@@ -97,6 +97,12 @@ const TYPE_META: Record<string, { icon: string; color: string }> = {
   RETOUR_VENTE_APPROUVE: { icon: 'mdi-check-decagram-outline', color: '#2563eb' },
   RETOUR_VENTE_REFUSE: { icon: 'mdi-close-octagon-outline', color: '#dc2626' },
   RETOUR_VENTE_REMBOURSE: { icon: 'mdi-cash-refund', color: '#0d9488' },
+  // Circuit des pièces comptables : saisie ou restauration à valider (DFIN), annulation par le comptable (DFIN),
+  // comptabilisation et comptabilisation rétablie (comptable).
+  PIECE_A_COMPTABILISER: { icon: 'mdi-file-document-edit-outline', color: '#2563eb' },
+  PIECE_ANNULEE: { icon: 'mdi-file-cancel-outline', color: '#dc2626' },
+  PIECE_COMPTABILISEE: { icon: 'mdi-file-check-outline', color: '#16a34a' },
+  PIECE_RESTAUREE: { icon: 'mdi-file-restore-outline', color: '#0d9488' },
 }
 const typeMeta = (type: string) => TYPE_META[type] ?? { icon: 'mdi-bell-outline', color: '#6b7280' }
 
@@ -112,9 +118,15 @@ function tempsEcoule(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR')
 }
 
+// Le panneau reste ouvert pour « Tout marquer comme lu » (close-on-content-click désactivé) ; il se referme quand une
+// notification ouvre sa page, sinon il masquerait la page qu'on vient d'ouvrir.
+const panneauNotifications = ref(false)
 async function ouvrirNotification(n: NotificationItem) {
   await notif.marquerLue(n.id)
-  if (n.lien) await navigateTo(n.lien)
+  if (n.lien) {
+    panneauNotifications.value = false
+    await navigateTo(n.lien)
+  }
 }
 </script>
 
@@ -172,7 +184,7 @@ async function ouvrirNotification(n: NotificationItem) {
       </template>
     </v-tooltip>
 
-    <v-menu location="bottom end" :close-on-content-click="false">
+    <v-menu v-model="panneauNotifications" location="bottom end" :close-on-content-click="false">
       <template #activator="{ props }">
         <v-btn icon variant="text" size="small" aria-label="Notifications" class="modern-appbar__action" v-bind="props">
           <v-badge

@@ -4,7 +4,7 @@
  * partir d'un fichier lu par l'IA (PDF, photo, Excel, CSV), relu avant enregistrement, ou se saisit à la
  * main. Voir RapprochementService côté serveur.
  */
-definePageMeta({ module: 'RAPPROCHEMENT', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] })
+definePageMeta({ module: 'RAPPROCHEMENT', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
 useHead({ title: 'Rapprochement bancaire' })
 
 interface Etablissement { id: number, nom: string, type: string, compteNumero: string, compteLibelle: string, devise: string }
@@ -14,7 +14,7 @@ interface LigneSaisie { dateOperation: string, libelle: string, reference: strin
 const api = useApi()
 const auth = useAuthStore()
 const grandEcran = useGrandEcran()
-const peutEcrire = computed(() => auth.hasAnyRole(['ADMIN', 'DFIN', 'COMPTABLE', 'CAISSIER']))
+const peutEcrire = computed(() => auth.hasAnyRole(['DFIN', 'COMPTABLE']))
 
 const annee = ref(new Date().getFullYear())
 const etablissements = ref<Etablissement[]>([])

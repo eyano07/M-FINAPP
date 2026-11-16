@@ -3,6 +3,7 @@ package com.mbsc.finapp.service;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.PieceComptable;
+import com.mbsc.finapp.domain.SoldeOuverture;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.JournalComptable;
@@ -106,6 +107,7 @@ public class ImportJournalService {
     private final DocumentationCompteService documentation;
     /** Propose des corrections au lieu de se contenter de refuser le fichier. */
     private final ImportIaService assistance;
+    private final NumerosComptes numerosComptes;
     /** Convertit un journal en devise etrangere vers la devise de base. */
     private final ConversionDeviseService conversionDevise;
     /** Cree la banque ou l'operateur mobile money des comptes de tresorerie importes qui n'en ont pas. */
@@ -161,7 +163,9 @@ public class ImportJournalService {
                                 String libelle,
                                 BigDecimal debit, BigDecimal credit,
                                 /** Montant en devise etrangere, si le fichier porte des colonnes dediees. */
-                                BigDecimal montantDevise) {}
+                                BigDecimal montantDevise,
+                                /** Colonne facultative « Bénéficiaire » (V143). */
+                                String beneficiaire) {}
 
     // -----------------------------------------------------------------
     // Point d'entree
@@ -207,7 +211,7 @@ public class ImportJournalService {
                 String remplacement = substitutions.get(l.compte());
                 return remplacement == null ? l : new LigneImport(l.numeroLigne(), l.date(),
                     l.referencePiece(), l.journal(), remplacement, l.intituleCompte(), l.libelle(),
-                    l.debit(), l.credit(), l.montantDevise());
+                    l.debit(), l.credit(), l.montantDevise(), l.beneficiaire());
             }).toList();
         }
 
@@ -281,6 +285,26 @@ public class ImportJournalService {
             }
             if (e.getValue().size() < 2) {
                 erreurs.add("Piece " + e.getKey() + " : une ecriture doit comporter au moins deux lignes");
+            }
+        }
+
+        // Pièces du 1er janvier : la reprise des à-nouveaux est importée en solde d'ouverture ; une pièce qui porte
+        // des charges ou des produits reste un mouvement, et l'analyse dit pourquoi.
+        for (var e : parPiece.entrySet()) {
+            List<LigneImport> lignesPiece = e.getValue();
+            if (!SoldeOuverture.estJourOuverture(lignesPiece.get(0).date())) {
+                continue;
+            }
+            if (estSoldeOuverture(lignesPiece)) {
+                avertissements.add("Pièce " + e.getKey() + " du 1er janvier : importée en solde d'ouverture (reprise des"
+                    + " à-nouveaux). Elle alimente les colonnes « Soldes d'ouverture » de la balance, pas les mouvements"
+                    + " de l'exercice.");
+            } else {
+                List<String> gestion = lignesPiece.stream().map(LigneImport::compte)
+                    .filter(c -> !SoldeOuverture.estCompteDeBilan(c)).distinct().limit(5).toList();
+                avertissements.add("Pièce " + e.getKey() + " du 1er janvier : elle porte des comptes de gestion ("
+                    + String.join(", ", gestion) + ") et reste dans les mouvements de l'exercice. Un compte de charges ou de"
+                    + " produits n'a pas de solde d'ouverture (SYSCOHADA).");
             }
         }
 
@@ -443,8 +467,23 @@ public class ImportJournalService {
             }
             ecritures.add(ligne.build());
         }
-        return comptabilite.creerPieceInterne(
+        PieceComptable piece = comptabilite.creerPieceInterne(
             premiere.journal(), libelle, premiere.date(), ecritures, auteur);
+        // Règle du 13/11/2026 : une pièce du journal datée du 1er janvier, aux seuls comptes de bilan, est la reprise
+        // des à-nouveaux. Elle alimente les soldes d'ouverture de la balance, pas les mouvements de l'exercice.
+        if (estSoldeOuverture(lignes)) {
+            piece.setSoldeOuverture(true);
+        }
+        // Bénéficiaire : le premier renseigné parmi les lignes de la pièce (V143).
+        lignes.stream().map(LigneImport::beneficiaire).filter(StringUtils::hasText).findFirst()
+            .map(b -> b.length() > 255 ? b.substring(0, 255) : b)
+            .ifPresent(piece::setBeneficiaire);
+        return piece;
+    }
+
+    /** Pièce du 1er janvier ne portant que des comptes de bilan : voir {@link SoldeOuverture}. */
+    private static boolean estSoldeOuverture(List<LigneImport> lignes) {
+        return SoldeOuverture.concerne(lignes.get(0).date(), lignes.stream().map(LigneImport::compte).toList());
     }
 
     /**
@@ -461,7 +500,7 @@ public class ImportJournalService {
      * @param journal -1 si la colonne est absente (valeur par defaut appliquee)
      */
     private record Mapping(int date, int piece, int journal, int compte, int intituleCompte,
-                            int libelle, int debit, int credit, int debitUsd, int creditUsd) {
+                            int libelle, int debit, int credit, int debitUsd, int creditUsd, int beneficiaire) {
         boolean complet() {
             return date >= 0 && compte >= 0 && debit >= 0 && credit >= 0;
         }
@@ -491,7 +530,9 @@ public class ImportJournalService {
             chercher(enTetes, List.of("credit"), List.of("usd", "dollar", "devise")),
             // Colonnes facultatives portant le montant en dollars.
             chercher(enTetes, List.of("debitusd", "debitdollar", "debitdevise", "debit$"), List.of()),
-            chercher(enTetes, List.of("creditusd", "creditdollar", "creditdevise", "credit$"), List.of()));
+            chercher(enTetes, List.of("creditusd", "creditdollar", "creditdevise", "credit$"), List.of()),
+            // Colonne facultative (V143) : nom de la personne ou de l'entité payée ou servie.
+            chercher(enTetes, List.of("beneficiaire", "nomdubeneficiaire", "beneficiaires"), List.of()));
     }
 
     /**
@@ -653,7 +694,7 @@ public class ImportJournalService {
             int numero = 0;
             boolean enteteVue = false;
             // Positions canoniques par defaut si le fichier n'a pas d'en-tete.
-            Mapping map = new Mapping(0, 1, 2, 3, 4, 5, 6, 7, -1, -1);
+            Mapping map = new Mapping(0, 1, 2, 3, 4, 5, 6, 7, -1, -1, -1);
             while ((ligne = r.readLine()) != null) {
                 numero++;
                 if (ligne.isBlank()) continue;
@@ -783,9 +824,10 @@ public class ImportJournalService {
         BigDecimal enDevise = (dUsd == null ? BigDecimal.ZERO : dUsd)
             .add(cUsd == null ? BigDecimal.ZERO : cUsd);
 
+        // Sous-comptes à point d'un journal ancien : lus sans point (C-17).
         return Optional.of(new LigneImport(numero, date, refPiece, lireJournal(journalTexte),
-            compte.trim(), intituleCompte, libelle, debit, credit,
-            enDevise.signum() > 0 ? enDevise : null));
+            numerosComptes.sansPoint(compte.trim()), intituleCompte, libelle, debit, credit,
+            enDevise.signum() > 0 ? enDevise : null, lire(v, map.beneficiaire()).trim()));
     }
 
     private LocalDate lireDate(String texte, Row row, int colonne) {
@@ -934,12 +976,10 @@ public class ImportJournalService {
             // Le compte existe : on s'y rattache tel quel, intitule du plan compris.
             return Optional.of(numero);
         }
-        int sep = numero.lastIndexOf('.');
-        if (sep <= 0) {
-            return Optional.empty();
-        }
-        CompteOHADA parent = compteRepository.findByNumero(numero.substring(0, sep)).orElse(null);
-        if (parent == null) {
+        // Le compte créé prolonge le numéro de son parent, sans point (C-17) : 604215 sous 6042.
+        CompteOHADA parent = s.parentNumero() == null ? null
+            : compteRepository.findByNumero(s.parentNumero()).orElse(null);
+        if (parent == null || numero.indexOf('.') >= 0 || !numero.startsWith(parent.getNumero())) {
             return Optional.empty();
         }
         CompteOHADA nouveau = CompteOHADA.builder()

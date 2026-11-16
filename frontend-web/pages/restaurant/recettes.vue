@@ -34,6 +34,7 @@ interface Provision { id: number; code: string; libelle: string; uniteMesure?: s
 interface NiveauStock { articleId: number; quantite: number; valeurTotale: number }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
 
@@ -254,9 +255,16 @@ function sousTitrePlat(r: Recette): string {
   return `${r.platCode} · ${n ? `${n} ingrédient${n > 1 ? 's' : ''}` : 'sans fiche'}${r.dureeConservationJours != null ? ` · conservation ${r.dureeConservationJours} j` : ''}`
 }
 
-function choisirPlat(platId: number) {
+async function choisirPlat(platId: number) {
   if (platId === platSelectionneId.value) return
-  if (modifie.value && !confirm('Les modifications non enregistrées de cette fiche seront perdues. Continuer ?')) {
+  if (modifie.value && !(await dialogues.confirmer({
+    titre: 'Quitter cette fiche sans enregistrer ?',
+    message: 'Les modifications non enregistrées de cette fiche seront perdues.',
+    bouton: 'Quitter sans enregistrer',
+    abandon: 'Rester',
+    nature: 'attention',
+    icone: 'mdi-content-save-alert-outline',
+  }))) {
     return
   }
   platSelectionneId.value = platId

@@ -254,23 +254,23 @@ public class RestaurantService {
     /**
      * Comptes des boissons perdues autrement que par la casse, créés par V120 — voir {@link #compteChargePerte}. Une boisson
      * offerte est une charge de relations publiques, sous 6276 « Cadeaux à la clientèle » ; une boisson périmée reste en
-     * variation des stocks de marchandises, à part de celle de chaque boisson. Le 6031.1 appartient aux minerais (V67).
+     * variation des stocks de marchandises, à part de celle de chaque boisson. Le 60311 appartient aux minerais (V67).
      */
-    static final String COMPTE_BOISSONS_OFFERTES = "6276.1";
-    static final String COMPTE_BOISSONS_PERIMEES = "6031.2";
+    static final String COMPTE_BOISSONS_OFFERTES = "62761";
+    static final String COMPTE_BOISSONS_PERIMEES = "60312";
     /**
      * Comptes des sorties de plats hors vente, un par motif, créés par V121 — voir {@link #compteSortiePlat}. Un plat offert est
      * une charge de relations publiques (sous 6276 « Cadeaux à la clientèle », comme une boisson offerte) ; un repas du
      * personnel un avantage en nature (sous 6617) ; les pertes (périmé, moisi, renversé, brûlé, autre) restent en variation des
      * stocks de produits finis, sous 736, à part de la sortie des plats vendus.
      */
-    static final String COMPTE_PLATS_OFFERTS = "6276.2";
-    static final String COMPTE_PLATS_PERIMES = "736.1";
-    static final String COMPTE_PLATS_MOISIS = "736.2";
-    static final String COMPTE_PLATS_RENVERSES = "736.3";
-    static final String COMPTE_PLATS_BRULES = "736.4";
-    static final String COMPTE_AUTRES_SORTIES_PLATS = "736.5";
-    static final String COMPTE_REPAS_PERSONNEL = "6617.1";
+    static final String COMPTE_PLATS_OFFERTS = "62762";
+    static final String COMPTE_PLATS_PERIMES = "7361";
+    static final String COMPTE_PLATS_MOISIS = "7362";
+    static final String COMPTE_PLATS_RENVERSES = "7363";
+    static final String COMPTE_PLATS_BRULES = "7364";
+    static final String COMPTE_AUTRES_SORTIES_PLATS = "7365";
+    static final String COMPTE_REPAS_PERSONNEL = "66171";
 
     @PreAuthorize(ECRITURE_CARTE)
     @Transactional
@@ -1595,11 +1595,11 @@ public class RestaurantService {
      * D compte du motif / C 361x stock du plat. La production stockée (736x)
      * n'est plus soldée par la sortie, si bien que le coût des ingrédients
      * consommés reste en charge — la perte apparaît au résultat, sous son nom.
-     * Le compte débité est celui du motif ({@link #compteSortiePlat}) : 736.1
-     * à 736.5 pour un plat périmé, moisi, renversé, brûlé ou « autre » (variation
+     * Le compte débité est celui du motif ({@link #compteSortiePlat}) : 7361
+     * à 7365 pour un plat périmé, moisi, renversé, brûlé ou « autre » (variation
      * des stocks de produits finis, à part de la sortie des plats vendus),
-     * 6276.2 pour un plat offert, 6617.1 pour un repas du personnel. Même
-     * principe que les boissons offertes (6276.1) et périmées (6031.2).</p>
+     * 62762 pour un plat offert, 66171 pour un repas du personnel. Même
+     * principe que les boissons offertes (62761) et périmées (60312).</p>
      *
      * <p>Un plat au coût de production nul (entré sans coût) sort sans
      * écriture : il n'y a rien à constater.</p>
@@ -1694,7 +1694,7 @@ public class RestaurantService {
 
     /**
      * Perte d'une boisson sans consigne (casse, péremption, cadeau) : la boisson sort du stock au coût moyen, sur le compte
-     * de la même perte d'une boisson consignée (casse : compte de la boisson ; périmée : 6031.2 ; offerte : 6276.1). Aucun
+     * de la même perte d'une boisson consignée (casse : compte de la boisson ; périmée : 60312 ; offerte : 62761). Aucun
      * vide : ces boissons n'en ont pas. Une boisson consignée se déclare, elle, par les mouvements de vides (sa bouteille
      * suit). Ce que des commandes en attente ont mis de côté ne se perd pas.
      */
@@ -1874,7 +1874,7 @@ public class RestaurantService {
         // offre gracieuse sont toutes des pertes de marchandise reelle, pas de
         // simples ajustements d'emballage. Le compte debite depend de la perte
         // (voir compteChargePerte) : la casse garde celui de la boisson, comme
-        // une vente ; la boisson perimee va en 6031.2, la boisson offerte en 6276.1.
+        // une vente ; la boisson perimee va en 60312, la boisson offerte en 62761.
         if (req.type() == TypeMouvementEmballage.CASSE_PLEINE || req.type() == TypeMouvementEmballage.PERIME
             || req.type() == TypeMouvementEmballage.CADEAU) {
             if (req.entrepotId() == null) {
@@ -1905,7 +1905,7 @@ public class RestaurantService {
     }
 
     /**
-     * Compte débité par la sortie de stock d'une boisson perdue : 6276.1 pour une boisson offerte, 6031.2 pour une boisson
+     * Compte débité par la sortie de stock d'une boisson perdue : 62761 pour une boisson offerte, 60312 pour une boisson
      * périmée ; {@code null} pour une casse, qui garde le compte de variation de la boisson, comme une vente.
      */
     static String compteChargePerte(TypeMouvementEmballage type) {

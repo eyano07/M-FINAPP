@@ -59,6 +59,32 @@ public class VenteService {
     public static final String COMPTE_TVA_FACTUREE = "4431";
     /** Compte OHADA "Clients locaux" : contrepartie d'une vente a credit. */
     public static final String COMPTE_CLIENTS = "4111";
+
+    /**
+     * Compte à débiter pour une nouvelle vente à crédit : le compte propre du client (41111, 41112… depuis V145,
+     * demande du 15/11/2026), le collectif 4111 pour une vente sans fiche client ou une fiche sans compte.
+     */
+    static String compteClient(Vente vente) {
+        Client client = vente.getClient();
+        return client != null && client.getCompteComptable() != null ? client.getCompteComptable() : COMPTE_CLIENTS;
+    }
+
+    /**
+     * Compte de la créance d'une vente déjà comptabilisée : celui que sa pièce a réellement débité. Une vente passée
+     * avant V145 reste sur 4111 même si son client a reçu depuis un compte propre : son règlement, son retour et sa
+     * réévaluation doivent viser le même compte, sinon la créance ne se solderait jamais.
+     */
+    public static String compteCreance(Vente vente) {
+        if (vente.getPiece() != null && vente.getPiece().getLignes() != null) {
+            for (var l : vente.getPiece().getLignes()) {
+                if (l.getCompte() != null && l.getCompte().getNumero().startsWith(COMPTE_CLIENTS)
+                    && l.getDebit() != null && l.getDebit().signum() > 0) {
+                    return l.getCompte().getNumero();
+                }
+            }
+        }
+        return compteClient(vente);
+    }
     /** Compte OHADA "Caisse" : contrepartie d'une vente reglee en especes. */
     public static final String COMPTE_CAISSE = "571";
     /** Ecarts de change sur creances commerciales (SYSCOHADA revise, V95) — pas 676/776, reserves aux operations financieres. */
@@ -527,7 +553,7 @@ public class VenteService {
         // ouverte : cet ecart vit sur une piece distincte de celle de la
         // vente, soldePourPieceEtCompte seul ne le verrait jamais et
         // laisserait un residu bloque sur le compte client apres reglement.
-        BigDecimal montantDu = ecritureRepository.soldePourPieceEtCompte(vente.getPiece().getId(), COMPTE_CLIENTS);
+        BigDecimal montantDu = ecritureRepository.soldePourPieceEtCompte(vente.getPiece().getId(), compteCreance(vente));
         if (montantDu == null) {
             montantDu = BigDecimal.ZERO;
         }
@@ -535,7 +561,7 @@ public class VenteService {
         // Un retour remboursé sur la créance (vente à crédit pas encore réglée) l'a déjà diminuée, par sa propre pièce
         // (C 4111) : on ne la réclame plus au client (V134).
         for (RetourVente retour : retourVenteRepository.remboursementsSurCreance(vente.getId())) {
-            BigDecimal solde = ecritureRepository.soldePourPieceEtCompte(retour.getPiece().getId(), COMPTE_CLIENTS);
+            BigDecimal solde = ecritureRepository.soldePourPieceEtCompte(retour.getPiece().getId(), compteCreance(vente));
             if (solde != null) {
                 montantDu = montantDu.add(solde);
             }
@@ -562,7 +588,7 @@ public class VenteService {
         String libelle = "Reglement creance " + vente.getReference() + " - " + vente.designationClient();
         List<EcritureGrandLivre> lignes = new ArrayList<>();
         lignes.add(ligneReglement(compteTresorerie, montantEncaisse, BigDecimal.ZERO, libelle, dateReglement));
-        lignes.add(ligneReglement(compteParNumero(COMPTE_CLIENTS), BigDecimal.ZERO, montantDu, libelle, dateReglement));
+        lignes.add(ligneReglement(compteParNumero(compteCreance(vente)), BigDecimal.ZERO, montantDu, libelle, dateReglement));
 
         // Ecart de change realise : encaisse > du => gain (756), sinon perte (656).
         BigDecimal ecart = montantEncaisse.subtract(montantDu);
@@ -685,7 +711,7 @@ public class VenteService {
     /** Compte debite : client pour une vente a credit, tresorerie pour un comptant. */
     private CompteOHADA compteContrepartie(Vente vente) {
         return switch (vente.getModeReglement()) {
-            case CREDIT -> compteParNumero(COMPTE_CLIENTS);
+            case CREDIT -> compteParNumero(compteClient(vente));
             case CAISSE -> compteParNumero(COMPTE_CAISSE);
             case BANQUE, MOBILE_MONEY -> {
                 if (vente.getEtablissement() == null) {

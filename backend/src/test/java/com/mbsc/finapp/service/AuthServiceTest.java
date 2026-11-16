@@ -29,7 +29,7 @@ class AuthServiceTest {
     private final LoginAttemptService tentatives = mock(LoginAttemptService.class);
     private final AuditService audit = mock(AuditService.class);
     private final AuthService service = new AuthService(authenticationManager, mock(JwtService.class),
-        mock(UserRepository.class), tentatives, audit);
+        mock(UserRepository.class), tentatives, audit, mock(DoubleAuthService.class));
 
     @Test
     void un_mot_de_passe_faux_donne_un_message_en_francais_et_garde_la_trace_du_refus() {

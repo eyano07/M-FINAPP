@@ -48,6 +48,7 @@ interface Salle {
 }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
 onMounted(() => { parametresStore.charger() })
@@ -126,9 +127,16 @@ function rechargerTablesEnCours() {
   modifie.value = false
 }
 
-function choisirSalle(id: number) {
+async function choisirSalle(id: number) {
   if (id === salleActiveId.value) return
-  if (modifie.value && !confirm('Les modifications non enregistrées de cette salle seront perdues. Continuer ?')) {
+  if (modifie.value && !(await dialogues.confirmer({
+    titre: 'Quitter cette salle sans enregistrer ?',
+    message: 'Les modifications non enregistrées de cette salle seront perdues.',
+    bouton: 'Quitter sans enregistrer',
+    abandon: 'Rester',
+    nature: 'attention',
+    icone: 'mdi-content-save-alert-outline',
+  }))) {
     return
   }
   salleActiveId.value = id
@@ -183,7 +191,14 @@ async function enregistrerSalle() {
 }
 async function supprimerSalleActive() {
   if (!salleActive.value) return
-  if (!confirm(`Supprimer la salle « ${salleActive.value.nom} » et toutes ses tables ?`)) return
+  const confirme = await dialogues.confirmer({
+    titre: `Supprimer la salle « ${salleActive.value.nom} » ?`,
+    message: 'Toutes ses tables seront supprimées avec elle.',
+    bouton: 'Supprimer la salle',
+    nature: 'danger',
+    icone: 'mdi-trash-can-outline',
+  })
+  if (!confirme) return
   erreur.value = ''
   try {
     await api(`/restaurant/salles/${salleActive.value.id}`, { method: 'DELETE' })

@@ -9,6 +9,9 @@ const motDePasse = ref('')
 const loading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
+// Double authentification (audit SYSCOHADA du 10/11/2026, C-23) : le serveur demande le code après le mot de passe.
+const codeDemande = ref(false)
+const code = ref('')
 
 const { login } = useAuth()
 // Retour de la page « Choisissez votre mot de passe » (mot de passe provisoire remplacé) : on se reconnecte.
@@ -33,7 +36,7 @@ async function submit() {
   error.value = ''
   loading.value = true
   try {
-    await login(identifiant.value.trim(), motDePasse.value)
+    await login(identifiant.value.trim(), motDePasse.value, codeDemande.value ? code.value.trim() : undefined)
     if (apresActivation.value) {
       oublierActivationModeLocal()
       await navigateTo('/admin/synchronisation')
@@ -41,6 +44,13 @@ async function submit() {
     }
     await navigateTo('/dashboard')
   } catch (e: any) {
+    const codeErreur = e?.data?.code
+    if (codeErreur === 'DOUBLE_AUTH_REQUISE' || codeErreur === 'CODE_DOUBLE_AUTH_INCORRECT') {
+      codeDemande.value = true
+      code.value = ''
+      error.value = codeErreur === 'DOUBLE_AUTH_REQUISE' ? '' : messageErreurApi(e, 'Code incorrect.')
+      return
+    }
     error.value = messageErreurApi(e, 'Identifiants invalides. Veuillez réessayer.')
   } finally {
     loading.value = false
@@ -156,6 +166,20 @@ async function submit() {
               required
               hide-details="auto"
               @click:append-inner="showPassword = !showPassword"
+            />
+          </div>
+
+          <div v-if="codeDemande" class="field-group">
+            <span class="field-label">Code de votre application d'authentification</span>
+            <v-text-field
+              v-model="code"
+              placeholder="123456"
+              inputmode="numeric"
+              maxlength="6"
+              prepend-inner-icon="mdi-shield-key-outline"
+              autocomplete="one-time-code"
+              autofocus
+              hide-details="auto"
             />
           </div>
 

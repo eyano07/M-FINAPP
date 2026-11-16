@@ -19,8 +19,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Comptes des boissons perdues (V120) : une boisson offerte va en 6276.1 « Boissons offertes à la clientèle », une boisson
- * périmée en 6031.2 « Boissons périmées » ; la casse garde le compte de variation de la boisson. Le 6031.1, créé par V67
+ * Comptes des boissons perdues (V120) : une boisson offerte va en 62761 « Boissons offertes à la clientèle », une boisson
+ * périmée en 60312 « Boissons périmées » ; la casse garde le compte de variation de la boisson. Le 60311, créé par V67
  * pour les minerais sur toutes les bases, n'est jamais réutilisé.
  */
 class ComptesBoissonsPerduesTest {
@@ -30,7 +30,8 @@ class ComptesBoissonsPerduesTest {
     private static String migration() throws IOException {
         try (InputStream in = ComptesBoissonsPerduesTest.class.getResourceAsStream(MIGRATION)) {
             assertThat(in).as("migration V120").isNotNull();
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            // Numéros de comptes tels que V137 les a renumérotés (sans point).
+            return RenumerotationV137.appliquer(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         }
     }
 
@@ -41,12 +42,12 @@ class ComptesBoissonsPerduesTest {
 
     @Test
     void uneBoissonOfferteEstImputeeAuxCadeauxALaClientele() {
-        assertThat(RestaurantService.compteChargePerte(TypeMouvementEmballage.CADEAU)).isEqualTo("6276.1");
+        assertThat(RestaurantService.compteChargePerte(TypeMouvementEmballage.CADEAU)).isEqualTo("62761");
     }
 
     @Test
     void uneBoissonPerimeeEstImputeeASonSousCompteDeVariationDesStocks() {
-        assertThat(RestaurantService.compteChargePerte(TypeMouvementEmballage.PERIME)).isEqualTo("6031.2");
+        assertThat(RestaurantService.compteChargePerte(TypeMouvementEmballage.PERIME)).isEqualTo("60312");
     }
 
     @Test
@@ -61,7 +62,7 @@ class ComptesBoissonsPerduesTest {
     @Test
     void leCompteDesMineraisNEstJamaisReutilise() throws IOException {
         assertThat(List.of(RestaurantService.COMPTE_BOISSONS_OFFERTES, RestaurantService.COMPTE_BOISSONS_PERIMEES))
-            .doesNotContain("6031.1");
+            .doesNotContain("60311");
         assertThat(migration()).doesNotContainPattern("\\('\\d+', '6031\\.1'");
     }
 
@@ -90,9 +91,9 @@ class ComptesBoissonsPerduesTest {
         documentation.documenterCompteArticle(variation, racine, RoleCompteArticle.VARIATION, TypeArticle.BOISSON, "BRAL-FANTA", "Fanta");
 
         String fonctionnement = "Débité à chaque vente et à chaque casse d'une bouteille pleine, au coût moyen pondéré. "
-            + "Une boisson périmée est débitée en 6031.2, une boisson offerte en 6276.1.";
+            + "Une boisson périmée est débitée en 60312, une boisson offerte en 62761.";
         String contenu = "il forme le coût d'achat des bouteilles vendues ou cassées sur la période "
-            + "(les boissons périmées vont en 6031.2, les boissons offertes en 6276.1).";
+            + "(les boissons périmées vont en 60312, les boissons offertes en 62761).";
         assertThat(variation.getFonctionnement()).contains(fonctionnement).doesNotContain("péremption, cadeau");
         assertThat(variation.getContenu()).contains(contenu).doesNotContain("vendues ou perdues");
         assertThat(migrationEnClair())

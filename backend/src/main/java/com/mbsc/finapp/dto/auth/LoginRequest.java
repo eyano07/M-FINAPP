@@ -13,5 +13,11 @@ public record LoginRequest(
     @NotBlank @Size(max = 190)
     @Pattern(regexp = IdentifiantConnexion.MOTIF_SAISIE, message = IdentifiantConnexion.MESSAGE_SAISIE)
     String email,
-    @NotBlank @Size(max = 128) String motDePasse
-) {}
+    @NotBlank @Size(max = 128) String motDePasse,
+    /** Code à 6 chiffres de l'application d'authentification, pour un compte en double authentification (C-23). */
+    @Size(max = 10) String codeDoubleAuth
+) {
+    public LoginRequest(String email, String motDePasse) {
+        this(email, motDePasse, null);
+    }
+}

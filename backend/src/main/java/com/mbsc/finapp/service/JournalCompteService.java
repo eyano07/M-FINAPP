@@ -4,6 +4,7 @@ import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.EcritureGrandLivre;
 import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.PieceComptable;
+import com.mbsc.finapp.domain.SoldeOuverture;
 import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.StatutPiece;
 import com.mbsc.finapp.dto.comptabilite.JournalCompteResponse;
@@ -114,11 +115,15 @@ public class JournalCompteService {
         String comptes = numeros.isEmpty() ? null
             : String.join(" / ", numeros.subList(0, Math.min(numeros.size(), COMPTES_MAX)))
                 + (numeros.size() > COMPTES_MAX ? " / ..." : "");
-        String libelle = e.getLibelle() != null ? e.getLibelle() : piece != null ? piece.getLibelle() : null;
+        String libelle = SoldeOuverture.libelle(
+            e.getLibelle() != null ? e.getLibelle() : piece != null ? piece.getLibelle() : null,
+            piece != null && piece.isSoldeOuverture());
         return new JournalCompteCalcul.MouvementBrut(e.getDateEcriture(),
             note == null ? null : note.getReference(),
             note == null ? null : note.getObjet(),
-            note == null ? null : note.getBeneficiaire(),
+            // Bénéficiaire de la note de frais, à défaut celui saisi ou importé avec la pièce (V143).
+            note != null && note.getBeneficiaire() != null ? note.getBeneficiaire()
+                : piece == null ? null : piece.getBeneficiaire(),
             libelle, comptes,
             piece == null ? null : piece.getReference(),
             piece != null && piece.getStatut() == StatutPiece.ANNULEE,

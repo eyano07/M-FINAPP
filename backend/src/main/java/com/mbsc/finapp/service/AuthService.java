@@ -45,8 +45,9 @@ public class AuthService {
     private final UserRepository userRepository;
     private final LoginAttemptService loginAttemptService;
     private final com.mbsc.finapp.audit.AuditService audit;
+    private final DoubleAuthService doubleAuth;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         log.debug("Tentative de connexion pour {}", request.email());
 
@@ -64,6 +65,23 @@ public class AuthService {
                 new UsernamePasswordAuthenticationToken(request.email(), request.motDePasse())
             );
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            // Double authentification (audit SYSCOHADA du 10/11/2026, C-23) : le mot de passe ne suffit plus.
+            Long userId = principal.getDomainUser().getId();
+            if (doubleAuth.estActive(userId)) {
+                if (request.codeDoubleAuth() == null || request.codeDoubleAuth().isBlank()) {
+                    throw new com.mbsc.finapp.security.DoubleAuthException(
+                        com.mbsc.finapp.security.DoubleAuthException.REQUISE,
+                        "Saisissez le code à 6 chiffres affiché par votre application d'authentification.");
+                }
+                if (!doubleAuth.verifierConnexion(userId, request.codeDoubleAuth())) {
+                    loginAttemptService.enregistrerEchec(request.email());
+                    audit.authentification("CONNEXION", principal.getUsername(), userId, false,
+                        "code de double authentification incorrect");
+                    throw new com.mbsc.finapp.security.DoubleAuthException(
+                        com.mbsc.finapp.security.DoubleAuthException.INCORRECT,
+                        "Code de double authentification incorrect ou déjà utilisé.");
+                }
+            }
             loginAttemptService.enregistrerSucces(request.email());
             log.info("Connexion reussie : {}", principal.getUsername());
             audit.authentification("CONNEXION", principal.getUsername(), principal.getDomainUser().getId(), true, null);
@@ -131,7 +149,8 @@ public class AuthService {
             user.getTelephone(),
             user.getPhotoCheminStockage() != null ? "/profil/photo" : null,
             user.getRoles().stream().map(Role::getNom).map(Enum::name).collect(Collectors.toSet()),
-            user.isDoitChangerMotDePasse()
+            user.isDoitChangerMotDePasse(),
+            doubleAuth.doitActiver(user)
         );
 
         return new AuthResponse(

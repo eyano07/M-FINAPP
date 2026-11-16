@@ -46,6 +46,7 @@ interface ArticleOption { id: number; libelle: string; vendable: boolean; prixVe
 interface EntrepotOption { id: number; code: string; nom: string }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const route = useRoute()
 const parametresStore = useParametresStore()
@@ -332,7 +333,14 @@ async function rembourser() {
   }
 }
 async function retirerRetour(r: RetourVente) {
-  if (!confirm(`Retirer la demande de retour ${r.reference} ? Elle ne pourra plus être approuvée ni remboursée.`)) return
+  const confirme = await dialogues.confirmer({
+    titre: `Retirer la demande de retour ${r.reference} ?`,
+    message: 'Elle ne pourra plus être approuvée ni remboursée.',
+    bouton: 'Retirer la demande',
+    nature: 'danger',
+    icone: 'mdi-undo-variant',
+  })
+  if (!confirme) return
   busy.value = true
   erreur.value = ''
   try {

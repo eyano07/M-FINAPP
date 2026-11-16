@@ -9,6 +9,7 @@ interface Client {
   email?: string
   adresse?: string
   nif?: string | null
+  compteComptable?: string | null
   typeClient?: 'PARTICULIER' | 'ENTREPRISE' | 'ADMINISTRATION'
   actif: boolean
 }
@@ -27,6 +28,7 @@ const editId = ref<number | null>(null)
 
 const canWrite = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
 
+// 15/11/2026 : le code (CLI-0001…) et le compte propre sous 4111 sont attribués par le serveur.
 const form = reactive({
   code: '',
   nom: '',
@@ -39,7 +41,6 @@ const form = reactive({
 })
 
 const rules = {
-  code: [(v: any) => !!v?.trim() || 'Code obligatoire'],
   nom: [(v: any) => !!v?.trim() || 'Nom obligatoire'],
 }
 
@@ -146,12 +147,17 @@ async function enregistrer() {
           { title: 'Téléphone', key: 'telephone' },
           { title: 'E-mail', key: 'email' },
           { title: 'Adresse', key: 'adresse' },
+          { title: 'Compte', key: 'compteComptable' },
           { title: 'Actif', key: 'actif', align: 'center' },
           { title: '', key: 'actions', sortable: false },
         ]"
       >
         <template #[`item.code`]="{ item }">
           <code class="text-caption text-primary">{{ item.code }}</code>
+        </template>
+        <template #[`item.compteComptable`]="{ item }">
+          <code v-if="item.compteComptable" class="text-caption">{{ item.compteComptable }}</code>
+          <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #[`item.telephone`]="{ item }">
           <span :class="item.telephone ? '' : 'text-medium-emphasis'">{{ item.telephone || '—' }}</span>
@@ -193,14 +199,12 @@ async function enregistrer() {
           <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4" density="compact">{{ erreur }}</v-alert>
 
           <v-form ref="formRef">
-            <v-text-field
-              v-model="form.code"
-              label="Code *"
-              placeholder="ex : CLI-001"
-              prepend-inner-icon="mdi-identifier"
-              variant="outlined" density="comfortable" rounded="lg"
-              :rules="rules.code" class="mb-3"
-            />
+            <v-alert v-if="!editId" type="info" variant="tonal" density="compact" class="mb-4">
+              Le code client et son compte comptable (sous 4111) sont créés automatiquement à l'enregistrement.
+            </v-alert>
+            <div v-else class="text-body-2 text-medium-emphasis mb-3">
+              Code <code>{{ form.code }}</code>
+            </div>
             <v-text-field
               v-model="form.nom"
               label="Nom *"
@@ -238,7 +242,7 @@ async function enregistrer() {
               v-model="form.nif"
               label="NIF (numéro d'impôt)"
               prepend-inner-icon="mdi-card-account-details-outline"
-              :hint="form.typeClient === 'PARTICULIER' ? 'Facultatif pour un particulier.' : 'Obligatoire pour la facture normalisée d\'une entreprise ou d\'une administration.'"
+              hint="Facultatif"
               persistent-hint
               variant="outlined" density="comfortable" rounded="lg" class="mb-3"
             />

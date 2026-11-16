@@ -441,7 +441,7 @@ public class CaisseService {
         // Entree en stock des lignes "achat de marchandise" : rattachee a la
         // piece qui vient d'etre generee, sans nouvelle ecriture (voir
         // StockService.entreesDepuisNoteFraisInterne).
-        LocalDate dateReglement = saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        LocalDate dateReglement = saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         if (!ventilation.entreesStock().isEmpty()) {
             PieceComptable piece = saved.getEcritures().get(0).getPiece();
             stockService.entreesDepuisNoteFraisInterne(
@@ -472,7 +472,7 @@ public class CaisseService {
         // est reclassee en 656/756 par une piece dediee, au lieu de rester
         // invisible dans le compte de charge.
         ecartChange.comptabiliserEcart(note, tauxOperation,
-            saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(), caissier);
+            saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate(), caissier);
 
         // Note de paie (module DRH) : écrit la constatation de la paie du mois dans la même transaction
         // que son règlement — sans effet sur toute autre note (voir PaieNoteService).
@@ -684,7 +684,12 @@ public class CaisseService {
             .toList();
     }
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    /**
+     * Grand livre et balance : consultation comptable, fermée au caissier (il opère la caisse, il ne la contrôle pas).
+     * Un compte qui cumule CAISSIER et l'un de ces rôles garde l'accès. Le caissier lit les soldes de ses comptes de
+     * trésorerie par {@link #soldesTresorerie()}.
+     */
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<EcritureResponse> grandLivre() {
         return ecritureRepository.listerAvecDetails().stream()
@@ -692,9 +697,25 @@ public class CaisseService {
             .toList();
     }
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<LigneBalanceResponse> balance() {
+        return calculerBalance();
+    }
+
+    /**
+     * Soldes des seuls comptes de trésorerie (classe 5 : caisse 571, banques 521x, mobile money 552x) : ce dont l'écran
+     * Caisse et le tableau de bord du caissier ont besoin, sans lui ouvrir la balance générale.
+     */
+    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @Transactional(readOnly = true)
+    public List<LigneBalanceResponse> soldesTresorerie() {
+        return calculerBalance().stream()
+            .filter(l -> l.compteNumero() != null && l.compteNumero().startsWith("5"))
+            .toList();
+    }
+
+    private List<LigneBalanceResponse> calculerBalance() {
         return ecritureRepository.calculerBalance().stream()
             .map(row -> LigneBalanceResponse.of(
                 (String) row[0],

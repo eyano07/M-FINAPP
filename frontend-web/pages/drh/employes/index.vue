@@ -22,6 +22,12 @@ interface Employe {
   superviseur: boolean
   expatrie: boolean
   actif: boolean
+  /** Compte de rémunérations dues de l'agent (422111…), ouvert par le serveur à la création, jamais saisi. */
+  compteRemuneration: string | null
+  /** Compte 272… du prêt de l'agent, crédité par la retenue de prêt (à défaut 2728). */
+  comptePret: string | null
+  /** Compte d'avances de l'agent (42111…, sous 4211), ouvert par le serveur à la création (audit DRH, D-06). */
+  compteAvance?: string | null
 }
 
 const SITUATIONS = [
@@ -53,6 +59,7 @@ const formVide = () => ({
   situationFamiliale: 'CELIBATAIRE',
   nombreEnfants: 0, diplome: '', ancienneteAnnees: 0, rendementPct: null as number | null,
   conforme: true, superviseur: false, expatrie: false,
+  comptePret: null as string | null,
 })
 const form = reactive(formVide())
 
@@ -90,6 +97,7 @@ function ouvrirEdition(e: Employe) {
     salaireBaseUsd: e.salaireBaseUsd, situationFamiliale: e.situationFamiliale ?? 'CELIBATAIRE',
     nombreEnfants: e.nombreEnfants, diplome: e.diplome ?? '', ancienneteAnnees: e.ancienneteAnnees,
     rendementPct: e.rendementPct, conforme: e.conforme, superviseur: e.superviseur, expatrie: e.expatrie,
+    comptePret: e.comptePret ?? null,
   })
   erreur.value = ''
   dialog.value = true
@@ -186,6 +194,7 @@ const situationLabel = (v: string | null) => SITUATIONS.find(s => s.value === v)
           { title: 'Salaire de base', key: 'salaireBaseUsd', align: 'end' },
           { title: 'Situation', key: 'situationFamiliale' },
           { title: 'Enfants', key: 'nombreEnfants', align: 'center' },
+          { title: 'Compte', key: 'compteRemuneration' },
           { title: 'Statut', key: 'actif' },
           { title: 'Actions', key: 'actions', sortable: false, align: 'end' },
         ]"
@@ -195,6 +204,7 @@ const situationLabel = (v: string | null) => SITUATIONS.find(s => s.value === v)
       >
         <template #item.salaireBaseUsd="{ item }">{{ fmtUsd(item.salaireBaseUsd) }}</template>
         <template #item.situationFamiliale="{ item }">{{ situationLabel(item.situationFamiliale) }}</template>
+        <template #item.compteRemuneration="{ item }">{{ item.compteRemuneration ?? '—' }}</template>
         <template #item.actif="{ item }">
           <span class="chip-soft" :style="item.actif ? { background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)' } : { background: '#f3f4f6', color: '#6b7280' }">
             {{ item.actif ? 'Actif' : 'Désactivé' }}
@@ -233,6 +243,29 @@ const situationLabel = (v: string | null) => SITUATIONS.find(s => s.value === v)
             <v-col cols="12" md="6"><v-text-field v-model="form.diplome" label="Diplôme" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="3"><v-text-field v-model.number="form.ancienneteAnnees" type="number" label="Ancienneté (années)" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="3"><v-text-field v-model.number="form.rendementPct" type="number" label="Rendement (%)" variant="outlined" density="comfortable" /></v-col>
+            <!-- Audit DRH du 15/11/2026 (D-02, D-03) : comptes de paie de l'agent. -->
+            <v-col cols="12" md="6">
+              <v-text-field :model-value="editing?.compteRemuneration ?? 'Ouvert à l’enregistrement (422111…)'"
+                label="Compte de rémunérations dues" variant="outlined" density="comfortable" readonly
+                hint="Ouvert automatiquement sous 42211 ; crédité du net à payer, débité par la note de paie" persistent-hint />
+            </v-col>
+            <v-col cols="12" md="6">
+              <ComptabiliteSelecteurCompte v-model="form.comptePret" label="Compte de prêt (272…)" prefixe="272" />
+              <div class="text-caption text-medium-emphasis">Crédité par la retenue de prêt des bulletins ; à défaut 2728.</div>
+            </v-col>
+            <!-- Audit DRH du 15/11/2026 (D-06) : avances sur salaire reliées au bulletin. -->
+            <v-col cols="12" md="6">
+              <v-text-field :model-value="editing?.compteAvance ?? 'Ouvert à l’enregistrement (42111…)'"
+                label="Compte d'avances" variant="outlined" density="comfortable" readonly
+                hint="Ouvert automatiquement sous 4211 « Personnel, avances »" persistent-hint />
+            </v-col>
+            <v-col cols="12" md="6">
+              <div class="text-caption text-medium-emphasis">
+                Pour verser une avance à l'agent, créez une note de frais dont la ligne est imputée à ce compte : son
+                paiement le débite. Le bulletin du mois retient ensuite l'avance (au plus l'avance ouverte, proposée
+                automatiquement) et la constatation de la paie crédite le même compte.
+              </div>
+            </v-col>
             <v-col cols="12">
               <v-checkbox v-model="form.conforme" hide-details label="Dossier conforme (bulletin complet, sinon reçu simplifié)" />
               <v-checkbox v-model="form.superviseur" hide-details label="Superviseur (éligible aux rotations de sites)" />

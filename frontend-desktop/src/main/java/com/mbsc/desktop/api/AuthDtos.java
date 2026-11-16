@@ -7,7 +7,8 @@ public final class AuthDtos {
 
     private AuthDtos() {}
 
-    public record LoginRequest(String email, String motDePasse) {}
+    /** {@code codeDoubleAuth} : code à 6 chiffres d'un compte en double authentification, sinon null. */
+    public record LoginRequest(String email, String motDePasse, String codeDoubleAuth) {}
 
     public record UserInfo(
         Long id,

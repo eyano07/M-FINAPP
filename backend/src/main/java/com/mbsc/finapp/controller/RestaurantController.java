@@ -386,8 +386,8 @@ public class RestaurantController {
     }
 
     /**
-     * Sortie comptabilisée au coût de production moyen, au compte de son motif (D 736.1 à 736.5, 6276.2 pour un plat offert
-     * ou 6617.1 pour un repas du personnel / C 361x).
+     * Sortie comptabilisée au coût de production moyen, au compte de son motif (D 7361 à 7365, 62762 pour un plat offert
+     * ou 66171 pour un repas du personnel / C 361x).
      */
     @PostMapping("/plats/sorties")
     @ResponseStatus(HttpStatus.CREATED)
@@ -411,7 +411,7 @@ public class RestaurantController {
         return service.listerSortiesBoissons(du, au);
     }
 
-    /** Sortie au coût moyen, au compte de la perte (casse : compte de la boisson ; périmée 6031.2 ; offerte 6276.1). */
+    /** Sortie au coût moyen, au compte de la perte (casse : compte de la boisson ; périmée 60312 ; offerte 62761). */
     @PostMapping("/boissons/sorties")
     @ResponseStatus(HttpStatus.CREATED)
     public SortieBoissonResponse enregistrerSortieBoisson(@Valid @RequestBody SortieBoissonRequest req) {

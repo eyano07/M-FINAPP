@@ -103,6 +103,21 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
     BigDecimal soldePourCompte(@Param("prefixe") String prefixe);
 
     /**
+     * Solde (débits − crédits) d'un compte précis, numéro exact et non préfixe (42111 ne compte pas 421110…), hors
+     * brouillons : pièces comptabilisées ou annulées (l'extourne compense l'origine) et opérations de trésorerie
+     * sans pièce. Sert à l'avance ouverte d'un agent (audit DRH du 15/11/2026, D-06).
+     */
+    @Query("""
+        select coalesce(sum(e.debit), 0) - coalesce(sum(e.credit), 0)
+        from EcritureGrandLivre e
+        join e.compte c
+        left join e.piece p
+        where c.numero = :numero
+          and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+    """)
+    BigDecimal soldeDuCompte(@Param("numero") String numero);
+
+    /**
      * Lignes du Grand Livre ordonnees par date puis identifiant, avec le compte
      * et la transaction charges (evite les N+1 a l'affichage).
      */
@@ -237,6 +252,9 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
      * ici transformerait une reprise de charge ou de produit en résultat de
      * l'exercice. Elle est restituée par {@link #soldesOuvertureParCompte}.</p>
      *
+     * <p>La pièce de clôture de l'exercice est exclue elle aussi : elle solde les classes 6, 7 et 8 vers le
+     * compte 13 et ramènerait à zéro le résultat de l'exercice clos (audit SYSCOHADA du 10/11/2026, C-04).</p>
+     *
      * Retourne [numero, libelle, type, classe, totalDebit, totalCredit].
      */
     @Query("""
@@ -248,6 +266,7 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
         where e.dateEcriture >= :du and e.dateEcriture <= :au
           and (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
           and (p is null or p.soldeOuverture = false)
+          and (p is null or p.clotureExercice = false)
         group by c.numero, c.libelle, c.type, c.classe
         order by c.numero
     """)
@@ -359,7 +378,7 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
           and (p is null or (p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON
                              and p.soldeOuverture = false
                              and p.reevaluationDevise = false
-                             and (p.libelle is null or p.libelle not like 'Clôture de l''exercice%')))
+                             and p.clotureExercice = false))
         group by c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id)
     """)
     List<Object[]> mouvementsMensuelsBudgetaires(@Param("du") LocalDate du, @Param("au") LocalDate au);

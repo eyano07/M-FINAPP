@@ -2,7 +2,8 @@
 // Creation d'une piece : reservee au DFIN cote serveur.
 // ADMIN ne modifie que les pages dediees a l'administration : la creation
 // reste reservee au DFIN.
-definePageMeta({ module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['DFIN'] })
+// Le comptable saisit la reprise, le DFIN la valide dans Pièces comptables (audit SYSCOHADA, C-06).
+definePageMeta({ module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['COMPTABLE'] })
 
 /**
  * Saisie des a-nouveaux en UNE pièce équilibrée.
@@ -68,7 +69,7 @@ async function enregistrer() {
       method: 'POST',
       body: {
         datePiece: form.datePiece,
-        journal: 'OPERATIONS_DIVERSES',
+        journal: 'A_NOUVEAUX',
         libelle: form.libelle,
         soldeOuverture: true,
         lignes: lignesValides.value.map(l => ({
@@ -79,10 +80,8 @@ async function enregistrer() {
         })),
       },
     })
-    // La reprise n'a d'effet sur les états qu'une fois comptabilisée : on
-    // enchaîne, sinon elle resterait en brouillon sans alimenter la balance.
-    await api(`/comptabilite/pieces/${piece.id}/comptabiliser`, { method: 'POST' })
-    succes.value = `Solde d'ouverture enregistré et comptabilisé (${piece.reference}).`
+    // La reprise n'a d'effet sur les états qu'une fois comptabilisée, par le DFIN (séparation des tâches).
+    succes.value = `Solde d'ouverture enregistré en brouillon (${piece.reference}) : le DFIN le valide dans Pièces comptables.`
     lignes.value = [
       { compteNumero: null, debit: null, credit: null },
       { compteNumero: null, debit: null, credit: null },

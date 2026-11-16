@@ -15,6 +15,9 @@ public interface EmployeRepository extends JpaRepository<Employe, Long> {
 
     List<Employe> findByActifTrueOrderByNomComplet();
 
+    /** Effectif : employés actifs (tranche du taux INPP). */
+    long countByActifTrue();
+
     List<Employe> findByConformeAndActifTrueOrderByNomComplet(boolean conforme);
 
     /** Superviseurs actifs, eligibles aux rotations de sites (module DRH_MISSIONS). */

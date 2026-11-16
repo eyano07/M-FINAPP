@@ -75,6 +75,7 @@ public final class AuditLibelles {
         r("PUT", "/admin/users/{}", "Modification d'un utilisateur");
         r("PATCH", "/admin/users/{}/actif", "Activation ou désactivation d'un utilisateur");
         r("PUT", "/parametres", "Modification des informations de l'entreprise");
+        r("PUT", "/parametres/liasse", "Modification des renseignements de la liasse fiscale (fiches R1 à R3)");
         r("POST", "/parametres/logo", "Remplacement du logo de l'entreprise");
         r("PUT", "/profil", "Modification du profil personnel");
         r("PUT", "/profil/mot-de-passe", "Changement du mot de passe personnel");
@@ -145,9 +146,30 @@ public final class AuditLibelles {
         r("DELETE", "/comptabilite/pieces/{}", "Suppression d'une pièce comptable (brouillon)");
         r("POST", "/comptabilite/pieces/{}/comptabiliser", "Comptabilisation d'une pièce comptable");
         r("POST", "/comptabilite/pieces/{}/annuler", "Annulation (extourne) d'une pièce comptable");
+        r("POST", "/comptabilite/pieces/{}/restaurer", "Restauration d'une pièce annulée (brouillon, ou comptabilisation rétablie)");
         r("PATCH", "/comptabilite/pieces/{}/solde-ouverture", "Marquage d'une pièce comptable comme solde d'ouverture");
-        r("PUT", "/comptabilite/cloture", "Modification de la date de clôture comptable");
-        r("POST", "/comptabilite/cloture/exercice", "Clôture de l'exercice comptable");
+        r("PUT", "/comptabilite/cloture", "Verrou de période : avance ou demande de recul");
+        r("POST", "/comptabilite/cloture/exercice", "Demande de clôture de l'exercice comptable");
+        r("POST", "/comptabilite/cloture/demandes/{}/approuver", "Approbation d'une demande de clôture (recul du verrou ou exercice)");
+        r("POST", "/comptabilite/cloture/demandes/{}/refuser", "Refus d'une demande de clôture");
+        r("POST", "/comptabilite/cloture/demandes/{}/retirer", "Retrait d'une demande de clôture");
+        r("PUT", "/comptabilite/cloture/auto-validation", "Dérogation à la validation des pièces par une autre personne");
+        r("POST", "/comptabilite/regularisations", "Régularisation de fin d'exercice (CCA, PCA, FNP, FAE)");
+        r("POST", "/comptabilite/regularisations/{}/annuler", "Annulation d'une régularisation de fin d'exercice");
+        r("POST", "/logistique/inventaires", "Ouverture d'un inventaire physique des stocks");
+        r("PUT", "/logistique/inventaires/{}/lignes/{}", "Comptage d'un article d'inventaire");
+        r("POST", "/logistique/inventaires/{}/articles/{}", "Ajout d'un article à un inventaire");
+        r("POST", "/comptabilite/inventaires/stock/{}/valider", "Validation d'un inventaire des stocks (ajustement des écarts)");
+        r("POST", "/logistique/inventaires/{}/annuler", "Abandon d'un inventaire des stocks");
+        r("POST", "/patrimoine/inventaires", "Ouverture d'un inventaire des immobilisations");
+        r("PUT", "/patrimoine/inventaires/{}/lignes/{}", "Constat d'un bien à l'inventaire");
+        r("POST", "/comptabilite/inventaires/immobilisations/{}/valider", "Validation d'un inventaire des immobilisations");
+        r("POST", "/patrimoine/inventaires/{}/annuler", "Abandon d'un inventaire des immobilisations");
+        r("POST", "/profil/double-auth/demarrer", "Début d'activation de la double authentification");
+        r("POST", "/profil/double-auth/confirmer", "Activation de la double authentification");
+        r("POST", "/profil/double-auth/desactiver", "Désactivation de la double authentification");
+        r("PUT", "/admin/securite/double-auth", "Double authentification obligatoire ou facultative");
+        r("POST", "/admin/utilisateurs/{}/double-auth/reinitialiser", "Réinitialisation de la double authentification d'un utilisateur");
         r("POST", "/comptabilite/analytique/comptes", "Création d'un sous-compte de comptabilité analytique");
         r("POST", "/comptabilite/etats-financiers/analyse-ia", "Analyse des états financiers par l'IA");
         r("POST", "/comptabilite/provisions", "Constitution d'une provision");
@@ -189,6 +211,11 @@ public final class AuditLibelles {
         r("POST", "/ventes/{}/facture-normalisee/retransmettre", "Retransmission d'une facture normalisée (DGI)");
         r("POST", "/clients", "Création d'un client");
         r("PUT", "/clients/{}", "Modification d'un client");
+        r("POST", "/fournisseurs", "Création d'un fournisseur");
+        r("PUT", "/fournisseurs/{}", "Modification d'un fournisseur");
+        r("POST", "/fournisseurs/{}/archiver", "Archivage d'un fournisseur");
+        r("POST", "/fournisseurs/{}/reactiver", "Réactivation d'un fournisseur archivé");
+        r("DELETE", "/fournisseurs/{}", "Suppression d'un fournisseur sans achat");
 
         // --- Logistique et transport -----------------------------------------------------------------------------
         r("POST", "/logistique/articles", "Création d'un article de stock");
@@ -243,10 +270,13 @@ public final class AuditLibelles {
         r("POST", "/drh/bulletins/{}/annuler", "Annulation d'un bulletin de paie");
         r("POST", "/drh/bulletins/simuler", "Simulation d'un bulletin de paie (rien n'est enregistré)");
         r("POST", "/drh/bulletins/cloturer", "Clôture d'une période de paie");
+        r("POST", "/drh/bulletins/comptabiliser", "Comptabilisation de la paie d'une période clôturée");
         r("POST", "/drh/bulletins/rouvrir", "Réouverture d'une période de paie");
         r("POST", "/drh/bulletins/reglement/note-paie", "Création de la note de frais des salaires");
         r("POST", "/drh/bulletins/reglement/notes-impots/{}", "Création de la note de frais de l'organisme {0} (retenues sur salaires)");
         r("POST", "/drh/bulletins/reglement/notes/{}/annuler", "Annulation d'une note de règlement de paie");
+        r("POST", "/drh/provisions-conges", "Constitution de la provision pour congés payés (pièce et extourne)");
+        r("POST", "/drh/provisions-conges/{}/annuler", "Annulation d'une provision pour congés payés");
 
         // --- Restaurant ------------------------------------------------------------------------------------------
         r("PUT", "/restaurant/parametres", "Modification des paramètres du restaurant");

@@ -34,6 +34,12 @@ export function useApi() {
         await navigateTo('/changer-mot-de-passe')
         return
       }
+      // Double authentification obligatoire pas encore activée (DoubleAuthObligatoireFilter).
+      if (response.status === 403 && import.meta.client && (response._data as { code?: string } | undefined)?.code === 'DOUBLE_AUTH_A_ACTIVER') {
+        if (auth.user) auth.user = { ...auth.user, doitActiverDoubleAuth: true }
+        await navigateTo('/double-authentification')
+        return
+      }
       if (response.status !== 401 || !import.meta.client) {
         return
       }

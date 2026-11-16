@@ -263,8 +263,9 @@ async function charger() {
         manifestement fausse plutot que plausible. */,
       // Position comptable reelle du compte 571, toutes origines confondues
       // (saisie caisse, journal importe, piece manuelle). Les transactions du
-      // module ci-dessus n'en sont qu'une partie.
-      api<LigneBalance[]>('/caisse/balance').catch(() => [] as LigneBalance[]),
+      // module ci-dessus n'en sont qu'une partie. Soldes de tresorerie seuls :
+      // la balance generale est fermee au caissier.
+      api<LigneBalance[]>('/caisse/soldes-tresorerie').catch(() => [] as LigneBalance[]),
     ])
     transactions.value = txs
     comptes.value = cpts

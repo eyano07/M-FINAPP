@@ -74,6 +74,8 @@ public class ModuleAccessFilter extends OncePerRequestFilter {
         Map.entry("/drh/employes", ModuleMetier.DRH_PERSONNEL),
         Map.entry("/drh/parametres-paie", ModuleMetier.DRH_PAIE),
         Map.entry("/drh/bulletins", ModuleMetier.DRH_PAIE),
+        // Provision pour congés payés de fin d'exercice (audit DRH du 15/11/2026, D-05).
+        Map.entry("/drh/provisions-conges", ModuleMetier.DRH_PAIE),
         Map.entry("/drh/presences", ModuleMetier.DRH_PRESENCES),
         Map.entry("/drh/agents-presence-manuelle", ModuleMetier.DRH_PRESENCES),
         Map.entry("/drh/sorties", ModuleMetier.DRH_PRESENCES),

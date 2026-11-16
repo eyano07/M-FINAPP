@@ -166,9 +166,9 @@ public class SoldesIntermediairesService {
 
     /**
      * Somme des soldes des comptes dont le numero commence par l'un des
-     * prefixes. Le prefixe est compare sur le numero brut : le plan comptable
-     * de cette application utilise des sous-comptes pointes (431.1, 4478.2),
-     * qu'un prefixe « 43 » doit bien capturer.
+     * prefixes. Le prefixe est compare sur le numero brut : un sous-compte
+     * prolonge le numero de son parent (4315, 44782), qu'un prefixe « 43 »
+     * capture donc.
      */
     private BigDecimal somme(Map<String, BigDecimal> parCompte, String... prefixes) {
         BigDecimal total = BigDecimal.ZERO;

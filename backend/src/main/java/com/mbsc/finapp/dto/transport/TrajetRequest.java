@@ -15,6 +15,8 @@ public record TrajetRequest(
     Instant dateArrivee,
     @Size(max = 255) String origine,
     @Size(max = 255) String destination,
+    /** Raison du déplacement ; facultatif (V144). */
+    @Size(max = 255) String motif,
     @PositiveOrZero BigDecimal distanceKm,
     StatutTrajet statut
 ) {}

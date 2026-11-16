@@ -71,8 +71,8 @@ const items: NavItem[] = [
   { title: 'Journal de banque', icon: 'mdi-notebook-outline', to: '/banque/journal', module: 'BANQUE' },
   { title: 'Mobile Money', icon: 'mdi-cellphone', to: '/mobile-money', module: 'MOBILE_MONEY', roles: ['CAISSIER'] },
   { title: 'Journal de mobile money', icon: 'mdi-notebook-outline', to: '/mobile-money/journal', module: 'MOBILE_MONEY' },
-  { title: 'Grand Livre', icon: 'mdi-book-open-variant', to: '/grand-livre', module: 'CAISSE' },
-  { title: 'Balance', icon: 'mdi-scale-balance', to: '/balance', module: 'CAISSE', essentiel: true },
+  // Les anciens écrans « Grand Livre » et « Balance » (/grand-livre, /balance) ont été retirés le 15/11/2026 : ils
+  // doublaient « GL par compte » et « Balance de vérification » de la rubrique Comptabilité.
   // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
   // uniquement) mais ne voit pas les Budgets.
   { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
@@ -91,10 +91,11 @@ const comptabiliteItems: NavItem[] = [
   { title: 'Pièces comptables', icon: 'mdi-file-document-edit-outline', to: '/comptabilite/pieces', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   // Creation de piece : reservee au DFIN cote serveur (ADMIN ne modifie que
   // les pages dediees a l'administration).
-  { title: "Solde d'ouverture", icon: 'mdi-flag-outline', to: '/comptabilite/solde-ouverture', module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['DFIN'] },
+  { title: "Solde d'ouverture", icon: 'mdi-flag-outline', to: '/comptabilite/solde-ouverture', module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['COMPTABLE'] },
   { title: 'GL par compte', icon: 'mdi-book-account-outline', to: '/comptabilite/grand-livre', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   { title: 'Balance de vérification', icon: 'mdi-table-check', to: '/comptabilite/balance-verification', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
-  { title: 'Rapprochement bancaire', icon: 'mdi-bank-check', to: '/comptabilite/rapprochement', module: 'RAPPROCHEMENT', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] },
+  // Le caissier ne rapproche pas ses propres opérations (audit SYSCOHADA du 10/11/2026, C-20) ; il ne voit plus l'écran.
+  { title: 'Rapprochement bancaire', icon: 'mdi-bank-check', to: '/comptabilite/rapprochement', module: 'RAPPROCHEMENT', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
   { title: 'Livre-journal', icon: 'mdi-notebook-outline', to: '/comptabilite/livre-journal', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   { title: 'Journal des comptes', icon: 'mdi-book-search-outline', to: '/comptabilite/journal-compte', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
   // Comptabilite analytique de gestion (SYSCOHADA classe 9, comptes 92 a 99).
@@ -108,7 +109,10 @@ const comptabiliteItems: NavItem[] = [
   // DA exclu explicitement de la consultation de la Gestion TVA.
   { title: 'Gestion TVA', icon: 'mdi-percent-box-outline', to: '/comptabilite/tva', module: 'COMPTABILITE', roles: ['DFIN', 'DG', 'COMPTABLE', 'ADMIN'] },
   // PeriodeComptableService.definirDateCloture est reserve a ADMIN.
-  { title: 'Clôture de période', icon: 'mdi-lock-outline', to: '/comptabilite/cloture', module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['ADMIN'] },
+  { title: 'Régularisations', icon: 'mdi-calendar-sync-outline', to: '/comptabilite/regularisations', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  { title: 'Éditions et piste d\'audit', icon: 'mdi-book-open-variant', to: '/comptabilite/editions', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  // Le DFIN demande, le DA ou le DG approuve ; l'administrateur consulte (C-03).
+  { title: 'Clôture', icon: 'mdi-lock-outline', to: '/comptabilite/cloture', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
 ]
 
 const venteItems: NavItem[] = [
@@ -134,6 +138,9 @@ const logistiqueItems: NavItem[] = [
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/logistique', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   { title: 'Articles', icon: 'mdi-package-variant-closed', to: '/logistique/articles', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
   { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
+  // Répertoire des fournisseurs (V141) : hors grille des modules, ouvert par rôle comme FournisseurService — les
+  // acheteurs (logistique, restaurant, cuisine, bar, patrimoine), la comptabilité et la direction ; pas le caissier.
+  { title: 'Fournisseurs', icon: 'mdi-handshake-outline', to: '/logistique/fournisseurs', roles: ['LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN'] },
   // Mouvements et grand livre stock : StockService en reserve la lecture aux
   // roles logistiques et financiers. Le caissier a bien le module en LECTURE
   // (catalogue + disponibilite necessaires a une vente) mais pas ces deux
@@ -144,11 +151,13 @@ const logistiqueItems: NavItem[] = [
   // prix de vente (voir pages/logistique/minerais.vue).
   { title: 'Camions de minerais', icon: 'mdi-dump-truck', to: '/logistique/minerais', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   { title: 'Grand livre stock', icon: 'mdi-book-open-page-variant-outline', to: '/logistique/stock/grand-livre', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
+  { title: 'Inventaires physiques', icon: 'mdi-clipboard-check-multiple-outline', to: '/logistique/inventaires', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
 ]
 const patrimoineItems: NavItem[] = [
   { title: 'Immobilisations', icon: 'mdi-office-building-cog-outline', to: '/patrimoine/immobilisations', module: 'PATRIMOINE' },
   { title: 'Amortissements', icon: 'mdi-chart-timeline-variant-shimmer', to: '/patrimoine/amortissements', module: 'PATRIMOINE' },
   { title: 'Consommables', icon: 'mdi-package-variant', to: '/patrimoine/consommables', module: 'PATRIMOINE' },
+  { title: 'Inventaires', icon: 'mdi-clipboard-check-outline', to: '/patrimoine/inventaires', module: 'PATRIMOINE' },
 ]
 const transportItems: NavItem[] = [
   { title: 'Véhicules', icon: 'mdi-truck-outline', to: '/transport/vehicules', module: 'TRANSPORT' },
@@ -227,6 +236,7 @@ const drhItems: NavItem[] = [
   { title: 'Sorties de travailleurs', icon: 'mdi-exit-run', to: '/drh/sorties', module: 'DRH_PRESENCES' },
   { title: 'Bulletins de paie', icon: 'mdi-cash-multiple', to: '/drh/bulletins', module: 'DRH_PAIE' },
   { title: 'Paramètres de paie', icon: 'mdi-cog-outline', to: '/drh/parametres-paie', module: 'DRH_PAIE', niveau: 'ECRITURE' },
+  { title: 'Provision pour congés payés', icon: 'mdi-beach', to: '/drh/provisions-conges', module: 'DRH_PAIE' },
   { title: 'Ordres de mission', icon: 'mdi-map-marker-path', to: '/drh/missions', module: 'DRH_MISSIONS' },
   { title: 'Sites opérationnels', icon: 'mdi-office-building-marker-outline', to: '/drh/sites', module: 'DRH_MISSIONS' },
   { title: 'Rotations', icon: 'mdi-account-sync-outline', to: '/drh/rotations', module: 'DRH_MISSIONS' },

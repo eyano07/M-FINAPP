@@ -68,13 +68,25 @@ const form = reactive({
   localisation: '', fournisseur: '', numeroSerie: '',
   comptabiliserAcquisition: false,
   compteContrepartieNumero: '4812',
+  // Bien principal dont celui-ci est un composant, amorti sur sa propre durée (audit SYSCOHADA, C-18).
+  parentId: null as number | null,
 })
 
+// La cession crée une créance sur l'acheteur (4851) ; l'encaissement passe ensuite par la caisse ou la banque :
+// jamais un compte de trésorerie ici (C-08). Cession courante (654/754) ou hors activités ordinaires (812/822).
 const formSortie = reactive({
   dateSortie: new Date().toISOString().slice(0, 10),
   valeurCession: 0,
-  compteContrepartieNumero: '571',
+  compteContrepartieNumero: '4851',
+  typeCession: 'HAO' as 'COURANTE' | 'HAO',
 })
+const TYPES_CESSION = [
+  { title: 'Hors activités ordinaires (812 / 822)', value: 'HAO' },
+  { title: 'Cession courante, renouvellement (6542 / 7542)', value: 'COURANTE' },
+]
+const biensPrincipaux = computed(() => biens.value
+  .filter((b: any) => !b.parentId && b.statut === 'EN_SERVICE')
+  .map((b: any) => ({ title: `${b.reference} — ${b.libelle}`, value: b.id })))
 
 async function charger() {
   loading.value = true
@@ -101,7 +113,7 @@ function ouvrirAjout() {
     dateMiseService: new Date().toISOString().slice(0, 10),
     valeurAcquisition: null, valeurResiduelle: 0, dureeMois: 60,
     localisation: '', fournisseur: '', numeroSerie: '',
-    comptabiliserAcquisition: false, compteContrepartieNumero: '4812',
+    comptabiliserAcquisition: false, compteContrepartieNumero: '4812', parentId: null,
   })
   erreur.value = ''
   dialog.value = true
@@ -143,6 +155,8 @@ function ouvrirSortie(b: Immo) {
   bienSortie.value = b
   formSortie.dateSortie = new Date().toISOString().slice(0, 10)
   formSortie.valeurCession = 0
+  formSortie.compteContrepartieNumero = '4851'
+  formSortie.typeCession = 'HAO'
   erreur.value = ''
   dialogSortie.value = true
 }
@@ -286,11 +300,18 @@ const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE
                 label="Générer l'écriture d'acquisition (débit classe 2 / crédit contrepartie)" />
             </v-col>
             <v-col v-if="form.comptabiliserAcquisition" cols="12" md="6">
-              <ComptabiliteSelecteurCompte v-model="form.compteContrepartieNumero" label="Compte de contrepartie (ex. 4812)" />
+              <ComptabiliteSelecteurCompte v-model="form.compteContrepartieNumero" label="Compte de contrepartie (ex. 4812)"
+                exclure-prefixe="5" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-select v-model="form.parentId" :items="biensPrincipaux" clearable variant="outlined" density="comfortable"
+                label="Composant du bien (facultatif)"
+                hint="Un composant (moteur, toiture...) a sa propre durée d'amortissement" persistent-hint />
             </v-col>
           </v-row>
           <p class="text-caption text-medium-emphasis mt-2">
-            Le plan d'amortissement linéaire est calculé automatiquement à partir de la mise en service et de la durée.
+            Le plan d'amortissement linéaire est calculé automatiquement à partir de la mise en service (prorata au jour)
+            et de la durée.
           </p>
         </v-card-text>
         <v-divider />
@@ -316,8 +337,14 @@ const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE
           <v-text-field v-model="formSortie.dateSortie" type="date" label="Date de sortie" variant="outlined" density="comfortable" />
           <v-text-field v-model.number="formSortie.valeurCession" type="number"
             label="Prix de cession (USD) — 0 pour une mise au rebut" variant="outlined" density="comfortable" />
+          <v-select v-model="formSortie.typeCession" :items="TYPES_CESSION" label="Nature de la sortie"
+            variant="outlined" density="comfortable" />
           <ComptabiliteSelecteurCompte v-if="formSortie.valeurCession > 0"
-            v-model="formSortie.compteContrepartieNumero" label="Encaissement sur le compte" />
+            v-model="formSortie.compteContrepartieNumero" label="Créance sur l'acheteur (4851 par défaut)" exclure-prefixe="5" />
+          <p class="text-caption text-medium-emphasis">
+            L'amortissement restant jusqu'au jour de la sortie est passé automatiquement avant la sortie. Le prix est
+            ensuite encaissé par la caisse ou la banque, qui soldent la créance.
+          </p>
         </v-card-text>
         <v-divider />
         <v-card-actions>

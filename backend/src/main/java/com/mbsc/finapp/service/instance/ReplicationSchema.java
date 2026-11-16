@@ -23,7 +23,10 @@ public class ReplicationSchema {
     /** Tables propres a chaque serveur : jamais recopiees (techniques, ou secrets chiffres avec la cle du serveur). */
     public static final Set<String> NON_RECOPIEES = Set.of(
         "flyway_schema_history", "journal_replication", "parametres_instance", "actions_distantes",
-        "actions_distantes_appliquees", "audit_a_envoyer", "parametres_ia", "parametres_mail", "parametres_emcf");
+        "actions_distantes_appliquees", "audit_a_envoyer", "parametres_ia", "parametres_mail", "parametres_emcf",
+        // Audit SYSCOHADA du 10/11/2026, C-23 : secrets de double authentification chiffres avec la cle du serveur,
+        // et verrou de connexion propre a chaque serveur.
+        "double_authentification", "tentatives_connexion");
 
     /** Une table recopiee : colonnes ecrivables (ordre du catalogue) et colonnes de la cle primaire. */
     public record Table(String nom, List<String> colonnes, List<String> cle) {

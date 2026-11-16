@@ -26,7 +26,6 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
@@ -86,7 +85,7 @@ public class SyncTransactionProcessor {
         }
 
         Instant dateOperation = parseInstant(dto.dateOperation());
-        LocalDate dateEcriture = dateOperation.atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate dateEcriture = dateOperation.atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
 
         TransactionCaisse transaction = TransactionCaisse.builder()
             .uuid(uuid)
@@ -282,7 +281,7 @@ public class SyncTransactionProcessor {
         if (ecritures.isEmpty()) {
             throw new IllegalStateException("Transaction " + dto.uuid() + " sans ecriture comptable");
         }
-        LocalDate defaut = transaction.getDateOperation().atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate defaut = transaction.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
 
         for (EcritureSyncDto e : ecritures) {
             CompteOHADA compte = compteRepository.findByNumero(e.numeroCompte())

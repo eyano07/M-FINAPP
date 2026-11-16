@@ -80,6 +80,13 @@ public class ParametresEntreprise {
     @Builder.Default
     private boolean assujettiTva = true;
 
+    /**
+     * Renseignements de la liasse OHADA (page de garde, fiches R1 à R3), en JSON
+     * ({@link com.mbsc.finapp.dto.parametrage.InformationsLiasse}) ; facultatifs (V140).
+     */
+    @Column(name = "informations_liasse", columnDefinition = "text")
+    private String informationsLiasse;
+
     @UpdateTimestamp
     @Column(name = "date_maj")
     private Instant dateMaj;

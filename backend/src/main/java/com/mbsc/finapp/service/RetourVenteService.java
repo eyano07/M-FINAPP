@@ -304,7 +304,7 @@ public class RetourVenteService {
         CompteOHADA contrepartie;
         switch (canal) {
             case CAISSE -> contrepartie = compteParNumero(VenteService.COMPTE_CAISSE);
-            case CREANCE -> contrepartie = compteParNumero(VenteService.COMPTE_CLIENTS);
+            case CREANCE -> contrepartie = compteParNumero(VenteService.compteCreance(vente));
             case BANQUE, MOBILE_MONEY -> {
                 TypeEtablissement type = canal == CanalRemboursement.BANQUE ? TypeEtablissement.BANQUE : TypeEtablissement.MOBILE_MONEY;
                 Long etabId = req != null && req.etablissementId() != null ? req.etablissementId()

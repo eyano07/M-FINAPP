@@ -94,6 +94,12 @@ public class BulletinPaieController {
         return service.cloturerPeriode(mois, annee);
     }
 
+    /** Mode de comptabilisation manuel : écrit la constatation de la paie d'un mois clôturé (DFIN). */
+    @PostMapping("/comptabiliser")
+    public List<BulletinPaieResponse> comptabiliserPeriode(@RequestParam Integer mois, @RequestParam Integer annee) {
+        return service.comptabiliserPeriode(mois, annee);
+    }
+
     @PostMapping("/rouvrir")
     public List<BulletinPaieResponse> rouvrirPeriode(@RequestParam Integer mois, @RequestParam Integer annee) {
         return service.rouvrirPeriode(mois, annee);

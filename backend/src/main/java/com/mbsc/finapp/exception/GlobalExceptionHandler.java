@@ -38,6 +38,16 @@ public class GlobalExceptionHandler {
 
     static final String MESSAGE_COMPTE_DESACTIVE = "Ce compte est désactivé. Contactez l'administrateur.";
 
+    /** Code de double authentification attendu ou faux : l'écran lit le code pour afficher le champ du code. */
+    @ExceptionHandler(com.mbsc.finapp.security.DoubleAuthException.class)
+    public ResponseEntity<Map<String, Object>> handleDoubleAuth(com.mbsc.finapp.security.DoubleAuthException ex) {
+        log.warn("Connexion en attente de double authentification : {}", ex.getCode());
+        ResponseEntity<Map<String, Object>> r = build(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        Map<String, Object> corps = new java.util.LinkedHashMap<>(r.getBody());
+        corps.put("code", ex.getCode());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(corps);
+    }
+
     @ExceptionHandler({BadCredentialsException.class, AuthenticationException.class})
     public ResponseEntity<Map<String, Object>> handleAuth(AuthenticationException ex) {
         log.warn("Authentification refusee : {}", ex.getMessage());

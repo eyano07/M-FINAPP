@@ -38,7 +38,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Saisie d'une perte de boisson (mouvements de bouteilles vides) : la boisson sort du stock au compte de sa perte —
- * 6276.1 pour une boisson offerte, 6031.2 pour une boisson périmée, le compte de la boisson pour une casse.
+ * 62761 pour une boisson offerte, 60312 pour une boisson périmée, le compte de la boisson pour une casse.
  */
 class PertesBoissonsComptesTest {
 
@@ -52,9 +52,9 @@ class PertesBoissonsComptesTest {
     private final Entrepot entrepot = Entrepot.builder().id(1L).code("ENT-01").nom("Entrepôt Principal").build();
     private final Article coca = Article.builder().id(7L).code("BRAL-COCA-COLA-33CL").libelle("Coca Cola 33CL")
         .type(TypeArticle.BOISSON).build();
-    private final CompteOHADA boissonsOffertes = CompteOHADA.builder().id(901L).numero("6276.1")
+    private final CompteOHADA boissonsOffertes = CompteOHADA.builder().id(901L).numero("62761")
         .libelle("Boissons offertes à la clientèle").build();
-    private final CompteOHADA boissonsPerimees = CompteOHADA.builder().id(902L).numero("6031.2")
+    private final CompteOHADA boissonsPerimees = CompteOHADA.builder().id(902L).numero("60312")
         .libelle("Boissons périmées").build();
 
     private static <T> T trouver(Object[] arguments, Class<T> type) {
@@ -80,8 +80,8 @@ class PertesBoissonsComptesTest {
         when(emballages.findByIdPourMiseAJour(3L)).thenReturn(Optional.of(emballage));
         when(mouvementsVides.save(any(MouvementEmballage.class))).thenAnswer(i -> i.getArgument(0));
         when(entrepots.findById(1L)).thenReturn(Optional.of(entrepot));
-        when(comptes.findByNumero("6276.1")).thenReturn(Optional.of(boissonsOffertes));
-        when(comptes.findByNumero("6031.2")).thenReturn(Optional.of(boissonsPerimees));
+        when(comptes.findByNumero("62761")).thenReturn(Optional.of(boissonsOffertes));
+        when(comptes.findByNumero("60312")).thenReturn(Optional.of(boissonsPerimees));
         when(stock.enregistrerSortieVenteInterne(any(), anyString(), any(), any(), any()))
             .thenReturn(MouvementStock.builder().reference("MS-2026-000070").build());
     }
@@ -139,11 +139,11 @@ class PertesBoissonsComptesTest {
 
     @Test
     void sansLeCompteAuPlanComptableLaPerteEstRefuseePlutotQuePasseeSurLeCompteDeLaBoisson() {
-        when(comptes.findByNumero("6276.1")).thenReturn(Optional.empty());
+        when(comptes.findByNumero("62761")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.enregistrerMouvement(perte(TypeMouvementEmballage.CADEAU)))
             .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("6276.1")
+            .hasMessageContaining("62761")
             .hasMessageContaining("Boissons offertes à la clientèle")
             .hasMessageContaining("Plan comptable");
         verify(stock, never()).enregistrerSortieVenteInterne(any(), anyString(), any(), any(), any());
@@ -151,11 +151,11 @@ class PertesBoissonsComptesTest {
 
     @Test
     void sansLeCompteDesBoissonsPerimeesLaPeremptionEstRefuseeAussi() {
-        when(comptes.findByNumero("6031.2")).thenReturn(Optional.empty());
+        when(comptes.findByNumero("60312")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.enregistrerMouvement(perte(TypeMouvementEmballage.PERIME)))
             .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("6031.2")
+            .hasMessageContaining("60312")
             .hasMessageContaining("Boissons périmées")
             .hasMessageContaining("sous 6031");
         verify(stock, never()).enregistrerSortieVenteInterne(any(), anyString(), any(), any(), any());

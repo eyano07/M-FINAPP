@@ -4,6 +4,7 @@ import com.mbsc.finapp.domain.BulletinPaie;
 import com.mbsc.finapp.domain.Employe;
 import com.mbsc.finapp.domain.ParametresPaie;
 import com.mbsc.finapp.domain.enums.RoleType;
+import com.mbsc.finapp.domain.enums.SituationFamiliale;
 import com.mbsc.finapp.domain.enums.StatutBulletin;
 import com.mbsc.finapp.dto.drh.BulletinPaieRequest;
 import com.mbsc.finapp.dto.drh.BulletinPaieResponse;
@@ -49,6 +50,8 @@ public class BulletinPaieService {
     private final PayrollCalculationService calculationService;
     private final ConversionDeviseService conversionDevise;
     private final CurrentUserProvider currentUser;
+    private final PaieNoteService paieNotes;
+    private final AvanceSalaireService avances;
 
     @PreAuthorize("hasAnyRole('RESP_DRH', 'DFIN', 'ADMIN')")
     @Transactional(readOnly = true)
@@ -68,7 +71,7 @@ public class BulletinPaieService {
     @Transactional(readOnly = true)
     public ResultatCalculPaie simuler(BulletinPaieRequest req) {
         Employe employe = chargerEmploye(req.employeId());
-        return calculer(req, enfants(employe), req.mois(), req.annee(), req.datePaiement());
+        return calculer(req, employe, null, req.mois(), req.annee(), req.datePaiement());
     }
 
     @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
@@ -85,12 +88,16 @@ public class BulletinPaieService {
                 + " (référence interne #" + existant.getId() + ") : modifiez-le au lieu d'en créer un nouveau.");
         });
 
-        ResultatCalculPaie resultat = calculer(req, enfants(employe), req.mois(), req.annee(), req.datePaiement());
+        // Audit DRH du 15/11/2026, D-06 : seule une avance versée (compte d'avances de l'agent débité) se retient.
+        avances.verifier(employe, req.avanceSalaire(), null);
+
+        ResultatCalculPaie resultat = calculer(req, employe, null, req.mois(), req.annee(), req.datePaiement());
         BulletinPaie b = BulletinPaie.builder()
             .employe(employe)
             .mois(req.mois())
             .annee(req.annee())
             .nombreEnfants(enfants(employe))
+            .personnesACharge(resultat.personnesACharge())
             .datePaiement(req.datePaiement() != null ? req.datePaiement() : LocalDate.of(req.annee(), req.mois(), 28))
             .dateImpression(req.dateImpression())
             .createdBy(currentUser.requireUser())
@@ -111,11 +118,11 @@ public class BulletinPaieService {
             throw new TransitionInvalideException("Seul un bulletin BROUILLON peut être modifié (état actuel : "
                 + b.getStatut() + ") : repassez-le d'abord en brouillon.");
         }
-        // Employé, mois et année d'un bulletin ne changent pas ; le nombre d'enfants reste celui figé à
-        // sa création, pour qu'un recalcul donne le même résultat que le bulletin d'origine.
+        // Employé, mois et année d'un bulletin ne changent pas ; le nombre d'enfants et de personnes à charge reste
+        // celui figé à sa création, pour qu'un recalcul donne le même résultat que le bulletin d'origine.
+        avances.verifier(b.getEmploye(), req.avanceSalaire(), b.getId());
         LocalDate datePaiement = req.datePaiement() != null ? req.datePaiement() : b.getDatePaiement();
-        ResultatCalculPaie resultat = calculer(req, b.getNombreEnfants() != null ? b.getNombreEnfants() : 0,
-            b.getMois(), b.getAnnee(), datePaiement);
+        ResultatCalculPaie resultat = calculer(req, b.getEmploye(), b, b.getMois(), b.getAnnee(), datePaiement);
         appliquerSaisies(b, req);
         b.setDatePaiement(datePaiement);
         b.setDateImpression(req.dateImpression());
@@ -191,12 +198,13 @@ public class BulletinPaieService {
 
     /**
      * Clôture la paie d'un mois : verrouille les bulletins VALIDE (marque {@code dateCloture}). Refusée tant
-     * qu'un bulletin du mois est en brouillon. Aucune écriture ici : la paie est comptabilisée au paiement
-     * de la note de paie du mois (voir {@code PaieNoteService}).
+     * qu'un bulletin du mois est en brouillon. En mode de comptabilisation automatique
+     * ({@code ParametresPaie.comptabiliserPaie}), la clôture écrit aussi la constatation de la paie au journal
+     * PAIE ; en mode manuel, le DFIN la déclenche ensuite par {@link #comptabiliserPeriode}.
      *
      * @return les bulletins effectivement clôturés
      */
-    @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public List<BulletinPaieResponse> cloturerPeriode(Integer mois, Integer annee) {
         List<BulletinPaie> bulletins = repository.findByPeriode(mois, annee);
@@ -214,17 +222,58 @@ public class BulletinPaieService {
                 + " (validez d'abord chaque bulletin, ou la période est déjà clôturée).");
         }
         Instant maintenant = Instant.now();
-        aClotures.forEach(b -> b.setDateCloture(maintenant));
-        log.info("Paie clôturée [periode={}/{}, bulletins={}]", mois, annee, aClotures.size());
+        com.mbsc.finapp.domain.User dfin = currentUser.requireUser();
+        aClotures.forEach(b -> {
+            b.setDateCloture(maintenant);
+            b.setCloturePar(dfin);
+        });
+        // Audit SYSCOHADA du 10/11/2026, C-14 : la clôture du mois constate la paie (charges et dettes sociales et
+        // fiscales), au journal de paie, dès ce moment ; la DRH qui saisit et valide les bulletins ne clôture pas.
+        // Audit DRH du 15/11/2026, D-01 : seulement en mode automatique ; en mode manuel, la clôture verrouille
+        // les bulletins et le DFIN comptabilise ensuite le mois ({@link #comptabiliserPeriode}).
+        boolean automatique = parametresPaieService.get().isComptabiliserPaie();
+        if (automatique) {
+            paieNotes.constaterALaCloture(aClotures, mois, annee, dfin);
+        }
+        log.info("Paie clôturée [periode={}/{}, bulletins={}, comptabilisation={}]", mois, annee, aClotures.size(),
+            automatique ? "automatique" : "manuelle");
         String drh = nomDrh();
         return aClotures.stream().map(b -> BulletinPaieResponse.from(b, drh)).toList();
+    }
+
+    /**
+     * Comptabilise la paie d'un mois clôturé en mode manuel (audit DRH du 15/11/2026, D-01) : écrit la pièce de
+     * constatation au journal PAIE pour les bulletins clôturés du mois qui n'ont encore aucune pièce, comme la
+     * clôture le fait en mode automatique. Refusée si le mois n'est pas clôturé ou s'il est déjà comptabilisé.
+     *
+     * @return les bulletins comptabilisés
+     */
+    @PreAuthorize("hasRole('DFIN')")
+    @Transactional
+    public List<BulletinPaieResponse> comptabiliserPeriode(Integer mois, Integer annee) {
+        List<BulletinPaie> valides = repository.findByPeriode(mois, annee).stream()
+            .filter(b -> b.getStatut() == StatutBulletin.VALIDE)
+            .toList();
+        if (valides.isEmpty() || valides.stream().anyMatch(b -> b.getDateCloture() == null)) {
+            throw new TransitionInvalideException("La paie de " + mois + "/" + annee + " n'est pas clôturée : "
+                + "clôturez d'abord le mois, puis comptabilisez-le.");
+        }
+        List<BulletinPaie> aComptabiliser = valides.stream().filter(b -> b.getPieceComptable() == null).toList();
+        if (aComptabiliser.isEmpty()) {
+            throw new TransitionInvalideException("La paie de " + mois + "/" + annee + " est déjà comptabilisée (pièce "
+                + valides.get(0).getPieceComptable().getReference() + ").");
+        }
+        paieNotes.constaterALaCloture(aComptabiliser, mois, annee, currentUser.requireUser());
+        log.info("Paie comptabilisée manuellement [periode={}/{}, bulletins={}]", mois, annee, aComptabiliser.size());
+        String drh = nomDrh();
+        return aComptabiliser.stream().map(b -> BulletinPaieResponse.from(b, drh)).toList();
     }
 
     /**
      * Rouvre la paie d'un mois clôturé pour corriger des bulletins : possible tant qu'aucune note de paie
      * active ne couvre ses bulletins et qu'aucun n'est comptabilisé.
      */
-    @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public List<BulletinPaieResponse> rouvrirPeriode(Integer mois, Integer annee) {
         List<BulletinPaie> clotures = repository.findByPeriode(mois, annee).stream()
@@ -234,7 +283,7 @@ public class BulletinPaieService {
             throw new TransitionInvalideException("La paie de " + mois + "/" + annee + " n'est pas clôturée.");
         }
         for (BulletinPaie b : clotures) {
-            if (b.getPieceComptable() != null) {
+            if (b.getPieceComptable() != null && !b.isConstateeALaCloture()) {
                 throw new TransitionInvalideException("La paie de " + mois + "/" + annee + " est comptabilisée (pièce "
                     + b.getPieceComptable().getReference() + ") : elle ne peut plus être rouverte.");
             }
@@ -243,7 +292,13 @@ public class BulletinPaieService {
                     + " couvre ce mois : annulez-la avant de rouvrir la paie.");
             }
         }
-        clotures.forEach(b -> b.setDateCloture(null));
+        // La constatation faite à la clôture est extournée : la paie corrigée sera constatée à nouveau.
+        paieNotes.annulerConstatation(clotures.stream().filter(BulletinPaie::isConstateeALaCloture).toList(),
+            currentUser.requireUser());
+        clotures.forEach(b -> {
+            b.setDateCloture(null);
+            b.setCloturePar(null);
+        });
         log.info("Paie rouverte [periode={}/{}, bulletins={}]", mois, annee, clotures.size());
         String drh = nomDrh();
         return clotures.stream().map(b -> BulletinPaieResponse.from(b, drh)).toList();
@@ -251,8 +306,13 @@ public class BulletinPaieService {
 
     // ---------------------------------------------------------------------
 
-    private ResultatCalculPaie calculer(BulletinPaieRequest req, int nombreEnfants, int mois, int annee,
-                                        LocalDate datePaiementSaisie) {
+    /**
+     * Calcule un bulletin. {@code existant} non nul (modification) : nombre d'enfants et personnes à charge figés sur
+     * le bulletin (à défaut de personnes à charge, bulletin antérieur à V147 : ses enfants). Sinon, ceux de la fiche,
+     * conjoint compris pour un agent marié. L'effectif (employés actifs) fixe la tranche INPP.
+     */
+    private ResultatCalculPaie calculer(BulletinPaieRequest req, Employe employe, BulletinPaie existant, int mois,
+                                        int annee, LocalDate datePaiementSaisie) {
         ParametresPaie params = parametresPaieService.get();
         LocalDate datePaiement = datePaiementSaisie != null ? datePaiementSaisie : LocalDate.of(annee, mois, 28);
         java.math.BigDecimal tauxFC = conversionDevise.tauxALaDate(datePaiement);
@@ -261,10 +321,21 @@ public class BulletinPaieService {
             throw new TransitionInvalideException("Aucun taux de change USD/CDF n'est défini au " + datePaiement
                 + " : saisissez-le (Administration > Taux de change) avant de calculer la paie.");
         }
+        int nombreEnfants;
+        Integer personnesACharge;
+        if (existant != null) {
+            nombreEnfants = existant.getNombreEnfants() != null ? existant.getNombreEnfants() : 0;
+            personnesACharge = existant.getPersonnesACharge() != null ? existant.getPersonnesACharge() : nombreEnfants;
+        } else {
+            nombreEnfants = enfants(employe);
+            personnesACharge = null;
+        }
+        boolean marie = employe.getSituationFamiliale() == SituationFamiliale.MARIE;
+        int effectif = (int) Math.max(1, employeRepository.countByActifTrue());
         EntreesCalculPaie entrees = new EntreesCalculPaie(
             req.salaireBaseUsd(), req.presencePct(), req.conge(), req.heuresSupplementaires(),
             req.allocationFamiliale(), req.primeDiplome(), req.primeAnciennete(), req.primeRendement(),
-            req.avanceSalaire(), req.pret(), nombreEnfants);
+            req.avanceSalaire(), req.pret(), nombreEnfants, marie, personnesACharge, effectif);
         return calculationService.calculer(entrees, params, tauxFC);
     }
 
@@ -290,6 +361,10 @@ public class BulletinPaieService {
         b.setBaseImposableIpr(r.baseImposableIpr());
         b.setCnssOuvriere(r.cnssOuvriere());
         b.setCnssPatronale(r.cnssPatronale());
+        b.setCnssPatronalePension(r.cnssPatronalePension());
+        b.setCnssPatronalePf(r.cnssPatronalePf());
+        b.setCnssPatronaleRp(r.cnssPatronaleRp());
+        b.setPersonnesACharge(r.personnesACharge());
         b.setOnem(r.onem());
         b.setTotalInss(r.totalInss());
         b.setInpp(r.inpp());

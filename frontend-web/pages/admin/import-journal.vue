@@ -25,6 +25,8 @@ interface Suggestion {
   libelle: string | null
   raison: string
   genereParIa: boolean
+  /** Compte sous lequel créer le compte proposé (suggestion CREATION). */
+  parentNumero?: string | null
 }
 
 const api = useApi()
@@ -174,7 +176,9 @@ async function creerCompte(s: Suggestion) {
   creationEnCours.value = s.valeurActuelle
   erreur.value = ''
   try {
-    const [parent, suffixe] = s.valeurProposee.split(/\.(.+)/)
+    // Le compte proposé prolonge le numéro de son parent, sans point (C-17) : 604215 = 6042 + 15.
+    const parent = s.parentNumero ?? ''
+    const suffixe = s.valeurProposee.slice(parent.length)
     await api('/admin/comptes', {
       method: 'POST',
       body: { parentNumero: parent, suffixe, libelle: s.libelle || `Compte ${s.valeurActuelle}` },

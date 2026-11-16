@@ -43,7 +43,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -285,7 +284,7 @@ public class RetourFondsService {
             .tauxJournalier(taux)
             .build();
         TransactionCaisse encaissement = comptabilite.enregistrerEncaissementMultiLigne(transaction, credits, libelle, conversion);
-        LocalDate date = encaissement.getDateOperation().atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate date = encaissement.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         String motifStock = "Retour d'achat — " + note.getReference();
 
         // 2. Stock : les marchandises rendues sortent au cout moyen (D 603x / C 311x), entrepot par entrepot, articles tries

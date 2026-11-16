@@ -16,11 +16,11 @@ export function useAuth() {
   const config = useRuntimeConfig()
 
   /** `identifiant` : nom d'utilisateur ou adresse e-mail (le serveur le reçoit dans le champ « email »). */
-  async function login(identifiant: string, motDePasse: string) {
+  async function login(identifiant: string, motDePasse: string, codeDoubleAuth?: string) {
     const res = await $fetch<AuthResponse>('/auth/login', {
       baseURL: config.public.apiBase as string,
       method: 'POST',
-      body: { email: identifiant, motDePasse },
+      body: { email: identifiant, motDePasse, codeDoubleAuth: codeDoubleAuth || null },
     })
     auth.setSession({
       accessToken: res.accessToken,

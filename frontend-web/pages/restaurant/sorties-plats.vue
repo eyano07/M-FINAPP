@@ -64,13 +64,13 @@ const couleurMotif = (m: Motif) => MOTIFS.find(x => x.value === m)?.couleur ?? '
  * des charges par nature (relations publiques, avantages en nature).
  */
 const COMPTES_MOTIF: Record<Motif, string> = {
-  PERIME: '736.1 Plats périmés',
-  MOISI: '736.2 Plats moisis ou avariés',
-  RENVERSE: '736.3 Plats renversés ou tombés',
-  BRULE: '736.4 Plats brûlés ou ratés',
-  CADEAU: '6276.2 Plats offerts à la clientèle',
-  REPAS_PERSONNEL: '6617.1 Repas du personnel',
-  AUTRE: '736.5 Autres sorties de plats',
+  PERIME: '7361 Plats périmés',
+  MOISI: '7362 Plats moisis ou avariés',
+  RENVERSE: '7363 Plats renversés ou tombés',
+  BRULE: '7364 Plats brûlés ou ratés',
+  CADEAU: '62762 Plats offerts à la clientèle',
+  REPAS_PERSONNEL: '66171 Repas du personnel',
+  AUTRE: '7365 Autres sorties de plats',
 }
 
 /** Portions périmées d'un plat dans un entrepôt (PlatPerimeResponse côté serveur). */
@@ -88,6 +88,7 @@ interface PlatPerime {
 }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const parametres = useRestaurantParametresStore()
 const loading = ref(false)
@@ -206,7 +207,13 @@ async function retirerPerimes(p: PlatPerime | null) {
   const valeur = cible.reduce((t, x) => t + (x.valeur || 0), 0)
   const portions = cible.reduce((t, x) => t + (x.quantitePerimee || 0), 0)
   const quoi = p ? `${fmtQte(portions)} portion(s) de ${p.platLibelle}` : `${fmtQte(portions)} portion(s) périmée(s)`
-  if (!confirm(`Retirer ${quoi} du stock ? Une sortie « Périmé » de ${parametres.fmtMontant(valeur)} et son écriture comptable seront enregistrées.`)) {
+  const confirme = await dialogues.confirmer({
+    titre: `Retirer ${quoi} du stock ?`,
+    message: `Une sortie « Périmé » de ${parametres.fmtMontant(valeur)} et son écriture comptable seront enregistrées.`,
+    bouton: 'Retirer du stock',
+    nature: 'attention',
+  })
+  if (!confirme) {
     return
   }
   retraitEnCours.value = true
@@ -372,8 +379,8 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
         D {{ COMPTES_MOTIF[form.motif] }} / C 361 stock du plat (journal STOCK).
       </p>
       <p v-else class="text-caption text-medium-emphasis mt-3 mb-0 rst-compta-motif">
-        Comptabilisée au coût de production moyen, au compte du motif choisi (perte de plat : 736.1 à 736.5 ; plat offert :
-        6276.2 ; repas du personnel : 6617.1) / C 361 stock du plat (journal STOCK).
+        Comptabilisée au coût de production moyen, au compte du motif choisi (perte de plat : 7361 à 7365 ; plat offert :
+        62762 ; repas du personnel : 66171) / C 361 stock du plat (journal STOCK).
       </p>
     </v-card>
 

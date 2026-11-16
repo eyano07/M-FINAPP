@@ -96,12 +96,12 @@ class StockServiceCompteChargeImposeTest {
 
     @Test
     void unCompteImposeRemplaceLeCompteDeChargeMaisPasLeCompteDeStock() {
-        CompteOHADA boissonsOffertes = CompteOHADA.builder().numero("6276.1").libelle("Boissons offertes à la clientèle").build();
+        CompteOHADA boissonsOffertes = CompteOHADA.builder().numero("62761").libelle("Boissons offertes à la clientèle").build();
 
         assertThat(ecrituresDe(new StockService.SortieVente(coca, new BigDecimal("2"), null, boissonsOffertes)))
             .extracting(e -> e.getCompte().getNumero(), EcritureGrandLivre::getDebit, EcritureGrandLivre::getCredit)
             .containsExactly(
-                tuple("6276.1", new BigDecimal("3.00"), BigDecimal.ZERO),
+                tuple("62761", new BigDecimal("3.00"), BigDecimal.ZERO),
                 tuple("31112", BigDecimal.ZERO, new BigDecimal("3.00")));
         // La marchandise sort comme pour une vente : au coût moyen, quantité et valeur du stock diminuées.
         assertThat(niveau.getQuantite()).isEqualByComparingTo("8");
@@ -123,7 +123,7 @@ class StockServiceCompteChargeImposeTest {
 
     @Test
     void rendueSurLaLigneNeChangeQueLaLigneDeNote() {
-        CompteOHADA compte = CompteOHADA.builder().numero("6276.1").build();
+        CompteOHADA compte = CompteOHADA.builder().numero("62761").build();
         StockService.SortieVente rendue = new StockService.SortieVente(coca, new BigDecimal("2"), new BigDecimal("4"), compte)
             .rendueSurLaLigne(55L);
 

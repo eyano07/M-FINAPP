@@ -68,7 +68,12 @@ public class RapprochementService {
     private static final Logger log = LoggerFactory.getLogger(RapprochementService.class);
 
     static final String LECTURE = "hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')";
-    static final String ECRITURE = "hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'ADMIN')";
+    /**
+     * Pointer, régulariser et saisir les relevés : la comptabilité seulement. Le caissier, qui passe les opérations
+     * de banque, ne rapproche pas ses propres opérations, et l'administrateur ne garde que le paramétrage technique
+     * (audit SYSCOHADA du 10/11/2026, C-20).
+     */
+    static final String ECRITURE = "hasAnyRole('COMPTABLE', 'DFIN')";
     /** Écart de dates toléré par le pointage automatique (jours). */
     static final int TOLERANCE_JOURS = 5;
 
@@ -357,7 +362,7 @@ public class RapprochementService {
     // Validation
     // =====================================================================
 
-    @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public ReleveDetailResponse valider(Long id) {
         ReleveBancaire r = chargerEnCours(id);
@@ -373,8 +378,11 @@ public class RapprochementService {
         return detail(r);
     }
 
-    /** Rouvre un relevé validé (administrateur, motif obligatoire, gardé sur le relevé). */
-    @PreAuthorize("hasRole('ADMIN')")
+    /**
+     * Rouvre un relevé validé : le DA ou le DG, motif obligatoire gardé sur le relevé. Ni le caissier, ni le DFIN qui
+     * a validé, ni l'administrateur (C-20).
+     */
+    @PreAuthorize("hasAnyRole('DA', 'DG')")
     @Transactional
     public ReleveDetailResponse devalider(Long id, String motif) {
         ReleveBancaire r = charger(id);

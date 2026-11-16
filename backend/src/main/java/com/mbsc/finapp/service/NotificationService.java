@@ -206,6 +206,28 @@ public class NotificationService {
     }
 
     /**
+     * Notifie, au sujet d'une piece comptable, les utilisateurs actifs des roles donnes et {@code aussi} (le comptable
+     * qui a saisi ou annule la piece...) : une seule notification par personne, jamais a l'auteur de l'action. Le lien
+     * ouvre la liste des pieces sur cette piece, reperee par son identifiant (la reference d'un brouillon change quand
+     * il est comptabilise).
+     */
+    @Transactional
+    public void notifierPiece(Collection<RoleType> roles, User aussi, User acteur, TypeNotification type,
+                              String titre, String message, Long pieceId) {
+        String lien = pieceId == null ? "/comptabilite/pieces" : "/comptabilite/pieces?piece=" + pieceId;
+        for (User destinataire : destinataires(roles, aussi, acteur)) {
+            enregistrer(Notification.builder()
+                .destinataire(destinataire)
+                .type(type)
+                .titre(titre)
+                .message(message)
+                .lien(lien)
+                .lue(false)
+                .build());
+        }
+    }
+
+    /**
      * Destinataires d'une notification de groupe : les utilisateurs actifs des roles donnes, plus {@code aussi} s'il est
      * actif, chacun une seule fois (un compte qui cumule deux roles n'est pas notifie deux fois), sans l'auteur de
      * l'action.

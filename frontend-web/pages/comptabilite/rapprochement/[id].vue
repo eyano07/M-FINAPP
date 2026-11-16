@@ -4,7 +4,7 @@
  * manuel), régularisation des opérations absentes de la comptabilité, état de rapprochement et validation
  * par le DFIN. Montants dans la devise du compte.
  */
-definePageMeta({ module: 'RAPPROCHEMENT', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] })
+definePageMeta({ module: 'RAPPROCHEMENT', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
 
 interface Ligne { id: number, ordre: number, dateOperation: string, libelle: string, reference: string | null, entree: number, sortie: number, pointageId: number | null, automatique: boolean, pieceRegularisation: string | null }
 interface Ecriture { id: number, date: string, libelle: string, pieceReference: string | null, journal: string | null, entree: number, sortie: number, pointageId: number | null, anterieure: boolean }
@@ -20,6 +20,7 @@ interface Releve {
 
 const route = useRoute()
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
 const id = computed(() => Number(route.params.id))
@@ -31,9 +32,10 @@ const erreur = ref('')
 const succes = ref('')
 
 const enCours = computed(() => r.value?.statut === 'EN_COURS')
-const peutEcrire = computed(() => enCours.value && auth.hasAnyRole(['ADMIN', 'DFIN', 'COMPTABLE', 'CAISSIER']))
-const peutValider = computed(() => enCours.value && auth.hasAnyRole(['DFIN', 'ADMIN']))
-const peutDevalider = computed(() => r.value?.statut === 'VALIDE' && auth.hasAnyRole(['ADMIN']))
+const peutEcrire = computed(() => enCours.value && auth.hasAnyRole(['DFIN', 'COMPTABLE']))
+const peutValider = computed(() => enCours.value && auth.hasAnyRole(['DFIN']))
+// Rouvrir un mois rapproché : le DA ou le DG, ni le DFIN qui l'a validé ni l'administrateur (C-20).
+const peutDevalider = computed(() => r.value?.statut === 'VALIDE' && auth.hasAnyRole(['DA', 'DG']))
 
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 const periode = computed(() => (r.value ? `${MOIS[r.value.mois - 1]} ${r.value.annee}` : ''))
@@ -146,19 +148,41 @@ function regulariser() {
 // ---------------------------------------------------------------------------------------------------
 // Validation, suppression
 // ---------------------------------------------------------------------------------------------------
-function valider() {
-  if (!confirm(`Valider le rapprochement de ${r.value?.etablissement.nom} pour ${periode.value} ? Le compte sera verrouillé jusqu'à la fin du mois.`)) return
+async function valider() {
+  const confirme = await dialogues.confirmer({
+    titre: `Valider le rapprochement de ${r.value?.etablissement.nom} pour ${periode.value} ?`,
+    message: "Le compte sera verrouillé jusqu'à la fin du mois.",
+    bouton: 'Valider le rapprochement',
+    nature: 'attention',
+    icone: 'mdi-lock-outline',
+  })
+  if (!confirme) return
   executer('valider', () => api(`/rapprochements/${id.value}/valider`, { method: 'POST' }), 'Rapprochement validé : le mois est verrouillé sur ce compte.')
 }
 
-function devalider() {
-  const motif = prompt('Motif de la dé-validation (obligatoire) :')
+async function devalider() {
+  const motif = await dialogues.saisir({
+    titre: 'Dé-valider ce rapprochement ?',
+    message: 'Le rapprochement sera rouvert.',
+    libelle: 'Motif de la dé-validation',
+    obligatoire: true,
+    bouton: 'Dé-valider',
+    nature: 'attention',
+    icone: 'mdi-lock-open-outline',
+  })
   if (!motif) return
   executer('devalider', () => api(`/rapprochements/${id.value}/devalider`, { method: 'POST', body: { commentaire: motif } }), 'Rapprochement rouvert.')
 }
 
 async function supprimer() {
-  if (!confirm('Supprimer ce relevé ? Les pointages seront défaits ; les écritures de régularisation déjà passées restent en comptabilité.')) return
+  const confirme = await dialogues.confirmer({
+    titre: 'Supprimer ce relevé ?',
+    message: ['Les pointages seront défaits.', 'Les écritures de régularisation déjà passées restent en comptabilité.'],
+    bouton: 'Supprimer le relevé',
+    nature: 'danger',
+    icone: 'mdi-trash-can-outline',
+  })
+  if (!confirme) return
   action.value = 'supprimer'
   try {
     await api(`/rapprochements/${id.value}`, { method: 'DELETE' })

@@ -1,6 +1,7 @@
 package com.mbsc.finapp.dto.comptabilite;
 
 import com.mbsc.finapp.domain.EcritureGrandLivre;
+import com.mbsc.finapp.domain.SoldeOuverture;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -33,7 +34,8 @@ public record LigneEcritureResponse(
             compte == null ? null : compte.getLibelle(),
             e.getDebit(),
             e.getCredit(),
-            e.getLibelle(),
+            // « … - Solde d'ouverture » pour une écriture de reprise des à-nouveaux (mention d'affichage).
+            SoldeOuverture.libelle(e),
             e.getDateEcriture(),
             e.getTauxApplique()
         );

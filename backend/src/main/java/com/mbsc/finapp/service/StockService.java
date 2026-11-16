@@ -268,6 +268,12 @@ public class StockService {
     public MouvementResponse creerMouvement(MouvementRequest req) {
         User auteur = currentUser.requireUser();
         validerLignes(req);
+        // Audit SYSCOHADA du 10/11/2026, C-08 : une entrée de stock saisie ici ne se paie pas par la caisse ou la
+        // banque ; un achat payé passe par une note de frais.
+        if (req.compteContrepartieNumero() != null && !req.compteContrepartieNumero().isBlank()) {
+            ComptabiliteService.exigerContrepartieHorsTresorerie(req.compteContrepartieNumero().trim(),
+                "contrepartie d'un mouvement de stock");
+        }
 
         MouvementStock mouvement = MouvementStock.builder()
             .reference(referenceGenerator.pourMouvementStock())
@@ -508,7 +514,7 @@ public class StockService {
      *        camion — la raison d'etre de ce suivi — serait faussee.
      * @param compteCharge compte a debiter au lieu du compte de charge de
      *        l'article, ou {@code null} pour celui de l'article. Renseigne pour
-     *        une boisson offerte (6276.1) ou perimee (6031.2) et pour une sortie
+     *        une boisson offerte (62761) ou perimee (60312) et pour une sortie
      *        de plat hors vente (un compte par motif) : la sortie de stock est la
      *        meme qu'une vente, seule la charge change de compte — voir
      *        {@code RestaurantService.compteChargePerte} et {@code compteSortiePlat}.

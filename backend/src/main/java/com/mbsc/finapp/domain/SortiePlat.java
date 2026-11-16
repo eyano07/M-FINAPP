@@ -15,7 +15,7 @@ import java.time.LocalDate;
  *
  * <p>La sortie elle-même est un {@link MouvementStock} ordinaire, valorisé au
  * coût de production moyen et comptabilisé (D compte du motif / C 361x : 736.x,
- * 6276.2 pour un plat offert, 6617.1 pour un repas du personnel) ; cette entité
+ * 62762 pour un plat offert, 66171 pour un repas du personnel) ; cette entité
  * en garde le motif et l'état. Elle s'annule d'ici, jamais par son seul
  * mouvement — voir {@code StockService.exigerAnnulableSeul}.</p>
  */

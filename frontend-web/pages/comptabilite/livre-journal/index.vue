@@ -62,10 +62,32 @@ onMounted(charger)
 const pieceUSD = (p: Piece, sens: 'debit' | 'credit') =>
   (p.lignes || []).reduce((s, l) => s + (l[sens] || 0), 0)
 
+// Recherche (15/11/2026) : par pièce (n° ou libellé) et par compte (numéro, début de numéro ou intitulé), sur
+// les pièces déjà chargées. Le filtre « compte » garde les pièces dont au moins une ligne mouvemente ce compte.
+const recherche = reactive({ piece: '', compte: '' })
+const normaliser = (v?: string | null) =>
+  (v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
+const piecesFiltrees = computed(() => {
+  const qPiece = normaliser(recherche.piece)
+  const qCompte = normaliser(recherche.compte)
+  return (journal.value?.pieces || []).filter((p) => {
+    if (qPiece && !normaliser(p.reference).includes(qPiece) && !normaliser(p.libelle).includes(qPiece)) return false
+    if (qCompte) {
+      const chiffres = /^\d+$/.test(qCompte)
+      return (p.lignes || []).some(l => chiffres
+        ? (l.compteNumero || '').startsWith(qCompte)
+        : normaliser(l.compteLibelle).includes(qCompte))
+    }
+    return true
+  })
+})
+const filtreActif = computed(() => !!(normaliser(recherche.piece) || normaliser(recherche.compte)))
+
 const totalDebitUSD = computed(() =>
-  (journal.value?.pieces || []).reduce((s, p) => s + pieceUSD(p, 'debit'), 0))
+  piecesFiltrees.value.reduce((s, p) => s + pieceUSD(p, 'debit'), 0))
 const totalCreditUSD = computed(() =>
-  (journal.value?.pieces || []).reduce((s, p) => s + pieceUSD(p, 'credit'), 0))
+  piecesFiltrees.value.reduce((s, p) => s + pieceUSD(p, 'credit'), 0))
 
 const fmtUSD = (v: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(v || 0)
@@ -81,6 +103,8 @@ const journalCouleur: Record<string, string> = {
   STOCK: 'indigo',
   OPERATIONS_DIVERSES: 'orange',
   ANALYTIQUE: 'purple',
+  PAIE: 'pink',
+  A_NOUVEAUX: 'blue-grey',
 }
 </script>
 
@@ -128,13 +152,39 @@ const journalCouleur: Record<string, string> = {
           Actualiser
         </v-btn>
       </div>
+      <div class="lj-filtres mt-4">
+        <v-text-field
+          v-model="recherche.piece"
+          label="Pièce (n° ou libellé)"
+          placeholder="ex. PC-2026-000537"
+          prepend-inner-icon="mdi-file-search-outline"
+          variant="outlined"
+          density="comfortable"
+          rounded="lg"
+          clearable
+          hide-details
+        />
+        <v-text-field
+          v-model="recherche.compte"
+          label="Compte (numéro ou intitulé)"
+          placeholder="ex. 571, 62 ou Caisse"
+          prepend-inner-icon="mdi-magnify"
+          variant="outlined"
+          density="comfortable"
+          rounded="lg"
+          clearable
+          hide-details
+        />
+      </div>
     </v-card>
 
     <template v-if="journal">
       <div class="kpi-grid">
         <v-card class="classroom-card pa-4 text-center">
           <div class="kpi-label">Pièces</div>
-          <div class="kpi-value">{{ journal.pieces.length }}</div>
+          <div class="kpi-value">
+            {{ piecesFiltrees.length }}<span v-if="filtreActif" class="text-body-2 text-medium-emphasis"> / {{ journal.pieces.length }}</span>
+          </div>
         </v-card>
         <v-card class="classroom-card pa-4 text-center">
           <div class="kpi-label">Total débit (USD)</div>
@@ -146,12 +196,14 @@ const journalCouleur: Record<string, string> = {
         </v-card>
       </div>
 
-      <v-card v-if="journal.pieces.length === 0" class="classroom-card pa-8 text-center">
+      <v-card v-if="piecesFiltrees.length === 0" class="classroom-card pa-8 text-center">
         <v-icon icon="mdi-book-open-blank-variant" size="42" color="grey" class="mb-2" />
-        <div class="text-medium-emphasis">Aucune pièce comptabilisée sur cette période.</div>
+        <div class="text-medium-emphasis">
+          {{ filtreActif ? 'Aucune pièce ne correspond à la recherche.' : 'Aucune pièce comptabilisée sur cette période.' }}
+        </div>
       </v-card>
 
-      <CommunPiecesJournal v-else :pieces="journal.pieces" :fmt="fmtUSD" :montant="(p) => pieceUSD(p, 'debit')"
+      <CommunPiecesJournal v-else :pieces="piecesFiltrees" :fmt="fmtUSD" :montant="(p) => pieceUSD(p, 'debit')"
         :couleurs-journal="journalCouleur" :fmt-taux="fmtTaux" unite="USD" />
     </template>
   </div>

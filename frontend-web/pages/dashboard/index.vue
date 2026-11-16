@@ -75,7 +75,7 @@ async function charger() {
   // OHADA) : la tresorerie du canal est donc la somme de tous les
   // sous-comptes du prefixe, pas un compte unique comme pour la caisse.
   try {
-    const balance = await api<any[]>('/caisse/balance')
+    const balance = await api<any[]>(auth.hasAnyRole(['COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN']) ? '/caisse/balance' : '/caisse/soldes-tresorerie')
     const caisse = balance.find((l) => l.compteNumero === '571')
     tresorerie.value = caisse ? caisse.solde : 0
     tresorerieBanque.value = balance

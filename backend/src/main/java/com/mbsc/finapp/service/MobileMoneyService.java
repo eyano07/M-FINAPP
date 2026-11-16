@@ -200,7 +200,7 @@ public class MobileMoneyService {
         if (!ventilation.entreesStock().isEmpty()) {
             PieceComptable piece = saved.getEcritures().get(0).getPiece();
             stockService.entreesDepuisNoteFraisInterne(
-                saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(),
+                saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate(),
                 libellePaiement, ventilation.entreesStock(), piece, operateur);
         }
         // Ecart de change realise : la note a ete engagee a un taux fige lors
@@ -208,7 +208,7 @@ public class MobileMoneyService {
         // est reclassee en 656/756 par une piece dediee, au lieu de rester
         // invisible dans le compte de charge.
         ecartChange.comptabiliserEcart(note, tauxOperation,
-            saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(), operateur);
+            saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate(), operateur);
 
         // Note de paie (module DRH) : écrit la constatation de la paie du mois dans la même transaction
         // que son règlement — sans effet sur toute autre note (voir PaieNoteService).

@@ -49,6 +49,7 @@ class ImportJournalRemplacementTest {
 
     private final ImportJournalService service = new ImportJournalService(comptes, comptabilite,
         utilisateur, mock(DocumentationCompteService.class), mock(ImportIaService.class),
+        new NumerosComptes(mock(org.springframework.jdbc.core.JdbcTemplate.class)),
         mock(ConversionDeviseService.class), etablissements, effacement, periodes);
 
     private static final String JOURNAL = """

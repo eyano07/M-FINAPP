@@ -30,22 +30,30 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Règlement de la paie par notes de frais (module DRH), conforme au SYSCOHADA révisé.
  *
  * <ol>
  *   <li><b>Note de paie</b> (une par mois, catégorie {@link CategorieNote#PAIE}) : une ligne par agent
- *       au débit de 4221.1 « salaires nets », pour le net à payer de son bulletin. Elle suit le circuit
+ *       au débit de son compte de rémunérations dues (422111, 422112…, à défaut le collectif 42211), pour le
+ *       net à payer de son bulletin — le compte même que la constatation a crédité (voir {@link #compteNet}). Elle suit le circuit
  *       normal des notes (DFIN, DA, transmission) et se paie par la caisse, la banque ou le mobile
  *       money. <b>Au paiement</b>, {@link #apresPaiementInterne} écrit aussi la constatation de la paie
  *       du mois (journal OD, datée du dernier jour du mois) : charges 66x/6413 contre les dettes
- *       4221.1, 431.1, 4472, 4478.x, 4211 et 2762. Le règlement de la note solde ensuite 4221.1.</li>
+ *       42211x, 4311/4312/4313 (CNSS), 4472, 44281/44282 (ONEM, INPP), 4211x et 272x. Le règlement de la note solde ensuite les comptes 42211x.</li>
  *   <li><b>Notes fiscales</b> (une par impôt ou cotisation et par mois, catégorie
- *       {@link CategorieNote#IMPOT_PAIE}) : IPR, CNSS, INPP, ONEM, chacune au débit de la dette
- *       correspondante (voir {@link OrganismePaie}). Elles ne peuvent être créées qu'une fois la note
+ *       {@link CategorieNote#IMPOT_PAIE}) : IPR, CNSS, INPP, ONEM, chacune au débit des comptes que la
+ *       constatation a crédités pour l'organisme, une ligne par compte (voir {@link #ventilation} et
+ *       {@link OrganismePaie}). Elles ne peuvent être créées qu'une fois la note
  *       de paie payée, quand ces dettes existent en comptabilité.</li>
  * </ol>
  */
@@ -88,12 +96,15 @@ public class PaieNoteService {
 
         List<VersementFiscal> versements = new ArrayList<>();
         for (OrganismePaie o : OrganismePaie.values()) {
-            versements.add(new VersementFiscal(o, o.libelle(), o.beneficiaire(), o.compte(),
-                montantOrganisme(valides, o), active(notes, CategorieNote.IMPOT_PAIE, o).map(NoteResume::from).orElse(null)));
+            Map<String, BigDecimal> ventilation = ventilation(valides, o);
+            List<String> comptes = ventilation.isEmpty() ? o.comptes() : List.copyOf(ventilation.keySet());
+            versements.add(new VersementFiscal(o, o.libelle(), o.beneficiaire(), String.join("/", comptes), comptes,
+                total(ventilation), active(notes, CategorieNote.IMPOT_PAIE, o).map(NoteResume::from).orElse(null)));
         }
         return new NotesPaieResponse(mois, annee, valides.size(), (int) brouillons, cloture,
             eligibles.size(), totalNet, notePaie.map(NoteResume::from).orElse(null), paiePayee, versements,
-            notes.stream().filter(n -> n.getStatut() == StatutNote.ANNULEE).map(NoteResume::from).toList());
+            notes.stream().filter(n -> n.getStatut() == StatutNote.ANNULEE).map(NoteResume::from).toList(),
+            !valides.isEmpty() && valides.stream().allMatch(b -> b.getPieceComptable() != null));
     }
 
     // ---------------------------------------------------------------------
@@ -133,7 +144,7 @@ public class PaieNoteService {
         }
 
         List<LigneNoteFraisRequest> lignes = eligibles.stream()
-            .map(b -> ligne(b.getSalaireNet(), PaieComptabilisationService.COMPTE_NET_A_PAYER,
+            .map(b -> ligne(b.getSalaireNet(), compteNet(b),
                 "Salaire net " + periode(mois, annee) + " — " + b.getEmploye().getMatricule() + " "
                     + b.getEmploye().getNomComplet()))
             .toList();
@@ -160,24 +171,31 @@ public class PaieNoteService {
         NoteFrais notePaie = active(notes, CategorieNote.PAIE, null)
             .filter(n -> n.getStatut() == StatutNote.PAYEE)
             .orElseThrow(() -> new TransitionInvalideException("La note de paie de " + periode(mois, annee)
-                + " doit être payée avant les versements fiscaux : c'est son paiement qui constate en "
-                + "comptabilité les dettes envers la DGI, la CNSS, l'INPP et l'ONEM."));
+                + " doit être payée avant les versements fiscaux : les salariés sont réglés avant les organismes."));
         if (active(notes, CategorieNote.IMPOT_PAIE, organisme).isPresent()) {
             throw new TransitionInvalideException("Une note " + organisme + " existe déjà pour "
                 + periode(mois, annee) + " : annulez-la d'abord pour en créer une nouvelle.");
         }
         List<BulletinPaie> bulletins = bulletinRepository.findByNoteFraisPaieId(notePaie.getId());
-        BigDecimal montant = montantOrganisme(bulletins, organisme);
+        // La note débite exactement les comptes que les pièces de constatation du mois ont crédités pour cet
+        // organisme (CNSS : 4311/4312/4313, ou 4315 pour une paie constatée avant la répartition par branche).
+        Map<String, BigDecimal> ventilation = ventilation(bulletins, organisme);
+        BigDecimal montant = total(ventilation);
         if (montant.signum() <= 0) {
             throw new TransitionInvalideException("Aucun montant " + organisme + " à verser pour "
                 + periode(mois, annee) + ".");
         }
+        List<LigneNoteFraisRequest> lignes = ventilation.entrySet().stream()
+            .map(e -> ligne(e.getValue(), e.getKey(), organisme.libelle() + " " + periode(mois, annee)
+                + (ventilation.size() > 1 ? " — compte " + e.getKey() : "")))
+            .toList();
         noteFraisService.creerEtSoumettreNotePaieInterne(CategorieNote.IMPOT_PAIE, mois, annee, organisme,
             organisme.libelle() + " — paie " + periode(mois, annee),
             organisme.beneficiaire(),
-            "Versement de la dette constatée au compte " + organisme.compte() + " par la paie de "
+            "Versement de la dette constatée " + (ventilation.size() > 1 ? "aux comptes " : "au compte ")
+                + String.join(", ", ventilation.keySet()) + " par la paie de "
                 + periode(mois, annee) + " (note " + notePaie.getReference() + ", " + bulletins.size() + " bulletins).",
-            List.of(ligne(montant, organisme.compte(), organisme.libelle() + " " + periode(mois, annee))));
+            lignes);
         return etat(mois, annee);
     }
 
@@ -203,9 +221,49 @@ public class PaieNoteService {
     // ---------------------------------------------------------------------
 
     /**
+     * Constatation de la paie d'un mois à sa clôture (audit SYSCOHADA du 10/11/2026, C-14 : comptabilité
+     * d'engagement). Charges de personnel, impôts et cotisations sont rattachés au mois de paie, au journal de paie,
+     * dès que le DFIN clôture le mois — et non plus au jour où la note de paie est payée.
+     */
+    @Transactional
+    public PieceComptable constaterALaCloture(List<BulletinPaie> bulletins, int mois, int annee, User auteur) {
+        LocalDate datePiece = dateConstatation(mois, annee);
+        String libelle = "Constatation de la paie " + periode(mois, annee)
+            + (datePiece.equals(YearMonth.of(annee, mois).atEndOfMonth()) ? "" : " (période du mois de paie clôturée)");
+        List<EcritureGrandLivre> lignes = comptabilisation.construireLignesGroupees(bulletins, libelle);
+        PieceComptable piece;
+        try {
+            piece = comptabilite.creerPieceInterne(JournalComptable.PAIE, libelle, datePiece, lignes, auteur);
+        } catch (RuntimeException e) {
+            throw new TransitionInvalideException("La constatation de la paie de " + periode(mois, annee)
+                + " ne peut pas être écrite au " + datePiece + " : " + e.getMessage());
+        }
+        bulletins.forEach(b -> {
+            b.setPieceComptable(piece);
+            b.setConstateeALaCloture(true);
+        });
+        log.info("Paie {} constatee a la cloture [piece={}, bulletins={}]", periode(mois, annee),
+            piece.getReference(), bulletins.size());
+        return piece;
+    }
+
+    /** Annule la constatation d'un mois rouvert (extourne de la pièce) : les bulletins redeviennent modifiables. */
+    @Transactional
+    public void annulerConstatation(List<BulletinPaie> bulletins, User auteur) {
+        bulletins.stream().map(BulletinPaie::getPieceComptable).filter(java.util.Objects::nonNull)
+            .map(PieceComptable::getId).distinct()
+            .forEach(id -> comptabilite.annulerInterne(id, auteur));
+        bulletins.forEach(b -> {
+            b.setPieceComptable(null);
+            b.setConstateeALaCloture(false);
+        });
+    }
+
+    /**
      * Appelé par les trois canaux de paiement (caisse, banque, mobile money) juste avant qu'une note
-     * passe à PAYEE, dans la même transaction. Pour une note de paie : écrit la pièce de constatation de
-     * la paie du mois. Sans effet sur toute autre note.
+     * passe à PAYEE, dans la même transaction. Pour une note de paie dont le mois a été constaté à sa clôture :
+     * rien de plus, le paiement solde les salaires nets. Pour une note de paie plus ancienne (mois clôturé avant la
+     * constatation à la clôture) : écrit la pièce de constatation de la paie du mois. Sans effet sur toute autre note.
      */
     @Transactional
     public void apresPaiementInterne(NoteFrais note, User operateur) {
@@ -216,6 +274,9 @@ public class PaieNoteService {
         if (bulletins.isEmpty()) {
             throw new TransitionInvalideException("La note de paie " + note.getReference()
                 + " n'est plus rattachée à aucun bulletin : paiement impossible.");
+        }
+        if (bulletins.stream().allMatch(BulletinPaie::isConstateeALaCloture)) {
+            return;
         }
         BigDecimal nets = somme(bulletins, BulletinPaie::getSalaireNet);
         if (nets.compareTo(note.getMontant()) != 0) {
@@ -230,7 +291,7 @@ public class PaieNoteService {
         List<EcritureGrandLivre> lignes = comptabilisation.construireLignesGroupees(bulletins, libelle);
         PieceComptable piece;
         try {
-            piece = comptabilite.creerPieceInterne(JournalComptable.OPERATIONS_DIVERSES, libelle, datePiece, lignes, operateur);
+            piece = comptabilite.creerPieceInterne(JournalComptable.PAIE, libelle, datePiece, lignes, operateur);
         } catch (RuntimeException e) {
             throw new TransitionInvalideException("La constatation de la paie de "
                 + periode(note.getPaieMois(), note.getPaieAnnee()) + " ne peut pas être écrite au "
@@ -260,9 +321,37 @@ public class PaieNoteService {
 
     // ---------------------------------------------------------------------
 
-    /** Bulletins validés que la note de paie peut couvrir : pas déjà comptabilisés par l'ancien circuit. */
+    /**
+     * Compte débité par la ligne de la note de paie d'un agent : celui que la constatation de son bulletin a
+     * crédité, pour que le paiement le solde exactement (audit DRH du 15/11/2026, D-02). Le compte propre de
+     * l'agent (à défaut 42211) ; mais un bulletin constaté avant l'ouverture des comptes par agent, dont la pièce
+     * ne crédite que le collectif 42211, reste réglé sur 42211.
+     */
+    static String compteNet(BulletinPaie b) {
+        String compteAgent = PaieComptabilisationService.compteNetAPayer(b.getEmploye());
+        PieceComptable piece = b.getPieceComptable();
+        if (piece == null || piece.getLignes() == null || piece.getLignes().isEmpty()) {
+            return compteAgent;
+        }
+        List<String> credites = piece.getLignes().stream()
+            .filter(l -> l.getCredit() != null && l.getCredit().signum() > 0 && l.getCompte() != null)
+            .map(l -> l.getCompte().getNumero())
+            .filter(PaieComptabilisationService::estCompteNetAPayer)
+            .distinct()
+            .toList();
+        if (credites.isEmpty() || credites.contains(compteAgent)) {
+            return compteAgent;
+        }
+        return credites.contains(PaieComptabilisationService.COMPTE_NET_A_PAYER)
+            ? PaieComptabilisationService.COMPTE_NET_A_PAYER : compteAgent;
+    }
+
+    /**
+     * Bulletins validés que la note de paie peut couvrir : constatés à la clôture du mois, ou pas encore
+     * comptabilisés ; jamais ceux d'un ancien circuit, payés par une pièce par bulletin.
+     */
     private static List<BulletinPaie> eligibles(List<BulletinPaie> valides) {
-        return valides.stream().filter(b -> b.getPieceComptable() == null).toList();
+        return valides.stream().filter(b -> b.getPieceComptable() == null || b.isConstateeALaCloture()).toList();
     }
 
     private static Optional<NoteFrais> active(List<NoteFrais> notes, CategorieNote categorie, OrganismePaie organisme) {
@@ -272,6 +361,45 @@ public class PaieNoteService {
             .findFirst();
     }
 
+    /**
+     * Dette d'un organisme par compte, telle que la constatation l'a créditée : {compte -> montant}. Pour les bulletins
+     * constatés, les crédits de leurs pièces (chaque pièce comptée une fois) sur les comptes de l'organisme, actuels ou
+     * historiques ({@link OrganismePaie#porte}) ; pour les bulletins sans pièce (mode manuel non encore comptabilisé),
+     * repli sur les crédits que la constatation écrirait aujourd'hui ({@link PaieComptabilisationService#credits}).
+     * Comptes dans l'ordre de l'organisme (actuels puis historiques), montants nuls écartés.
+     */
+    static Map<String, BigDecimal> ventilation(List<BulletinPaie> bulletins, OrganismePaie o) {
+        Map<String, BigDecimal> parCompte = new HashMap<>();
+        Set<PieceComptable> pieces = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (BulletinPaie b : bulletins) {
+            PieceComptable piece = b.getPieceComptable();
+            if (piece != null && piece.getLignes() != null && !piece.getLignes().isEmpty()) {
+                if (pieces.add(piece)) {
+                    for (EcritureGrandLivre l : piece.getLignes()) {
+                        if (l.getCompte() != null && l.getCredit() != null && l.getCredit().signum() > 0
+                                && o.porte(l.getCompte().getNumero())) {
+                            parCompte.merge(l.getCompte().getNumero(), l.getCredit(), BigDecimal::add);
+                        }
+                    }
+                }
+            } else {
+                PaieComptabilisationService.credits(b).forEach((compte, montant) -> {
+                    if (o.porte(compte)) parCompte.merge(compte, montant, BigDecimal::add);
+                });
+            }
+        }
+        Map<String, BigDecimal> ordonne = new LinkedHashMap<>();
+        java.util.stream.Stream.concat(o.comptes().stream(), o.comptesHistoriques().stream())
+            .filter(c -> parCompte.getOrDefault(c, BigDecimal.ZERO).signum() > 0)
+            .forEach(c -> ordonne.put(c, parCompte.get(c)));
+        return ordonne;
+    }
+
+    private static BigDecimal total(Map<String, BigDecimal> ventilation) {
+        return ventilation.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** Montant dû à un organisme, calculé sur les bulletins (contrôle ; la note suit {@link #ventilation}). */
     static BigDecimal montantOrganisme(List<BulletinPaie> bulletins, OrganismePaie o) {
         return switch (o) {
             case IPR -> somme(bulletins, BulletinPaie::getIpr);

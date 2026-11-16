@@ -17,6 +17,7 @@ interface Facture {
 }
 
 const api = useApi()
+const dialogues = useDialogues()
 const etat = ref<Etat | null>(null)
 const aRegulariser = ref<Facture[]>([])
 const chargement = ref(true)
@@ -92,7 +93,13 @@ async function tester() {
 }
 
 async function retirerJeton() {
-  if (!confirm('Retirer le jeton enregistré ?')) return
+  const confirme = await dialogues.confirmer({
+    titre: 'Retirer le jeton enregistré ?',
+    bouton: 'Retirer le jeton',
+    nature: 'danger',
+    icone: 'mdi-key-remove',
+  })
+  if (!confirme) return
   action.value = 'retirer'
   try {
     appliquer(await api<Etat>('/admin/facturation-normalisee/jeton', { method: 'DELETE' }))

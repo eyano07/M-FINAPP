@@ -31,6 +31,7 @@ const props = defineProps<{ budgetId?: number | null }>()
 const emit = defineEmits<{ (e: 'enregistre', id: number): void, (e: 'annule'): void }>()
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const chargement = ref(false)
 const enregistrement = ref(false)
@@ -60,19 +61,25 @@ const etatCourant = () => JSON.stringify([entete, lignes.value.map(l => [l.compt
 const modifie = computed(() => instantane.value !== '' && instantane.value !== etatCourant())
 const memoriserEtat = () => { instantane.value = etatCourant() }
 
-// Boîte de confirmation commune aux actions destructrices.
-const confirmation = reactive({ ouverte: false, titre: '', texte: '', bouton: 'Confirmer', action: (() => {}) as () => void, refus: (() => {}) as () => void })
-function demanderConfirmation(titre: string, texte: string, bouton: string, action: () => void, refus: () => void = () => {}) {
-  Object.assign(confirmation, { ouverte: true, titre, texte, bouton, action, refus })
+// Confirmation des actions qui remplacent ou retirent des montants saisis : la boîte commune de l'application
+// (composables/useDialogues.ts) ; `refus` s'exécute à l'abandon (bouton, Échap ou clic à côté).
+async function demanderConfirmation(titre: string, texte: string, bouton: string, action: () => void, refus: () => void = () => {}) {
+  if (await dialogues.confirmer({ titre, message: texte, bouton, nature: 'attention' })) action()
+  else refus()
 }
-function validerConfirmation() { confirmation.ouverte = false; confirmation.action() }
-function refuserConfirmation() { confirmation.ouverte = false; confirmation.refus() }
 
 const avantFermeture = (e: BeforeUnloadEvent) => { if (modifie.value) { e.preventDefault(); e.returnValue = '' } }
 onMounted(() => window.addEventListener('beforeunload', avantFermeture))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', avantFermeture))
-onBeforeRouteLeave(() => {
-  if (modifie.value && !window.confirm('Des modifications ne sont pas enregistrées. Quitter quand même ?')) return false
+onBeforeRouteLeave(async () => {
+  if (modifie.value && !(await dialogues.confirmer({
+    titre: 'Quitter sans enregistrer ?',
+    message: 'Des modifications de ce budget ne sont pas enregistrées.',
+    bouton: 'Quitter quand même',
+    abandon: 'Rester',
+    nature: 'attention',
+    icone: 'mdi-content-save-alert-outline',
+  }))) return false
 })
 
 // ---------------------------------------------------------------------------------------------
@@ -781,18 +788,6 @@ async function enregistrer() {
       </v-card>
     </template>
 
-    <!-- Confirmation -->
-    <v-dialog v-model="confirmation.ouverte" max-width="460" @click:outside="refuserConfirmation">
-      <v-card>
-        <v-card-title>{{ confirmation.titre }}</v-card-title>
-        <v-card-text>{{ confirmation.texte }}</v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="refuserConfirmation">Annuler</v-btn>
-          <v-btn color="primary" variant="flat" @click="validerConfirmation">{{ confirmation.bouton }}</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
 
     <!-- Dialogue IA -->
     <v-dialog v-model="dialogueIa" max-width="860" scrollable>

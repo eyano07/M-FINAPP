@@ -85,7 +85,19 @@ public class AdminService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Compte parent introuvable : " + req.parentNumero()));
 
-        String nouveauNumero = req.parentNumero() + "." + req.suffixe().trim();
+        // Codification décimale du SYSCOHADA (audit du 10/11/2026, C-17) : le sous-compte prolonge le numéro du
+        // parent par des chiffres (4221 -> 42211), jamais par un point.
+        String suffixe = req.suffixe().trim();
+        if (!suffixe.matches("[0-9]{1,6}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Le suffixe d'un sous-compte est fait de chiffres seulement, sans point (ex. 1 pour 4221 -> 42211).");
+        }
+        if (EcritureComptableService.COMPTE_CAISSE.equals(parent.getNumero())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le compte " + parent.getNumero()
+                + " est le compte de caisse de l'application, mouvementé par chaque opération de caisse : il ne se "
+                + "subdivise pas.");
+        }
+        String nouveauNumero = req.parentNumero() + suffixe;
         if (compteRepository.existsByNumero(nouveauNumero)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Numéro de compte déjà existant : " + nouveauNumero);

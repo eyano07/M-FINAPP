@@ -8,8 +8,10 @@ interface Trajet {
   vehiculeImmatriculation: string
   origine?: string
   destination?: string
+  motif?: string | null
   distanceKm: number
   dateDepart?: string
+  dateArrivee?: string
   statut: string
 }
 
@@ -39,6 +41,7 @@ const form = reactive({
   vehiculeId: null as number | null,
   origine: '',
   destination: '',
+  motif: '',
   distanceKm: 0,
   dateDepart: '',
   dateArrivee: '',
@@ -63,15 +66,17 @@ const vehiculeItems = computed(() => vehicules.value.map(v => ({ title: v.immatr
 
 function ouvrirCreation() {
   editId.value = null
-  Object.assign(form, { vehiculeId: null, origine: '', destination: '', distanceKm: 0, dateDepart: '', dateArrivee: '', statut: 'PLANIFIE' })
+  Object.assign(form, { vehiculeId: null, origine: '', destination: '', motif: '', distanceKm: 0, dateDepart: '', dateArrivee: '', statut: 'PLANIFIE' })
   dialog.value = true
 }
 
 function ouvrirEdition(t: Trajet) {
   editId.value = t.id
   Object.assign(form, {
-    vehiculeId: t.vehiculeId, origine: t.origine || '', destination: t.destination || '',
-    distanceKm: t.distanceKm, dateDepart: '', dateArrivee: '', statut: t.statut,
+    vehiculeId: t.vehiculeId, origine: t.origine || '', destination: t.destination || '', motif: t.motif || '',
+    // Dates reprises du trajet : sans elles, enregistrer une modification les effaçait.
+    distanceKm: t.distanceKm, dateDepart: versChampLocal(t.dateDepart), dateArrivee: versChampLocal(t.dateArrivee),
+    statut: t.statut,
   })
   dialog.value = true
 }
@@ -88,6 +93,7 @@ async function enregistrer() {
       vehiculeId: form.vehiculeId,
       origine: form.origine,
       destination: form.destination,
+      motif: form.motif.trim() || null,
       distanceKm: form.distanceKm,
       dateDepart: form.dateDepart ? new Date(form.dateDepart).toISOString() : null,
       dateArrivee: form.dateArrivee ? new Date(form.dateArrivee).toISOString() : null,
@@ -105,6 +111,14 @@ async function enregistrer() {
   } finally {
     saving.value = false
   }
+}
+
+/** Instant ISO → valeur d'un champ datetime-local (heure locale, sans secondes). */
+function versChampLocal(iso?: string) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 function fmt(v: number) {
@@ -133,6 +147,7 @@ function fmt(v: number) {
           { title: 'Véhicule', key: 'vehiculeImmatriculation' },
           { title: 'Origine', key: 'origine' },
           { title: 'Destination', key: 'destination' },
+          { title: 'Motif', key: 'motif' },
           { title: 'Distance (km)', key: 'distanceKm', align: 'end' },
           { title: 'Statut', key: 'statut' },
           { title: '', key: 'actions', sortable: false },
@@ -142,6 +157,7 @@ function fmt(v: number) {
         items-per-page="15"
       >
         <template #item.distanceKm="{ item }">{{ fmt(item.distanceKm) }}</template>
+        <template #item.motif="{ item }">{{ item.motif || '—' }}</template>
         <template #item.statut="{ item }">
           <v-chip :color="statutColor[item.statut] || 'grey'" size="small" variant="flat">{{ item.statut }}</v-chip>
         </template>
@@ -159,6 +175,8 @@ function fmt(v: number) {
           <v-col cols="12" sm="6"><v-text-field v-model="form.origine" label="Origine" variant="outlined" density="comfortable" /></v-col>
           <v-col cols="12" sm="6"><v-text-field v-model="form.destination" label="Destination" variant="outlined" density="comfortable" /></v-col>
         </v-row>
+        <v-text-field v-model="form.motif" label="Motif du trajet (facultatif)" placeholder="ex. livraison, mission, achat"
+          prepend-inner-icon="mdi-text-short" variant="outlined" density="comfortable" maxlength="255" class="mb-1" />
         <v-row>
           <v-col cols="12" sm="6"><v-text-field v-model="form.dateDepart" label="Départ" type="datetime-local" variant="outlined" density="comfortable" /></v-col>
           <v-col cols="12" sm="6"><v-text-field v-model="form.dateArrivee" label="Arrivée" type="datetime-local" variant="outlined" density="comfortable" /></v-col>

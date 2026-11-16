@@ -84,6 +84,16 @@ public class DocumentationCompteService {
             + " lors de l'ajout de l'établissement « " + nom + " » (Administration → Établissements).");
     }
 
+    /** Sous-compte 4011… ouvert automatiquement pour un fournisseur du répertoire. */
+    public void documenterFournisseur(CompteOHADA compte, String nom, String code) {
+        if (compte.estCommente()) {
+            return;
+        }
+        documenterSousCompte(compte, "ouvert pour le fournisseur « " + nom + " »" + (code == null ? "" : " (" + code + ")"), null,
+            "Compte créé automatiquement le " + aujourdhui() + parQui()
+            + " à l'enregistrement du fournisseur « " + nom + " » (Logistique → Fournisseurs).");
+    }
+
     /**
      * Compte propre à un article du restaurant, ouvert sous la racine {@code racine}.
      *
