@@ -477,7 +477,7 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
 .rst-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
 @media (max-width: 1200px) { .rst-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 600px) { .rst-grid { grid-template-columns: 1fr; } }
-.rst-form-title { font-size: 0.85rem; font-weight: 700; color: #374151; margin: 0 0 16px; display: flex; align-items: center; }
+.rst-form-title { font-size: 0.85rem; font-weight: 700; color: var(--ink-2); margin: 0 0 16px; display: flex; align-items: center; }
 .rst-card-head {
   display: flex;
   align-items: center;
@@ -485,7 +485,7 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
   font-weight: 700;
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--ink-soft);
   padding: 16px 20px 12px;
 }
 .rst-stats { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -503,8 +503,8 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
 .rst-motif { font-weight: 600; }
 .rst-perimes { border-left: 4px solid rgb(var(--v-theme-warning)); }
-.rst-perime { display: flex; align-items: center; gap: 14px; padding: 8px 0; border-top: 1px solid #f0f0f0; }
+.rst-perime { display: flex; align-items: center; gap: 14px; padding: 8px 0; border-top: 1px solid var(--hairline); }
 .rst-perime__plat { flex: 1 1 auto; min-width: 0; }
 .rst-perime__qte { flex: 0 0 auto; font-weight: 700; color: #b45309; white-space: nowrap; }
-.rst-perime__valeur { flex: 0 0 110px; text-align: right; color: #6b7280; font-size: 0.875rem; white-space: nowrap; }
+.rst-perime__valeur { flex: 0 0 110px; text-align: right; color: var(--ink-soft); font-size: 0.875rem; white-space: nowrap; }
 </style>

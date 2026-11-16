@@ -416,9 +416,9 @@ const date = (iso: string | null | undefined) => iso
 .sync-mode { display: flex; align-items: flex-start; gap: 14px; }
 .sync-mode__icone { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .sync-mode__texte { min-width: 0; }
-.sync-mode__libelle { margin: 0 0 4px; font-weight: 800; font-size: 1.05rem; color: #0f172a; }
+.sync-mode__libelle { margin: 0 0 4px; font-weight: 800; font-size: 1.05rem; color: var(--ink); }
 .sync-mode__explication { margin: 0; color: #475569; font-size: 0.9rem; line-height: 1.5; }
-.sync-section { margin: 0 0 8px; font-weight: 700; color: #0f172a; }
+.sync-section { margin: 0 0 8px; font-weight: 700; color: var(--ink); }
 .sync-aide { color: #64748b; font-size: 0.86rem; line-height: 1.5; }
 .sync-role { max-width: 100%; }
 .sync-cle { margin-top: 8px; padding: 12px; border: 1px dashed #93c5fd; border-radius: 12px; background: #eff6ff; }
@@ -427,6 +427,6 @@ const date = (iso: string | null | undefined) => iso
 .sync-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
 .sync-tuile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; background: #f6f8fa; }
 .sync-tuile span { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #94a3b8; }
-.sync-tuile strong { font-size: 0.95rem; color: #0f172a; }
+.sync-tuile strong { font-size: 0.95rem; color: var(--ink); }
 .sync-liste { margin: 0; padding-left: 18px; color: #475569; font-size: 0.9rem; line-height: 1.6; }
 </style>

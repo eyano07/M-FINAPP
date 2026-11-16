@@ -840,52 +840,52 @@ const classeEcart = (section: string, v: number) => {
 <style scoped>
 .bs-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .bs-infos { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
-.bs-infos span { display: block; font-size: 0.72rem; color: #6b7280; }
+.bs-infos span { display: block; font-size: 0.72rem; color: var(--ink-soft); }
 .bs-infos strong { display: block; font-size: 0.92rem; }
-.bs-infos small { color: #6b7280; }
-.bs-observation { margin: 12px 0 0; font-size: 0.86rem; color: #374151; }
+.bs-infos small { color: var(--ink-soft); }
+.bs-observation { margin: 12px 0 0; font-size: 0.86rem; color: var(--ink-2); }
 .bs-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-.bs-kpi { background: #fff; border: 1px solid #eef0f3; border-top: 4px solid; border-radius: 12px; padding: 12px 14px; }
+.bs-kpi { background: var(--surface); border: 1px solid #eef0f3; border-top: 4px solid; border-radius: 12px; padding: 12px 14px; }
 .bs-kpi__tete { font-weight: 700; font-size: 0.9rem; margin-bottom: 6px; display: flex; gap: 6px; align-items: center; }
 .bs-kpi__ligne { display: flex; justify-content: space-between; font-size: 0.82rem; padding: 2px 0; }
-.bs-kpi__ligne span { color: #6b7280; }
+.bs-kpi__ligne span { color: var(--ink-soft); }
 .bs-kpi__ligne strong { font-variant-numeric: tabular-nums; }
 .bs-titre { font-weight: 700; font-size: 1rem; }
 .bs-graphes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .bs-graphe { border: 1px solid #f1f2f4; border-radius: 10px; padding: 10px; }
-.bs-graphe__titre { font-size: 0.8rem; font-weight: 600; color: #374151; margin: 0 0 6px; }
+.bs-graphe__titre { font-size: 0.8rem; font-weight: 600; color: var(--ink-2); margin: 0 0 6px; }
 .bs-graphe__zone { position: relative; height: 260px; }
-.bs-vide { color: #9ca3af; font-size: 0.85rem; text-align: center; padding-top: 100px; }
+.bs-vide { color: var(--ink-faint); font-size: 0.85rem; text-align: center; padding-top: 100px; }
 .bs-table-wrap { overflow-x: auto; }
 .bs-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-.bs-table th { background: #f8fafc; color: #6b7280; font-size: 0.7rem; text-transform: uppercase; padding: 8px; text-align: left; white-space: nowrap; }
+.bs-table th { background: var(--surface-2); color: var(--ink-soft); font-size: 0.7rem; text-transform: uppercase; padding: 8px; text-align: left; white-space: nowrap; }
 .bs-table td { padding: 6px 8px; border-top: 1px solid #f1f2f4; }
 .bs-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bs-table .mono { font-family: ui-monospace, monospace; font-size: 0.78rem; }
 .bs-section-ligne td { background: #eef2ff; font-weight: 800; text-transform: uppercase; font-size: 0.74rem; letter-spacing: 0.04em; border-left: 4px solid; }
-.bs-sous-total td { background: #fafbfc; font-weight: 600; }
+.bs-sous-total td { background: var(--surface-2); font-weight: 600; }
 .bs-total td { background: #f1f5f9; font-weight: 800; }
 .bs-resultat td { background: #ede9fe; font-weight: 800; }
-.bs-commentaire { font-size: 0.72rem; color: #6b7280; }
+.bs-commentaire { font-size: 0.72rem; color: var(--ink-soft); }
 .bs-favorable { color: #15803d; }
 .bs-defavorable { color: #b91c1c; font-weight: 600; }
-.bs-legende { font-size: 0.74rem; color: #6b7280; padding: 10px 16px 14px; margin: 0; }
+.bs-legende { font-size: 0.74rem; color: var(--ink-soft); padding: 10px 16px 14px; margin: 0; }
 .bs-cartes { padding: 0 12px 12px; }
 .bs-cartes__section { background: #eef2ff; border-left: 4px solid; font-weight: 800; text-transform: uppercase; font-size: 0.74rem; letter-spacing: 0.04em; padding: 8px 10px; margin-top: 10px; border-radius: 4px; }
 .bs-carte { border: 1px solid #eef0f3; border-radius: 10px; padding: 10px; margin-top: 8px; }
 .bs-carte--total { background: #f1f5f9; font-weight: 700; }
 .bs-carte__tete { font-weight: 600; font-size: 0.86rem; }
-.bs-carte .mono { font-family: ui-monospace, monospace; font-size: 0.78rem; color: #4b5563; }
+.bs-carte .mono { font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--ink-soft); }
 .bs-carte__grille { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; margin: 8px 0 0; }
-.bs-carte__grille dt { font-size: 0.68rem; color: #6b7280; font-weight: 400; }
+.bs-carte__grille dt { font-size: 0.68rem; color: var(--ink-soft); font-weight: 400; }
 .bs-carte__grille dd { margin: 0; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
 .bs-signatures { display: none; }
 .bs-service-ligne { cursor: pointer; }
-.bs-service-ligne:hover td { background: #f8fafc; }
+.bs-service-ligne:hover td { background: var(--surface-2); }
 .bs-service-ligne:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 .bs-ligne-depassement td { background: #fef2f2; }
 .bs-service-detail > td { background: #fbfbff; padding: 10px 14px !important; }
-.bs-table--interne { font-size: 0.78rem; background: #fff; border: 1px solid #eef0f3; border-radius: 8px; }
+.bs-table--interne { font-size: 0.78rem; background: var(--surface); border: 1px solid #eef0f3; border-radius: 8px; }
 .bs-sous-titre { font-weight: 700; font-size: 0.8rem; margin-bottom: 4px; display: flex; gap: 4px; align-items: center; }
 .bs-jauge { width: 70px; display: inline-block; vertical-align: middle; margin-right: 6px; }
 .bs-carte-depassements { border-left: 4px solid #dc2626; }
@@ -912,6 +912,6 @@ const classeEcart = (section: string, v: number) => {
   .bs-signatures span { display: block; font-weight: 700; font-size: 0.75rem; }
   .bs-signatures strong { display: block; font-size: 0.75rem; min-height: 1em; }
   .bs-signatures__ligne { border-bottom: 1px solid #9ca3af; height: 46px; }
-  .bs-signatures small { font-size: 0.62rem; color: #6b7280; }
+  .bs-signatures small { font-size: 0.62rem; color: var(--ink-soft); }
 }
 </style>

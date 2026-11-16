@@ -3,9 +3,23 @@
    ============================================================ */
 
 :root {
-  --mbsc-radius: 16px;
-  --mbsc-border: #f0f0f0;
-  --mbsc-text-secondary: #6b7280;
+  --mbsc-radius: 10px;
+  --mbsc-border: #dde5e1;
+  --mbsc-text-secondary: #55645c;
+  /* « Malachite » : surfaces teintées de la couleur de marque (papier vert très pâle), encre quasi noire verte. */
+  --canvas: color-mix(in srgb, var(--color-primary) 5%, #eef2f0);
+  --ink: #0d1a15;
+  --ink-soft: #55645c;
+  --hairline: #dde5e1;
+  --font-ui: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --surface: #ffffff;
+  --surface-2: #f7faf8;
+  --ink-2: #2b3a33;
+  --ink-faint: #7b8a82;
+  --color-primary-nuit: #3fbf7f;
+  /* Barre latérale et panneau de trésorerie (sombres dans les deux thèmes). */
+  --nav-bg: color-mix(in srgb, var(--color-primary) 38%, #04120c);
+  --hero-bg: color-mix(in srgb, var(--color-primary) 40%, #04120c);
   --mbsc-appbar-h: 60px;
   /* Couleur de marque personnalisable (admin > paramètres) — valeur de
      repli pour le tout premier rendu (SSR/avant hydratation), avant que
@@ -21,11 +35,51 @@
   --color-primary-mid: color-mix(in srgb, var(--color-primary) 45%, white);
 }
 
+/* ── Thème nuit « Malachite nuit » ─────────────────────────────
+   Écran seulement : une impression reste toujours en noir sur blanc. Le vert de marque est remplacé par sa version
+   éclaircie (calculée par stores/parametres.ts) ; !important car la couleur de marque est posée en style en ligne. */
+@media screen {
+  html[data-theme='dark'] {
+    --color-primary: var(--color-primary-nuit) !important;
+    --color-primary-dark: color-mix(in srgb, var(--color-primary) 80%, white);
+    --color-primary-darker: color-mix(in srgb, var(--color-primary) 55%, #07110d);
+    --color-primary-darkest: color-mix(in srgb, var(--color-primary) 30%, #07110d);
+    --color-primary-light: color-mix(in srgb, var(--color-primary) 16%, #0d1a14);
+    --color-primary-lighter: color-mix(in srgb, var(--color-primary) 9%, #0d1a14);
+    --color-primary-mid: color-mix(in srgb, var(--color-primary) 50%, #0d1a14);
+    --canvas: #07110d;
+    --surface: #0d1a14;
+    --surface-2: #12221a;
+    --hairline: #1f3329;
+    --mbsc-border: #1f3329;
+    --ink: #e7f0ea;
+    --ink-2: #c9d6ce;
+    --ink-soft: #97aa9f;
+    --ink-faint: #6c8075;
+    --mbsc-text-secondary: #97aa9f;
+    --nav-bg: #050c09;
+    --hero-bg: color-mix(in srgb, var(--color-primary) 22%, #08140f);
+    color-scheme: dark;
+  }
+  html[data-theme='dark'] .classroom-card:hover { box-shadow: 0 0 0 1px var(--hairline) !important; }
+  html[data-theme='dark'] img:not([src*='.svg']) { filter: brightness(0.92); }
+}
+
 html,
 body {
-  font-family: 'Inter', 'Roboto', Arial, sans-serif;
-  background-color: #f8f9fa;
+  font-family: var(--font-ui);
+  background-color: var(--canvas);
+  color: var(--ink);
 }
+/* Vuetify impose Roboto sur .v-application et sur les classes typographiques : on reprend la main. */
+.v-application,
+.v-application [class*='text-'],
+.v-application .v-btn,
+.v-application .v-field,
+.v-application .v-label {
+  font-family: var(--font-ui) !important;
+}
+.v-application { background: var(--canvas) !important; color: var(--ink); }
 
 /* Shared surface card */
 .classroom-card {
@@ -50,14 +104,14 @@ body {
 .page-title {
   font-size: clamp(1.4rem, 2.6vw, 1.85rem);
   font-weight: 700;
-  letter-spacing: -0.5px;
-  color: #111827;
+  letter-spacing: -0.025em;
+  color: var(--ink);
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 .page-sub {
-  font-size: 0.875rem;
-  color: #6b7280;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
   margin: 4px 0 0;
 }
 
@@ -76,12 +130,10 @@ body {
   border-radius: var(--mbsc-radius);
 }
 .v-data-table .v-data-table__th {
-  font-size: 0.72rem !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: #9ca3af !important;
-  background: #fafafa !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  color: var(--ink-soft) !important;
+  background: var(--surface-2) !important;
 }
 .v-data-table .v-data-table__td {
   font-size: 0.875rem !important;

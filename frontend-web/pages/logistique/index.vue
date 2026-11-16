@@ -320,24 +320,24 @@ const statutLabel: Record<string, string> = { BROUILLON: 'Brouillon', VALIDE: 'V
 .ldb { max-width: 1200px; margin: 0 auto; padding: 8px 0 48px; }
 
 .ldb__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 36px; flex-wrap: wrap; }
-.ldb__eyebrow { font-size: 0.8125rem; color: #9ca3af; font-weight: 500; margin: 0 0 4px; }
-.ldb__title { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 700; color: #111827; letter-spacing: -0.5px; margin: 0 0 6px; }
-.ldb__sub { font-size: 0.875rem; color: #6b7280; margin: 0; }
+.ldb__eyebrow { font-size: 0.8125rem; color: var(--ink-faint); font-weight: 500; margin: 0 0 4px; }
+.ldb__title { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 700; color: var(--ink); letter-spacing: -0.5px; margin: 0 0 6px; }
+.ldb__sub { font-size: 0.875rem; color: var(--ink-soft); margin: 0; }
 .ldb__cta { margin-top: 4px; flex-shrink: 0; }
 
 .ldb__stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 40px; }
 
 .ldb__section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-.ldb__section-title { font-size: 1.0625rem; font-weight: 700; color: #111827; margin: 0 0 2px; }
-.ldb__section-sub { font-size: 0.8rem; color: #9ca3af; margin: 0; }
+.ldb__section-title { font-size: 1.0625rem; font-weight: 700; color: var(--ink); margin: 0 0 2px; }
+.ldb__section-sub { font-size: 0.8rem; color: var(--ink-faint); margin: 0; }
 
 .ldb-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 680px) { .ldb-grid2 { grid-template-columns: 1fr; } }
-.ldb-card { background: #fff; border: 1px solid #f0f0f0; border-radius: 18px; padding: 20px 22px; }
-.ldb-card__title { font-size: 0.875rem; font-weight: 700; color: #111827; margin: 0 0 16px; display: flex; align-items: center; }
+.ldb-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 18px; padding: 20px 22px; }
+.ldb-card__title { font-size: 0.875rem; font-weight: 700; color: var(--ink); margin: 0 0 16px; display: flex; align-items: center; }
 .ldb-card__body { height: 260px; position: relative; }
-.ldb-card__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.82rem; }
+.ldb-card__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ink-faint); font-size: 0.82rem; }
 
-.ldb__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 24px; background: #fff; border: 1px dashed #e5e7eb; border-radius: 16px; text-align: center; }
-.ldb__empty-title { font-size: 0.95rem; font-weight: 600; color: #374151; margin: 0; }
+.ldb__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 24px; background: var(--surface); border: 1px dashed var(--hairline); border-radius: 16px; text-align: center; }
+.ldb__empty-title { font-size: 0.95rem; font-weight: 600; color: var(--ink-2); margin: 0; }
 </style>

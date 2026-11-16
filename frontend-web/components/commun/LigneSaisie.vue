@@ -46,8 +46,8 @@ const emit = defineEmits<{ (e: 'retirer'): void }>()
     display: block;
     margin-bottom: 10px;
     padding: 10px 12px 14px;
-    background: #fff;
-    border: 1px solid #eef0f2;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
     border-radius: 14px;
   }
   .ls__entete { display: flex; align-items: center; justify-content: space-between; margin: 0 -4px 4px 0; }

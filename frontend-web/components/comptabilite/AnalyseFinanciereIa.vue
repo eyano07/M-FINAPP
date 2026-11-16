@@ -100,7 +100,7 @@ async function genererAnalyse() {
 
 <style scoped>
 .analyse-ia__card {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #ede9fe;
   border-left: 3px solid #7c3aed;
   border-radius: 16px;
@@ -115,8 +115,8 @@ async function genererAnalyse() {
   page-break-inside: avoid;
 }
 .analyse-ia__head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: #7c3aed; }
-.analyse-ia__title { font-size: 0.95rem; font-weight: 700; color: #111827; }
-.analyse-ia__synthese { font-size: 0.875rem; color: #374151; line-height: 1.6; margin: 0 0 18px; }
+.analyse-ia__title { font-size: 0.95rem; font-weight: 700; color: var(--ink); }
+.analyse-ia__synthese { font-size: 0.875rem; color: var(--ink-2); line-height: 1.6; margin: 0 0 18px; }
 
 .analyse-ia__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
 .analyse-ia__col-title {
@@ -130,7 +130,7 @@ async function genererAnalyse() {
 .analyse-ia__col ul,
 .analyse-ia__reco ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .analyse-ia__col li,
-.analyse-ia__reco li { font-size: 0.8125rem; color: #374151; line-height: 1.5; }
+.analyse-ia__reco li { font-size: 0.8125rem; color: var(--ink-2); line-height: 1.5; }
 
 .analyse-ia__reco { padding-top: 14px; border-top: 1px dashed #ede9fe; }
 
@@ -138,10 +138,10 @@ async function genererAnalyse() {
   margin: 24px 0 0 auto; padding-top: 12px; width: 220px;
   display: flex; flex-direction: column; align-items: center; text-align: center;
 }
-.analyse-ia__signature-label { font-size: 0.72rem; font-weight: 700; color: #111827; }
-.analyse-ia__signature-name { font-size: 0.8125rem; color: #374151; margin-top: 2px; }
+.analyse-ia__signature-label { font-size: 0.72rem; font-weight: 700; color: var(--ink); }
+.analyse-ia__signature-name { font-size: 0.8125rem; color: var(--ink-2); margin-top: 2px; }
 .analyse-ia__signature-line { width: 100%; border-top: 1px solid #9ca3af; margin: 28px 0 4px; }
-.analyse-ia__signature-hint { font-size: 0.68rem; color: #9ca3af; font-style: italic; }
+.analyse-ia__signature-hint { font-size: 0.68rem; color: var(--ink-faint); font-style: italic; }
 
 @media (max-width: 640px) {
   .analyse-ia__grid { grid-template-columns: 1fr; }

@@ -188,7 +188,7 @@ async function enregistrer() {
   width: 100%;
   max-width: 440px;
   padding: 28px 28px 20px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #e8ecef;
   border-radius: 20px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px rgba(15, 23, 42, 0.08);
@@ -200,7 +200,7 @@ async function enregistrer() {
   background: var(--color-primary);
   overflow: hidden;
 }
-.cmp-logo--image { background: #fff; border: 1px solid #e8ecef; }
+.cmp-logo--image { background: var(--surface); border: 1px solid #e8ecef; }
 .cmp-logo img { width: 100%; height: 100%; object-fit: contain; }
 .cmp-entreprise { font-weight: 700; color: #334155; letter-spacing: 0.2px; }
 .cmp-icone {
@@ -210,7 +210,7 @@ async function enregistrer() {
   background: var(--color-primary-light);
   color: var(--color-primary);
 }
-.cmp-titre { margin: 0 0 6px; font-size: 1.4rem; font-weight: 800; color: #0f172a; line-height: 1.25; }
+.cmp-titre { margin: 0 0 6px; font-size: 1.4rem; font-weight: 800; color: var(--ink); line-height: 1.25; }
 .cmp-texte { margin: 0 0 18px; font-size: 0.92rem; line-height: 1.5; color: #475569; }
 .cmp-form { display: flex; flex-direction: column; gap: 14px; }
 .cmp-regles { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -229,7 +229,7 @@ async function enregistrer() {
   font-size: 0.9rem;
   cursor: pointer;
 }
-.cmp-deconnexion:hover { color: #0f172a; }
+.cmp-deconnexion:hover { color: var(--ink); }
 @media screen and (max-width: 599px) {
   .cmp-carte { padding: 22px 18px 14px; border-radius: 18px; }
   .cmp-titre { font-size: 1.25rem; }

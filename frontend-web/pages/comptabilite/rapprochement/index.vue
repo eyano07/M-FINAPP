@@ -333,15 +333,15 @@ async function enregistrer() {
 <style scoped>
 .rb-table-wrap { overflow-x: auto; }
 .rb-cartes { display: none; }
-.rb-saisie-total { margin: 4px 2px 0; font-size: 0.82rem; color: #4b5563; }
+.rb-saisie-total { margin: 4px 2px 0; font-size: 0.82rem; color: var(--ink-soft); }
 
 /* Téléphone et tablette : les cartes par compte remplacent la grille de 13 colonnes. */
 @media screen and (max-width: 959px) {
   .rb-table-wrap:not(.rb-table-wrap--saisie) { display: none; }
   .rb-cartes { display: grid; gap: 12px; padding: 12px; grid-template-columns: minmax(0, 1fr); }
-  .rb-carte { padding: 12px; border: 1px solid #e8ecef; border-left: 4px solid var(--color-primary); border-radius: 14px; background: #fff; }
+  .rb-carte { padding: 12px; border: 1px solid #e8ecef; border-left: 4px solid var(--color-primary); border-radius: 14px; background: var(--surface); }
   .rb-carte__tete strong { display: block; font-size: 0.95rem; }
-  .rb-carte__tete span { display: block; margin-top: 2px; font-size: 0.78rem; color: #4b5563; overflow-wrap: anywhere; }
+  .rb-carte__tete span { display: block; margin-top: 2px; font-size: 0.78rem; color: var(--ink-soft); overflow-wrap: anywhere; }
   .rb-carte__mois { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
   .rb-tuile {
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
@@ -351,38 +351,38 @@ async function enregistrer() {
   .rb-tuile__mois { font-size: 0.7rem; font-weight: 600; }
   .rb-tuile--ok { background: #dcfce7; color: #15803d; }
   .rb-tuile--cours { background: #fef3c7; color: #92400e; }
-  .rb-tuile--vide { background: #f3f4f6; color: #6b7280; }
-  .rb-tuile--futur { background: #fafafa; color: #d1d5db; cursor: default; }
+  .rb-tuile--vide { background: var(--surface-2); color: var(--ink-soft); }
+  .rb-tuile--futur { background: var(--surface-2); color: #d1d5db; cursor: default; }
 }
 @media screen and (min-width: 600px) and (max-width: 959px) {
   .rb-cartes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rb-carte__mois { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
 .rb-table { width: 100%; border-collapse: collapse; min-width: 860px; }
-.rb-table th { font-size: 0.72rem; color: #4b5563; text-transform: uppercase; padding: 10px 6px; text-align: left; background: #f8fafc; }
+.rb-table th { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; padding: 10px 6px; text-align: left; background: var(--surface-2); }
 .rb-table td { border-top: 1px solid #f1f2f4; padding: 8px 6px; }
 .rb-mois { text-align: center !important; }
 .rb-mois--courant { color: var(--color-primary) !important; }
 .rb-compte strong { display: block; font-size: 0.88rem; }
-.rb-compte span { font-size: 0.74rem; color: #4b5563; }
+.rb-compte span { font-size: 0.74rem; color: var(--ink-soft); }
 .rb-cell { text-align: center; }
 .rb-etat { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 40px; height: 30px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; text-decoration: none; border: none; cursor: pointer; }
 .rb-etat--ok { background: #dcfce7; color: #15803d; }
 .rb-etat--cours { background: #fef3c7; color: #92400e; }
-.rb-etat--vide { background: #f3f4f6; color: #6b7280; }
+.rb-etat--vide { background: var(--surface-2); color: var(--ink-soft); }
 .rb-etat--vide:hover { background: var(--color-primary-light); color: var(--color-primary); }
 .rb-etat--futur { color: #d1d5db; cursor: default; }
-.rb-vide { text-align: center; color: #4b5563; padding: 24px !important; }
-.rb-legende { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.75rem; color: #4b5563; padding: 10px 14px; margin: 0; }
+.rb-vide { text-align: center; color: var(--ink-soft); padding: 24px !important; }
+.rb-legende { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.75rem; color: var(--ink-soft); padding: 10px 14px; margin: 0; }
 .rb-import { border: 1px dashed #c7cdd6; border-radius: 12px; padding: 16px; margin-top: 4px; }
 .rb-controle { font-size: 0.82rem; font-weight: 600; padding: 6px 10px; border-radius: 8px; }
 .rb-controle--ok { background: #dcfce7; color: #166534; }
 .rb-controle--ko { background: #fee2e2; color: #991b1b; }
 .rb-saisie { width: 100%; border-collapse: collapse; min-width: 760px; font-size: 0.82rem; }
-.rb-saisie th { font-size: 0.7rem; text-transform: uppercase; color: #4b5563; text-align: left; padding: 6px; background: #f8fafc; }
+.rb-saisie th { font-size: 0.7rem; text-transform: uppercase; color: var(--ink-soft); text-align: left; padding: 6px; background: var(--surface-2); }
 .rb-saisie td { padding: 3px 4px; border-top: 1px solid #f1f2f4; }
-.rb-saisie input { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 5px 6px; font: inherit; background: #fff; }
+.rb-saisie input { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 5px 6px; font: inherit; background: var(--surface); }
 .rb-saisie__libelle { min-width: 260px; }
 .rb-saisie .num, .rb-saisie input.num { text-align: right; font-variant-numeric: tabular-nums; }
-.rb-saisie tfoot td { font-weight: 700; background: #f8fafc; }
+.rb-saisie tfoot td { font-weight: 700; background: var(--surface-2); }
 </style>

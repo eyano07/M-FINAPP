@@ -338,23 +338,23 @@ function libelleJour(j: number): string {
 
 <style scoped>
 .fiche-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.fiche-table th { text-align: left; padding: 8px; font-size: 0.7rem; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-.fiche-table td { padding: 10px 8px; border-bottom: 1px solid #f3f4f6; }
+.fiche-table th { text-align: left; padding: 8px; font-size: 0.7rem; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--hairline); }
+.fiche-table td { padding: 10px 8px; border-bottom: 1px solid var(--hairline); }
 
 .print-only { display: none; }
 
-.jour-titre { font-size: 11pt; font-weight: 700; color: #111827; margin: 0 0 6pt; }
+.jour-titre { font-size: 11pt; font-weight: 700; color: var(--ink); margin: 0 0 6pt; }
 .jour-bloc { margin-bottom: 14pt; }
 .fiche-jour-table { width: 100%; border-collapse: collapse; font-size: 8pt; }
 .fiche-jour-table th, .fiche-jour-table td { border: 0.75pt solid #9ca3af; padding: 4pt 5pt; text-align: center; }
-.fiche-jour-table thead th { font-weight: 700; background: #f3f4f6; font-size: 7.5pt; }
+.fiche-jour-table thead th { font-weight: 700; background: var(--surface-2); font-size: 7.5pt; }
 .fiche-jour-table .col-nom { text-align: left; font-weight: 600; white-space: nowrap; }
 .fiche-jour-table .col-fonction { text-align: left; white-space: nowrap; }
 .fiche-jour-table tbody td:not(.col-nom):not(.col-fonction):not(:first-child) { height: 16pt; }
 
 .fiche-signature-directeur { margin-top: 20pt; text-align: right; }
-.fiche-signature-directeur__nom { display: block; font-weight: 700; font-size: 10pt; color: #111827; }
-.fiche-signature-directeur__fonction { display: block; font-size: 8.5pt; color: #374151; }
+.fiche-signature-directeur__nom { display: block; font-weight: 700; font-size: 10pt; color: var(--ink); }
+.fiche-signature-directeur__fonction { display: block; font-size: 8.5pt; color: var(--ink-2); }
 
 @media print {
   /* Pas de @page ici : cette regle n'est pas isolee par page dans une SPA —

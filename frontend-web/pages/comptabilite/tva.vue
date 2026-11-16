@@ -249,10 +249,10 @@ function fmtDate(d: string) {
 <style scoped>
 
 /* Recapitulatif de l'arrete, avant generation de la piece. */
-.decl-recap { display: flex; flex-direction: column; gap: 8px; background: #f9fafb; border-radius: 10px; padding: 14px 16px; }
-.decl-recap > div { display: flex; justify-content: space-between; gap: 20px; font-size: 0.9rem; color: #374151; }
-.decl-recap > div strong { font-variant-numeric: tabular-nums; color: #111827; }
-.decl-recap__net { border-top: 1px solid #e5e7eb; padding-top: 8px; font-weight: 600; }
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; color: #111827; }
+.decl-recap { display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); border-radius: 10px; padding: 14px 16px; }
+.decl-recap > div { display: flex; justify-content: space-between; gap: 20px; font-size: 0.9rem; color: var(--ink-2); }
+.decl-recap > div strong { font-variant-numeric: tabular-nums; color: var(--ink); }
+.decl-recap__net { border-top: 1px solid var(--hairline); padding-top: 8px; font-weight: 600; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; color: var(--ink); }
 </style>

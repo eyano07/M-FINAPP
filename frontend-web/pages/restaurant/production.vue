@@ -520,7 +520,7 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { dateSty
   font-weight: 700;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin: 0 0 12px;
 }
 
@@ -533,12 +533,12 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { dateSty
 }
 .prod-ligne__provision { flex: 1 1 220px; min-width: 0; }
 .prod-ligne__qte { flex: 0 0 120px; }
-.prod-ligne__dispo { flex: 0 0 auto; font-size: 0.75rem; color: #9ca3af; white-space: nowrap; }
+.prod-ligne__dispo { flex: 0 0 auto; font-size: 0.75rem; color: var(--ink-faint); white-space: nowrap; }
 .prod-ligne__cout {
   flex: 0 0 100px;
   text-align: right;
   font-size: 0.8125rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   white-space: nowrap;
 }
 
@@ -551,7 +551,7 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { dateSty
   padding: 2px 0;
 }
 .prod-total strong { font-size: 1.15rem; color: var(--color-primary); }
-.prod-total--secondaire { font-size: 0.8125rem; color: #6b7280; }
+.prod-total--secondaire { font-size: 0.8125rem; color: var(--ink-soft); }
 
 .prod-ref {
   display: inline-flex;
@@ -566,15 +566,15 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { dateSty
   cursor: pointer;
 }
 
-.prod-detail { border-top: 1px solid #f0f0f0; padding: 14px 20px 18px; background: #fafafa; }
+.prod-detail { border-top: 1px solid var(--hairline); padding: 14px 20px 18px; background: var(--surface-2); }
 .prod-detail__titre { font-size: 0.8125rem; font-weight: 700; margin: 0 0 8px; }
 .prod-detail__ligne {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   font-size: 0.8125rem;
-  color: #4b5563;
+  color: var(--ink-soft);
   padding: 2px 0 2px 10px;
 }
-.prod-detail__pieces { font-size: 0.75rem; color: #9ca3af; margin: 10px 0 0; }
+.prod-detail__pieces { font-size: 0.75rem; color: var(--ink-faint); margin: 10px 0 0; }
 </style>

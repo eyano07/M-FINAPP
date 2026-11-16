@@ -93,14 +93,14 @@ const suffixe = computed(() => (props.unite ? ` (${props.unite})` : ''))
 .lel__carte {
   min-width: 0;
   padding: 12px 12px 10px;
-  background: #fff;
-  border: 1px solid #eef0f2;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 12px;
 }
 .lel__compte { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.lel__numero { font-size: 0.95rem; font-weight: 800; color: #0f172a; }
+.lel__numero { font-size: 0.95rem; font-weight: 800; color: var(--ink); }
 .lel__compte-libelle { min-width: 0; font-size: 0.85rem; font-weight: 500; color: #475569; overflow-wrap: anywhere; }
-.lel__libelle { margin-top: 4px; font-size: 0.82rem; line-height: 1.35; color: #6b7280; overflow-wrap: anywhere; }
+.lel__libelle { margin-top: 4px; font-size: 0.82rem; line-height: 1.35; color: var(--ink-soft); overflow-wrap: anywhere; }
 .lel__montants { display: flex; gap: 8px; margin-top: 10px; }
 .lel__montant {
   flex: 1 1 0;
@@ -127,7 +127,7 @@ const suffixe = computed(() => (props.unite ? ` (${props.unite})` : ''))
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: #0f172a;
+  color: var(--ink);
 }
 .lel__montant--vide .lel__valeur { font-weight: 500; color: #94a3b8; }
 .lel__taux { margin-top: 8px; font-size: 0.74rem; color: #94a3b8; }

@@ -24,7 +24,7 @@ onBeforeUnmount(() => { if (minuterie) clearInterval(minuterie) })
     <LayoutAppBar :drawer-open="drawer" @toggle-drawer="drawer = !drawer" />
     <LayoutNavigationDrawer v-model="drawer" />
 
-    <v-main style="background: #f8f9fa;">
+    <v-main style="background: var(--canvas);">
       <!-- Marges de page : 12 px (téléphone), 16 px (tablette), 24 px (PC). -->
       <v-container fluid class="pa-3 pa-sm-4 pa-md-6">
         <LayoutBandeauInstance />

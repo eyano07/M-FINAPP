@@ -75,10 +75,10 @@ const montantDe = (p: PieceJournal) => (props.montant ? props.montant(p) : ((p a
 }
 .jp__tete { display: flex; align-items: center; gap: 8px; order: 1; }
 .jp__meta { display: flex; align-items: center; gap: 8px; order: 2; }
-.jp__libelle { order: 3; flex: 1 1 240px; min-width: 0; color: #374151; overflow-wrap: anywhere; }
+.jp__libelle { order: 3; flex: 1 1 240px; min-width: 0; color: var(--ink-2); overflow-wrap: anywhere; }
 .jp__montant { order: 4; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .jp__reference { font-weight: 700; white-space: nowrap; }
-.jp__date { color: #6b7280; white-space: nowrap; }
+.jp__date { color: var(--ink-soft); white-space: nowrap; }
 
 @media screen and (max-width: 959px) {
   .jp :deep(.v-expansion-panel-title) { padding: 12px 14px; }

@@ -263,12 +263,12 @@ async function changerMotDePasse() {
 .profil-hero__photo img { width: 100%; height: 100%; object-fit: cover; }
 .profil-hero__initials { color: #fff; font-size: 1.4rem; font-weight: 700; }
 .profil-hero__meta { flex: 1; min-width: 180px; }
-.profil-hero__name { font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0 0 2px; }
-.profil-hero__email { font-size: 0.82rem; color: #9ca3af; margin: 0 0 8px; }
+.profil-hero__name { font-size: 1.05rem; font-weight: 700; color: var(--ink); margin: 0 0 2px; }
+.profil-hero__email { font-size: 0.82rem; color: var(--ink-faint); margin: 0 0 8px; }
 .profil-hero__roles { display: flex; flex-wrap: wrap; gap: 4px; }
 .profil-hero__role { font-size: 0.66rem; font-weight: 600; padding: 2px 8px; border-radius: 100px; background: var(--color-primary-light); color: var(--color-primary); }
 .profil-hero__action { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.profil-hero__hint { font-size: 0.7rem; color: #9ca3af; margin: 0; }
+.profil-hero__hint { font-size: 0.7rem; color: var(--ink-faint); margin: 0; }
 
 .profil-form { display: flex; flex-direction: column; gap: 16px; }
 </style>

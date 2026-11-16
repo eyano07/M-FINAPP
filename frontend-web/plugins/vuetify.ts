@@ -4,13 +4,13 @@ import { fr } from 'vuetify/locale'
 import { classerCellule } from '~/utils/classerCellule'
 
 /**
- * Theme MBSC - clone visuel Google Classroom.
- * Palette Material : vert Classroom, fond gris tres clair, surfaces blanches.
+ * Theme MBSC « Malachite » : vert de marque, papier vert tres pale, surfaces blanches a filet fin, encre vert-noir.
+ * Les teintes derivees de la couleur de marque sont dans assets/styles/classroom.scss (color-mix).
  */
 const classroomLight = {
   dark: false,
   colors: {
-    background: '#F8F9FA',
+    background: '#EEF3F0',
     surface: '#FFFFFF',
     primary: '#15803D',
     secondary: '#2563EB',
@@ -19,9 +19,32 @@ const classroomLight = {
     info: '#2563EB',
     success: '#15803D',
     warning: '#D97706',
-    'on-surface': '#111827',
-    'on-background': '#111827',
-    'surface-variant': '#6B7280',
+    'on-surface': '#0D1A15',
+    'on-background': '#0D1A15',
+    'surface-variant': '#55645C',
+  },
+}
+
+/**
+ * « Malachite nuit » : forêt très sombre (jamais un noir pur), surfaces légèrement relevées, vert de marque éclairci pour
+ * rester lisible. Le vert de marque réel est réappliqué par stores/parametres.ts (version éclaircie pour la nuit).
+ */
+const malachiteNuit = {
+  dark: true,
+  colors: {
+    background: '#07110D',
+    surface: '#0D1A14',
+    'surface-bright': '#14251D',
+    'surface-variant': '#97AA9F',
+    primary: '#3FBF7F',
+    secondary: '#8DB7FF',
+    accent: '#F3D28A',
+    error: '#F87171',
+    info: '#8DB7FF',
+    success: '#3FBF7F',
+    warning: '#F5B04C',
+    'on-surface': '#E7F0EA',
+    'on-background': '#E7F0EA',
   },
 }
 
@@ -37,7 +60,7 @@ export default defineNuxtPlugin((nuxtApp) => {
     },
     theme: {
       defaultTheme: 'classroomLight',
-      themes: { classroomLight },
+      themes: { classroomLight, malachiteNuit },
     },
     icons: {
       defaultSet: 'mdi',

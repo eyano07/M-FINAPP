@@ -108,8 +108,8 @@ const montantFmt = computed(() =>
 
 <style scoped>
 .nfc {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 20px;
   overflow: hidden;
   height: 100%;
@@ -194,7 +194,7 @@ const montantFmt = computed(() =>
 .nfc__objet {
   font-size: 0.9375rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   line-height: 1.4;
   margin: 0;
   display: -webkit-box;
@@ -210,7 +210,7 @@ const montantFmt = computed(() =>
 .nfc__montant {
   font-size: 1.2rem;
   font-weight: 800;
-  color: #111827;
+  color: var(--ink);
   letter-spacing: -0.3px;
   margin: 0;
   font-variant-numeric: tabular-nums;
@@ -222,11 +222,11 @@ const montantFmt = computed(() =>
   justify-content: space-between;
   margin-top: auto;
   padding-top: 10px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
 }
 .nfc__creator {
   font-size: 0.78rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   display: flex;
   align-items: center;
 }
@@ -242,13 +242,13 @@ const montantFmt = computed(() =>
   width: 26px;
   height: 26px;
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  color: #6b7280;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-soft);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.nfc__print:hover { background: #f3f4f6; color: #111827; }
+.nfc__print:hover { background: var(--surface-2); color: var(--ink); }
 .nfc__open {
   font-size: 0.78rem;
   font-weight: 700;

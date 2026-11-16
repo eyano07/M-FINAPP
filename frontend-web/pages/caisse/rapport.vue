@@ -444,18 +444,18 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
 .rc-controles { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .rc-navigation { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .rc-date { width: 190px; }
-.rc-periode { font-size: 1.15rem; font-weight: 700; color: #111827; margin: 0 0 12px; }
+.rc-periode { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin: 0 0 12px; }
 .rc-periode::first-letter { text-transform: uppercase; }
 .rc-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.25rem; font-weight: 700; color: #111827; margin-top: 4px; overflow-wrap: anywhere; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.25rem; font-weight: 700; color: var(--ink); margin-top: 4px; overflow-wrap: anywhere; }
 .rc-kpi--entrees .kpi-value { color: #15803d; }
 .rc-kpi--sorties .kpi-value { color: #b91c1c; }
 .rc-kpi--cloture { border: 1px solid #99f6e4; background: #f0fdfa; }
 .rc-titre { display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 600; }
-.rc-secondaire { font-size: 0.72rem; color: #6b7280; }
+.rc-secondaire { font-size: 0.72rem; color: var(--ink-soft); }
 .rc-negatif { color: #b91c1c; }
-.rc-annulee td { color: #9ca3af; text-decoration: line-through; }
+.rc-annulee td { color: var(--ink-faint); text-decoration: line-through; }
 .rc-annulee td .v-chip, .rc-annulee td .rc-secondaire { text-decoration: none; }
 .rc-signatures { display: none; }
 
@@ -471,16 +471,16 @@ const sansMouvement = computed(() => !!rapport.value && rapport.value.entrees.le
 
 @media print {
   .rc-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-  .rc-kpis .v-card { padding: 8px !important; border: 1px solid #e5e7eb; }
+  .rc-kpis .v-card { padding: 8px !important; border: 1px solid var(--hairline); }
   .rc-kpis .kpi-value { font-size: 1rem; }
   .rc-periode { display: none; }
-  .rc-section { break-inside: auto; border: 1px solid #e5e7eb; margin-bottom: 12px !important; }
+  .rc-section { break-inside: auto; border: 1px solid var(--hairline); margin-bottom: 12px !important; }
   .rc-section tr { break-inside: avoid; }
   .rc-section thead { display: table-header-group; }
   .rc-signatures { display: flex; gap: 40px; margin-top: 36px; break-inside: avoid; }
   .rc-signature { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-  .rc-signature__titre { font-size: 0.8rem; font-weight: 700; color: #111827; }
+  .rc-signature__titre { font-size: 0.8rem; font-weight: 700; color: var(--ink); }
   .rc-signature__ligne { height: 56px; border-bottom: 1px solid #111827; }
-  .rc-signature__aide { font-size: 0.68rem; color: #6b7280; }
+  .rc-signature__aide { font-size: 0.68rem; color: var(--ink-soft); }
 }
 </style>

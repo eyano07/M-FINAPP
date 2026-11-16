@@ -234,6 +234,6 @@ async function enregistrer() {
   margin: 4px 0 0 40px;
   font-size: 0.8rem;
   line-height: 1.4;
-  color: #6b7280;
+  color: var(--ink-soft);
 }
 </style>

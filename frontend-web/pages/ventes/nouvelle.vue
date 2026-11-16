@@ -982,7 +982,7 @@ const contreValeur = computed(() => {
 .vn-section {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #9ca3af;
+  color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 12px;
@@ -1000,7 +1000,7 @@ const contreValeur = computed(() => {
   gap: 12px;
   align-items: start;
   padding: 12px 0;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
 }
 @media (max-width: 860px) {
   .vn-ligne { grid-template-columns: 1fr 1fr; }
@@ -1014,7 +1014,7 @@ const contreValeur = computed(() => {
   padding-top: 6px;
   font-variant-numeric: tabular-nums;
 }
-.vn-ligne__total-label { font-size: 0.7rem; color: #9ca3af; }
+.vn-ligne__total-label { font-size: 0.7rem; color: var(--ink-faint); }
 
 .vn-empty {
   display: flex;
@@ -1022,7 +1022,7 @@ const contreValeur = computed(() => {
   align-items: center;
   gap: 8px;
   padding: 24px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -1031,8 +1031,8 @@ const contreValeur = computed(() => {
 .vn-totaux {
   margin-top: 16px;
   padding: 16px 20px;
-  background: #f9fafb;
-  border: 1px solid #f0f0f0;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
   border-radius: 14px;
   max-width: 380px;
   margin-left: auto;
@@ -1043,24 +1043,24 @@ const contreValeur = computed(() => {
   justify-content: space-between;
   gap: 16px;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   padding: 4px 0;
   font-variant-numeric: tabular-nums;
 }
-.vn-total-row strong { color: #111827; }
+.vn-total-row strong { color: var(--ink); }
 .vn-total-row--ttc {
   margin-top: 8px;
   padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--hairline);
   font-size: 1rem;
 }
 .vn-total-row--ttc strong { font-size: 1.15rem; color: var(--color-primary); }
-.vn-contre-valeur { text-align: right; font-size: 0.75rem; color: #9ca3af; padding-top: 4px; }
+.vn-contre-valeur { text-align: right; font-size: 0.75rem; color: var(--ink-faint); padding-top: 4px; }
 
 .vn-rendu-monnaie {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px dashed #e5e7eb;
+  border-top: 1px dashed var(--hairline);
 }
 .vn-rendu-monnaie__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .vn-rendu-monnaie--negatif strong { color: #dc2626 !important; }
@@ -1071,24 +1071,24 @@ const contreValeur = computed(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
 }
 .vn-billet-coupure { max-width: 110px; }
 .vn-billet-qte { max-width: 72px; }
-.vn-billet-x { color: #9ca3af; font-size: 0.85rem; }
+.vn-billet-x { color: var(--ink-faint); font-size: 0.85rem; }
 .vn-billet-total {
   flex: 1;
   text-align: right;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 @media screen and (max-width: 599px) {
   .vn-billet-ligne { flex-wrap: wrap; }
   .vn-billet-ligne .vn-billet-total { flex: 1 1 100%; text-align: right; }
 }
-.vn-hint { font-size: 0.75rem; color: #6b7280; margin: 4px 0 0 16px; }
+.vn-hint { font-size: 0.75rem; color: var(--ink-soft); margin: 4px 0 0 16px; }
 
 .vn-blocage-titre { font-weight: 700; margin-bottom: 4px; }
 .vn-blocage-liste { margin: 0; padding-left: 18px; }

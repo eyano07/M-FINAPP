@@ -245,5 +245,5 @@ const usage = (s: ServiceBudgetaire) => {
 .svb-avatar { width: 40px; height: 40px; border-radius: 12px; background: var(--color-primary-light); color: var(--color-primary);
   display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; }
 .svb-nom { overflow-wrap: anywhere; }
-.svb-usage { color: #4b5563; }
+.svb-usage { color: var(--ink-soft); }
 </style>

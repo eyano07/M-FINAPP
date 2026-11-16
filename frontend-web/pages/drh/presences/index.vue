@@ -333,7 +333,7 @@ const pourcentagePresence = (employeId: number) => {
 
 <style scoped>
 .legende { display: flex; flex-wrap: wrap; gap: 14px; }
-.legende__item { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #6b7280; }
+.legende__item { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--ink-soft); }
 .legende__badge { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 5px; font-size: 0.68rem; font-weight: 700; }
 
 .presence-scroll { overflow-x: auto; }
@@ -341,16 +341,16 @@ const pourcentagePresence = (employeId: number) => {
 .presence-grid__emp-head { top: 0; z-index: 4; }
 .presence-grid__emp { z-index: 2; }
 .presence-grid { border-collapse: collapse; font-size: 0.78rem; width: 100%; }
-.presence-grid th, .presence-grid td { padding: 4px 3px; text-align: center; border-bottom: 1px solid #f3f4f6; }
+.presence-grid th, .presence-grid td { padding: 4px 3px; text-align: center; border-bottom: 1px solid var(--hairline); }
 .presence-grid__emp-head, .presence-grid__emp {
-  text-align: left; position: sticky; left: 0; background: #fff; white-space: nowrap; padding-right: 14px;
-  font-weight: 600; color: #111827;
+  text-align: left; position: sticky; left: 0; background: var(--surface); white-space: nowrap; padding-right: 14px;
+  font-weight: 600; color: var(--ink);
 }
-.presence-grid__day { font-size: 0.68rem; color: #9ca3af; font-weight: 700; min-width: 26px; }
-.presence-grid__pct { font-size: 0.68rem; color: #9ca3af; font-weight: 700; }
-.presence-grid__pct-val { font-weight: 700; color: #111827; }
+.presence-grid__day { font-size: 0.68rem; color: var(--ink-faint); font-weight: 700; min-width: 26px; }
+.presence-grid__pct { font-size: 0.68rem; color: var(--ink-faint); font-weight: 700; }
+.presence-grid__pct-val { font-weight: 700; color: var(--ink); }
 .presence-grid__cell { cursor: pointer; }
-.presence-grid__cell:hover { background: #f9fafb; }
+.presence-grid__cell:hover { background: var(--surface-2); }
 .presence-grid__badge {
   display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: 5px; font-size: 0.7rem; font-weight: 700;
@@ -364,9 +364,9 @@ const pourcentagePresence = (employeId: number) => {
   .presence-card { background: transparent !important; border: 0 !important; }
   .presence-nav {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    margin-bottom: 12px; padding: 2px; background: #fff; border: 1px solid #eef0f2; border-radius: 14px;
+    margin-bottom: 12px; padding: 2px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 14px;
   }
-  .presence-nav__mois { font-size: 1rem; font-weight: 700; color: #111827; }
+  .presence-nav__mois { font-size: 1rem; font-weight: 700; color: var(--ink); }
   .presence-jour { display: block; }
   .legende { gap: 8px 12px; }
 }
@@ -375,24 +375,24 @@ const pourcentagePresence = (employeId: number) => {
 .presence-jours__jour {
   flex: 0 0 auto; width: 46px; height: 62px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  border: 1px solid #e5e7eb; border-radius: 14px; background: #fff; color: #374151; font: inherit; cursor: pointer;
+  border: 1px solid var(--hairline); border-radius: 14px; background: var(--surface); color: var(--ink-2); font: inherit; cursor: pointer;
 }
-.presence-jours__semaine { font-size: 0.66rem; font-weight: 700; color: #9ca3af; }
+.presence-jours__semaine { font-size: 0.66rem; font-weight: 700; color: var(--ink-faint); }
 .presence-jours__numero { font-size: 1rem; font-weight: 800; }
-.presence-jours__jour--repos { background: #f9fafb; color: #9ca3af; }
+.presence-jours__jour--repos { background: var(--surface-2); color: var(--ink-faint); }
 .presence-jours__jour--aujourdhui { border-color: var(--color-primary); }
 .presence-jours__jour--actif { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
 .presence-jours__jour--actif .presence-jours__semaine { color: rgba(255, 255, 255, 0.8); }
-.presence-jour__titre { margin: 4px 2px 8px; font-size: 0.95rem; font-weight: 700; color: #111827; }
+.presence-jour__titre { margin: 4px 2px 8px; font-size: 0.95rem; font-weight: 700; color: var(--ink); }
 .presence-jour__titre::first-letter { text-transform: uppercase; }
 .presence-jour__resume { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .presence-jour__puce { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 100px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
 .presence-jour__liste { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); }
 @media screen and (min-width: 600px) { .presence-jour__liste { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.presence-jour__employe { background: #fff; border: 1px solid #eef0f2; border-left: 4px solid var(--color-primary); border-radius: 14px; padding: 12px 14px; }
-.presence-jour__nom { font-size: 0.95rem; font-weight: 700; color: #111827; overflow-wrap: anywhere; }
+.presence-jour__employe { background: var(--surface); border: 1px solid var(--hairline); border-left: 4px solid var(--color-primary); border-radius: 14px; padding: 12px 14px; }
+.presence-jour__nom { font-size: 0.95rem; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
 .presence-jour__ligne { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
-.presence-jour__pct { font-size: 0.78rem; color: #6b7280; }
+.presence-jour__pct { font-size: 0.78rem; color: var(--ink-soft); }
 .presence-jour__statut {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px;
   border: 0; border-radius: 12px; font: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer;

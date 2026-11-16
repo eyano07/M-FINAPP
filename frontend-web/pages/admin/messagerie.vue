@@ -224,7 +224,7 @@ const modifie = computed(() => !!etat.value && (
 .mail-page { max-width: 900px; }
 .mail-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .mail-large { grid-column: 1 / -1; }
-.mail-aide { font-size: 0.78rem; color: #4b5563; margin: 0; }
+.mail-aide { font-size: 0.78rem; color: var(--ink-soft); margin: 0; }
 .mail-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .mail-test-dest { max-width: 280px; min-width: 200px; }
 @media (max-width: 700px) { .mail-grille { grid-template-columns: 1fr; } }

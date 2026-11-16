@@ -466,7 +466,7 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
   gap: 12px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: #f9fafb;
+  background: var(--surface-2);
 }
 .rdb-kpi--ca      { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
 .rdb-kpi--profit  { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
@@ -481,15 +481,15 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
 
 .rdb-charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .rdb-chart {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 16px;
   padding: 16px 18px 20px;
 }
 .rdb-chart--wide { grid-column: 1 / -1; }
-.rdb-chart__title { font-size: 0.8rem; font-weight: 700; color: #374151; margin: 0 0 12px; display: flex; align-items: center; }
+.rdb-chart__title { font-size: 0.8rem; font-weight: 700; color: var(--ink-2); margin: 0 0 12px; display: flex; align-items: center; }
 .rdb-chart__body { height: 260px; position: relative; }
-.rdb-chart__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.82rem; }
+.rdb-chart__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ink-faint); font-size: 0.82rem; }
 
 @media (max-width: 900px) {
   .rdb-charts { grid-template-columns: 1fr; }
@@ -502,13 +502,13 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
   font-weight: 700;
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--ink-soft);
   padding: 16px 20px 12px;
 }
 
 /* ── Analyse IA ──────────────────────────────────────────── */
 .rdb-ia__card {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #ede9fe;
   border-left: 3px solid #7c3aed;
   border-radius: 16px;
@@ -517,15 +517,15 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
   box-shadow: 0 2px 10px rgba(124, 58, 237, 0.06);
 }
 .rdb-ia__head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: #7c3aed; }
-.rdb-ia__title { font-size: 0.95rem; font-weight: 700; color: #111827; }
-.rdb-ia__synthese { font-size: 0.875rem; color: #374151; line-height: 1.6; margin: 0 0 18px; }
+.rdb-ia__title { font-size: 0.95rem; font-weight: 700; color: var(--ink); }
+.rdb-ia__synthese { font-size: 0.875rem; color: var(--ink-2); line-height: 1.6; margin: 0 0 18px; }
 .rdb-ia__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
 .rdb-ia__col-title { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 8px; }
 .rdb-ia__col-title--forts { color: var(--color-primary); }
 .rdb-ia__col-title--attention { color: #d97706; }
 .rdb-ia__col-title--reco { color: #7c3aed; }
 .rdb-ia__col ul, .rdb-ia__reco ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
-.rdb-ia__col li, .rdb-ia__reco li { font-size: 0.8125rem; color: #374151; line-height: 1.5; }
+.rdb-ia__col li, .rdb-ia__reco li { font-size: 0.8125rem; color: var(--ink-2); line-height: 1.5; }
 .rdb-ia__reco { padding-top: 14px; border-top: 1px dashed #ede9fe; }
 
 @media (max-width: 640px) {

@@ -270,8 +270,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
 <style scoped>
 .print-only { display: none; }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-.etat-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--hairline); }
+.etat-table td { padding: 6px 8px; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
 
 /* ── Signature DRH, pied de page imprime uniquement ─────────────────────── */
 .rot-print-page { display: flex; flex-direction: column; }
@@ -289,9 +289,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
     display: flex; flex-direction: column; align-items: flex-end;
     margin-top: auto; padding-top: 16px; width: 220px; align-self: flex-end;
   }
-  .rot-signature__nom { font-size: 0.78rem; font-weight: 700; color: #111827; }
-  .rot-signature__fonction { font-size: 0.72rem; color: #374151; margin-top: 1px; }
+  .rot-signature__nom { font-size: 0.78rem; font-weight: 700; color: var(--ink); }
+  .rot-signature__fonction { font-size: 0.72rem; color: var(--ink-2); margin-top: 1px; }
   .rot-signature__line { width: 100%; border-top: 1px solid #111827; margin-top: 28px; }
-  .rot-signature__hint { font-size: 0.62rem; color: #9ca3af; font-style: italic; margin-top: 4px; }
+  .rot-signature__hint { font-size: 0.62rem; color: var(--ink-faint); font-style: italic; margin-top: 4px; }
 }
 </style>

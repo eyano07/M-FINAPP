@@ -131,9 +131,9 @@ function avantApres(l: LigneRetourFonds) {
 <style scoped>
 .rfd { display: flex; flex-direction: column; gap: 6px; }
 .rfd__tete { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.rfd__montant { font-size: 0.95rem; color: #111827; }
-.rfd__meta { font-size: 0.75rem; color: #6b7280; }
-.rfd__motif { margin: 0; font-size: 0.85rem; color: #374151; white-space: pre-line; overflow-wrap: anywhere; }
+.rfd__montant { font-size: 0.95rem; color: var(--ink); }
+.rfd__meta { font-size: 0.75rem; color: var(--ink-soft); }
+.rfd__motif { margin: 0; font-size: 0.85rem; color: var(--ink-2); white-space: pre-line; overflow-wrap: anywhere; }
 .rfd__libelle { font-weight: 600; }
 .rfd__lignes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .rfd__ligne {
@@ -144,10 +144,10 @@ function avantApres(l: LigneRetourFonds) {
   font-size: 0.8rem;
   padding: 4px 8px;
   border-radius: 6px;
-  background: #f9fafb;
+  background: var(--surface-2);
 }
-.rfd__ligne-titre { color: #111827; font-weight: 500; overflow-wrap: anywhere; }
-.rfd__ligne-valeurs { color: #6b7280; white-space: nowrap; }
+.rfd__ligne-titre { color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
+.rfd__ligne-valeurs { color: var(--ink-soft); white-space: nowrap; }
 .rfd__ligne-rendu { color: #0f766e; font-weight: 600; white-space: nowrap; }
 @media (max-width: 600px) {
   .rfd__ligne { grid-template-columns: minmax(0, 1fr) auto; }
@@ -155,5 +155,5 @@ function avantApres(l: LigneRetourFonds) {
 }
 .rfd__decision { margin: 0; font-size: 0.78rem; color: #0f766e; display: flex; align-items: center; flex-wrap: wrap; }
 .rfd__decision--refus { color: #b91c1c; }
-.rfd__decision--neutre { color: #6b7280; }
+.rfd__decision--neutre { color: var(--ink-soft); }
 </style>

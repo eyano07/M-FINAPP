@@ -645,7 +645,7 @@ const fmtTaux = computed(() =>
 .operateur-solde__montant {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 .caisse-stat {
@@ -654,9 +654,9 @@ const fmtTaux = computed(() =>
   gap: 14px;
   padding: 18px 20px;
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
 }
 .caisse-stat__icon {
   display: flex;
@@ -671,8 +671,8 @@ const fmtTaux = computed(() =>
 .caisse-stat--dec .caisse-stat__icon { background: #fee2e2; color: #dc2626; }
 .caisse-stat--pos .caisse-stat__icon { background: #dbeafe; color: #2563eb; }
 .caisse-stat--neg .caisse-stat__icon { background: #fef3c7; color: #d97706; }
-.caisse-stat__label { font-size: 0.78rem; color: #9ca3af; margin-bottom: 2px; }
-.caisse-stat__value { font-size: 1.1rem; font-weight: 700; color: #111827; }
+.caisse-stat__label { font-size: 0.78rem; color: var(--ink-faint); margin-bottom: 2px; }
+.caisse-stat__value { font-size: 1.1rem; font-weight: 700; color: var(--ink); }
 
 /* ── Notes en attente de paiement ────────────────────────────────── */
 .caisse-empty {
@@ -681,7 +681,7 @@ const fmtTaux = computed(() =>
   align-items: center;
   gap: 8px;
   padding: 32px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -693,7 +693,7 @@ const fmtTaux = computed(() =>
   align-items: center;
   gap: 16px;
   padding: 14px 20px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
 }
 .caisse-note__main { flex: 1; min-width: 0; }
 .caisse-note__head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
@@ -708,7 +708,7 @@ const fmtTaux = computed(() =>
 .caisse-note__objet {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #111827;
+  color: var(--ink);
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -717,7 +717,7 @@ const fmtTaux = computed(() =>
 .caisse-note__montant {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -749,14 +749,14 @@ const fmtTaux = computed(() =>
   border-radius: 8px;
   padding: 5px 8px;
 }
-.ia-suggestion--loading { color: #6b7280; background: #f9fafb; border-color: #f0f0f0; }
+.ia-suggestion--loading { color: var(--ink-soft); background: var(--surface-2); border-color: var(--hairline); }
 .ia-suggestion__dismiss {
   display: inline-flex;
   align-items: center;
   margin-left: auto;
   background: none;
   border: none;
-  color: #9ca3af;
+  color: var(--ink-faint);
   cursor: pointer;
   padding: 0;
 }

@@ -171,7 +171,7 @@ function donnerLeFocus() {
   font-weight: 700;
   line-height: 1.35;
   letter-spacing: -0.2px;
-  color: #111827;
+  color: var(--ink);
   overflow-wrap: anywhere;
   text-wrap: balance;
 }
@@ -179,7 +179,7 @@ function donnerLeFocus() {
   margin-top: 8px;
   font-size: 0.9375rem;
   line-height: 1.55;
-  color: #4b5563;
+  color: var(--ink-soft);
   overflow-wrap: anywhere;
   text-wrap: pretty;
 }
@@ -206,7 +206,7 @@ function donnerLeFocus() {
 .boite__valider.v-btn--disabled {
   opacity: 1;
   background-color: #e5e7eb !important;
-  color: #9ca3af !important;
+  color: var(--ink-faint) !important;
 }
 /* Ambre : le blanc sur #d97706 (3,2:1) ne se lit pas bien ; le bouton prend la teinte foncée de l'icône. */
 .boite--attention .boite__valider:not(:disabled) {

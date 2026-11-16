@@ -337,28 +337,28 @@ const headers = [
 </template>
 
 <style scoped>
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.1rem; font-weight: 700; color: #111827; margin-top: 4px; }
-.kpi-sub { font-size: 0.8rem; color: #6b7280; margin-top: 4px; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.1rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
+.kpi-sub { font-size: 0.8rem; color: var(--ink-soft); margin-top: 4px; }
 .ana-filtres { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .ana-filtres :deep(.v-input) { flex: 1 1 200px; }
 .ana-filtres__btn { height: 48px; flex: 0 0 auto; }
 .compte { display: flex; align-items: center; gap: 8px; }
-.compte__num { font-family: monospace; min-width: 56px; color: #374151; }
+.compte__num { font-family: monospace; min-width: 56px; color: var(--ink-2); }
 .compte--rubrique { font-weight: 700; }
 .compte--inactif { opacity: 0.55; }
 .rubrique { display: flex; gap: 12px; align-items: flex-start; }
 .rubrique__num { font-weight: 700; font-family: monospace; color: rgb(var(--v-theme-primary)); min-width: 24px; }
 .rubrique__titre { font-weight: 600; }
-.rubrique__role { font-size: 0.85rem; color: #6b7280; }
+.rubrique__role { font-size: 0.85rem; color: var(--ink-soft); }
 .ana-info { font-size: 0.875rem; }
 .ana-titre { font-weight: 700; margin-bottom: 12px; }
 .ana-activites { overflow-x: auto; }
 @media screen and (max-width: 959px) { .ana-activites { overflow: visible; } .ana-activites .ana-table { min-width: 0; } }
 .ana-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 560px; }
-.ana-table th { text-align: left; font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; padding: 8px; border-bottom: 1px solid #e5e7eb; }
-.ana-table td { padding: 8px; border-bottom: 1px solid #f3f4f6; }
-.ana-table tfoot td { font-weight: 700; border-bottom: none; border-top: 2px solid #e5e7eb; }
+.ana-table th { text-align: left; font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.4px; padding: 8px; border-bottom: 1px solid var(--hairline); }
+.ana-table td { padding: 8px; border-bottom: 1px solid var(--hairline); }
+.ana-table tfoot td { font-weight: 700; border-bottom: none; border-top: 2px solid var(--hairline); }
 .ana-table .num { text-align: right; white-space: nowrap; }
 @media (max-width: 600px) {
   .ana-filtres__btn { width: 100%; }

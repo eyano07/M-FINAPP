@@ -314,16 +314,16 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
 </template>
 
 <style scoped>
-.calc-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
+.calc-label { font-size: 0.7rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.4px; }
 
 .etat-bloc { margin-bottom: 20px; }
-.etat-titre { font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary); }
-.bp-titre-note { font-size: 0.72rem; font-weight: 500; color: #9ca3af; text-transform: none; letter-spacing: 0; }
+.etat-titre { font-size: 1.05rem; font-weight: 700; color: var(--ink); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary); }
+.bp-titre-note { font-size: 0.72rem; font-weight: 500; color: var(--ink-faint); text-transform: none; letter-spacing: 0; }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.etat-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+.etat-table td { padding: 6px 8px; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
 .etat-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Ligne de total : le lecteur du bulletin doit pouvoir refaire l'addition. */
-.bp-total td { font-weight: 700; color: #111827; border-top: 1.5px solid #d1d5db; border-bottom: none !important; }
+.bp-total td { font-weight: 700; color: var(--ink); border-top: 1.5px solid #d1d5db; border-bottom: none !important; }
 .recu-signature { max-width: 360px; }
 .signature-cell { min-width: 160px; border-bottom: 1px solid #111827 !important; }
 
@@ -336,7 +336,7 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
   font-weight: 800;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: #111827;
+  color: var(--ink);
   margin: 4px 0 18px;
 }
 
@@ -344,11 +344,11 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
    (leurs breakpoints md/lg dependent de la largeur de viewport, qui a
    l'impression ne correspond pas forcement a l'ecran — tout s'empilait
    alors sur une seule colonne, page apres page). ────────────────────── */
-.bp-info-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 18px 22px; margin-bottom: 16px; }
+.bp-info-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 14px; padding: 18px 22px; margin-bottom: 16px; }
 .bp-info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 24px; }
 .bp-info-item { display: flex; flex-direction: column; gap: 3px; }
-.bp-info-label { font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
-.bp-info-item strong { font-size: 0.95rem; color: #111827; }
+.bp-info-label { font-size: 0.7rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+.bp-info-item strong { font-size: 0.95rem; color: var(--ink); }
 
 /* Gains a gauche, Retenues + Charges patronales empilees a droite : deux
    sections courtes cote a cote plutot que trois blocs pleine largeur. */
@@ -383,11 +383,11 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
    porte un nom pre-rempli, sans quoi son trait de signature se retrouvait
    plus bas que celui du DRH. */
 .bp-sign { flex: 1; max-width: 220px; text-align: center; display: flex; flex-direction: column; min-height: 50px; }
-.bp-sign__label { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #374151; }
-.bp-sign__name { display: block; font-size: 0.8rem; color: #111827; margin: auto 0 3px; }
+.bp-sign__label { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--ink-2); }
+.bp-sign__name { display: block; font-size: 0.8rem; color: var(--ink); margin: auto 0 3px; }
 .bp-sign__line { border-top: 1px solid #111827; margin-top: auto; }
 .bp-sign__name + .bp-sign__line { margin-top: 0; }
-.bp-sign__hint { display: block; font-size: 0.66rem; color: #9ca3af; font-style: italic; margin-top: 4px; }
+.bp-sign__hint { display: block; font-size: 0.66rem; color: var(--ink-faint); font-style: italic; margin-top: 4px; }
 
 /* ── Pied de page : coordonnees de l'entreprise, configurees par l'ADMIN
    (ecran Parametres). Suit .bp-signatures dans le flux flex de
@@ -396,10 +396,10 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
 .bp-footer {
   margin-top: 16px;
   padding-top: 10px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--hairline);
   text-align: center;
   font-size: 0.72rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
 }
 .bp-footer__sep { margin: 0 6px; }
 

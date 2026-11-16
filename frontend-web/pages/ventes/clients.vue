@@ -270,7 +270,7 @@ async function enregistrer() {
   flex-direction: column;
   align-items: center;
   padding: 40px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
 }
 .cl-empty p { margin: 0; }

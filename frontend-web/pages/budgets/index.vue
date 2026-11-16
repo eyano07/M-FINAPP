@@ -201,7 +201,7 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
 .bud-carte { transition: box-shadow 0.15s; }
 .bud-carte:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); }
 .bud-chiffres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.bud-chiffres div { background: #f8fafc; border-radius: 8px; padding: 8px; }
-.bud-chiffres span { display: block; font-size: 0.68rem; color: #6b7280; }
+.bud-chiffres div { background: var(--surface-2); border-radius: 8px; padding: 8px; }
+.bud-chiffres span { display: block; font-size: 0.68rem; color: var(--ink-soft); }
 .bud-chiffres strong { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
 </style>

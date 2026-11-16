@@ -323,14 +323,14 @@ function retirer(liste: 'domiciliations' | 'activites' | 'dirigeants' | 'adminis
 <style scoped>
 .liasse { display: flex; flex-direction: column; gap: 10px; }
 .param-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.param-label { font-size: 0.8125rem; font-weight: 600; color: #374151; }
+.param-label { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
 .liasse__section {
-  font-size: 0.875rem; font-weight: 700; color: #111827;
-  margin: 18px 0 4px; padding-top: 14px; border-top: 1px solid #f3f4f6;
+  font-size: 0.875rem; font-weight: 700; color: var(--ink);
+  margin: 18px 0 4px; padding-top: 14px; border-top: 1px solid var(--hairline);
 }
 .liasse__section:first-child { margin-top: 0; padding-top: 0; border-top: none; }
-.liasse__sous-section { font-size: 0.8125rem; font-weight: 600; color: #374151; margin: 12px 0 0; }
-.liasse__aide { font-size: 0.75rem; color: #6b7280; margin: 0; }
+.liasse__sous-section { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); margin: 12px 0 0; }
+.liasse__aide { font-size: 0.75rem; color: var(--ink-soft); margin: 0; }
 .liasse__erreur { font-size: 0.75rem; color: #b91c1c; margin: 0; }
 .liasse__grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .liasse__large { grid-column: 1 / -1; }
@@ -338,7 +338,7 @@ function retirer(liste: 'domiciliations' | 'activites' | 'dirigeants' | 'adminis
 .liasse__ligne--activite { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
 .liasse__personne {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 10px; align-items: center;
-  padding-bottom: 10px; border-bottom: 1px dashed #e5e7eb;
+  padding-bottom: 10px; border-bottom: 1px dashed var(--hairline);
 }
 .liasse__personne-adresse { grid-column: 1 / 5; }
 .liasse__personne > .v-btn { grid-column: 5; grid-row: 1; }

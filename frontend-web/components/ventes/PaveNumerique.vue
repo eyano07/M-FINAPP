@@ -75,7 +75,7 @@ const touches = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '.', '0', '00']
 .pave__titre {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #9ca3af;
+  color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 8px;
@@ -87,14 +87,14 @@ const touches = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '.', '0', '00']
   padding: 8px 12px;
   margin-bottom: 10px;
   border-radius: 10px;
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--surface-2);
+  color: var(--ink);
   min-height: 52px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.pave__ecran--off { font-size: 0.9rem; font-weight: 500; color: #9ca3af; line-height: 36px; }
+.pave__ecran--off { font-size: 0.9rem; font-weight: 500; color: var(--ink-faint); line-height: 36px; }
 /* minmax(0, 1fr) et min-width: 0 : sans eux, les boutons « x-large » de Vuetify (largeur minimale d'environ 92 px) debordent de la
    carte de 260 px et la troisieme colonne (9, 6, 3, 00) est coupee. */
 .pave__grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

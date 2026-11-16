@@ -347,7 +347,7 @@ const fmtUSD = (usd: number) =>
 </template>
 
 <style scoped>
-.etab__devise { display: inline-block; margin-left: 6px; font-size: 0.7rem; font-weight: 700; color: #4b5563; background: #f3f4f6; border-radius: 4px; padding: 1px 5px; }
+.etab__devise { display: inline-block; margin-left: 6px; font-size: 0.7rem; font-weight: 700; color: var(--ink-soft); background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
 .etab-empty {
@@ -356,7 +356,7 @@ const fmtUSD = (usd: number) =>
   align-items: center;
   gap: 8px;
   padding: 32px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -368,13 +368,13 @@ const fmtUSD = (usd: number) =>
   align-items: center;
   gap: 14px;
   padding: 12px 20px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
 }
 .etab__main { flex: 1; min-width: 0; }
 .etab__nom {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   margin: 0 0 2px;
 }
 .etab__compte {
@@ -389,11 +389,11 @@ const fmtUSD = (usd: number) =>
 .etab__solde {
   font-size: 0.9rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.etab__solde--nul { color: #9ca3af; font-weight: 500; }
+.etab__solde--nul { color: var(--ink-faint); font-weight: 500; }
 
 .dialog-card { overflow: hidden; }
 .dialog-header { padding: 26px 26px 20px; text-align: center; }

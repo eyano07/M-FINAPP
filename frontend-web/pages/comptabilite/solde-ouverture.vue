@@ -198,8 +198,8 @@ const messageEquilibre = computed(() => {
 <style scoped>
 .so-totaux {
   display: flex; align-items: center; gap: 10px;
-  margin-top: 10px; padding-top: 12px; border-top: 2px solid #e5e7eb;
-  font-weight: 700; color: #111827;
+  margin-top: 10px; padding-top: 12px; border-top: 2px solid var(--hairline);
+  font-weight: 700; color: var(--ink);
 }
 .so-totaux > :first-child { flex: 1; }
 .so-total { max-width: 160px; width: 160px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -214,7 +214,7 @@ const messageEquilibre = computed(() => {
     z-index: 4;
     margin: 0 -12px -12px;
     padding: 10px 12px 12px;
-    background: #fff;
+    background: var(--surface);
     border-top: 1px solid #e8ecef;
     box-shadow: 0 -6px 16px rgba(15, 23, 42, 0.06);
   }
@@ -223,7 +223,7 @@ const messageEquilibre = computed(() => {
   .so-recap__case--ok { background: color-mix(in srgb, #16a34a 12%, white); }
   .so-recap__case--ecart { background: color-mix(in srgb, #f59e0b 16%, white); }
   .so-recap__etiquette { display: block; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap; color: #94a3b8; }
-  .so-recap__valeur { display: block; margin-top: 1px; font-size: 0.95rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; color: #0f172a; }
+  .so-recap__valeur { display: block; margin-top: 1px; font-size: 0.95rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink); }
   /* Le message d'équilibre tient en une ligne compacte (pas d'alerte) ; le bouton prend toute la largeur. */
   .so-pied__alerte { display: none; }
   .so-recap__etat { display: block; margin: 0 0 8px; font-size: 0.78rem; line-height: 1.3; }

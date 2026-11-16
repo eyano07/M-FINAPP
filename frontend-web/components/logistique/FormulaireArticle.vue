@@ -250,7 +250,7 @@ const fc = (usd: number | null) => new Intl.NumberFormat('fr-FR').format(Math.ro
 .art-section {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #9ca3af;
+  color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 4px 0 10px;
@@ -261,7 +261,7 @@ const fc = (usd: number | null) => new Intl.NumberFormat('fr-FR').format(Math.ro
   justify-content: space-between;
   gap: 14px;
   padding: 12px 14px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--hairline);
   border-radius: 12px;
   background: #fffbeb;
 }

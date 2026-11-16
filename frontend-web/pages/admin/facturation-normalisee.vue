@@ -214,7 +214,7 @@ const fmtMontant = (n: number, d: string) => `${Number(n).toLocaleString('fr-FR'
 .fn-large { grid-column: 1 / -1; }
 .fn-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .fn-titre { font-size: 1.02rem; font-weight: 700; margin: 0 0 4px; }
-.fn-aide { font-size: 0.78rem; color: #4b5563; margin: 0 0 12px; }
+.fn-aide { font-size: 0.78rem; color: var(--ink-soft); margin: 0 0 12px; }
 .fn-groupe { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
 @media (max-width: 700px) { .fn-grille { grid-template-columns: 1fr; } }
 </style>

@@ -236,12 +236,12 @@ const anthropic = computed(() => fournisseurs.value.find(f => f.id === 'anthropi
 .ia-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .ia-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
 .ia-titre { font-size: 1.05rem; font-weight: 700; margin: 0; }
-.ia-role { font-size: 0.8rem; color: #4b5563; margin: 4px 0 0; }
+.ia-role { font-size: 0.8rem; color: var(--ink-soft); margin: 4px 0 0; }
 .ia-bloc { margin-bottom: 16px; }
 .ia-label { display: block; font-size: 0.8rem; font-weight: 700; margin-bottom: 6px; }
 .ia-cle { display: flex; align-items: center; gap: 6px; font-family: ui-monospace, monospace; font-size: 0.85rem; margin: 0 0 8px; flex-wrap: wrap; }
-.ia-env { font-family: inherit; font-size: 0.74rem; color: #4b5563; }
-.ia-aide { font-size: 0.75rem; color: #4b5563; margin: 6px 0 0; }
+.ia-env { font-family: inherit; font-size: 0.74rem; color: var(--ink-soft); }
+.ia-aide { font-size: 0.75rem; color: var(--ink-soft); margin: 6px 0 0; }
 .ia-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 @media (max-width: 900px) { .ia-grille { grid-template-columns: 1fr; } }
 </style>

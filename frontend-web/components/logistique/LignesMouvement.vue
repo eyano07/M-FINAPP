@@ -115,7 +115,7 @@ function fmt(v: number) {
 }
 .lignes-mvt__title {
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
 }
 .lignes-mvt__row {
   display: grid;
@@ -123,9 +123,9 @@ function fmt(v: number) {
   gap: 10px;
   align-items: start;
   padding: 12px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
   border-radius: 12px;
-  background: #fafafa;
+  background: var(--surface-2);
 }
 .lignes-mvt__total {
   display: flex;
@@ -138,7 +138,7 @@ function fmt(v: number) {
 }
 .lignes-mvt__total .label {
   font-size: 0.72rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }

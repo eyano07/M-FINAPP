@@ -203,9 +203,9 @@ function fmtDate(d: string) {
 </template>
 
 <style scoped>
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.1rem; font-weight: 700; color: #111827; margin-top: 4px; }
-.kpi-sub { font-size: 0.8rem; color: #6b7280; margin-top: 4px; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.1rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
+.kpi-sub { font-size: 0.8rem; color: var(--ink-soft); margin-top: 4px; }
 .gl-filtres { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .gl-filtres :deep(.v-input) { flex: 1 1 200px; }
 .gl-filtres__compte { flex: 1 1 260px; }

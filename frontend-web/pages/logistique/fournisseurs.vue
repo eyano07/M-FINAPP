@@ -430,7 +430,7 @@ async function action(appel: () => Promise<unknown>, message: string) {
   flex-direction: column;
   align-items: center;
   padding: 40px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }

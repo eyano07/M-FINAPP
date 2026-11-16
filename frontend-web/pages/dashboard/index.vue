@@ -179,34 +179,6 @@ const versCaisseOuGrandLivre = computed(() => (auth.hasRole('CAISSIER') ? '/cais
 const versBanqueOuGrandLivre = computed(() => (auth.hasRole('CAISSIER') ? '/banque' : '/grand-livre'))
 const versMobileMoneyOuGrandLivre = computed(() => (auth.hasRole('CAISSIER') ? '/mobile-money' : '/grand-livre'))
 
-const stats = computed(() => {
-  const base = [
-    { label: 'Trésorerie (caisse)', value: fmtUSD(tresorerie.value), icon: 'mdi-cash-multiple', color: 'green', to: versCaisseOuGrandLivre.value },
-    // Une carte de trésorerie pour un module désactivé (ou hors droits du
-    // rôle) n'a pas de sens à afficher : le module lui-même est retiré du
-    // menu, la carte doit suivre la même règle.
-    ...(permissions.peutVoir('BANQUE')
-      ? [{ label: 'Trésorerie (banques)', value: fmtUSD(tresorerieBanque.value), icon: 'mdi-bank', color: 'teal', to: versBanqueOuGrandLivre.value }]
-      : []),
-    ...(permissions.peutVoir('MOBILE_MONEY')
-      ? [{ label: 'Trésorerie (mobile money)', value: fmtUSD(tresorerieMobileMoney.value), icon: 'mdi-cellphone', color: 'indigo', to: versMobileMoneyOuGrandLivre.value }]
-      : []),
-    { label: 'Notes en attente', value: notesEnAttenteCard.value, icon: 'mdi-clock-outline', color: 'orange', to: versNotesEnAttente.value },
-    { label: 'Notes payees', value: payees.value, icon: 'mdi-check-decagram-outline', color: 'blue', to: '/notes-frais?statut=PAYEE' },
-  ]
-  if (estCaissier.value) return base
-  return [
-    ...base,
-    // Résultat net (Produits classe 7 − Charges classe 6, voir charger())
-    // relève du pilotage financier comme le taux d'exécution budgétaire
-    // ci-dessous : masqué au caissier pur pour la même raison que lui.
-    { label: 'Résultat net', value: fmtUSD(resultatNet.value), icon: resultatNet.value >= 0 ? 'mdi-trending-up' : 'mdi-trending-down', color: resultatNet.value >= 0 ? 'green' : 'orange', to: '/balance' },
-    ...(budgetDisponible.value
-      ? [{ label: 'Budget execute', value: `${budgetTaux.value}%`, icon: 'mdi-chart-arc', color: 'purple', trend: `Exercice ${new Date().getFullYear()}`, to: '/budgets' }]
-      : []),
-  ]
-})
-
 // Statuts sur lesquels le rôle de l'utilisateur permet d'agir MAINTENANT —
 // même logique que les `peutXxx` de pages/notes-frais/[id].vue et les
 // @PreAuthorize de NoteFraisService. Sans cette distinction, une note que le
@@ -235,10 +207,40 @@ const enCoursAilleurs = computed(() =>
     !['PAYEE', 'ANNULEE'].includes(n.statut) && !statutsActionnables.value.includes(n.statut)
   ).length)
 
+// ── Position de trésorerie : les trois canaux (caisse, banques, mobile money) en un seul total ────────────────
+const canaux = computed(() => {
+  const l = [{ id: 'caisse', libelle: 'Caisse', montant: tresorerie.value, to: versCaisseOuGrandLivre.value, cls: 'c1' }]
+  if (permissions.peutVoir('BANQUE')) l.push({ id: 'banque', libelle: 'Banques', montant: tresorerieBanque.value, to: versBanqueOuGrandLivre.value, cls: 'c2' })
+  if (permissions.peutVoir('MOBILE_MONEY')) l.push({ id: 'mm', libelle: 'Mobile money', montant: tresorerieMobileMoney.value, to: versMobileMoneyOuGrandLivre.value, cls: 'c3' })
+  return l
+})
+const totalTresorerie = computed(() => canaux.value.reduce((s, c) => s + (c.montant || 0), 0))
+const partPositive = computed(() => canaux.value.reduce((s, c) => s + Math.max(c.montant || 0, 0), 0))
+const largeurCanal = (m: number) => (partPositive.value > 0 ? `${(Math.max(m || 0, 0) / partPositive.value) * 100}%` : '0%')
+const partCanal = (m: number) => (partPositive.value > 0 ? `${Math.round((Math.max(m || 0, 0) / partPositive.value) * 100)} %` : '—')
+
+// Courbe miniature du résultat net cumulé (une valeur par mois depuis janvier).
+const sparkline = computed(() => {
+  const v = resultatNetEvolution.value.map(p => p.valeur)
+  if (v.length < 2) return null
+  const min = Math.min(...v), max = Math.max(...v), span = max - min || 1
+  const pts = v.map((y, i) => [(i / (v.length - 1)) * 100, 28 - ((y - min) / span) * 24 - 2])
+  return { ligne: pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' '), dernier: pts[pts.length - 1] }
+})
+
+// Circuit d'une note : les cinq étapes réelles, de la soumission au paiement.
+const ETAPES = ['SOUMISE', 'VERIFIEE_DFIN', 'VALIDEE_DA', 'TRANSMISE_CAISSE', 'PAYEE']
+const ETAPES_LIBELLES = computed(() => ['Soumise', `Vérifiée ${rolesStore.libelle('DFIN')}`, `Validée ${rolesStore.libelle('DA')}`, 'Transmise caisse', 'Payée'])
+const etapeNote = (statut: string) => Math.max(ETAPES.indexOf(statut), 0)
+const montantNote = (n: Note) =>
+  new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n.montant) + ' ' + (n.devise || 'CDF')
+
+const dateDuJour = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date())
+
 const greeting = computed(() => {
   const h = new Date().getHours()
   if (h < 12) return 'Bonjour'
-  if (h < 18) return 'Bon apres-midi'
+  if (h < 18) return 'Bon après-midi'
   return 'Bonsoir'
 })
 
@@ -378,177 +380,107 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 <template>
   <div class="dash">
 
-    <!-- ── Header ──────────────────────────────────────────── -->
+    <!-- ── En-tête ─────────────────────────────────────────── -->
     <header class="dash__header">
       <div>
-        <p class="dash__eyebrow">{{ greeting }} 👋</p>
-        <h1 class="dash__title">{{ auth.user?.prenom || auth.user?.email }}</h1>
-        <p class="dash__sub">Voici l'état de votre trésorerie en temps réel.</p>
+        <p class="dash__eyebrow">{{ dateDuJour }}</p>
+        <h1 class="dash__title">{{ greeting }}, {{ auth.user?.prenom || auth.user?.email }}</h1>
       </div>
       <div class="dash__actions">
-        <v-btn
-          v-if="peutOperer && permissions.peutVoir('VENTES')"
-          color="success"
-          prepend-icon="mdi-cart-outline"
-          rounded="lg"
-          elevation="0"
-          to="/ventes/nouvelle"
-          class="dash__cta"
-        >
+        <v-btn v-if="peutOperer && permissions.peutVoir('VENTES')" color="primary" variant="tonal" prepend-icon="mdi-cart-outline"
+          elevation="0" to="/ventes/nouvelle" class="dash__cta">
           Vente
         </v-btn>
-        <v-btn
-          v-if="peutOperer && permissions.peutVoir('CAISSE')"
-          color="orange-darken-1"
-          prepend-icon="mdi-cash-register"
-          rounded="lg"
-          elevation="0"
-          to="/caisse"
-          class="dash__cta"
-        >
+        <v-btn v-if="peutOperer && permissions.peutVoir('CAISSE')" color="primary" variant="tonal" prepend-icon="mdi-cash-register"
+          elevation="0" to="/caisse" class="dash__cta">
           Caisse
         </v-btn>
-        <v-btn
-          color="primary"
-          prepend-icon="mdi-plus"
-          rounded="lg"
-          elevation="0"
-          to="/notes-frais"
-          class="dash__cta"
-        >
+        <v-btn color="primary" prepend-icon="mdi-plus" elevation="0" to="/notes-frais" class="dash__cta">
           Nouvelle note
         </v-btn>
       </div>
     </header>
 
-    <!-- ── Error ───────────────────────────────────────────── -->
-    <v-alert
-      v-if="erreur"
-      type="error"
-      variant="tonal"
-      rounded="lg"
-      class="mb-6"
-      closable
-      @click:close="erreur = ''"
-    >
+    <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-6" closable @click:close="erreur = ''">
       {{ erreur }}
     </v-alert>
 
-    <!-- ── Stats grid ──────────────────────────────────────── -->
-    <div class="dash__stats">
-      <CardsStatCard
-        v-for="s in stats"
-        :key="s.label"
-        :label="s.label"
-        :value="s.value"
-        :icon="s.icon"
-        :color="s.color"
-        :trend="s.trend"
-        :to="s.to"
-      />
-    </div>
-    <!-- ── Analyses graphiques ────────────────────────────────── -->
-    <div class="dash__section-header" style="margin-bottom:20px">
-      <div>
-        <h2 class="dash__section-title">Analyses graphiques</h2>
-        <p class="dash__section-sub">{{ estCaissier ? '2 types de graphiques' : '9 types de graphiques' }} · données en temps réel</p>
-      </div>
-    </div>
+    <!-- ── Position de trésorerie + indicateurs ────────────── -->
+    <section class="board" aria-label="Situation financière">
+      <div class="treso">
+        <p class="treso__label">Trésorerie disponible</p>
+        <p class="treso__total">{{ fmtUSD(totalTresorerie) }}</p>
 
-    <ClientOnly>
-      <!-- 9. Résultat net (en tête : indicateur financier le plus important) -->
-      <div v-if="!estCaissier" class="cg-full">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-timeline-variant" size="15" class="mr-1" />Courbe — Évolution du résultat net</p>
-          <p class="cg-sub">Résultat net cumulé (Balance) de janvier à aujourd'hui</p>
-          <div class="cg-canvas"><Line :data="resultatNetLineData" :options="resultatNetLineOpts" /></div>
+        <div v-if="partPositive > 0" class="treso__bar" role="img" :aria-label="`Répartition : ${canaux.map(c => c.libelle + ' ' + partCanal(c.montant)).join(', ')}`">
+          <span v-for="c in canaux" :key="c.id" :class="['treso__seg', `treso__seg--${c.cls}`]" :style="{ width: largeurCanal(c.montant) }" />
         </div>
+        <div v-else class="treso__bar treso__bar--vide" />
+
+        <ul class="treso__canaux">
+          <li v-for="c in canaux" :key="c.id">
+            <NuxtLink :to="c.to" class="treso__canal">
+              <span :class="['treso__dot', `treso__seg--${c.cls}`]" />
+              <span class="treso__canal-nom">{{ c.libelle }}</span>
+              <span class="treso__canal-part">{{ partCanal(c.montant) }}</span>
+              <span class="treso__canal-montant">{{ fmtUSD(c.montant) }}</span>
+            </NuxtLink>
+          </li>
+        </ul>
       </div>
-      <!-- 1. Courbe -->
-      <div class="cg-full">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-line" size="15" class="mr-1" />Courbe — Tendance mensuelle des notes</p>
-          <p class="cg-sub">Évolution du nombre de notes soumises sur 6 mois</p>
-          <div class="cg-canvas"><Line :data="lineData" :options="lineOpts" /></div>
-        </div>
+
+      <div class="side">
+        <NuxtLink :to="versNotesEnAttente" class="tile tile--action">
+          <span class="tile__label">{{ auth.hasAnyRole(['DFIN', 'DA', 'CAISSIER']) ? 'À traiter par vous' : 'Notes dans le circuit' }}</span>
+          <span class="tile__value">{{ notesEnAttenteCard }}</span>
+          <span class="tile__hint">{{ payees }} note{{ payees !== 1 ? 's' : '' }} payée{{ payees !== 1 ? 's' : '' }} à ce jour</span>
+        </NuxtLink>
+
+        <NuxtLink v-if="!estCaissier" to="/balance" class="tile">
+          <span class="tile__label">Résultat net</span>
+          <span :class="['tile__value', { 'tile__value--neg': resultatNet < 0 }]">{{ fmtUSD(resultatNet) }}</span>
+          <svg v-if="sparkline" class="tile__spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
+            <path :d="sparkline.ligne" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke" />
+          </svg>
+        </NuxtLink>
+
+        <NuxtLink v-if="!estCaissier && budgetDisponible" to="/budgets" class="tile">
+          <span class="tile__label">Budget exécuté en {{ new Date().getFullYear() }}</span>
+          <span class="tile__value">{{ budgetTaux }} %</span>
+          <span class="tile__gauge" role="img" :aria-label="`${budgetTaux} % du budget exécuté`"><span :style="{ width: Math.min(budgetTaux, 100) + '%' }" /></span>
+        </NuxtLink>
       </div>
-      <!-- 2. Barres + 5. Anneau -->
-      <div v-if="!estCaissier" class="cg-grid2">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-bar" size="15" class="mr-1" />Barres — Montants par statut</p>
-          <p class="cg-sub">Cumul des montants regroupés par statut de traitement</p>
-          <div class="cg-canvas"><Bar :data="barData" :options="barOpts" /></div>
-        </div>
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-donut" size="15" class="mr-1" />Anneau — Répartition des statuts</p>
-          <p class="cg-sub">Distribution du nombre de notes par statut</p>
-          <div class="cg-canvas"><Doughnut :data="donutData" :options="donutOpts" /></div>
-        </div>
-      </div>
-      <!-- 3. Aires -->
-      <div class="cg-full">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-waves" size="15" class="mr-1" />Aires — Évolution de la trésorerie</p>
-          <p class="cg-sub">Projection de la trésorerie sur 6 mois (estimée depuis le solde actuel)</p>
-          <div class="cg-canvas"><Line :data="areaData" :options="areaOpts" /></div>
-        </div>
-      </div>
-      <!-- 4. Circulaire + 6. Radar -->
-      <div v-if="!estCaissier" class="cg-grid2">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-pie" size="15" class="mr-1" />Circulaire — Répartition par priorité</p>
-          <p class="cg-sub">Distribution des notes selon leur niveau de priorité</p>
-          <div class="cg-canvas"><Pie :data="pieData" :options="pieOpts" /></div>
-        </div>
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-spider-web" size="15" class="mr-1" />Radar — Indicateurs de performance</p>
-          <p class="cg-sub">Scores multidimensionnels : paiement, approbation, budget…</p>
-          <div class="cg-canvas"><Radar :data="radarData" :options="radarOpts" /></div>
-        </div>
-      </div>
-      <!-- 7. Nuage de points + 8. Bulles -->
-      <div v-if="!estCaissier" class="cg-grid2">
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-chart-scatter-plot" size="15" class="mr-1" />Nuage de points — Montants des notes</p>
-          <p class="cg-sub">Chaque point représente une note de frais et son montant</p>
-          <div class="cg-canvas"><Scatter :data="scatterData" :options="scatterOpts" /></div>
-        </div>
-        <div class="cg-card">
-          <p class="cg-title"><v-icon icon="mdi-circle-multiple-outline" size="15" class="mr-1" />Bulles — Distribution priorité × montant</p>
-          <p class="cg-sub">Taille = montant relatif · Couleur = niveau de priorité</p>
-          <div class="cg-canvas"><Bubble :data="bubbleData" :options="bubbleOpts" /></div>
-        </div>
-      </div>
-    </ClientOnly>
-    <!-- ── Notes section ───────────────────────────────────── -->
+    </section>
+
+    <!-- ── Notes à traiter ─────────────────────────────────── -->
     <div class="dash__section-header">
       <div>
         <h2 class="dash__section-title">Notes à traiter</h2>
         <p class="dash__section-sub">{{ aValider.length }} note{{ aValider.length !== 1 ? 's' : '' }} attend{{ aValider.length !== 1 ? 'ent' : '' }} votre action</p>
       </div>
-      <v-btn
-        variant="outlined"
-        color="primary"
-        append-icon="mdi-arrow-right"
-        rounded="lg"
-        size="small"
-        to="/notes-frais"
-      >
-        Tout voir
-      </v-btn>
+      <v-btn variant="text" color="primary" size="small" to="/notes-frais">Voir toutes les notes</v-btn>
     </div>
 
-    <div v-if="aValider.length > 0" class="dash__notes">
-      <CardsNoteFraisCard
-        v-for="n in aValider"
-        :key="n.id"
-        :note="n"
-        @open="navigateTo(`/notes-frais/${n.id}`)"
-      />
-    </div>
+    <ul v-if="aValider.length > 0" class="queue">
+      <li v-for="n in aValider" :key="n.id">
+        <NuxtLink :to="`/notes-frais/${n.id}`" class="queue__row">
+          <span class="queue__main">
+            <span class="queue__ref">{{ n.reference }}</span>
+            <span class="queue__objet">{{ n.objet }}</span>
+            <span class="queue__who">{{ n.createurNom || '' }}</span>
+          </span>
+          <span class="queue__track" role="img" :aria-label="`Étape : ${ETAPES_LIBELLES[etapeNote(n.statut)]}`">
+            <span v-for="(e, i) in ETAPES_LIBELLES" :key="e"
+              :class="['queue__step', { 'queue__step--done': i < etapeNote(n.statut), 'queue__step--now': i === etapeNote(n.statut) }]">
+              <span class="queue__pip" />
+              <span class="queue__step-nom">{{ e }}</span>
+            </span>
+          </span>
+          <span class="queue__montant">{{ montantNote(n) }}</span>
+        </NuxtLink>
+      </li>
+    </ul>
 
     <div v-else-if="enCoursAilleurs > 0" class="dash__empty">
-      <v-icon icon="mdi-timer-sand" size="48" color="warning" />
       <p class="dash__empty-title">Aucune note n'attend votre action</p>
       <p class="dash__empty-sub">
         {{ enCoursAilleurs }} note{{ enCoursAilleurs !== 1 ? 's' : '' }} encore
@@ -557,127 +489,199 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
     </div>
 
     <div v-else class="dash__empty">
-      <v-icon icon="mdi-check-circle-outline" size="48" color="success" />
-      <p class="dash__empty-title">Tout est à jour !</p>
-      <p class="dash__empty-sub">Aucune note de frais en attente dans le circuit.</p>
+      <p class="dash__empty-title">Aucune note à traiter</p>
+      <p class="dash__empty-sub">Toutes les notes de frais sont traitées. Les nouvelles notes apparaîtront ici.</p>
     </div>
 
+    <!-- ── Analyses graphiques ────────────────────────────────── -->
+    <div class="dash__section-header dash__section-header--analyses">
+      <div>
+        <h2 class="dash__section-title">Analyses</h2>
+        <p class="dash__section-sub">Évolution des notes, de la trésorerie et du résultat, d'après les données saisies.</p>
+      </div>
+    </div>
+
+    <ClientOnly>
+      <!-- 9. Résultat net (en tête : indicateur financier le plus important) -->
+      <div v-if="!estCaissier" class="cg-full">
+        <div class="cg-card">
+          <p class="cg-title">Évolution du résultat net</p>
+          <p class="cg-sub">Résultat net cumulé (Balance) de janvier à aujourd'hui</p>
+          <div class="cg-canvas"><Line :data="resultatNetLineData" :options="resultatNetLineOpts" /></div>
+        </div>
+      </div>
+      <!-- 1. Courbe -->
+      <div class="cg-full">
+        <div class="cg-card">
+          <p class="cg-title">Notes soumises par mois</p>
+          <p class="cg-sub">Nombre de notes soumises, sur les 6 derniers mois</p>
+          <div class="cg-canvas"><Line :data="lineData" :options="lineOpts" /></div>
+        </div>
+      </div>
+      <!-- 2. Barres + 5. Anneau -->
+      <div v-if="!estCaissier" class="cg-grid2">
+        <div class="cg-card">
+          <p class="cg-title">Montants par statut</p>
+          <p class="cg-sub">Cumul des montants regroupés par statut de traitement</p>
+          <div class="cg-canvas"><Bar :data="barData" :options="barOpts" /></div>
+        </div>
+        <div class="cg-card">
+          <p class="cg-title">Notes par statut</p>
+          <p class="cg-sub">Distribution du nombre de notes par statut</p>
+          <div class="cg-canvas"><Doughnut :data="donutData" :options="donutOpts" /></div>
+        </div>
+      </div>
+      <!-- 3. Aires -->
+      <div class="cg-full">
+        <div class="cg-card">
+          <p class="cg-title">Trésorerie prévue sur 6 mois</p>
+          <p class="cg-sub">Estimation calculée à partir du solde actuel, pas une prévision comptable</p>
+          <div class="cg-canvas"><Line :data="areaData" :options="areaOpts" /></div>
+        </div>
+      </div>
+      <!-- 4. Circulaire + 6. Radar -->
+      <div v-if="!estCaissier" class="cg-grid2">
+        <div class="cg-card">
+          <p class="cg-title">Notes par priorité</p>
+          <p class="cg-sub">Distribution des notes selon leur niveau de priorité</p>
+          <div class="cg-canvas"><Pie :data="pieData" :options="pieOpts" /></div>
+        </div>
+        <div class="cg-card">
+          <p class="cg-title">Indicateurs de suivi</p>
+          <p class="cg-sub">Part des notes payées, approuvées, dans le budget, etc.</p>
+          <div class="cg-canvas"><Radar :data="radarData" :options="radarOpts" /></div>
+        </div>
+      </div>
+      <!-- 7. Nuage de points + 8. Bulles -->
+      <div v-if="!estCaissier" class="cg-grid2">
+        <div class="cg-card">
+          <p class="cg-title">Montant de chaque note</p>
+          <p class="cg-sub">Chaque point représente une note de frais et son montant</p>
+          <div class="cg-canvas"><Scatter :data="scatterData" :options="scatterOpts" /></div>
+        </div>
+        <div class="cg-card">
+          <p class="cg-title">Priorité et montant des notes</p>
+          <p class="cg-sub">Taille : montant relatif. Couleur : niveau de priorité</p>
+          <div class="cg-canvas"><Bubble :data="bubbleData" :options="bubbleOpts" /></div>
+        </div>
+      </div>
+    </ClientOnly>
   </div>
 </template>
 
 <style scoped>
-/* ── Root ────────────────────────────────────────────────── */
-.dash {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 8px 0 48px;
+.dash { max-width: 1240px; margin: 0 auto; padding: 4px 0 56px; }
+
+/* ── En-tête ─────────────────────────────────────────────── */
+.dash__header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+.dash__eyebrow { font-size: 0.875rem; color: var(--ink-soft); margin: 0 0 6px; }
+.dash__eyebrow::first-letter { text-transform: uppercase; }
+.dash__title { font-size: clamp(1.7rem, 3.4vw, 2.5rem); font-weight: 700; color: var(--ink); letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
+.dash__actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.dash__cta { flex-shrink: 0; }
+
+/* ── Situation : position de trésorerie + indicateurs ────── */
+.board { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; margin-bottom: 48px; }
+@media (max-width: 960px) { .board { grid-template-columns: 1fr; } }
+
+.treso {
+  --c1: color-mix(in srgb, var(--color-primary) 40%, #7ff0b8);
+  --c2: #8db7ff;
+  --c3: #f3d28a;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 28px 30px 24px;
+  border-radius: 14px;
+  background: var(--hero-bg);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+  color: #fff;
+}
+.treso__label { font-size: 0.9rem; color: rgba(255,255,255,0.7); margin: 0; }
+.treso__total { font-size: clamp(2.4rem, 5.4vw, 4rem); font-weight: 700; letter-spacing: -0.04em; line-height: 1; margin: 0; }
+.treso__bar { display: flex; gap: 3px; height: 14px; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+.treso__bar--vide { background: rgba(255,255,255,0.12); }
+.treso__seg { display: block; height: 100%; min-width: 0; }
+.treso__seg--c1 { background: var(--c1); }
+.treso__seg--c2 { background: var(--c2); }
+.treso__seg--c3 { background: var(--c3); }
+.treso__canaux { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; }
+.treso__canal {
+  display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; align-items: center; gap: 12px;
+  padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.12);
+  color: inherit; text-decoration: none; font-size: 0.95rem;
+}
+.treso__canal:hover .treso__canal-nom { text-decoration: underline; text-underline-offset: 3px; }
+.treso__canal:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 4px; }
+.treso__dot { width: 12px; height: 12px; border-radius: 3px; }
+.treso__canal-part { color: rgba(255,255,255,0.6); min-width: 3.2em; text-align: right; }
+.treso__canal-montant { font-weight: 600; min-width: 8.5em; text-align: right; }
+
+.side { display: grid; gap: 12px; align-content: start; }
+.tile {
+  display: flex; flex-direction: column; gap: 6px; padding: 18px 20px;
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
+  color: var(--ink); text-decoration: none; transition: border-color 0.15s;
+}
+.tile:hover { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--hairline)); }
+.tile:focus-visible { outline: 3px solid var(--color-primary-mid); outline-offset: 2px; }
+.tile__label { font-size: 0.875rem; color: var(--ink-soft); }
+.tile__value { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.tile__value--neg { color: #b42318; }
+.tile__hint { font-size: 0.8125rem; color: var(--ink-soft); }
+.tile--action { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.tile--action .tile__label, .tile--action .tile__hint { color: rgba(255,255,255,0.82); }
+.tile--action:hover { border-color: var(--color-primary-dark); background: var(--color-primary-dark); }
+/* Nuit : le vert de marque est éclairci ; la tuile d'action garde un fond assez sombre pour un texte blanc lisible. */
+:global(html[data-theme='dark'] .dash .tile--action) { background: color-mix(in srgb, var(--color-primary) 45%, #07110d); border-color: color-mix(in srgb, var(--color-primary) 60%, #07110d); }
+:global(html[data-theme='dark'] .dash .tile--action:hover) { background: color-mix(in srgb, var(--color-primary) 55%, #07110d); }
+.tile__spark { width: 100%; height: 34px; color: var(--color-primary); }
+.tile__gauge { display: block; height: 6px; border-radius: 3px; background: var(--color-primary-light); overflow: hidden; }
+.tile__gauge > span { display: block; height: 100%; background: var(--color-primary); }
+
+/* ── Sections ────────────────────────────────────────────── */
+.dash__section-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.dash__section-header--analyses { margin-top: 52px; }
+.dash__section-title { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); margin: 0 0 2px; }
+.dash__section-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 0; }
+
+/* ── File d'attente : une ligne par note, avec son circuit ── */
+.queue { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden; }
+.queue > li + li { border-top: 1px solid var(--hairline); }
+.queue__row {
+  display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.9fr) auto; align-items: center; gap: 20px;
+  padding: 16px 22px; color: var(--ink); text-decoration: none; transition: background 0.12s;
+}
+.queue__row:hover { background: var(--color-primary-lighter); }
+.queue__row:focus-visible { outline: 3px solid var(--color-primary-mid); outline-offset: -3px; }
+.queue__main { display: grid; gap: 1px; min-width: 0; }
+.queue__ref { font-size: 0.8125rem; color: var(--ink-soft); }
+.queue__objet { font-weight: 600; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue__who { font-size: 0.8125rem; color: var(--ink-soft); }
+.queue__montant { font-weight: 700; text-align: right; white-space: nowrap; }
+
+.queue__track { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.queue__step { display: grid; gap: 5px; }
+.queue__pip { height: 4px; border-radius: 2px; background: var(--hairline); }
+.queue__step--done .queue__pip { background: var(--color-primary-mid); }
+.queue__step--now .queue__pip { background: var(--color-primary); height: 6px; margin-top: -1px; }
+.queue__step-nom { font-size: 0.72rem; line-height: 1.25; color: var(--ink-faint); }
+.queue__step--now .queue__step-nom { color: var(--ink); font-weight: 700; }
+@media (max-width: 800px) {
+  .queue__row { grid-template-columns: 1fr auto; gap: 10px 16px; }
+  .queue__track { grid-column: 1 / -1; order: 3; }
+  .queue__step-nom { display: none; }
+  .queue__step--now .queue__step-nom { display: block; }
 }
 
-/* ── Header ──────────────────────────────────────────────── */
-.dash__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 36px;
-  flex-wrap: wrap;
-}
-.dash__eyebrow {
-  font-size: 0.8125rem;
-  color: #6b7280;
-  font-weight: 500;
-  margin: 0 0 4px;
-}
-.dash__title {
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  font-weight: 700;
-  color: #111827;
-  letter-spacing: -0.5px;
-  margin: 0 0 6px;
-}
-.dash__sub {
-  font-size: 0.875rem;
-  color: #6b7280;
-  margin: 0;
-}
-.dash__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.dash__cta {
-  margin-top: 4px;
-  flex-shrink: 0;
-}
+.dash__empty { padding: 36px 24px; background: var(--surface); border: 1px dashed var(--hairline); border-radius: 12px; }
+.dash__empty-title { font-size: 1rem; font-weight: 600; color: var(--ink); margin: 0 0 4px; }
+.dash__empty-sub { font-size: 0.9rem; color: var(--ink-soft); margin: 0; max-width: 60ch; }
 
-/* ── Stats grid ──────────────────────────────────────────── */
-.dash__stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
-  gap: 16px;
-  margin-bottom: 40px;
-}
-
-/* ── Section header ──────────────────────────────────────── */
-.dash__section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-.dash__section-title {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  color: #111827;
-  margin: 0 0 2px;
-}
-.dash__section-sub {
-  font-size: 0.8rem;
-  color: #6b7280;
-  margin: 0;
-}
-
-/* ── Notes grid ──────────────────────────────────────────── */
-.dash__notes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
-  gap: 16px;
-}
-
-/* ── Empty state ─────────────────────────────────────────── */
-.dash__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 64px 24px;
-  background: #fff;
-  border: 1px dashed #e5e7eb;
-  border-radius: 16px;
-  text-align: center;
-}
-.dash__empty-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #374151;
-  margin: 0;
-}
-.dash__empty-sub {
-  font-size: 0.85rem;
-  color: #6b7280;
-  margin: 0;
-}
-
-/* ── Charts ──────────────────────────────────────────────── */
+/* ── Analyses ────────────────────────────────────────────── */
 .cg-full { margin-bottom: 16px; }
 .cg-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 @media (max-width: 680px) { .cg-grid2 { grid-template-columns: 1fr; } }
-.cg-card { min-width: 0; background: #fff; border: 1px solid #f0f0f0; border-radius: 18px; padding: 20px 22px; }
-.cg-title { font-size: 0.875rem; font-weight: 700; color: #111827; margin: 0 0 4px; display: flex; align-items: center; }
-.cg-sub { font-size: 0.75rem; color: #6b7280; margin: 0 0 16px; }
+.cg-card { min-width: 0; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 20px 22px; }
+.cg-title { font-size: 1rem; font-weight: 650; color: var(--ink); margin: 0 0 2px; }
+.cg-sub { font-size: 0.8125rem; color: var(--ink-soft); margin: 0 0 16px; }
 .cg-canvas { height: 260px; position: relative; }
 </style>

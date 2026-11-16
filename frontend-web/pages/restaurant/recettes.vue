@@ -574,7 +574,7 @@ const fmtQte = (n?: number | null) =>
 .fiche-conservation__aide { flex: 1 1 260px; min-width: 0; }
 
 /* Coût d'un ingrédient : valeur seule alignée à droite sur PC, tuile « Coût » sur téléphone. */
-.fiche-ligne__cout { align-self: center; text-align: right; font-size: 0.8125rem; color: #6b7280; white-space: nowrap; }
+.fiche-ligne__cout { align-self: center; text-align: right; font-size: 0.8125rem; color: var(--ink-soft); white-space: nowrap; }
 .fiche-ligne__cout-etiquette { display: none; }
 
 .fiche-total {
@@ -586,7 +586,7 @@ const fmtQte = (n?: number | null) =>
   padding: 3px 0;
 }
 .fiche-total strong { font-size: 1.15rem; color: var(--color-primary); }
-.fiche-total--secondaire { font-size: 0.8125rem; color: #6b7280; }
+.fiche-total--secondaire { font-size: 0.8125rem; color: var(--ink-soft); }
 
 /* Téléphone et tablette : le sélecteur remplace la liste, la fiche prend toute la largeur. */
 @media screen and (max-width: 959px) {
@@ -601,7 +601,7 @@ const fmtQte = (n?: number | null) =>
   .fiche-ligne__cout-etiquette {
     display: block; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #94a3b8;
   }
-  .fiche-ligne__cout-valeur { font-size: 1rem; font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }
+  .fiche-ligne__cout-valeur { font-size: 1rem; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
 }
 @media screen and (max-width: 599px) {
   .fiche-conservation__champ { flex: 1 1 100%; }

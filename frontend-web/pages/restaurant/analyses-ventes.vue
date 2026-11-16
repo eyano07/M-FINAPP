@@ -381,7 +381,7 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
 @media screen and (max-width: 599px) { .av-champ { max-width: none; } }
 
 .av-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-.av-kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: #f9fafb; }
+.av-kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); }
 .av-kpi--ca    { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .av-kpi--cout  { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
 .av-kpi--marge { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
@@ -391,11 +391,11 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
 .av-kpi__lbl { display: block; font-size: 0.72rem; font-weight: 500; opacity: 0.8; }
 
 .av-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.av-chart { min-width: 0; background: #fff; border: 1px solid #f0f0f0; border-radius: 16px; padding: 16px 18px 20px; }
+.av-chart { min-width: 0; background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; padding: 16px 18px 20px; }
 .av-chart--wide { grid-column: 1 / -1; }
-.av-chart__title { font-size: 0.8rem; font-weight: 700; color: #374151; margin: 0 0 12px; display: flex; align-items: center; }
+.av-chart__title { font-size: 0.8rem; font-weight: 700; color: var(--ink-2); margin: 0 0 12px; display: flex; align-items: center; }
 .av-chart__body { height: 260px; min-width: 0; position: relative; }
-.av-chart__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.82rem; }
+.av-chart__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ink-faint); font-size: 0.82rem; }
 @media (max-width: 900px) { .av-charts { grid-template-columns: minmax(0, 1fr); } }
 @media screen and (max-width: 599px) {
   .av-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -405,7 +405,7 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
 
 .av-card-head {
   font-size: 0.8rem; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
-  color: #6b7280; padding: 16px 20px 12px;
+  color: var(--ink-soft); padding: 16px 20px 12px;
 }
 @media screen and (max-width: 959px) { .av-card-head { padding: 4px 4px 10px; } }
 </style>

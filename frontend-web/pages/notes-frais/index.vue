@@ -940,7 +940,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   display: flex;
   align-items: center;
   font-size: 0.8rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin: 0;
   flex-shrink: 0;
 }
@@ -951,19 +951,19 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   display: inline-flex;
   gap: 4px;
   padding: 4px;
-  background: #f3f4f6;
+  background: var(--surface-2);
   border-radius: 12px;
 }
 
 /* Bascule Cartes / Tableau (PC) */
-.nf-affichage { display: inline-flex; gap: 2px; padding: 3px; background: #f3f4f6; border-radius: 12px; }
+.nf-affichage { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2); border-radius: 12px; }
 .nf-affichage__btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 14px; border: none; border-radius: 9px; background: transparent;
-  font: inherit; font-size: 0.82rem; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.15s;
+  font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: all 0.15s;
 }
-.nf-affichage__btn:hover { color: #374151; }
-.nf-affichage__btn--actif { background: #fff; color: var(--color-primary); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+.nf-affichage__btn:hover { color: var(--ink-2); }
+.nf-affichage__btn--actif { background: var(--surface); color: var(--color-primary); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
 .nf-sens-tab {
   display: inline-flex;
   align-items: center;
@@ -973,14 +973,14 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   border-radius: 9px;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: var(--ink-soft);
   cursor: pointer;
   transition: all 0.15s;
 }
-.nf-sens-tab:hover { color: #374151; }
+.nf-sens-tab:hover { color: var(--ink-2); }
 .nf-sens-tab--active {
-  background: #fff;
-  color: #111827;
+  background: var(--surface);
+  color: var(--ink);
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
@@ -1020,9 +1020,9 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   font-weight: 600;
   padding: 6px 14px;
   border-radius: 100px;
-  border: 1.5px solid #e5e7eb;
-  background: #fff;
-  color: #6b7280;
+  border: 1.5px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-soft);
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s;
@@ -1038,17 +1038,17 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 }
 .nf-filter--periode { margin-top: -12px; }
 .nf-filter--recherche { margin-top: -12px; }
-.nf-periode__label { font-size: 0.78rem; font-weight: 600; color: #6b7280; white-space: nowrap; }
+.nf-periode__label { font-size: 0.78rem; font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
 .nf-periode__input {
   font-size: 0.8rem;
   padding: 5px 10px;
   border-radius: 10px;
-  border: 1.5px solid #e5e7eb;
-  background: #fff;
-  color: #374151;
+  border: 1.5px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-2);
   font-family: inherit;
 }
-.nf-periode__sep { color: #9ca3af; font-size: 0.8rem; }
+.nf-periode__sep { color: var(--ink-faint); font-size: 0.8rem; }
 .nf-periode__range { display: flex; align-items: center; gap: 10px; }
 /* display:contents par defaut : ces wrappers structurent la grille mobile
    (voir media query ci-dessous) sans rien changer au flex-wrap:nowrap +
@@ -1116,13 +1116,13 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   align-items: center;
   gap: 10px;
   padding: 72px 24px;
-  background: #fff;
-  border: 1.5px dashed #e5e7eb;
+  background: var(--surface);
+  border: 1.5px dashed var(--hairline);
   border-radius: 20px;
   text-align: center;
 }
-.nf-empty__title { font-size: 1rem; font-weight: 600; color: #374151; margin: 0; }
-.nf-empty__sub   { font-size: 0.85rem; color: #9ca3af; margin: 0; }
+.nf-empty__title { font-size: 1rem; font-weight: 600; color: var(--ink-2); margin: 0; }
+.nf-empty__sub   { font-size: 0.85rem; color: var(--ink-faint); margin: 0; }
 .nf-empty__action { margin-top: 6px; }
 
 /* Recherche : trois champs qui se partagent la largeur et passent à la ligne sur petit écran. */
@@ -1147,7 +1147,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 
 /* ── Dialog ──────────────────────────────────────────────── */
 .nf-dialog {
-  background: #fff;
+  background: var(--surface);
   border-radius: 20px;
   overflow: hidden;
   display: flex;
@@ -1234,12 +1234,12 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 
 .nf-row { display: flex; gap: 12px; }
 .nf-field { display: flex; flex-direction: column; gap: 6px; }
-.nf-label { font-size: 0.8125rem; font-weight: 600; color: #374151; }
+.nf-label { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
 .nf-hint {
   display: flex;
   align-items: center;
   font-size: 0.78rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin: 0;
 }
 
@@ -1277,10 +1277,10 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 .nf-camera__canvas { display: none; }
 .nf-pieces__empty {
   font-size: 0.78rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   padding: 14px;
   text-align: center;
-  border: 1.5px dashed #e5e7eb;
+  border: 1.5px dashed var(--hairline);
   border-radius: 12px;
 }
 .nf-pieces__list { display: flex; flex-direction: column; gap: 6px; }
@@ -1289,20 +1289,20 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
   border-radius: 10px;
-  background: #fafafa;
+  background: var(--surface-2);
 }
 .nf-pieces__info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .nf-pieces__nom {
   font-size: 0.82rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nf-pieces__taille { font-size: 0.7rem; color: #9ca3af; }
+.nf-pieces__taille { font-size: 0.7rem; color: var(--ink-faint); }
 
 .nf-dialog__footer {
   display: flex;
@@ -1310,7 +1310,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   justify-content: flex-end;
   gap: 10px;
   padding: 16px 24px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
   flex-wrap: wrap;
   flex-shrink: 0;
 }
@@ -1321,12 +1321,12 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   padding: 10px 20px;
   border-radius: 10px;
   background: none;
-  border: 1.5px solid #e5e7eb;
-  color: #6b7280;
+  border: 1.5px solid var(--hairline);
+  color: var(--ink-soft);
   cursor: pointer;
   transition: background 0.15s;
 }
-.nf-btn--ghost:hover { background: #f9fafb; }
+.nf-btn--ghost:hover { background: var(--surface-2); }
 .nf-btn--ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Téléphone : surcharges placées APRÈS les règles de base de la recherche (même spécificité, l'ordre décide). */
@@ -1354,7 +1354,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 .nf-en-ligne__statut--en_attente { background: #dbeafe; color: #1d4ed8; }
 .nf-en-ligne__statut--appliquee { background: #dcfce7; color: #15803d; }
 .nf-en-ligne__statut--refusee { background: #fee2e2; color: #b91c1c; }
-.nf-en-ligne__resume { color: #0f172a; min-width: 0; overflow-wrap: anywhere; }
+.nf-en-ligne__resume { color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
 .nf-en-ligne__lien { font-weight: 600; color: var(--color-primary); }
 .nf-en-ligne__message { flex-basis: 100%; color: #475569; font-size: 0.82rem; }
 </style>

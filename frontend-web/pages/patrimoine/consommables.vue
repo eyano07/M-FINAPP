@@ -247,6 +247,6 @@ const sousSeuil = computed(() => stock.value.filter(l => l.sousSeuil))
 </template>
 
 <style scoped>
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.25rem; font-weight: 700; color: #111827; margin-top: 4px; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.25rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
 </style>

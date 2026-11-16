@@ -151,7 +151,7 @@ function imprimer(id: number) {
 /* Pas de lignes verticales ; un simple filet entre les lignes ; lignes de 60 px. */
 .nft :deep(.v-data-table__td) {
   height: 60px;
-  border-bottom: 1px solid #f3f4f6 !important;
+  border-bottom: 1px solid var(--hairline) !important;
   vertical-align: middle;
 }
 .nft :deep(.v-data-table__th) { height: 44px; }
@@ -160,13 +160,13 @@ function imprimer(id: number) {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: #111827;
+  color: var(--ink);
   text-decoration: none;
 }
 .nft__reference:hover { color: var(--color-primary); text-decoration: underline; }
 
-.nft__objet { padding: 6px 0 2px; font-weight: 500; line-height: 1.35; color: #111827; overflow-wrap: anywhere; }
-.nft__sous { padding-bottom: 6px; font-size: 0.75rem; color: #6b7280; }
+.nft__objet { padding: 6px 0 2px; font-weight: 500; line-height: 1.35; color: var(--ink); overflow-wrap: anywhere; }
+.nft__sous { padding-bottom: 6px; font-size: 0.75rem; color: var(--ink-soft); }
 
 .nft__statut {
   display: inline-flex; align-items: center; gap: 6px;
@@ -181,11 +181,11 @@ function imprimer(id: number) {
   display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 100px;
   font-size: 0.7rem; font-weight: 700; white-space: nowrap;
 }
-.nft__date { white-space: nowrap; color: #4b5563; }
+.nft__date { white-space: nowrap; color: var(--ink-soft); }
 
-.nft__montant { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; color: #111827; }
-.nft__devise { margin-left: 4px; font-size: 0.72rem; font-weight: 600; color: #9ca3af; }
+.nft__montant { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink); }
+.nft__devise { margin-left: 4px; font-size: 0.72rem; font-weight: 600; color: var(--ink-faint); }
 
 .nft__actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
-.nft__ouvrir { color: #9ca3af; }
+.nft__ouvrir { color: var(--ink-faint); }
 </style>

@@ -126,18 +126,18 @@ const lignesAffichees = computed(() => (resultat.value?.lignes || []).filter((l:
 </template>
 
 <style scoped>
-.cb { border: 1px solid #e5e7eb; border-left: 4px solid #9ca3af; border-radius: 10px; padding: 10px 12px; background: #fafafa; margin: 10px 0; }
+.cb { border: 1px solid var(--hairline); border-left: 4px solid #9ca3af; border-radius: 10px; padding: 10px 12px; background: var(--surface-2); margin: 10px 0; }
 .cb--conforme { border-left-color: #16a34a; background: #f0fdf4; }
 .cb--depassement { border-left-color: #f59e0b; background: #fffbeb; }
 .cb--hors_budget, .cb--sans_budget { border-left-color: #dc2626; background: #fef2f2; }
 .cb-tete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cb-titre { font-weight: 700; font-size: 0.86rem; }
-.cb-budget { font-size: 0.76rem; color: #4b5563; }
+.cb-budget { font-size: 0.76rem; color: var(--ink-soft); }
 .cb-service { font-size: 0.78rem; color: #3730a3; margin: 6px 0 0; display: flex; gap: 4px; align-items: baseline; flex-wrap: wrap; }
 .cb-ligne { display: flex; gap: 8px; margin-top: 8px; align-items: flex-start; }
 .cb-ligne__titre { display: block; font-size: 0.8rem; font-weight: 600; }
-.cb-ligne__msg { display: block; font-size: 0.8rem; color: #374151; }
-.cb-ligne__detail { display: block; font-size: 0.72rem; color: #6b7280; }
+.cb-ligne__msg { display: block; font-size: 0.8rem; color: var(--ink-2); }
+.cb-ligne__detail { display: block; font-size: 0.72rem; color: var(--ink-soft); }
 .cb-exige { font-size: 0.8rem; color: #991b1b; margin: 8px 0 0; font-weight: 600; }
 .cb-avert { font-size: 0.74rem; color: #92400e; margin: 6px 0 0; }
 .cb-erreur { font-size: 0.78rem; color: #b91c1c; margin: 6px 0 0; }
