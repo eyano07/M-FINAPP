@@ -3,13 +3,13 @@ import { aliases, mdi } from 'vuetify/iconsets/mdi'
 import { fr } from 'vuetify/locale'
 
 /**
- * Theme MBSC - clone visuel Google Classroom.
- * Palette Material : vert Classroom, fond gris tres clair, surfaces blanches.
+ * Theme MBSC « Malachite » : vert de marque, papier vert tres pale, surfaces blanches a filet fin, encre vert-noir.
+ * Les teintes derivees de la couleur de marque sont dans assets/styles/classroom.scss (color-mix).
  */
 const classroomLight = {
   dark: false,
   colors: {
-    background: '#F8F9FA',
+    background: '#EEF3F0',
     surface: '#FFFFFF',
     primary: '#15803D',
     secondary: '#2563EB',
@@ -18,9 +18,9 @@ const classroomLight = {
     info: '#2563EB',
     success: '#15803D',
     warning: '#D97706',
-    'on-surface': '#111827',
-    'on-background': '#111827',
-    'surface-variant': '#6B7280',
+    'on-surface': '#0D1A15',
+    'on-background': '#0D1A15',
+    'surface-variant': '#55645C',
   },
 }
 

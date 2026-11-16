@@ -14,8 +14,8 @@ const drawer = ref(!mobile.value)
     <LayoutAppBar :drawer-open="drawer" @toggle-drawer="drawer = !drawer" />
     <LayoutNavigationDrawer v-model="drawer" />
 
-    <v-main style="background: #f8f9fa;">
-      <v-container fluid class="pa-6">
+    <v-main style="background: var(--canvas);">
+      <v-container fluid class="pa-4 pa-md-8">
         <slot />
       </v-container>
     </v-main>

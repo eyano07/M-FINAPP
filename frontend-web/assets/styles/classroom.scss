@@ -3,9 +3,15 @@
    ============================================================ */
 
 :root {
-  --mbsc-radius: 16px;
-  --mbsc-border: #f0f0f0;
-  --mbsc-text-secondary: #6b7280;
+  --mbsc-radius: 10px;
+  --mbsc-border: #dde5e1;
+  --mbsc-text-secondary: #55645c;
+  /* « Malachite » : surfaces teintées de la couleur de marque (papier vert très pâle), encre quasi noire verte. */
+  --canvas: color-mix(in srgb, var(--color-primary) 5%, #eef2f0);
+  --ink: #0d1a15;
+  --ink-soft: #55645c;
+  --hairline: #dde5e1;
+  --font-ui: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', 'Segoe UI', system-ui, sans-serif;
   --mbsc-appbar-h: 60px;
   /* Couleur de marque personnalisable (admin > paramètres) — valeur de
      repli pour le tout premier rendu (SSR/avant hydratation), avant que
@@ -23,9 +29,19 @@
 
 html,
 body {
-  font-family: 'Inter', 'Roboto', Arial, sans-serif;
-  background-color: #f8f9fa;
+  font-family: var(--font-ui);
+  background-color: var(--canvas);
+  color: var(--ink);
 }
+/* Vuetify impose Roboto sur .v-application et sur les classes typographiques : on reprend la main. */
+.v-application,
+.v-application [class*='text-'],
+.v-application .v-btn,
+.v-application .v-field,
+.v-application .v-label {
+  font-family: var(--font-ui) !important;
+}
+.v-application { background: var(--canvas) !important; color: var(--ink); }
 
 /* Shared surface card */
 .classroom-card {
@@ -50,14 +66,14 @@ body {
 .page-title {
   font-size: clamp(1.4rem, 2.6vw, 1.85rem);
   font-weight: 700;
-  letter-spacing: -0.5px;
-  color: #111827;
+  letter-spacing: -0.025em;
+  color: var(--ink);
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 .page-sub {
-  font-size: 0.875rem;
-  color: #6b7280;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
   margin: 4px 0 0;
 }
 
@@ -76,12 +92,10 @@ body {
   border-radius: var(--mbsc-radius);
 }
 .v-data-table .v-data-table__th {
-  font-size: 0.72rem !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: #9ca3af !important;
-  background: #fafafa !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  color: var(--ink-soft) !important;
+  background: color-mix(in srgb, var(--color-primary) 4%, white) !important;
 }
 .v-data-table .v-data-table__td {
   font-size: 0.875rem !important;
@@ -122,7 +136,7 @@ body {
 
   /* Premier champ = en-tete de la carte (identifiant principal de la ligne) */
   .v-data-table__tr--mobile > .v-data-table__td:first-child {
-    background: linear-gradient(180deg, #f5faf7 0%, #ffffff 100%);
+    background: color-mix(in srgb, var(--color-primary) 5%, white);
     padding: 14px 16px 13px !important;
     border-bottom: 1px solid #eef2f0;
   }
@@ -151,11 +165,9 @@ body {
   }
 
   .v-data-table__tr--mobile .v-data-table__td-title {
-    font-size: 0.66rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: #9ca3af;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ink-soft);
     flex-shrink: 0;
   }
   .v-data-table__tr--mobile .v-data-table__td-value {

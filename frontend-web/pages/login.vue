@@ -163,7 +163,7 @@ async function submit() {
 .login-root {
   display: flex;
   min-height: 100dvh;
-  background: #f8f9fa;
+  background: var(--canvas);
 }
 
 /* ── Panneau de marque (gauche) : un grand livre ─────────── */

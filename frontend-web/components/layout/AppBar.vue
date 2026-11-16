@@ -60,7 +60,7 @@ async function ouvrirNotification(n: NotificationItem) {
       @click="emit('toggle-drawer')"
     />
 
-    <div class="modern-appbar__brand">
+    <div v-if="!drawerOpen || $vuetify.display.mobile" class="modern-appbar__brand">
       <div class="modern-appbar__logo" :class="{ 'modern-appbar__logo--image': parametresStore.parametres.logoUrl }">
         <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
         <v-icon v-else icon="mdi-finance" size="16" color="white" />
@@ -174,12 +174,12 @@ async function ouvrirNotification(n: NotificationItem) {
 <style scoped>
 /* ── App Bar ─────────────────────────────────────────────── */
 .modern-appbar {
-  background: #ffffff !important;
-  border-bottom: 1px solid #f0f0f0 !important;
+  background: var(--canvas) !important;
+  border-bottom: 0 !important;
 }
 
 .modern-appbar__nav-icon {
-  color: #6b7280 !important;
+  color: var(--ink-soft) !important;
 }
 
 .modern-appbar__brand {
@@ -204,10 +204,10 @@ async function ouvrirNotification(n: NotificationItem) {
 .modern-appbar__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
 
 .modern-appbar__name {
-  font-size: 0.9375rem;
-  font-weight: 400;
-  color: #374151;
-  letter-spacing: -0.1px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
 }
 .modern-appbar__name strong {
   font-weight: 700;
@@ -215,7 +215,7 @@ async function ouvrirNotification(n: NotificationItem) {
 }
 
 .modern-appbar__action {
-  color: #9ca3af !important;
+  color: var(--ink-soft) !important;
 }
 
 .modern-appbar__avatar {
@@ -225,11 +225,11 @@ async function ouvrirNotification(n: NotificationItem) {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  background: var(--color-primary-darker);
   color: #fff;
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.02em;
   border: none;
   cursor: pointer;
   margin-left: 6px;

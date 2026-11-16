@@ -29,6 +29,7 @@ export default defineNuxtConfig({
   ],
 
   css: [
+    '@fontsource-variable/schibsted-grotesk',
     '@mdi/font/css/materialdesignicons.min.css',
     'vuetify/styles',
     '~/assets/styles/classroom.scss',

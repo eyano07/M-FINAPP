@@ -413,198 +413,72 @@ function lignes(g: NavGroup): LigneMenu[] {
 </template>
 
 <style scoped>
+/* Barre latérale « malachite » : fond vert très sombre dérivé de la couleur de marque ; la page active porte un filet vif. */
 .modern-drawer {
-  background: #ffffff !important;
-  border-right: 1px solid #f0f0f0 !important;
-  padding: 12px 10px;
+  --nav-bg: color-mix(in srgb, var(--color-primary) 38%, #04120c);
+  --nav-ink: rgba(255, 255, 255, 0.74);
+  --nav-ink-strong: #ffffff;
+  --nav-line: rgba(255, 255, 255, 0.09);
+  --nav-bright: color-mix(in srgb, var(--color-primary) 55%, #7ff0b8);
+  background: var(--nav-bg) !important;
+  border-right: 0 !important;
+  padding: 14px 10px 8px;
+  color: var(--nav-ink);
 }
 
-.modern-drawer__brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 6px 16px;
-}
+.modern-drawer__brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 18px; }
 .modern-drawer__logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: var(--color-primary);
-  flex-shrink: 0;
-  overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 9px;
+  background: rgba(255, 255, 255, 0.12); flex-shrink: 0; overflow: hidden;
 }
-.modern-drawer__logo--image { background: #fff; border: 1px solid #f0f0f0; }
-.modern-drawer__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
-.modern-drawer__brand-name {
-  font-size: 0.9375rem;
-  font-weight: 400;
-  color: #374151;
-}
-.modern-drawer__brand-name strong {
-  font-weight: 700;
-  color: #111827;
-}
+.modern-drawer__logo--image { background: rgba(255, 255, 255, 0.95); }
+.modern-drawer__logo img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+.modern-drawer__brand-name { font-size: 1rem; font-weight: 650; color: var(--nav-ink-strong); letter-spacing: -0.01em; }
 
-.modern-drawer__section-label {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: #6b7280;
-  padding: 6px 10px 6px;
-}
+.modern-drawer__section-label { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.5); padding: 6px 10px; }
 
-.modern-drawer__divider {
-  height: 1px;
-  background: #f3f4f6;
-  margin: 10px 6px;
-}
+.modern-drawer__divider { height: 1px; background: var(--nav-line); margin: 12px 8px; }
 
-/* En-tete de rubrique repliable : reprend le style du simple label qu'il
-   remplace (voir modern-drawer__section-label), en plus fonce puisqu'il est
-   desormais cliquable, pas juste decoratif. */
 .modern-drawer__group-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  margin: 0 0 2px;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  font: inherit;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: #4b5563;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; margin: 0 0 2px; padding: 7px 10px;
+  border: none; border-radius: 8px; background: none; font: inherit;
+  font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.55);
+  cursor: pointer; transition: color 0.15s, background 0.15s;
 }
-.modern-drawer__group-toggle:hover {
-  background: #f9fafb;
-  color: #374151;
-}
-.modern-drawer__group-toggle .v-icon {
-  color: #6b7280;
-  transition: color 0.15s;
-}
-.modern-drawer__group-toggle:hover .v-icon {
-  color: #374151;
-}
+.modern-drawer__group-toggle:hover { color: var(--nav-ink-strong); background: rgba(255,255,255,0.05); }
+.modern-drawer__group-toggle .v-icon { color: inherit; }
+.modern-drawer__group-toggle:focus-visible,
+.modern-drawer__item:focus-visible { outline: 2px solid var(--nav-bright); outline-offset: -2px; }
 
-.modern-drawer__nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
+.modern-drawer__nav { display: flex; flex-direction: column; gap: 1px; }
 
 .modern-drawer__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 10px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #6b7280;
-  text-decoration: none;
+  position: relative; display: flex; align-items: center; gap: 12px;
+  padding: 9px 12px; border-radius: 8px;
+  font-size: 0.9rem; font-weight: 500; color: var(--nav-ink); text-decoration: none;
   transition: background 0.15s, color 0.15s;
 }
-.modern-drawer__item:hover {
-  background: #f9fafb;
-  color: #111827;
+.modern-drawer__item:hover { background: rgba(255,255,255,0.06); color: var(--nav-ink-strong); }
+.modern-drawer__item--active { background: rgba(255,255,255,0.10) !important; color: var(--nav-ink-strong) !important; font-weight: 600; }
+.modern-drawer__item--active::before {
+  content: ''; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 4px;
+  border-radius: 0 4px 4px 0; background: var(--nav-bright);
 }
-.modern-drawer__item--active {
-  background: var(--color-primary-light) !important;
-  color: var(--color-primary) !important;
-  font-weight: 600;
-}
-.modern-drawer__item--active .modern-drawer__item-icon {
-  color: var(--color-primary);
-}
+.modern-drawer__item--active .modern-drawer__item-icon { color: var(--nav-bright); }
 
-/* États financiers de premier reflexe (Bilan, Balance...) : reperables d'un
-   coup d'oeil dans une liste par ailleurs uniforme, sans rivaliser avec le
-   vert de la page active. */
-.modern-drawer__item--essentiel {
-  color: #92400e;
-  font-weight: 600;
-}
-.modern-drawer__item--essentiel .modern-drawer__item-icon {
-  background: #fef3c7;
-  color: #b45309;
-}
-.modern-drawer__item--essentiel:hover {
-  background: #fffbeb;
-  color: #92400e;
-}
-.modern-drawer__item--essentiel:hover .modern-drawer__item-icon {
-  background: #fde68a;
-}
-.modern-drawer__item--active.modern-drawer__item--essentiel {
-  background: var(--color-primary-light) !important;
-  color: var(--color-primary) !important;
-}
-.modern-drawer__item--active.modern-drawer__item--essentiel .modern-drawer__item-icon {
-  background: transparent;
-  color: var(--color-primary);
-}
+/* États financiers de premier réflexe (Bilan, Balance…) : repérés par un or discret. */
+.modern-drawer__item--essentiel { color: #f3d28a; font-weight: 600; }
+.modern-drawer__item--essentiel:hover { background: rgba(243, 210, 138, 0.10); color: #f8e3b0; }
+.modern-drawer__item--active.modern-drawer__item--essentiel { color: var(--nav-ink-strong) !important; }
 
-.modern-drawer__item-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-.modern-drawer__item:hover .modern-drawer__item-icon {
-  background: var(--color-primary-lighter);
-}
+.modern-drawer__item-icon { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex-shrink: 0; }
+.modern-drawer__item-label { flex: 1; }
 
-.modern-drawer__item-label {
-  flex: 1;
-}
+.modern-drawer__subgroup-toggle { width: 100%; border: none; background: none; font: inherit; font-size: 0.9rem; font-weight: 500; text-align: left; cursor: pointer; }
+.modern-drawer__subgroup-chevron { color: rgba(255,255,255,0.5); }
+.modern-drawer__item--imbrique { margin-left: 18px; padding-top: 7px; padding-bottom: 7px; font-size: 0.85rem; }
 
-/* Sous-rubrique (Restaurant > Cuisine, Bar, Stocks) : un en-tete qui a
-   l'allure d'un lien, avec un chevron, et des liens decales dessous pour
-   marquer la hierarchie. */
-.modern-drawer__subgroup-toggle {
-  width: 100%;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: 0.875rem;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-}
-.modern-drawer__subgroup-chevron {
-  color: #6b7280;
-  transition: color 0.15s;
-}
-.modern-drawer__subgroup-toggle:hover .modern-drawer__subgroup-chevron {
-  color: #374151;
-}
-.modern-drawer__item--imbrique {
-  margin-left: 16px;
-  padding-top: 7px;
-  padding-bottom: 7px;
-  font-size: 0.8125rem;
-}
-
-.modern-drawer__footer {
-  padding: 16px 12px;
-  font-size: 0.72rem;
-  color: #6b7280;
-  border-top: 1px solid #f3f4f6;
-  margin: 0 -10px;
-}
+.modern-drawer__footer { padding: 14px 12px; font-size: 0.78rem; color: rgba(255,255,255,0.45); border-top: 1px solid var(--nav-line); margin: 0 -10px; }
 </style>
