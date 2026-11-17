@@ -469,6 +469,25 @@ function lignes(g: NavGroup): LigneMenu[] {
   color: var(--nav-ink);
 }
 
+/* Ascenseur aux couleurs de la barre : fin, translucide, sans le rail blanc ni les flèches du navigateur. */
+.modern-drawer :deep(.v-navigation-drawer__content) {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar) { width: 8px; }
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar-track) { background: transparent; }
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar-button) { display: none; height: 0; }
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar-thumb) {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar-thumb:hover) {
+  background: var(--nav-bright);
+  background-clip: padding-box;
+}
+
 .modern-drawer__brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 18px; }
 .modern-drawer__logo {
   display: inline-flex; align-items: center; justify-content: center;

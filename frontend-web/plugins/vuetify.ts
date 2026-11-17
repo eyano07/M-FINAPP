@@ -102,4 +102,6 @@ export default defineNuxtPlugin((nuxtApp) => {
   })
 
   nuxtApp.vueApp.use(vuetify)
+  // Accès au thème hors composant (mode nuit appliqué au démarrage : composables/useModeAffichage.ts).
+  nuxtApp.provide('vuetifyTheme', vuetify.theme)
 })

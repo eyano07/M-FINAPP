@@ -28,6 +28,14 @@ function calculer(): 'clair' | 'sombre' {
 export function useModeAffichage() {
   let theme: ReturnType<typeof useTheme> | null = null
   try { theme = useTheme() } catch { theme = null }
+  // Appelé depuis un plugin (démarrage de l'application), useTheme() n'a pas de composant parent et échoue : le
+  // thème Vuetify restait alors « clair » sous une page sombre (champs noirs sur fond noir). On passe par l'instance
+  // Vuetify de l'application.
+  if (!theme) {
+    try {
+      theme = (useNuxtApp().$vuetifyTheme as ReturnType<typeof useTheme> | undefined) ?? null
+    } catch { theme = null }
+  }
 
   function appliquer() {
     if (!import.meta.client) return

@@ -607,12 +607,14 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
             :key="s"
             class="nf-filter__chip"
             :class="{ 'nf-filter__chip--active': filterStatut === s }"
-            :style="filterStatut === s
-              ? { background: statutNoteMeta(s, activeSens).color, borderColor: statutNoteMeta(s, activeSens).color, color: '#fff' }
-              : { background: statutNoteMeta(s, activeSens).bg, color: statutNoteMeta(s, activeSens).text, borderColor: statutNoteMeta(s, activeSens).bg }"
+            :style="{
+              '--chip-couleur': statutNoteMeta(s, activeSens).color,
+              '--chip-fond': statutNoteMeta(s, activeSens).bg,
+              '--chip-texte': statutNoteMeta(s, activeSens).text,
+            }"
             @click="filterStatut = s"
           >
-            <span class="nf-filter__dot" :style="{ background: filterStatut === s ? '#fff' : statutNoteMeta(s, activeSens).color }" />
+            <span class="nf-filter__dot" />
             {{ statutNoteMeta(s, activeSens).label }}
           </button>
         </div>
@@ -1028,6 +1030,38 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   transition: all 0.15s;
 }
 .nf-filter__chip:hover { filter: brightness(0.95); }
+/* Chips de statut : couleurs du statut passées en variables (style en ligne), pour que le thème nuit les adoucisse. */
+.nf-filter__grid .nf-filter__chip {
+  background: var(--chip-fond);
+  border-color: var(--chip-fond);
+  color: var(--chip-texte);
+}
+.nf-filter__grid .nf-filter__chip .nf-filter__dot { background: var(--chip-couleur); }
+.nf-filter__grid .nf-filter__chip--active {
+  background: var(--chip-couleur);
+  border-color: var(--chip-couleur);
+  color: #fff;
+}
+.nf-filter__grid .nf-filter__chip--active .nf-filter__dot { background: #fff; }
+/* Thème nuit : teinte du statut fondue dans la surface sombre, texte dans sa couleur adoucie ; plus de pastels vifs. */
+:global(html[data-theme='dark'] .nf-filter__grid .nf-filter__chip) {
+  background: color-mix(in srgb, var(--chip-couleur) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--chip-couleur) 30%, var(--surface));
+  color: color-mix(in srgb, var(--chip-couleur) 55%, #e7f0ea);
+}
+:global(html[data-theme='dark'] .nf-filter__grid .nf-filter__chip--active) {
+  background: color-mix(in srgb, var(--chip-couleur) 42%, var(--surface));
+  border-color: color-mix(in srgb, var(--chip-couleur) 60%, var(--surface));
+  color: #fff;
+}
+:global(html[data-theme='dark'] .nf-stat--pending) {
+  background: color-mix(in srgb, #f97316 14%, var(--surface));
+  color: color-mix(in srgb, #f97316 60%, #e7f0ea);
+}
+:global(html[data-theme='dark'] .nf-stat--paid) {
+  background: color-mix(in srgb, #3b82f6 14%, var(--surface));
+  color: color-mix(in srgb, #3b82f6 60%, #e7f0ea);
+}
 .nf-filter__chip--active { font-weight: 700; }
 .nf-filter__dot {
   display: inline-block;
@@ -1357,4 +1391,13 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 .nf-en-ligne__resume { color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
 .nf-en-ligne__lien { font-weight: 600; color: var(--color-primary); }
 .nf-en-ligne__message { flex-basis: 100%; color: #475569; font-size: 0.82rem; }
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .nf-visibilite { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .nf-en-ligne { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .nf-en-ligne__statut--en_attente { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .nf-en-ligne__statut--appliquee { background: color-mix(in srgb, #7fd4a8 11%, var(--surface)) !important; color: #7fd4a8 !important; }
+html[data-theme='dark'] .nf-en-ligne__statut--refusee { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
 </style>

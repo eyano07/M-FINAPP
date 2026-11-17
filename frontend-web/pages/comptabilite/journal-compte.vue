@@ -272,17 +272,19 @@ function imprimer() {
 .jc-filtres > .v-text-field { flex: 0 1 170px; }
 .jc-filtres__compte { flex: 1 1 280px; min-width: 0; }
 .jc-filtres .jc-filtres__recherche { flex: 1 1 320px; }
-.jc-titre { font-size: 1.35rem; font-weight: 800; color: #1f2d4d; margin: 4px 0 8px; padding-bottom: 6px; border-bottom: 2px solid #1f3864; }
+.jc-titre { font-size: 1.35rem; font-weight: 800; color: var(--ink); margin: 4px 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary); }
 .jc-note { font-size: 0.78rem; color: var(--ink-soft); margin: 6px 0 10px; }
-.jc-table-wrap { overflow-x: auto; }
+.jc-table-wrap { overflow-x: auto; border: 1px solid var(--hairline); border-radius: 12px; }
 .jc-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; background: var(--surface); }
-.jc-table th { background: #1f3864; color: #fff; text-align: left; font-weight: 700; padding: 6px 8px; white-space: nowrap; }
+/* Couleurs du thème (variables de classroom.scss) : suivent la couleur choisie par l'administrateur et le thème nuit. */
+.jc-table th { background: var(--color-primary-darker); color: #fff; text-align: left; font-weight: 700; padding: 8px; white-space: nowrap; }
 .jc-table td { padding: 5px 8px; border-bottom: 1px solid var(--hairline); vertical-align: top; color: var(--ink); }
 .jc-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.jc-table tbody tr:nth-child(even) { background: #f7f8fb; }
+.jc-table tbody tr:nth-child(even) { background: var(--color-primary-lighter); }
+.jc-table tbody tr:hover td { background: var(--color-primary-light); }
 .jc-nowrap { white-space: nowrap; }
-.jc-ouverture td { font-style: italic; color: var(--ink-2); background: #eef1f7; }
-.jc-table tfoot td { font-weight: 700; border-top: 2px solid #1f3864; background: #eef1f7; }
+.jc-ouverture td { font-style: italic; color: var(--ink-soft); background: var(--color-primary-light); }
+.jc-table tfoot td { font-weight: 700; border-top: 2px solid var(--color-primary); background: var(--color-primary-light); }
 .jc-annulee td { color: var(--ink-faint); }
 .jc-badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 0.68rem; background: #fee2e2; color: #b91c1c; }
 .jc-piece { display: block; font-size: 0.68rem; color: var(--ink-faint); }
@@ -297,4 +299,9 @@ function imprimer() {
   .jc-table tr { break-inside: avoid; }
   .jc-table-wrap { overflow: visible; }
 }
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .jc-badge { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
 </style>

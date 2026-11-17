@@ -44,20 +44,20 @@
     --color-primary-dark: color-mix(in srgb, var(--color-primary) 80%, white);
     --color-primary-darker: color-mix(in srgb, var(--color-primary) 55%, #07110d);
     --color-primary-darkest: color-mix(in srgb, var(--color-primary) 30%, #07110d);
-    --color-primary-light: color-mix(in srgb, var(--color-primary) 16%, #0d1a14);
-    --color-primary-lighter: color-mix(in srgb, var(--color-primary) 9%, #0d1a14);
-    --color-primary-mid: color-mix(in srgb, var(--color-primary) 50%, #0d1a14);
-    --canvas: #07110d;
-    --surface: #0d1a14;
-    --surface-2: #12221a;
-    --hairline: #1f3329;
-    --mbsc-border: #1f3329;
+    --color-primary-light: color-mix(in srgb, var(--color-primary) 16%, var(--nuit-surface, #0d1a14));
+    --color-primary-lighter: color-mix(in srgb, var(--color-primary) 9%, var(--nuit-surface, #0d1a14));
+    --color-primary-mid: color-mix(in srgb, var(--color-primary) 50%, var(--nuit-surface, #0d1a14));
+    --canvas: var(--nuit-canvas, #07110d);
+    --surface: var(--nuit-surface, #0d1a14);
+    --surface-2: var(--nuit-surface-2, #12221a);
+    --hairline: var(--nuit-hairline, #1f3329);
+    --mbsc-border: var(--nuit-hairline, #1f3329);
     --ink: #e7f0ea;
     --ink-2: #c9d6ce;
     --ink-soft: #97aa9f;
     --ink-faint: #6c8075;
     --mbsc-text-secondary: #97aa9f;
-    --nav-bg: #050c09;
+    --nav-bg: var(--nuit-nav, #050c09);
     --hero-bg: color-mix(in srgb, var(--color-primary) 22%, #08140f);
     color-scheme: dark;
   }
@@ -520,3 +520,15 @@ body {
   }
   html[data-entete="ENCADRE"] .print-entete__meta strong { color: var(--color-primary-darker) !important; }
 }
+
+/* Thème nuit : un bouton plein désactivé (« Produire » tant que le formulaire est incomplet) ne doit pas briller en vert
+   menthe ; il devient une surface à peine teintée, texte estompé (17/11). */
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-flat,
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated {
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 12%, var(--surface)) !important;
+  color: color-mix(in srgb, var(--ink) 40%, transparent) !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-flat .v-btn__overlay,
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay { opacity: 0 !important; }

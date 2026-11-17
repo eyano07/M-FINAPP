@@ -72,6 +72,27 @@ function eclaircirPourNuit(hex: string): string {
   return '#' + rgb.split(',').map((v, i) => Math.round(Number(v) * 0.6 + cible[i] * 0.4).toString(16).padStart(2, '0')).join('')
 }
 
+/** Mélange `part` (0 à 1) de la couleur de marque dans un noir donné : fonds du thème nuit teintés de la marque. */
+function fondNuit(hex: string, part: number, noir: [number, number, number]): string {
+  const rgb = hexToRgbTriplet(hex)
+  if (!rgb) return '#' + noir.map(v => v.toString(16).padStart(2, '0')).join('')
+  return '#' + rgb.split(',').map((v, i) => Math.round(Number(v) * part + noir[i] * (1 - part)).toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * Fonds du thème nuit dérivés de la couleur choisie par l'administrateur : la page, les cartes, les filets et la barre
+ * latérale sont une version très sombre de SA couleur (et non plus un vert-noir fixe).
+ */
+function fondsNuit(couleur: string) {
+  return {
+    canvas: fondNuit(couleur, 0.10, [6, 8, 7]),
+    surface: fondNuit(couleur, 0.15, [10, 13, 12]),
+    surface2: fondNuit(couleur, 0.19, [14, 18, 16]),
+    hairline: fondNuit(couleur, 0.28, [20, 26, 23]),
+    nav: fondNuit(couleur, 0.12, [3, 5, 4]),
+  }
+}
+
 function appliquerCouleurPrimaire(couleur: string) {
   if (!import.meta.client || !couleur) return
   const nuit = eclaircirPourNuit(couleur)
@@ -79,6 +100,12 @@ function appliquerCouleurPrimaire(couleur: string) {
   // Texte posé sur la couleur de marque (bandeau imprimé) : sombre sur une couleur claire, blanc sinon.
   document.documentElement.style.setProperty('--color-on-primary', luminanceRelative(couleur) > 0.42 ? '#111827' : '#ffffff')
   document.documentElement.style.setProperty('--color-primary-nuit', nuit)
+  const fonds = fondsNuit(couleur)
+  document.documentElement.style.setProperty('--nuit-canvas', fonds.canvas)
+  document.documentElement.style.setProperty('--nuit-surface', fonds.surface)
+  document.documentElement.style.setProperty('--nuit-surface-2', fonds.surface2)
+  document.documentElement.style.setProperty('--nuit-hairline', fonds.hairline)
+  document.documentElement.style.setProperty('--nuit-nav', fonds.nav)
 
   try {
     const theme = useTheme()
@@ -87,6 +114,11 @@ function appliquerCouleurPrimaire(couleur: string) {
       if (cible) {
         cible.colors.primary = c
         cible.colors.success = c
+        if (nom === 'malachiteNuit') {
+          cible.colors.background = fonds.canvas
+          cible.colors.surface = fonds.surface
+          cible.colors['surface-bright'] = fonds.surface2
+        }
       }
     }
   } catch {
@@ -111,6 +143,14 @@ function appliquerCouleurPrimaire(couleur: string) {
     regle?.style.setProperty('--v-theme-primary', rgb)
     regle?.style.setProperty('--v-theme-success', rgb)
     regle?.style.setProperty('--v-theme-primary-darken-1', assombrirRgbTriplet(rgb))
+    if (nom === 'malachiteNuit') {
+      // Cartes, tableaux, menus : la surface Vuetify suit elle aussi la couleur choisie.
+      for (const [variable, valeur] of [['--v-theme-background', fonds.canvas], ['--v-theme-surface', fonds.surface],
+        ['--v-theme-surface-bright', fonds.surface2]] as const) {
+        const t = hexToRgbTriplet(valeur)
+        if (t) regle?.style.setProperty(variable, t)
+      }
+    }
   }
 }
 
