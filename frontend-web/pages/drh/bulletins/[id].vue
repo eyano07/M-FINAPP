@@ -452,3 +452,8 @@ const situationFamilialeLabel = (s: string) => SITUATION_FAMILIALE_LABELS[s] || 
   .recu-signature { margin-top: 8px; }
 }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .bp-net { background: color-mix(in srgb, #7fd4a8 11%, var(--surface)) !important; border-color: color-mix(in srgb, #7fd4a8 28%, transparent) !important; }
+</style>

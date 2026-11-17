@@ -637,3 +637,8 @@ async function ouvrirNotification(n: NotificationItem) {
   .modern-appbar__synchro:not(.modern-appbar__synchro--probleme) { display: none; }
 }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .user-menu__logout:hover { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+</style>

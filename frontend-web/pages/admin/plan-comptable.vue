@@ -964,3 +964,14 @@ const parentOptions = computed(() =>
 .pc-submit-btn:hover:not(:disabled) { background: var(--color-primary-dark); }
 .pc-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .pc-fiche__head { background: color-mix(in srgb, #a5b4fc 11%, var(--surface)) !important; }
+html[data-theme='dark'] .pc-del-btn { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; border-color: color-mix(in srgb, #f19a9a 28%, transparent) !important; }
+html[data-theme='dark'] .pc-del-btn:hover:not(:disabled) { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; }
+html[data-theme='dark'] .pc-edit-btn { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .pc-edit-btn:hover { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; }
+html[data-theme='dark'] .pc-del-compte-card { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; border-color: color-mix(in srgb, #f19a9a 28%, transparent) !important; }
+html[data-theme='dark'] .pc-del-warning { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; color: #f2c66d !important; border-color: color-mix(in srgb, #f2c66d 28%, transparent) !important; }
+</style>

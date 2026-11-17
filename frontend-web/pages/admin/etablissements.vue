@@ -400,3 +400,9 @@ const fmtUSD = (usd: number) =>
 .dialog-header--banque { background: linear-gradient(140deg, #60a5fa 0%, #2563eb 50%, #1e3a8a 100%); }
 .dialog-header--mm { background: linear-gradient(140deg, #fb923c 0%, #ea580c 50%, #7c2d12 100%); }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .etab__compte { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .etab__compte--mm { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; }
+</style>

@@ -318,3 +318,8 @@ async function modifier(role: string, module: string, niveau: string) {
   .perm-ligne .perm-select { flex: 1 1 100%; width: 100%; }
 }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .perm-select--lecture { background: color-mix(in srgb, #7cc9d8 11%, var(--surface)) !important; color: #7cc9d8 !important; border-color: color-mix(in srgb, #7cc9d8 28%, transparent) !important; }
+</style>

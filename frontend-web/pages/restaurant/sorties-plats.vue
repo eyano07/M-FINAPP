@@ -508,3 +508,8 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
 .rst-perime__qte { flex: 0 0 auto; font-weight: 700; color: #b45309; white-space: nowrap; }
 .rst-perime__valeur { flex: 0 0 110px; text-align: right; color: var(--ink-soft); font-size: 0.875rem; white-space: nowrap; }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .rst-stat--valeur { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+</style>

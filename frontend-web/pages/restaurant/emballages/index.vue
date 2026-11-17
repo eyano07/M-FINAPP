@@ -290,6 +290,8 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
   font-size: 0.875rem;
 }
 .rst-stat--vides   { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
+/* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
+:global(html[data-theme='dark'] .rst-stat--vides) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }
 .rst-stat--casiers { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }

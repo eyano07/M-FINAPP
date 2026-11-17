@@ -915,3 +915,10 @@ const classeEcart = (section: string, v: number) => {
   .bs-signatures small { font-size: 0.62rem; color: var(--ink-soft); }
 }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .bs-section-ligne td { background: color-mix(in srgb, #a5b4fc 11%, var(--surface)) !important; }
+html[data-theme='dark'] .bs-cartes__section { background: color-mix(in srgb, #a5b4fc 11%, var(--surface)) !important; }
+html[data-theme='dark'] .bs-ligne-depassement td { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; }
+</style>

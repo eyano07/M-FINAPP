@@ -297,3 +297,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 }
 .vte-empty p { margin: 0; }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .vte-stat--nb  .vte-stat__icon { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+</style>

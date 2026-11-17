@@ -1674,3 +1674,10 @@ const fmtTaux = computed(() =>
   .recu-ticket__horodatage { text-align: center; font-size: 9px; color: #444; margin-top: 6px; }
 }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .caisse-stat--dec .caisse-stat__icon { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+html[data-theme='dark'] .caisse-stat--pos .caisse-stat__icon { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .caisse-stat--neg .caisse-stat__icon { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; color: #f2c66d !important; }
+</style>

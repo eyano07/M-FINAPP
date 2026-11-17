@@ -440,3 +440,9 @@ const suspens = computed(() => (r.value?.ecritures || []).filter(e => !e.pointag
   .rb-signatures__ligne { border-bottom: 1px solid #9ca3af; height: 46px; }
 }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .rb-ecart--ok { background: color-mix(in srgb, #7fd4a8 11%, var(--surface)) !important; color: #7fd4a8 !important; }
+html[data-theme='dark'] .rb-ecart--ko { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; color: #f2c66d !important; }
+</style>

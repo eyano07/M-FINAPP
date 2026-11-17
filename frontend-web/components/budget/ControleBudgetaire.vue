@@ -142,3 +142,11 @@ const lignesAffichees = computed(() => (resultat.value?.lignes || []).filter((l:
 .cb-avert { font-size: 0.74rem; color: #92400e; margin: 6px 0 0; }
 .cb-erreur { font-size: 0.78rem; color: #b91c1c; margin: 6px 0 0; }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .cb--conforme { background: color-mix(in srgb, #7fd4a8 11%, var(--surface)) !important; border-color: color-mix(in srgb, #7fd4a8 28%, transparent) !important; }
+html[data-theme='dark'] .cb--depassement { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; border-color: color-mix(in srgb, #f2c66d 28%, transparent) !important; }
+html[data-theme='dark'] .cb--hors_budget,
+html[data-theme='dark'] .cb--sans_budget { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; border-color: color-mix(in srgb, #f19a9a 28%, transparent) !important; }
+</style>

@@ -209,9 +209,9 @@ const enCoursAilleurs = computed(() =>
 
 // ── Position de trésorerie : les trois canaux (caisse, banques, mobile money) en un seul total ────────────────
 const canaux = computed(() => {
-  const l = [{ id: 'caisse', libelle: 'Caisse', montant: tresorerie.value, to: versCaisseOuGrandLivre.value, cls: 'c1' }]
-  if (permissions.peutVoir('BANQUE')) l.push({ id: 'banque', libelle: 'Banques', montant: tresorerieBanque.value, to: versBanqueOuGrandLivre.value, cls: 'c2' })
-  if (permissions.peutVoir('MOBILE_MONEY')) l.push({ id: 'mm', libelle: 'Mobile money', montant: tresorerieMobileMoney.value, to: versMobileMoneyOuGrandLivre.value, cls: 'c3' })
+  const l = [{ id: 'caisse', libelle: 'Caisse', montant: tresorerie.value, to: versCaisseOuGrandLivre.value, cls: 'c1', icone: 'mdi-cash-register' }]
+  if (permissions.peutVoir('BANQUE')) l.push({ id: 'banque', libelle: 'Banques', montant: tresorerieBanque.value, to: versBanqueOuGrandLivre.value, cls: 'c2', icone: 'mdi-bank-outline' })
+  if (permissions.peutVoir('MOBILE_MONEY')) l.push({ id: 'mm', libelle: 'Mobile money', montant: tresorerieMobileMoney.value, to: versMobileMoneyOuGrandLivre.value, cls: 'c3', icone: 'mdi-cellphone-nfc' })
   return l
 })
 const totalTresorerie = computed(() => canaux.value.reduce((s, c) => s + (c.montant || 0), 0))
@@ -411,18 +411,17 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
         <p class="treso__label">Trésorerie disponible</p>
         <p class="treso__total">{{ fmtUSD(totalTresorerie) }}</p>
 
-        <div v-if="partPositive > 0" class="treso__bar" role="img" :aria-label="`Répartition : ${canaux.map(c => c.libelle + ' ' + partCanal(c.montant)).join(', ')}`">
-          <span v-for="c in canaux" :key="c.id" :class="['treso__seg', `treso__seg--${c.cls}`]" :style="{ width: largeurCanal(c.montant) }" />
-        </div>
-        <div v-else class="treso__bar treso__bar--vide" />
-
-        <ul class="treso__canaux">
+        <!-- 17/11 : un compartiment par canal (montant, part du total, jauge propre) plutôt qu'une barre fusionnée. -->
+        <ul class="treso__canaux" :style="{ '--nb': canaux.length }">
           <li v-for="c in canaux" :key="c.id">
-            <NuxtLink :to="c.to" class="treso__canal">
-              <span :class="['treso__dot', `treso__seg--${c.cls}`]" />
-              <span class="treso__canal-nom">{{ c.libelle }}</span>
-              <span class="treso__canal-part">{{ partCanal(c.montant) }}</span>
+            <NuxtLink :to="c.to" :class="['treso__canal', `treso__canal--${c.cls}`, { 'treso__canal--neg': c.montant < 0 }]">
+              <span class="treso__canal-tete">
+                <span class="treso__canal-icone"><v-icon :icon="c.icone" size="18" /></span>
+                <span class="treso__canal-nom">{{ c.libelle }}</span>
+                <span class="treso__canal-part">{{ partCanal(c.montant) }}</span>
+              </span>
               <span class="treso__canal-montant">{{ fmtUSD(c.montant) }}</span>
+              <span class="treso__jauge" aria-hidden="true"><span :style="{ width: largeurCanal(c.montant) }" /></span>
             </NuxtLink>
           </li>
         </ul>
@@ -586,7 +585,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 
 .treso {
   --c1: color-mix(in srgb, var(--color-primary) 40%, #7ff0b8);
-  --c2: #8db7ff;
+  --c2: #8ec9e6;
   --c3: #f3d28a;
   display: flex; flex-direction: column; gap: 14px;
   padding: 28px 30px 24px;
@@ -597,23 +596,35 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 }
 .treso__label { font-size: 0.9rem; color: rgba(255,255,255,0.7); margin: 0; }
 .treso__total { font-size: clamp(2.4rem, 5.4vw, 4rem); font-weight: 700; letter-spacing: -0.04em; line-height: 1; margin: 0; }
-.treso__bar { display: flex; gap: 3px; height: 14px; border-radius: 4px; overflow: hidden; margin-top: 8px; }
-.treso__bar--vide { background: rgba(255,255,255,0.12); }
-.treso__seg { display: block; height: 100%; min-width: 0; }
-.treso__seg--c1 { background: var(--c1); }
-.treso__seg--c2 { background: var(--c2); }
-.treso__seg--c3 { background: var(--c3); }
-.treso__canaux { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; }
+.treso__canaux { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 12px;
+  grid-template-columns: repeat(var(--nb, 3), minmax(0, 1fr)); }
+@media (max-width: 700px) { .treso__canaux { grid-template-columns: 1fr; } }
 .treso__canal {
-  display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; align-items: center; gap: 12px;
-  padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.12);
-  color: inherit; text-decoration: none; font-size: 0.95rem;
+  --c: var(--c1);
+  position: relative; display: flex; flex-direction: column; gap: 10px; height: 100%;
+  padding: 14px 16px 16px; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
+  border: 1px solid rgba(255,255,255,0.12);
+  color: inherit; text-decoration: none;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
-.treso__canal:hover .treso__canal-nom { text-decoration: underline; text-underline-offset: 3px; }
-.treso__canal:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 4px; }
-.treso__dot { width: 12px; height: 12px; border-radius: 3px; }
-.treso__canal-part { color: rgba(255,255,255,0.6); min-width: 3.2em; text-align: right; }
-.treso__canal-montant { font-weight: 600; min-width: 8.5em; text-align: right; }
+.treso__canal::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--c); }
+.treso__canal--c2 { --c: var(--c2); }
+.treso__canal--c3 { --c: var(--c3); }
+.treso__canal:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 60%, transparent);
+  background: linear-gradient(160deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05)); }
+.treso__canal:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.treso__canal-tete { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.treso__canal-icone { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px;
+  color: var(--c); background: color-mix(in srgb, var(--c) 18%, transparent); flex-shrink: 0; }
+.treso__canal-nom { flex: 1; min-width: 0; color: rgba(255,255,255,0.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.treso__canal-part { font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); font-variant-numeric: tabular-nums; }
+.treso__canal-montant { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; }
+.treso__canal--neg .treso__canal-montant { color: #ffb4b4; }
+.treso__jauge { display: block; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.10); overflow: hidden; margin-top: auto; }
+.treso__jauge span { display: block; height: 100%; border-radius: 999px; background: var(--c); transition: width 0.6s cubic-bezier(.2,.8,.2,1); }
 
 .side { display: grid; gap: 12px; align-content: start; }
 .tile {

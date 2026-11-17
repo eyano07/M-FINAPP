@@ -499,3 +499,8 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
 .sugg-badge { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px; color: #7c3aed; background: #ede9fe; padding: 2px 7px; border-radius: 100px; }
 .sugg-raison { font-size: 0.78rem; color: var(--ink-soft); margin: 4px 0 0; }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .sugg-avant { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+</style>

@@ -1973,3 +1973,10 @@ const peutGererPieces = computed(() => !surCopie.value &&
 .nd-action-en-ligne__statut--refusee { background: #fee2e2; color: #b91c1c; }
 .nd-action-en-ligne__message { color: #475569; }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .nd-action-en-ligne__statut--en_attente { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .nd-action-en-ligne__statut--appliquee { background: color-mix(in srgb, #7fd4a8 11%, var(--surface)) !important; color: #7fd4a8 !important; }
+html[data-theme='dark'] .nd-action-en-ligne__statut--refusee { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+</style>

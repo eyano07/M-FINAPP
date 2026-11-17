@@ -331,7 +331,7 @@ function fmtDate(d: string) {
   flex-wrap: wrap;
   gap: 16px;
   padding: 24px 28px;
-  background: linear-gradient(140deg, #7c3aed 0%, #6d28d9 50%, #4c1d95 100%);
+  background: linear-gradient(140deg, var(--color-primary) 0%, var(--color-primary-dark) 50%, var(--color-primary-darker) 100%);
   border-radius: 20px;
   margin-bottom: 24px;
 }
@@ -441,7 +441,7 @@ function fmtDate(d: string) {
   margin-top: 5px;
   flex-shrink: 0;
 }
-.tva-hist-row__dot--latest { background: #7c3aed; border-color: #ede9fe; }
+.tva-hist-row__dot--latest { background: var(--color-primary); border-color: var(--color-primary-light); }
 .tva-hist-row__body { flex: 1; }
 .tva-hist-row__header {
   display: flex;
@@ -461,8 +461,8 @@ function fmtDate(d: string) {
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 100px;
-  background: #ede9fe;
-  color: #6d28d9;
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
 }
 .tva-hist-row__date { display: block; font-size: 0.75rem; color: var(--ink-faint); }
 .tva-hist-row__note {

@@ -241,7 +241,7 @@ function fmtDate(d: string) {
   flex-wrap: wrap;
   gap: 16px;
   padding: 24px 28px;
-  background: linear-gradient(140deg, #2563eb 0%, #1d4ed8 50%, #1e3a8a 100%);
+  background: linear-gradient(140deg, var(--color-primary) 0%, var(--color-primary-dark) 50%, var(--color-primary-darker) 100%);
   border-radius: 20px;
   margin-bottom: 24px;
 }
@@ -362,7 +362,7 @@ function fmtDate(d: string) {
   margin-top: 5px;
   flex-shrink: 0;
 }
-.tc-hist-row__dot--latest { background: #2563eb; border-color: #dbeafe; }
+.tc-hist-row__dot--latest { background: var(--color-primary); border-color: var(--color-primary-light); }
 
 .tc-hist-row__body { flex: 1; }
 .tc-hist-row__header {
@@ -383,8 +383,8 @@ function fmtDate(d: string) {
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 100px;
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
 }
 .tc-hist-row__date {
   display: block;
@@ -410,3 +410,4 @@ function fmtDate(d: string) {
   font-style: italic;
 }
 </style>
+

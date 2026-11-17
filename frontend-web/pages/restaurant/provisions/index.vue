@@ -459,6 +459,10 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR
 .rst-stat--valeur { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
 .rst-stat--lignes { background: linear-gradient(135deg,#fdf4ff,#f3e8ff); color: #7e22ce; }
 .rst-stat--alerte { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
+/* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
+:global(html[data-theme='dark'] .rst-stat--valeur) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }
+:global(html[data-theme='dark'] .rst-stat--lignes) { background: color-mix(in srgb, #c7a3ee 10%, var(--surface)); color: #c7a3ee; box-shadow: inset 0 0 0 1px color-mix(in srgb, #c7a3ee 22%, transparent); }
+:global(html[data-theme='dark'] .rst-stat--alerte) { background: color-mix(in srgb, #f19a9a 10%, var(--surface)); color: #f19a9a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f19a9a 22%, transparent); }
 .rst-stat--ok     { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }

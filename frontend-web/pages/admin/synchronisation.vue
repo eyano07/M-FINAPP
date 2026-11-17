@@ -430,3 +430,8 @@ const date = (iso: string | null | undefined) => iso
 .sync-tuile strong { font-size: 0.95rem; color: var(--ink); }
 .sync-liste { margin: 0; padding-left: 18px; color: #475569; font-size: 0.9rem; line-height: 1.6; }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .sync-cle { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+</style>

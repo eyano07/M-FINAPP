@@ -761,7 +761,7 @@ const roleColor: Record<string, string> = {
 .usr-dialog__head {
   position: relative; overflow: hidden;
   display: flex; align-items: center; gap: 14px; padding: 22px;
-  background: linear-gradient(140deg, #2563eb 0%, #1d4ed8 50%, #1e3a8a 100%);
+  background: linear-gradient(140deg, var(--color-primary) 0%, var(--color-primary-dark) 50%, var(--color-primary-darker) 100%);
 }
 .usr-dialog__blob {
   position: absolute; border-radius: 50%;
@@ -836,4 +836,17 @@ const roleColor: Record<string, string> = {
 }
 .usr-submit-btn:hover:not(:disabled) { background: #1d4ed8; }
 .usr-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .usr-provisoire-chip { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; }
+html[data-theme='dark'] .usr-action-btn--edit { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .usr-action-btn--edit:hover { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; }
+html[data-theme='dark'] .usr-action-btn--deact { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; border-color: color-mix(in srgb, #f0a77a 28%, transparent) !important; }
+html[data-theme='dark'] .usr-action-btn--deact:hover { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; }
+html[data-theme='dark'] .usr-card-item__btn--edit { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .usr-card-item__btn--edit:active { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; }
+html[data-theme='dark'] .usr-card-item__btn--deact { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; border-color: color-mix(in srgb, #f0a77a 28%, transparent) !important; }
+html[data-theme='dark'] .usr-card-item__btn--deact:active { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; }
 </style>

@@ -269,3 +269,8 @@ const fc = (usd: number | null) => new Intl.NumberFormat('fr-FR').format(Math.ro
 .minerai-toggle__titre { font-size: 0.9rem; font-weight: 700; color: #92400e; display: flex; align-items: center; }
 .minerai-toggle__desc { font-size: 0.75rem; color: #a16207; line-height: 1.35; }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .minerai-toggle { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; }
+</style>

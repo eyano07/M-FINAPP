@@ -387,6 +387,11 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
 .av-kpi--marge { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
 .av-kpi--alerte{ background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
 .av-kpi--nb    { background: linear-gradient(135deg,#faf5ff,#f3e8ff); color: #7e22ce; }
+/* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
+:global(html[data-theme='dark'] .av-kpi--cout) { background: color-mix(in srgb, #f0a77a 10%, var(--surface)); color: #f0a77a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f0a77a 22%, transparent); }
+:global(html[data-theme='dark'] .av-kpi--marge) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }
+:global(html[data-theme='dark'] .av-kpi--alerte) { background: color-mix(in srgb, #f19a9a 10%, var(--surface)); color: #f19a9a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f19a9a 22%, transparent); }
+:global(html[data-theme='dark'] .av-kpi--nb) { background: color-mix(in srgb, #c7a3ee 10%, var(--surface)); color: #c7a3ee; box-shadow: inset 0 0 0 1px color-mix(in srgb, #c7a3ee 22%, transparent); }
 .av-kpi__val { display: block; font-size: 1.05rem; font-weight: 800; letter-spacing: -0.4px; }
 .av-kpi__lbl { display: block; font-size: 0.72rem; font-weight: 500; opacity: 0.8; }
 

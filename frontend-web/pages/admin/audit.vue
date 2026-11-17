@@ -197,7 +197,7 @@ async function demander(q?: string) {
         <v-card class="classroom-card pa-4">
           <h2 class="au-titre">Par utilisateur</h2>
           <div v-for="u in synthese.parUtilisateur.slice(0, 8)" :key="u.cle" class="au-barre" @click="filtre.utilisateur = u.cle; charger()">
-            <span class="au-barre__lib">{{ u.cle }}</span>
+            <span class="au-barre__lib" :title="u.cle">{{ u.cle }}</span>
             <span class="au-barre__fond"><span class="au-barre__val" :style="{ width: pct(u.total, max(synthese.parUtilisateur)) }" /></span>
             <span class="au-barre__n">{{ u.total }}<small v-if="u.echecs" class="au-echec"> · {{ u.echecs }} ✗</small></span>
           </div>
@@ -205,7 +205,7 @@ async function demander(q?: string) {
         <v-card class="classroom-card pa-4">
           <h2 class="au-titre">Par module</h2>
           <div v-for="u in synthese.parModule.slice(0, 8)" :key="u.cle" class="au-barre" @click="filtre.module = u.cle; charger()">
-            <span class="au-barre__lib">{{ u.cle }}</span>
+            <span class="au-barre__lib" :title="u.cle">{{ u.cle }}</span>
             <span class="au-barre__fond"><span class="au-barre__val au-barre__val--b" :style="{ width: pct(u.total, max(synthese.parModule)) }" /></span>
             <span class="au-barre__n">{{ u.total }}<small v-if="u.echecs" class="au-echec"> · {{ u.echecs }} ✗</small></span>
           </div>
@@ -213,7 +213,7 @@ async function demander(q?: string) {
         <v-card class="classroom-card pa-4">
           <h2 class="au-titre">Par terminal</h2>
           <div v-for="u in synthese.parTerminal" :key="u.cle" class="au-barre" @click="filtre.terminal = u.cle; charger()">
-            <span class="au-barre__lib"><v-icon :icon="iconeTerminal(u.cle)" size="14" class="mr-1" />{{ u.cle }}</span>
+            <span class="au-barre__lib" :title="u.cle"><v-icon :icon="iconeTerminal(u.cle)" size="14" class="mr-1" />{{ u.cle }}</span>
             <span class="au-barre__fond"><span class="au-barre__val au-barre__val--d" :style="{ width: pct(u.total, max(synthese.parTerminal)) }" /></span>
             <span class="au-barre__n">{{ u.total }}<small v-if="u.echecs" class="au-echec"> · {{ u.echecs }} ✗</small></span>
           </div>
@@ -221,7 +221,7 @@ async function demander(q?: string) {
         <v-card class="classroom-card pa-4">
           <h2 class="au-titre">Par système</h2>
           <div v-for="u in synthese.parSysteme.slice(0, 8)" :key="u.cle" class="au-barre" @click="filtre.systeme = u.cle; charger()">
-            <span class="au-barre__lib">{{ u.cle }}</span>
+            <span class="au-barre__lib" :title="u.cle">{{ u.cle }}</span>
             <span class="au-barre__fond"><span class="au-barre__val au-barre__val--e" :style="{ width: pct(u.total, max(synthese.parSysteme)) }" /></span>
             <span class="au-barre__n">{{ u.total }}<small v-if="u.echecs" class="au-echec"> · {{ u.echecs }} ✗</small></span>
           </div>
@@ -353,10 +353,15 @@ async function demander(q?: string) {
 .au-carte--alerte .au-carte__val { color: #b91c1c; }
 .au-graphes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 .au-titre { font-size: 0.95rem; font-weight: 700; margin: 0 0 8px; }
-.au-barre { display: grid; grid-template-columns: minmax(90px, 1.2fr) 2fr auto; gap: 8px; align-items: center; font-size: 0.78rem; margin-bottom: 5px; cursor: pointer; }
-/* Le libellé de la barre (utilisateur, module...) passe à la ligne : il ne doit pas être coupé par « … ». */
-.au-barre__lib { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
-.au-barre__fond { background: #eef2f1; border-radius: 4px; height: 10px; display: block; }
+/* Colonnes de largeur fixe, identiques d'une ligne à l'autre : toutes les barres commencent et finissent au même endroit
+   (avec « auto », chaque ligne calculait ses propres colonnes et les barres se décalaient). Libellé sur une seule ligne,
+   le nom complet s'affiche au survol (17/11). */
+.au-barre { display: grid; grid-template-columns: minmax(0, 42%) minmax(0, 1fr) 4.6rem; gap: 10px; align-items: center;
+  font-size: 0.78rem; min-height: 22px; margin-bottom: 4px; cursor: pointer; border-radius: 6px; padding: 0 4px; }
+.au-barre:hover { background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
+.au-barre__lib { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.au-barre__n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.au-barre__fond { background: var(--hairline, #eef2f1); border-radius: 4px; height: 10px; display: block; overflow: hidden; }
 .au-barre__val { display: block; height: 10px; border-radius: 4px; background: var(--color-primary, #15803d); }
 .au-barre__val--b { background: #2563eb; }
 .au-barre__val--c { background: #7c3aed; }
@@ -383,4 +388,9 @@ async function demander(q?: string) {
 /* Ligne recopiée du journal du serveur local (V133) */
 .au-serveur { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 100px; background: #eff6ff; color: #1d4ed8;
   font-size: 0.7rem; font-weight: 700; vertical-align: middle; white-space: nowrap; }
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .au-serveur { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
 </style>

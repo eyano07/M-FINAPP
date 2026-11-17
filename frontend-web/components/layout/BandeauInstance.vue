@@ -54,3 +54,9 @@ const aJourAu = computed(() => {
 .bandeau-instance__detail { display: block; opacity: 0.85; }
 @media print { .bandeau-instance { display: none; } }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .bandeau-instance--copie { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .bandeau-instance--arrete { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; border-color: color-mix(in srgb, #f0a77a 28%, transparent) !important; }
+</style>

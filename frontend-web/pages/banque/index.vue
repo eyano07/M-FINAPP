@@ -761,3 +761,13 @@ const fmtTaux = computed(() =>
   padding: 0;
 }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .taux-badge { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .operateur-solde { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .caisse-stat--dec .caisse-stat__icon { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+html[data-theme='dark'] .caisse-stat--pos .caisse-stat__icon { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .caisse-stat--neg .caisse-stat__icon { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; color: #f2c66d !important; }
+html[data-theme='dark'] .caisse-note__ref { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+</style>

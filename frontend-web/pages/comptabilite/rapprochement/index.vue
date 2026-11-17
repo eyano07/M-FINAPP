@@ -386,3 +386,13 @@ async function enregistrer() {
 .rb-saisie .num, .rb-saisie input.num { text-align: right; font-variant-numeric: tabular-nums; }
 .rb-saisie tfoot td { font-weight: 700; background: var(--surface-2); }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .rb-tuile--ok { background: color-mix(in srgb, #7fd4a8 11%, var(--surface)) !important; color: #7fd4a8 !important; }
+html[data-theme='dark'] .rb-tuile--cours { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; color: #f2c66d !important; }
+html[data-theme='dark'] .rb-etat--ok { background: color-mix(in srgb, #7fd4a8 11%, var(--surface)) !important; color: #7fd4a8 !important; }
+html[data-theme='dark'] .rb-etat--cours { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; color: #f2c66d !important; }
+html[data-theme='dark'] .rb-controle--ok { background: color-mix(in srgb, #7fd4a8 11%, var(--surface)) !important; color: #7fd4a8 !important; }
+html[data-theme='dark'] .rb-controle--ko { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+</style>

@@ -745,3 +745,9 @@ async function confirmerSuppression() {
   margin: 0 0 4px;
 }
 </style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .rst-stat--plats { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; }
+html[data-theme='dark'] .rst-stat--boissons { background: color-mix(in srgb, #a5b4fc 11%, var(--surface)) !important; color: #a5b4fc !important; }
+</style>
