@@ -404,6 +404,23 @@ public class SuiviBudgetaireService {
             montant, nombre, servicesEnDepassement);
     }
 
+    /**
+     * Execution de l'enveloppe de chaque service dans ce budget (depenses : prevu, realise, engage, taux), par
+     * identifiant de service ; les lignes generales n'y figurent pas. Pour les cartes de la page des services.
+     */
+    public Map<Long, SuiviService> executionDesServices(Budget budget, MouvementsExercice mouvements, List<Engagement> engagements,
+                                                        Map<Long, ServiceBudgetaire> catalogue) {
+        ExecutionLignes exec = repartirSurLignes(budget, mouvements, engagements);
+        int moisEcoules = moisEcoules(budget.getExercice());
+        Map<Long, SuiviService> r = new HashMap<>();
+        for (SuiviService s : suiviDesServices(budget, exec, catalogue, List.of(), moisEcoules, Map.of())) {
+            if (s.serviceId() != null) {
+                r.put(s.serviceId(), s);
+            }
+        }
+        return r;
+    }
+
     /** Tous les services (actifs ou non), par identifiant. */
     @Transactional(readOnly = true)
     public Map<Long, ServiceBudgetaire> catalogueServices() {

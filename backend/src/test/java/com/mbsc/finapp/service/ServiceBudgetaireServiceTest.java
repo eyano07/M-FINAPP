@@ -1,6 +1,14 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.Budget;
+import com.mbsc.finapp.domain.CompteOHADA;
+import com.mbsc.finapp.domain.LigneBudget;
 import com.mbsc.finapp.domain.ServiceBudgetaire;
+import com.mbsc.finapp.domain.enums.DureeBudget;
+import com.mbsc.finapp.domain.enums.StatutBudget;
+import com.mbsc.finapp.dto.budget.ExecutionServiceResponse;
+import com.mbsc.finapp.dto.budget.SuiviBudgetResponse.SuiviService;
+import com.mbsc.finapp.repository.BudgetRepository;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.dto.budget.ServiceBudgetaireRequest;
 import com.mbsc.finapp.dto.budget.ServiceBudgetaireResponse;
@@ -13,12 +21,21 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,6 +46,8 @@ class ServiceBudgetaireServiceTest {
 
     private ServiceBudgetaireRepository repository;
     private ServiceBudgetaireService service;
+    private BudgetRepository budgets;
+    private SuiviBudgetaireService suivi;
 
     @BeforeEach
     void preparer() {
@@ -38,7 +57,9 @@ class ServiceBudgetaireServiceTest {
         when(repository.save(any(ServiceBudgetaire.class))).thenAnswer(i -> i.getArgument(0));
         when(repository.compterLignesParService()).thenReturn(List.of());
         when(repository.compterNotesParService()).thenReturn(List.of());
-        service = new ServiceBudgetaireService(repository, courant);
+        budgets = mock(BudgetRepository.class);
+        suivi = mock(SuiviBudgetaireService.class);
+        service = new ServiceBudgetaireService(repository, courant, budgets, suivi);
     }
 
     @Test
@@ -95,5 +116,46 @@ class ServiceBudgetaireServiceTest {
             .isInstanceOf(ResponseStatusException.class);
         assertThat(service.modifier(6L, new ServiceBudgetaireRequest("Atelier mécanique", "Paul Ilunga", "Garage")).responsable())
             .isEqualTo("Paul Ilunga");
+    }
+
+    @Test
+    void execution_d_un_service_lue_dans_le_budget_en_cours_plutot_que_dans_un_brouillon() {
+        ServiceBudgetaire info = ServiceBudgetaire.builder().id(3L).nom("Service Informatique").responsable("Pascal").actif(true).build();
+        int annee = LocalDate.now().getYear();
+        Budget brouillon = budget(10L, annee + 1, StatutBudget.BROUILLON, info);
+        Budget enCours = budget(11L, annee, StatutBudget.EN_EXECUTION, info);
+        when(budgets.findAll()).thenReturn(List.of(brouillon, enCours));
+        SuiviService exec = new SuiviService(3L, "Service Informatique", "Pascal", true, List.of(), new BigDecimal("1000"),
+            new BigDecimal("250"), new BigDecimal("100"), new BigDecimal("650"), new BigDecimal("25.00"), BigDecimal.ZERO,
+            BigDecimal.ZERO, 0, BigDecimal.ZERO, List.of(), List.of());
+        when(suivi.executionDesServices(eq(enCours), any(), any(), anyMap())).thenReturn(Map.of(3L, exec));
+
+        List<ExecutionServiceResponse> r = service.executions();
+
+        assertThat(r).singleElement().satisfies(e -> {
+            assertThat(e.budgetId()).isEqualTo(11L);
+            assertThat(e.periode()).isEqualTo("Exercice " + annee);
+            assertThat(e.prevu()).isEqualByComparingTo("1000");
+            assertThat(e.tauxExecution()).isEqualByComparingTo("25");
+            assertThat(e.joursEcoules()).isBetween(1L, e.joursTotal());
+        });
+        verify(suivi, never()).executionDesServices(eq(brouillon), any(), any(), anyMap());
+        verify(suivi).mouvementsDetailles(annee);
+        verify(suivi).engagementsDeLExercice(eq(annee), isNull(), anyList());
+    }
+
+    @Test
+    void un_service_absent_de_tout_budget_n_a_pas_d_execution() {
+        when(budgets.findAll()).thenReturn(List.of());
+        assertThat(service.executions()).isEmpty();
+        verify(suivi, never()).mouvementsDetailles(anyInt());
+    }
+
+    private static Budget budget(Long id, int exercice, StatutBudget statut, ServiceBudgetaire s) {
+        Budget b = Budget.builder().id(id).reference("BUD-" + id).intitule("Budget " + exercice).exercice(exercice)
+            .duree(DureeBudget.ANNUEL).periode(1).statut(statut).lignes(new ArrayList<>()).build();
+        b.getLignes().add(LigneBudget.builder().budget(b).service(s).compte(CompteOHADA.builder().numero("6051").build())
+            .montantPrevu(new BigDecimal("1000")).build());
+        return b;
     }
 }

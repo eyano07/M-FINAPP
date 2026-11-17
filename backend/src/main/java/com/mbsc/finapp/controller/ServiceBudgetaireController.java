@@ -1,5 +1,6 @@
 package com.mbsc.finapp.controller;
 
+import com.mbsc.finapp.dto.budget.ExecutionServiceResponse;
 import com.mbsc.finapp.dto.budget.ServiceBudgetaireRequest;
 import com.mbsc.finapp.dto.budget.ServiceBudgetaireResponse;
 import com.mbsc.finapp.service.ServiceBudgetaireService;
@@ -34,6 +35,12 @@ public class ServiceBudgetaireController {
     @GetMapping
     public List<ServiceBudgetaireResponse> lister() {
         return service.lister();
+    }
+
+    /** Prevu, realise, engage et taux d'execution de chaque service dans son budget de reference. */
+    @GetMapping("/execution")
+    public List<ExecutionServiceResponse> executions() {
+        return service.executions();
     }
 
     @PostMapping
