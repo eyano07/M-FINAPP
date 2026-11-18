@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+// Comptabilisation, annulation, restauration d'une pièce : les soldes de trésorerie peuvent changer (MouvementsTresorerie).
+@EntityListeners(com.mbsc.finapp.service.widget.MouvementsTresorerie.EcoutePiece.class)
 @Table(name = "pieces_comptables")
 @Getter
 @Setter

@@ -10,5 +10,8 @@ public interface PreferenceUtilisateurRepository extends JpaRepository<Preferenc
 
     List<PreferenceUtilisateur> findByUserId(Long userId);
 
+    /** Comptes qui ont choisi cette valeur (ex. widget.tresorerie = ACTIF). */
+    List<PreferenceUtilisateur> findByCleAndValeur(String cle, String valeur);
+
     Optional<PreferenceUtilisateur> findByUserIdAndCle(Long userId, String cle);
 }

@@ -11,6 +11,7 @@ import com.mbsc.finapp.dto.notifications.NotificationsPageResponse;
 import com.mbsc.finapp.repository.NotificationRepository;
 import com.mbsc.finapp.repository.UserRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
+import com.mbsc.finapp.service.push.PushService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -59,6 +60,7 @@ public class NotificationService {
     private final UserRepository userRepository;
     private final CurrentUserProvider currentUser;
     private final MailNotificationService mail;
+    private final PushService push;
 
     /** Emetteurs SSE actifs par utilisateur (plusieurs onglets = plusieurs emetteurs). */
     private final Map<Long, List<SseEmitter>> emetteurs = new ConcurrentHashMap<>();
@@ -97,12 +99,16 @@ public class NotificationService {
 
     @Transactional
     public void marquerLue(Long id) {
-        notificationRepository.marquerLue(id, currentUser.requireUserId());
+        Long moi = currentUser.requireUserId();
+        notificationRepository.marquerLue(id, moi);
+        push.rafraichirWidgets(List.of(moi));   // pastille de l'icône et widgets du téléphone à jour
     }
 
     @Transactional
     public void marquerToutesLues() {
-        notificationRepository.marquerToutesLues(currentUser.requireUserId());
+        Long moi = currentUser.requireUserId();
+        notificationRepository.marquerToutesLues(moi);
+        push.rafraichirWidgets(List.of(moi));
     }
 
     // ---------------------------------------------------------------------
@@ -249,7 +255,7 @@ public class NotificationService {
     }
 
     /**
-     * Enregistre, pousse en temps reel et copie par e-mail. Titre et message sont ramenes a la taille de leurs
+     * Enregistre, pousse en temps reel, copie par e-mail et, pour une note de frais, envoie aux telephones (push). Titre et message sont ramenes a la taille de leurs
      * colonnes (200 et 500 caracteres) : un motif de rejet ou un objet long ne doit pas faire echouer l'action metier.
      */
     private void enregistrer(Notification notif) {
@@ -258,6 +264,7 @@ public class NotificationService {
         Notification enregistree = notificationRepository.save(notif);
         pousser(enregistree.getDestinataire().getId(), NotificationResponse.from(enregistree));
         mail.envoyerApresCommit(enregistree);
+        push.envoyerApresCommit(enregistree);
     }
 
     static String tronquer(String texte, int max) {

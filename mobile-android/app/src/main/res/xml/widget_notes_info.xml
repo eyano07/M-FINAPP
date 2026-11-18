@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Petite taille minimale (2 rangées) : certains lanceurs (HiOS, Android Go) masquent les widgets trop grands pour
+     leur grille ; il s'agrandit ensuite. Actualisé toutes les 30 min (minimum Android), à chaque sortie de l'application et à chaque notification reçue. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_notes_description"
+    android:initialLayout="@layout/widget_notes"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="70dp"
+    android:previewImage="@drawable/widget_apercu"
+    android:previewLayout="@layout/widget_notes"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="3"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

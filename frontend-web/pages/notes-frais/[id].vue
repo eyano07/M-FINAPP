@@ -80,6 +80,7 @@ interface NoteDetail {
 import { useDisplay } from 'vuetify'
 import type { RetourFonds } from '~/components/notes-frais/DetailRetourFonds.vue'
 import { useInstanceStore } from '~/stores/instance'
+import { estApplicationMobile } from '~/utils/applicationMobile'
 
 const route = useRoute()
 const api = useApi()
@@ -146,9 +147,14 @@ const prioMeta: Record<string, { label: string; bg: string; color: string }> = {
   BASSE:   { label: 'Basse',   bg: '#dbeafe', color: '#2563eb' },
 }
 
+// Serveur qui redémarre (mise à jour) ou réseau coupé au moment de l'ouverture — fréquent quand on touche une
+// notification sur le téléphone : on réessaie seul quelques fois au lieu d'afficher « Note introuvable ».
+let essaisAuto = 0
+const reessayable = ref(false)
 async function charger() {
   loading.value = true
   erreur.value = ''
+  reessayable.value = false
   try {
     note.value = await api<NoteDetail>(`/notes-frais/${id.value}`)
     prioriteChoisie.value = note.value?.priorite ?? null
@@ -157,9 +163,16 @@ async function charger() {
     // 404 : note inexistante, ou que le rôle de l'utilisateur ne lui permet pas de voir — le serveur ne
     // distingue volontairement pas les deux (une note cachée ne doit pas révéler son existence).
     const introuvable = (e?.response?.status ?? e?.statusCode ?? e?.status) === 404
+    const statut = e?.response?.status ?? e?.statusCode ?? e?.status
+    const passager = !statut || statut === 502 || statut === 503 || statut === 504
     erreur.value = introuvable
       ? "Cette note est introuvable, ou vous n'êtes pas autorisé à la consulter : selon votre rôle, certaines notes ne vous sont pas accessibles."
-      : (e?.data?.message || 'Note introuvable.')
+      : messageErreurApi(e, "Impossible d'afficher la note.")
+    reessayable.value = passager
+    if (passager && essaisAuto < 4) {
+      essaisAuto++
+      setTimeout(() => { if (!note.value) void charger() }, 3000 * essaisAuto)
+    }
   } finally {
     loading.value = false
   }
@@ -644,7 +657,15 @@ function revoquerApercu() {
   }
 }
 
+// Application Android : sa vue web ne sait pas afficher un PDF dans la page ; il s'ouvre en plein écran dans la
+// visionneuse PDF du téléphone (passerelle.js : fichier enregistré puis ouvert). Les photos restent dans l'application.
+const applicationMobile = estApplicationMobile()
+
 async function ouvrirApercu(piece: PieceJointe) {
+  if (applicationMobile && piece.typeMime === 'application/pdf') {
+    await telechargerPiece(piece)
+    return
+  }
   apercuPieceActuelle.value = piece
   apercuOuvert.value = true
   apercuErreur.value = ''
@@ -713,6 +734,11 @@ const peutGererPieces = computed(() => !surCopie.value &&
 
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
+      <div v-if="reessayable && !note" class="mt-2">
+        <v-btn size="small" variant="flat" color="error" rounded="lg" prepend-icon="mdi-refresh" :loading="loading" @click="charger">
+          Réessayer
+        </v-btn>
+      </div>
     </v-alert>
     <v-alert v-if="note && categorieDrh" type="info" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-account-cash-outline">
       <template v-if="note.categorie === 'PAIE'">
@@ -1243,10 +1269,10 @@ const peutGererPieces = computed(() => !surCopie.value &&
          le fichier juste pour voir son contenu. -->
     <v-dialog
       v-model="apercuOuvert"
-      :fullscreen="mobile"
-      :width="mobile ? undefined : '90vw'"
-      :height="mobile ? undefined : '92vh'"
-      :max-width="mobile ? undefined : 1400"
+      :fullscreen="mobile || applicationMobile"
+      :width="mobile || applicationMobile ? undefined : '90vw'"
+      :height="mobile || applicationMobile ? undefined : '92vh'"
+      :max-width="mobile || applicationMobile ? undefined : 1400"
       scrollable
       @update:model-value="(v) => { if (!v) fermerApercu() }"
     >

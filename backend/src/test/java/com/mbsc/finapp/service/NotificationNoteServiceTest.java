@@ -46,7 +46,7 @@ class NotificationNoteServiceTest {
         repository = mock(NotificationRepository.class);
         users = mock(UserRepository.class);
         when(repository.save(any(Notification.class))).thenAnswer(i -> i.getArgument(0));
-        service = new NotificationService(repository, users, mock(CurrentUserProvider.class), mock(MailNotificationService.class));
+        service = new NotificationService(repository, users, mock(CurrentUserProvider.class), mock(MailNotificationService.class), mock(com.mbsc.finapp.service.push.PushService.class));
     }
 
     @Test

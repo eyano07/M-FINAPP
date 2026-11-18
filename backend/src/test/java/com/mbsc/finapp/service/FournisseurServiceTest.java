@@ -156,14 +156,18 @@ class FournisseurServiceTest {
     }
 
     @Test
-    void lesAcheteursLaComptabiliteEtLAdministrateurTiennentLeRepertoireLeCaissierNon() {
+    void lesAcheteursLaComptabiliteEtLAdministrateurTiennentLeRepertoireLeCaissierSaisitSansArchiver() {
         for (String role : new String[] {"LOGISTIQUE", "RESP_RESTAURANT", "RESP_CUISINE", "RESP_BAR", "GEST_PATRIMOINE",
             "COMPTABLE", "DFIN", "ADMIN"}) {
             for (String methode : new String[] {"lister", "creer", "modifier", "archiver", "reactiver", "supprimer"}) {
                 assertThat(autorise(FournisseurService.class, methode, role)).as(role + " " + methode).isTrue();
             }
         }
-        for (String methode : new String[] {"lister", "creer", "modifier", "archiver", "reactiver", "supprimer"}) {
+        // 17/11/2026 : le caissier lit, crée et modifie les fiches des fournisseurs qu'il paie, sans archiver ni supprimer.
+        for (String methode : new String[] {"lister", "creer", "modifier"}) {
+            assertThat(autorise(FournisseurService.class, methode, "CAISSIER")).as("CAISSIER " + methode).isTrue();
+        }
+        for (String methode : new String[] {"archiver", "reactiver", "supprimer"}) {
             assertThat(autorise(FournisseurService.class, methode, "CAISSIER")).as("CAISSIER " + methode).isFalse();
         }
         assertThat(autorise(FournisseurService.class, "lister", "DA")).isTrue();

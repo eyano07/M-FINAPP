@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo M-FINAPP complet (carré bleu nuit arrondi), pour les widgets et les écrans de l'application. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp" android:height="120dp" android:viewportWidth="120" android:viewportHeight="120">
+    <path android:fillColor="#FF0B2545" android:pathData="M28,0 H92 A28,28 0 0 1 120,28 V92 A28,28 0 0 1 92,120 H28 A28,28 0 0 1 0,92 V28 A28,28 0 0 1 28,0 Z" />
+
+        <path android:pathData="M28,90 V36 L60,66" android:strokeColor="#FFFFFFFF" android:strokeWidth="13"
+            android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M92,58 V90" android:strokeColor="#FFFFFFFF" android:strokeWidth="13"
+            android:strokeLineCap="round" />
+        <path android:pathData="M60,66 L94,32" android:strokeColor="#FF10B981" android:strokeWidth="13"
+            android:strokeLineCap="round" />
+        <path android:pathData="M76,30 H96 V50" android:strokeColor="#FF10B981" android:strokeWidth="10"
+            android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

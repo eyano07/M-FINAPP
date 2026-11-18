@@ -1,0 +1,58 @@
+plugins {
+    id 'com.android.application'
+    id 'com.google.gms.google-services'
+}
+
+// Clé de signature : signature.properties et le fichier .jks restent hors du dépôt (public).
+// Les mises à jour de l'APK doivent être signées avec la MÊME clé, sinon Android refuse de les installer.
+def proprietesSignature = new Properties()
+def fichierSignature = rootProject.file('signature.properties')
+if (fichierSignature.exists()) {
+    fichierSignature.withInputStream { proprietesSignature.load(it) }
+}
+
+android {
+    namespace 'cd.mbsc.finapp'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'cd.mbsc.finapp'
+        minSdk 24
+        targetSdk 34
+        versionCode 7
+        versionName '2.9'
+    }
+
+    signingConfigs {
+        release {
+            if (fichierSignature.exists()) {
+                storeFile rootProject.file(proprietesSignature['storeFile'])
+                storePassword proprietesSignature['storePassword']
+                keyAlias proprietesSignature['keyAlias']
+                keyPassword proprietesSignature['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig fichierSignature.exists() ? signingConfigs.release : null
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    // Notifications push : Firebase Cloud Messaging (projet Firebase de MBSC, app/google-services.json hors dépôt).
+    implementation platform('com.google.firebase:firebase-bom:33.5.1')
+    implementation 'com.google.firebase:firebase-messaging'
+}

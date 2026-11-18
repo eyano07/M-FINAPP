@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { estApplicationMobile, routePermiseDansApplication } from '~/utils/applicationMobile'
 import { useAuthStore, ROLES_RESTAURANT_BAR, ROLES_RESTAURANT_COMPLET, ROLES_RESTAURANT_CUISINE } from '~/stores/auth'
 import { usePermissionsStore, type ModuleMetier, type NiveauPermission } from '~/stores/permissions'
 import { useParametresStore } from '~/stores/parametres'
@@ -23,6 +24,8 @@ interface NavItem {
   niveau?: NiveauPermission
   /** États financiers consultés en premier reflexe (Bilan, Balance...) : mis en avant dans le menu. */
   essentiel?: boolean
+  /** Lien montré seulement dans l'application Android (le site l'offre dans le menu du compte). */
+  application?: boolean
 }
 
 /**
@@ -50,6 +53,8 @@ const NON_DIRECTEUR = ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE']
 // (paie/RH, pas de notes personnelles), ni LOGISTIQUE (son suivi passe par
 // son propre tableau de bord) - a mettre a jour si un nouveau role est ajoute.
 const AVEC_NOTES_FRAIS = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']
+const applicationMobile = estApplicationMobile()
+
 const items: NavItem[] = [
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/dashboard', roles: NON_DIRECTEUR },
   { title: 'Notes de frais', icon: 'mdi-receipt-text-outline', to: '/notes-frais', roles: AVEC_NOTES_FRAIS },
@@ -59,6 +64,8 @@ const items: NavItem[] = [
   // Ni role ni module : accessible a tout compte authentifie, comme /profil
   // (auto-service, pas une fonctionnalite metier a activer/desactiver).
   { title: 'Papier à en-tête', icon: 'mdi-printer-outline', to: '/papier-entete' },
+  // Application Android : son profil (nom, photo, mot de passe, double authentification) à portée de main.
+  { title: 'Mon profil', icon: 'mdi-account-cog-outline', to: '/profil', application: true },
   // Le comptable consulte la tresorerie (journal/grand livre/balance) mais
   // n'opere pas la caisse (encaissement/decaissement direct) : cet ecran-ci
   // reste reserve aux roles qui en avaient deja l'usage.
@@ -141,8 +148,9 @@ const logistiqueItems: NavItem[] = [
   { title: 'Services', icon: 'mdi-hand-extended-outline', to: '/logistique/services', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
   { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
   // Répertoire des fournisseurs (V141) : hors grille des modules, ouvert par rôle comme FournisseurService — les
-  // acheteurs (logistique, restaurant, cuisine, bar, patrimoine), la comptabilité et la direction ; pas le caissier.
-  { title: 'Fournisseurs', icon: 'mdi-handshake-outline', to: '/logistique/fournisseurs', roles: ['LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN'] },
+  // acheteurs (logistique, restaurant, cuisine, bar, patrimoine), la comptabilité, la direction et, depuis le
+  // 17/11/2026, le caissier (fiches des fournisseurs qu'il paie, sans archiver ni supprimer).
+  { title: 'Fournisseurs', icon: 'mdi-handshake-outline', to: '/logistique/fournisseurs', roles: ['LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN', 'CAISSIER'] },
   // Mouvements et grand livre stock : StockService en reserve la lecture aux
   // roles logistiques et financiers. Le caissier a bien le module en LECTURE
   // (catalogue + disponibilite necessaires a une vente) mais pas ces deux
@@ -270,6 +278,12 @@ const adminItems: NavItem[] = [
  * chaque page renvoyait un 403.
  */
 function visible(item: NavItem) {
+  if (item.application && !applicationMobile) return false
+  // Application Android : le tableau de bord, les notes de frais et la comptabilité (consultation) ; pour le caissier,
+  // en plus la trésorerie, la vente, les clients et les fournisseurs.
+  if (applicationMobile && !routePermiseDansApplication(item.to, auth.user?.roles ?? [])) {
+    return false
+  }
   if (item.roles && !auth.hasAnyRole(item.roles)) {
     return false
   }
@@ -285,6 +299,12 @@ const proxyModel = computed({
 })
 
 interface NavGroup { id: string; label: string; items: NavEntree[] }
+
+// Derniers liens du menu, pour tout compte connecté (site et application) : l'aide adaptée au rôle, puis À propos.
+const itemsFin: NavItem[] = [
+  { title: 'Aide', icon: 'mdi-help-circle-outline', to: '/aide' },
+  { title: 'À propos', icon: 'mdi-information-outline', to: '/a-propos' },
+]
 
 // Chaque rubrique (auparavant une liste a plat, toujours depliee) devient un
 // groupe repliable : un menu principal plus court, chaque rubrique masquant
@@ -380,10 +400,7 @@ function lignes(g: NavGroup): LigneMenu[] {
   >
     <!-- Brand in drawer (mobile only, since AppBar is hidden on mobile) -->
     <div class="modern-drawer__brand">
-      <div class="modern-drawer__logo" :class="{ 'modern-drawer__logo--image': parametresStore.parametres.logoUrl }">
-        <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
-        <v-icon v-else icon="mdi-finance" size="16" color="white" />
-      </div>
+      <div class="modern-drawer__logo logo-principal"><LogoMfinapp /></div>
       <span class="modern-drawer__brand-name">{{ parametresStore.parametres.nom }}</span>
     </div>
 
@@ -447,6 +464,22 @@ function lignes(g: NavGroup): LigneMenu[] {
         </template>
       </nav>
     </template>
+
+    <div class="modern-drawer__divider" />
+    <nav class="modern-drawer__nav">
+      <nuxt-link
+        v-for="item in itemsFin"
+        :key="item.to"
+        :to="item.to"
+        class="modern-drawer__item"
+        active-class="modern-drawer__item--active"
+      >
+        <span class="modern-drawer__item-icon">
+          <v-icon :icon="item.icon" size="18" />
+        </span>
+        <span class="modern-drawer__item-label">{{ item.title }}</span>
+      </nuxt-link>
+    </nav>
 
     <template #append>
       <div class="modern-drawer__footer">

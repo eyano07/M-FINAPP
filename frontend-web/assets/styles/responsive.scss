@@ -560,3 +560,81 @@ $puce: '.v-chip, .chip-soft';
     box-shadow: none !important;
   }
 }
+
+/* Application Android (17/11/2026) : la vue web d'un téléphone recalcule à chaque image du défilement les flous
+   (backdrop-filter), les grandes ombres et les animations ; on les retire ou les allège pour un défilement fluide.
+   `touch-action: manipulation` supprime l'attente du double tapotement (zoom) sur chaque toucher, le pincement reste. */
+html.application-mobile {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
+  *,
+  *::before,
+  *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  /* Menu latéral, volet du « + » et boîtes de dialogue ouverts : la page derrière est floutée, comme la mise au point
+     d'une photo sur le sujet. Seule exception au retrait des flous ci-dessus : le voile ne s'affiche que menu ouvert,
+     il ne coûte rien au défilement. L'opacité du voile Vuetify est remise à 1 (elle affaiblirait le flou), la teinte
+     passe dans le fond. */
+  .v-navigation-drawer__scrim,
+  .v-overlay__scrim {
+    opacity: 1 !important;
+    background: rgba(4, 12, 9, 0.28) !important;
+    backdrop-filter: blur(8px) saturate(1.1) !important;
+    -webkit-backdrop-filter: blur(8px) saturate(1.1) !important;
+  }
+
+  /* Cadre de focus orange que la vue web Android dessine autour d'un lien ou d'un bouton touché du doigt : sans
+     clavier sur le téléphone, il ne sert à rien et laisse croire à une erreur. Les champs de saisie gardent le leur. */
+  a:focus,
+  button:focus,
+  [role="button"]:focus,
+  [tabindex]:focus,
+  .v-btn:focus,
+  .v-list-item:focus {
+    outline: none !important;
+  }
+
+  .v-card,
+  .v-sheet,
+  .v-list-item {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+    transition-property: background-color, color, opacity !important;
+  }
+
+  /* Listes affichées en cartes (< 960 px) : une ombre simple au lieu de deux ombres larges, et les cartes hors de
+     l'écran ne sont ni mises en page ni peintes tant qu'on n'y arrive pas (content-visibility) — c'est le plus gros
+     gain sur une longue liste de notes, de pièces ou de ventes. */
+  .v-data-table.v-table .v-data-table__tr--mobile,
+  .table-cartes tbody > tr {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 160px;
+  }
+
+  /* Effets de survol (ombre qui grandit, carte qui se soulève) : sur un écran tactile ils se déclenchent sous le doigt
+     pendant le défilement et forcent à repeindre. */
+  .classroom-card,
+  .classroom-card:hover,
+  .v-card:hover {
+    transform: none !important;
+    transition: none !important;
+  }
+  .classroom-card:hover {
+    box-shadow: none !important;
+  }
+
+  /* Pendant un défilement (classe posée par plugins/application-mobile.client.ts) : ni survol ni transition, rien à
+     recalculer sous le doigt. Retirée 150 ms après le dernier mouvement. */
+  &.en-defilement body * {
+    pointer-events: none !important;
+    transition: none !important;
+  }
+}

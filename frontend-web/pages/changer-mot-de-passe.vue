@@ -73,10 +73,7 @@ async function enregistrer() {
   <div class="cmp-root">
     <div class="cmp-carte">
       <div class="cmp-marque">
-        <div class="cmp-logo" :class="{ 'cmp-logo--image': parametresStore.parametres.logoUrl }">
-          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
-          <v-icon v-else icon="mdi-finance" size="22" color="white" />
-        </div>
+        <div class="cmp-logo logo-principal"><LogoMfinapp /></div>
         <span class="cmp-entreprise">{{ parametresStore.parametres.nom }}</span>
       </div>
 

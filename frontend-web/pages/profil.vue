@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pontApplicationMobile } from '~/utils/applicationMobile'
 // Auto-service : chaque utilisateur connecte gere ses propres informations.
 // Accessible depuis le bouton engrenage et le menu du compte (AppBar.vue).
 definePageMeta({})
@@ -13,6 +14,30 @@ const succes = ref('')
 
 // ── Informations ───────────────────────────────────────────────────────
 const form = reactive({ nom: '', prenom: '', telephone: '', emailNotification: '' })
+
+// Widget « Trésorerie » de l'écran d'accueil Android (mini tableau de bord), activé par chacun pour son téléphone ;
+// réservé aux rôles qui suivent la trésorerie (même liste que WidgetService.ROLES_TRESORERIE côté serveur).
+const preferencesStore = usePreferencesStore()
+const ROLES_WIDGET_TRESORERIE = ['CAISSIER', 'DA', 'DFIN', 'COMPTABLE', 'DG']
+const peutWidgetTresorerie = computed(() => auth.hasAnyRole(ROLES_WIDGET_TRESORERIE))
+const widgetTresorerie = computed(() => preferencesStore.valeur('widget.tresorerie', 'INACTIF') === 'ACTIF')
+function basculerWidgetTresorerie(actif: boolean | null) {
+  void preferencesStore.definir('widget.tresorerie', actif ? 'ACTIF' : 'INACTIF')
+}
+
+// Application Android ≥ 2.9 : pose le widget directement sur l'écran d'accueil (certains lanceurs, comme HiOS sur les
+// téléphones Tecno, ne listent pas les widgets des applications installées à la main).
+const pont = pontApplicationMobile()
+const peutAjouterWidget = !!pont?.ajouterWidget
+const messageWidget = ref('')
+function ajouterWidget(type: 'notes' | 'tresorerie') {
+  const r = pont?.ajouterWidget?.(type)
+  messageWidget.value = r === 'ok'
+    ? "Confirmez sur le téléphone : le widget sera posé sur l'écran d'accueil."
+    : r === 'non-supporte'
+      ? "Ce téléphone ne permet pas d'ajouter un widget depuis l'application : appui long sur l'écran d'accueil › Widgets › MBSC Finapp."
+      : "Ajout du widget impossible."
+}
 
 async function charger() {
   loading.value = true
@@ -211,6 +236,48 @@ async function changerMotDePasse() {
             Enregistrer
           </v-btn>
         </v-card-actions>
+      </v-card>
+
+      <!-- ── Widgets du téléphone (application Android) ─────────────── -->
+      <v-card v-if="peutAjouterWidget" rounded="lg" border flat class="mb-5">
+        <v-card-item>
+          <v-card-title class="text-subtitle-1">Widgets de l'écran d'accueil</v-card-title>
+          <v-card-subtitle>Vos notes de frais{{ peutWidgetTresorerie ? ' et la trésorerie' : '' }} d'un coup d'œil</v-card-subtitle>
+        </v-card-item>
+        <v-card-text>
+          <div class="d-flex flex-wrap ga-2">
+            <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-receipt-text-outline" @click="ajouterWidget('notes')">
+              Ajouter « Notes de frais »
+            </v-btn>
+            <v-btn v-if="peutWidgetTresorerie" color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-cash-multiple" @click="ajouterWidget('tresorerie')">
+              Ajouter « Trésorerie »
+            </v-btn>
+          </div>
+          <v-alert v-if="messageWidget" type="info" variant="tonal" rounded="lg" density="compact" class="mt-3">{{ messageWidget }}</v-alert>
+        </v-card-text>
+      </v-card>
+
+      <!-- ── Widget Trésorerie (téléphone) ────────────────────────── -->
+      <v-card v-if="peutWidgetTresorerie" rounded="lg" border flat class="mb-5">
+        <v-card-item>
+          <v-card-title class="text-subtitle-1">Widget Trésorerie</v-card-title>
+          <v-card-subtitle>Mini tableau de bord sur l'écran d'accueil de votre téléphone Android</v-card-subtitle>
+        </v-card-item>
+        <v-card-text>
+          <v-switch
+            :model-value="widgetTresorerie"
+            color="primary"
+            inset
+            hide-details
+            label="Afficher la trésorerie dans le widget"
+            @update:model-value="basculerWidgetTresorerie"
+          />
+          <p class="text-body-2 text-medium-emphasis mt-2 mb-0">
+            Solde total, caisse, banque, mobile money et mouvements du jour, mis à jour à chaque opération. Les soldes
+            sont lisibles par quiconque voit votre écran d'accueil : protégez votre téléphone par un code. Pour poser le
+            widget : appui long sur l'écran d'accueil › Widgets › MBSC Finapp › Trésorerie.
+          </p>
+        </v-card-text>
       </v-card>
 
       <!-- ── Mot de passe ────────────────────────────────────────── -->

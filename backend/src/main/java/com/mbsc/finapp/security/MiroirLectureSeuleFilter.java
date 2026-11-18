@@ -58,6 +58,7 @@ public class MiroirLectureSeuleFilter extends OncePerRequestFilter {
         if (chemin.equals("/auth") || chemin.startsWith("/auth/")) return true;
         if (chemin.startsWith("/replication/")) return true;
         if (chemin.startsWith("/notifications")) return true;
+        if (chemin.equals("/appareils") || chemin.startsWith("/appareils/")) return true;   // telephones (push)
         if (chemin.startsWith("/admin/instance")) return true;
         if (mode != ModeInstance.MIROIR) return false;
         if (methode.equals("POST")) {

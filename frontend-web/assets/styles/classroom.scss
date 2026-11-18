@@ -532,3 +532,21 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated {
 }
 html[data-theme='dark'] .v-btn--disabled.v-btn--variant-flat .v-btn__overlay,
 html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay { opacity: 0 !important; }
+
+/* Logo principal M-FINAPP (18/11/2026), monochrome (composant LogoMfinapp, couleur = currentColor) : celui de
+   l'application, sur le site et l'application mobile (barre, menu, connexion). Couleur de marque sur fond clair, blanc
+   sur les fonds sombres (menu latéral, visuels). Le logo de l'entreprise (Paramètres) reste celui des documents :
+   en-têtes, factures, reçus, états. */
+.logo-principal {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 3px !important;
+  overflow: visible !important;
+  color: var(--color-primary);
+}
+.modern-drawer .logo-principal,
+.visuel .logo-principal,
+.acces__banniere .logo-principal,
+.apropos__logo {
+  color: #ffffff;
+}

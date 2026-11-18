@@ -3,8 +3,12 @@ import { useAuthStore } from '~/stores/auth'
 import { useNotificationsStore, type NotificationItem } from '~/stores/notifications'
 import { useParametresStore } from '~/stores/parametres'
 import { useInstanceStore } from '~/stores/instance'
+import { estApplicationMobile } from '~/utils/applicationMobile'
 
 defineProps<{ drawerOpen: boolean }>()
+
+// Application Android : le menu du compte n'y propose pas le papier à en-tête.
+const applicationMobile = estApplicationMobile()
 
 // Mode d'affichage : clair, nuit ou celui du système (mémorisé sur ce navigateur).
 const { mode: modeAffichage, effectif: modeEffectif, choisir: choisirMode } = useModeAffichage()
@@ -147,20 +151,14 @@ async function ouvrirNotification(n: NotificationItem) {
     />
 
     <div v-if="!drawerOpen || $vuetify.display.mobile" class="modern-appbar__brand">
-      <div class="modern-appbar__logo" :class="{ 'modern-appbar__logo--image': parametresStore.parametres.logoUrl }">
-        <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
-        <v-icon v-else icon="mdi-finance" size="16" color="white" />
-      </div>
+      <div class="modern-appbar__logo logo-principal"><LogoMfinapp /></div>
       <span class="modern-appbar__name">{{ parametresStore.parametres.nom }}</span>
     </div>
 
     <!-- Téléphone et tablette (< 960 px) : le titre de la page, sous une miniature du logo et du nom de l'entreprise. -->
     <div class="modern-appbar__page" :class="{ 'modern-appbar__page--sans-titre': !titrePage }">
       <span class="modern-appbar__marque">
-        <span class="modern-appbar__logo modern-appbar__logo--mini" :class="{ 'modern-appbar__logo--image': parametresStore.parametres.logoUrl }">
-          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="">
-          <v-icon v-else icon="mdi-finance" size="10" color="white" />
-        </span>
+        <span class="modern-appbar__logo modern-appbar__logo--mini logo-principal"><LogoMfinapp /></span>
         <span class="modern-appbar__marque-nom">{{ parametresStore.parametres.nom }}</span>
       </span>
       <span v-if="titrePage" class="modern-appbar__titre" aria-hidden="true">{{ titrePage }}</span>
@@ -285,7 +283,8 @@ async function ouvrirNotification(n: NotificationItem) {
           <v-icon icon="mdi-account-cog-outline" size="16" class="mr-2" />
           Mon profil
         </NuxtLink>
-        <NuxtLink to="/papier-entete" class="user-menu__profile-link">
+        <!-- Papier à en-tête : pas dans l'application Android (impression depuis un ordinateur). -->
+        <NuxtLink v-if="!applicationMobile" to="/papier-entete" class="user-menu__profile-link">
           <v-icon icon="mdi-printer-outline" size="16" class="mr-2" />
           Papier à en-tête
         </NuxtLink>

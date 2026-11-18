@@ -57,6 +57,10 @@ app:
   audit:
     dir: ${APP_AUDIT_DIR:./data/logs}      # dossier du journal d'audit (audit.log) : a conserver et sauvegarder
   public-url: ${APP_PUBLIC_URL:}            # URL publique du frontend (liens des e-mails), ex. https://finapp.exemple.cd
+  push:
+    # Notifications push de l'application Android : cle JSON du compte de service Firebase (hors depot). Absente :
+    # les telephones s'inscrivent, rien n'est envoye.
+    compte-service: ${APP_PUSH_COMPTE_SERVICE:}
   mail:
     enabled: ${APP_MAIL_ENABLED:false}
     from: ${APP_MAIL_FROM:}

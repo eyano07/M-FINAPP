@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { estApplicationMobile } from '~/utils/applicationMobile'
+import { useDisplay } from 'vuetify'
 import { useInstanceStore } from '~/stores/instance'
 // Ni le DRH (paie/RH, pas de notes personnelles) ni LOGISTIQUE (son suivi
 // passe par son propre tableau de bord, /logistique) ne gerent leurs notes
@@ -115,11 +117,17 @@ const STATUTS_ENCAISSEMENT = ['BROUILLON', 'PAYEE', 'ANNULEE']
 // restreints comme avant).
 
 const activeSens = ref<'DECAISSEMENT' | 'ENCAISSEMENT'>(filtresGardes.value.sens)
-const peutCreerEncaissement = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
+// Application Android : on y valide et on y consulte ; seuls le caissier et le comptable y créent des notes (le serveur refuse la
+// création aux autres rôles dans l'application, 403 — ApplicationMobileFilter).
+const applicationMobile = estApplicationMobile()
+const { mobile: ecranMobile } = useDisplay()
+const pleinEcran = computed(() => applicationMobile || ecranMobile.value)
+const creationPermiseIci = computed(() => !applicationMobile || auth.hasAnyRole(['CAISSIER', 'COMPTABLE']))
+const peutCreerEncaissement = computed(() => creationPermiseIci.value && auth.hasAnyRole(['CAISSIER', 'ADMIN']))
 // Miroir de NoteFraisService.creer/soumettre cote backend : comptable et
 // caissier sont desormais les deux seuls a pouvoir emettre une note de
 // decaissement (le circuit DFIN/DA/DG reste reserve a la validation).
-const peutCreerDecaissement = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER']))
+const peutCreerDecaissement = computed(() => creationPermiseIci.value && auth.hasAnyRole(['COMPTABLE', 'CAISSIER']))
 
 const statuts = computed(() => activeSens.value === 'ENCAISSEMENT' ? STATUTS_ENCAISSEMENT : STATUTS_DECAISSEMENT)
 
@@ -227,6 +235,20 @@ function ouvrirDialog() {
   dialog.value = true
   chargerServices()
 }
+
+// « + » de la barre du bas de l'application (?nouvelle=DECAISSEMENT|ENCAISSEMENT) : ouvre directement la saisie.
+function ouvrirDepuisLien() {
+  const sens = route.query.nouvelle
+  if (sens !== 'DECAISSEMENT' && sens !== 'ENCAISSEMENT') return
+  const permis = sens === 'ENCAISSEMENT' ? peutCreerEncaissement.value : peutCreerDecaissement.value
+  const { nouvelle: _, ...reste } = route.query
+  navigateTo({ path: route.path, query: reste }, { replace: true })
+  if (!permis) return
+  activeSens.value = sens
+  ouvrirDialog()
+}
+onMounted(ouvrirDepuisLien)
+watch(() => route.query.nouvelle, ouvrirDepuisLien)
 
 const lignesValides = computed(() =>
   form.lignes.filter(l => l.montant && l.montant > 0)
@@ -730,8 +752,9 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
     </div>
 
     <!-- ── Dialog nouvelle note ────────────────────────────── -->
-    <v-dialog v-model="dialog" max-width="720" scrollable>
-      <div class="nf-dialog">
+    <!-- Plein écran dans l'application Android (et sur téléphone) : toute la page, sans les barres. -->
+    <v-dialog v-model="dialog" max-width="720" scrollable :fullscreen="pleinEcran">
+      <div class="nf-dialog" :class="{ 'nf-dialog--plein': pleinEcran }">
         <!-- Dialog header gradient -->
         <div class="nf-dialog__head" :class="{ 'nf-dialog__head--encaissement': form.sens === 'ENCAISSEMENT' }">
           <div class="nf-dialog__head-blob" />
@@ -873,8 +896,8 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
     </v-dialog>
 
     <!-- ── Dialog capture photo (webcam / caméra mobile) ────────────── -->
-    <v-dialog v-model="dialogCamera" max-width="520" persistent>
-      <div class="nf-dialog">
+    <v-dialog v-model="dialogCamera" max-width="520" persistent :fullscreen="pleinEcran">
+      <div class="nf-dialog" :class="{ 'nf-dialog--plein': pleinEcran }">
         <div class="nf-dialog__head">
           <div class="nf-dialog__head-blob" />
           <div class="nf-dialog__head-icon">
@@ -1188,6 +1211,13 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   flex-direction: column;
   max-height: 88vh;
 }
+/* Plein écran (application Android, téléphone) : la saisie occupe tout l'écran, l'en-tête reste en haut, le corps défile. */
+.nf-dialog--plein {
+  border-radius: 0;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+.nf-dialog--plein .nf-dialog__footer { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 
 .nf-dialog__head {
   position: relative;

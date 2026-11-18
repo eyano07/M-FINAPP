@@ -372,6 +372,10 @@ async function onLogoChoisi(e: Event) {
           @change="onLogoChoisi"
         >
         <p class="param-logo-hint">Formats acceptés : JPEG, PNG, WEBP, SVG (5 Mo max).</p>
+        <p class="param-logo-hint">
+          Logo de l'entreprise : il figure sur les en-têtes, factures, reçus et états imprimés. Le logo de l'application
+          (barre, menu, connexion, icône du téléphone) reste celui de M-FINAPP.
+        </p>
       </div>
 
       <!-- ── Couleur de marque ─────────────────────────────────── -->

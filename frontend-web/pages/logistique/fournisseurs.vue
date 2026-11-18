@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // Répertoire des fournisseurs (V141). Hors grille des modules : le serveur (FournisseurService) ouvre la lecture
 // aux acheteurs (logistique, restaurant, cuisine, bar, patrimoine), à la comptabilité et à la direction, et
-// l'écriture aux mêmes sans le DA ni le DG. Même liste ici et dans le menu (NavigationDrawer). Pas le caissier.
+// l'écriture aux mêmes sans le DA ni le DG. Même liste ici et dans le menu (NavigationDrawer). Le caissier
+// (17/11/2026) lit, crée et modifie les fiches des fournisseurs qu'il paie ; il n'archive ni ne supprime.
 definePageMeta({
-  roles: ['LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN'],
+  roles: ['LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN', 'CAISSIER'],
 })
 
 interface Fournisseur {
@@ -40,8 +41,11 @@ const formRef = ref()
 const editId = ref<number | null>(null)
 const nomVerrouille = ref(false)
 
-const canWrite = computed(() =>
-  auth.hasAnyRole(['LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'ADMIN']))
+/** Tenue du répertoire (archiver, réactiver, supprimer) : les acheteurs, la comptabilité et l'administrateur. */
+const ROLES_REPERTOIRE = ['LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'ADMIN']
+const canGerer = computed(() => auth.hasAnyRole(ROLES_REPERTOIRE))
+/** Créer et modifier une fiche : les mêmes et le caissier. */
+const canWrite = computed(() => auth.hasAnyRole([...ROLES_REPERTOIRE, 'CAISSIER']))
 
 const form = reactive({
   nom: '',
@@ -286,12 +290,14 @@ async function action(appel: () => Promise<unknown>, message: string) {
         <template #[`item.actions`]="{ item }">
           <div v-if="canWrite" class="frn-actions">
             <v-btn size="small" variant="text" icon="mdi-pencil" title="Modifier" @click="ouvrirEdition(item)" />
-            <v-btn v-if="item.actif" size="small" variant="text" icon="mdi-archive-arrow-down-outline" title="Archiver"
-              @click="archiver(item)" />
-            <v-btn v-else size="small" variant="text" icon="mdi-archive-arrow-up-outline" title="Réactiver"
-              @click="reactiver(item)" />
-            <v-btn v-if="item.nombreAchats === 0" size="small" variant="text" color="error" icon="mdi-delete-outline"
-              title="Supprimer (aucun achat)" @click="supprimer(item)" />
+            <template v-if="canGerer">
+              <v-btn v-if="item.actif" size="small" variant="text" icon="mdi-archive-arrow-down-outline" title="Archiver"
+                @click="archiver(item)" />
+              <v-btn v-else size="small" variant="text" icon="mdi-archive-arrow-up-outline" title="Réactiver"
+                @click="reactiver(item)" />
+              <v-btn v-if="item.nombreAchats === 0" size="small" variant="text" color="error" icon="mdi-delete-outline"
+                title="Supprimer (aucun achat)" @click="supprimer(item)" />
+            </template>
           </div>
         </template>
         <template #no-data>

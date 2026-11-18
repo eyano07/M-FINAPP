@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Adresse du serveur</title>
+<style>
+  :root { --vert: #0f6e56; --vert-fonce: #0b5341; --fond: #eef2f0; --carte: #fff; --encre: #12241d; --doux: #5b6b64; --trait: #d7e0dc; --rouge: #c0392b; --ok: #13804f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fond: #08130f; --carte: #11201a; --encre: #e6efe9; --doux: #9fb2a9; --trait: #23382f; --vert: #3fbf7f; --rouge: #f08a7e; --ok: #5fd39a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fond); color: var(--encre); display: flex; flex-direction: column; }
+  header { background: linear-gradient(140deg, #0f6e56, #0b5341 60%, #073a2d); color: #fff; padding: 40px 24px 56px; }
+  header .logo { width: 52px; height: 52px; border-radius: 14px; background: rgba(255,255,255,.16); display: grid; place-items: center; }
+  header h1 { margin: 18px 0 6px; font-size: 24px; }
+  header p { margin: 0; opacity: .85; font-size: 15px; line-height: 1.45; }
+  main { flex: 1; padding: 0 16px 24px; margin-top: -32px; }
+  .carte { background: var(--carte); border-radius: 18px; padding: 22px 18px; box-shadow: 0 8px 28px rgba(0,0,0,.12); }
+  label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+  input { width: 100%; font-size: 17px; padding: 14px; border-radius: 12px; border: 1.5px solid var(--trait); background: transparent; color: var(--encre); outline: none; }
+  input:focus { border-color: var(--vert); }
+  .aide { color: var(--doux); font-size: 13px; line-height: 1.5; margin: 10px 0 0; }
+  .aide code { background: color-mix(in srgb, var(--vert) 12%, transparent); padding: 1px 6px; border-radius: 6px; }
+  .etat { margin-top: 16px; padding: 12px 14px; border-radius: 12px; font-size: 14px; line-height: 1.45; display: none; }
+  .etat.ok { display: block; background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+  .etat.ko { display: block; background: color-mix(in srgb, var(--rouge) 14%, transparent); color: var(--rouge); }
+  .etat.attente { display: block; background: color-mix(in srgb, var(--doux) 14%, transparent); color: var(--doux); }
+  .boutons { display: flex; gap: 10px; margin-top: 20px; }
+  button { flex: 1; font-size: 16px; font-weight: 600; padding: 14px; border-radius: 12px; border: 0; }
+  .secondaire { background: transparent; color: var(--vert); border: 1.5px solid var(--vert); }
+  .principal { background: var(--vert); color: #fff; }
+  button:disabled { opacity: .5; }
+  footer { text-align: center; color: var(--doux); font-size: 12px; padding: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo" style="color:#fff"><svg xmlns="http://www.w3.org/2000/svg" viewBox="16 18 92 86" width="30" height="30" aria-label="M-FINAPP"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M28 90 V36 L60 66" stroke-width="13"/><path d="M92 58 V90" stroke-width="13"/><path d="M60 66 L94 32" stroke-width="13"/><path d="M76 30 H96 V50" stroke-width="10"/></g></svg></div>
+  <h1>Adresse du serveur</h1>
+  <p>Saisissez l'adresse du serveur MBSC Finapp de votre entreprise. Vous pourrez la changer plus tard : appui long sur l'icône de l'application, puis « Changer de serveur ».</p>
+</header>
+<main>
+  <div class="carte">
+    <label for="adresse">Adresse IP ou nom du serveur</label>
+    <input id="adresse" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
+           placeholder="192.168.1.10" autocomplete="off">
+    <p class="aide">
+      Exemples : <code>192.168.1.10</code>, <code>192.168.1.10:8080</code> (port), <code>https://erp.exemple.com</code>.<br>
+      Sans « http:// » ni « https:// », l'application essaie l'adresse en http (réseau de l'entreprise).
+    </p>
+    <div id="etat" class="etat"></div>
+    <div class="boutons">
+      <button id="tester" class="secondaire">Tester</button>
+      <button id="valider" class="principal">Se connecter</button>
+    </div>
+  </div>
+</main>
+<footer id="version">MBSC Finapp</footer>
+<script>
+  var A = window.FinappAndroid;
+  var champ = document.getElementById('adresse');
+  var etat = document.getElementById('etat');
+  var bTester = document.getElementById('tester');
+  var bValider = document.getElementById('valider');
+  var enCours = null;
+
+  function afficher(classe, texte) { etat.className = 'etat ' + classe; etat.textContent = texte; }
+  function occupe(oui) { bTester.disabled = oui; bValider.disabled = oui; }
+
+  // Réponse du test, appelée par l'application (Java) quand le serveur a répondu ou non.
+  window.resultatTest = function (ok, message, adresse) {
+    occupe(false);
+    afficher(ok ? 'ok' : 'ko', message);
+    if (ok && adresse) champ.value = adresse;
+    if (ok && enCours === 'valider') A.choisirServeur(adresse || champ.value);
+    enCours = null;
+  };
+
+  function lancer(mode) {
+    var v = champ.value.trim();
+    if (!v) { afficher('ko', "Saisissez l'adresse du serveur."); champ.focus(); return; }
+    enCours = mode;
+    occupe(true);
+    afficher('attente', 'Connexion au serveur…');
+    A.tester(v);
+  }
+
+  bTester.addEventListener('click', function () { lancer('tester'); });
+  bValider.addEventListener('click', function () { lancer('valider'); });
+  champ.addEventListener('keydown', function (e) { if (e.key === 'Enter') lancer('valider'); });
+
+  if (A) {
+    champ.value = A.serveurActuel() || '';
+    document.getElementById('version').textContent = 'MBSC Finapp ' + A.version();
+  }
+  if (!champ.value) setTimeout(function () { champ.focus(); }, 300);
+</script>
+</body>
+</html>

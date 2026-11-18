@@ -8,6 +8,8 @@ import java.time.LocalDate;
 
 @Entity
 @Table(name = "grand_livre")
+// Widget Trésorerie : un mouvement sur la classe 5 met à jour les téléphones abonnés (MouvementsTresorerie).
+@EntityListeners(com.mbsc.finapp.service.widget.MouvementsTresorerie.Ecoute.class)
 @Getter
 @Setter
 @NoArgsConstructor

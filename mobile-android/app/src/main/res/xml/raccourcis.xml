@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Appui long sur l'icône : « Changer de serveur ». -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="serveur"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/raccourci_serveur">
+        <intent
+            android:action="cd.mbsc.finapp.CONFIGURER"
+            android:targetPackage="cd.mbsc.finapp"
+            android:targetClass="cd.mbsc.finapp.MainActivity" />
+    </shortcut>
+</shortcuts>

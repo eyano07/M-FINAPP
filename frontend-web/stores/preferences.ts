@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
 /** Préférences d'affichage enregistrées sur le compte (liste blanche côté serveur : ProfilService). */
-export type ClePreference = 'notes.affichage'
+export type ClePreference = 'notes.affichage' | 'widget.tresorerie'
 
 const PREFIXE_CACHE = 'mbsc_prefs_'
 

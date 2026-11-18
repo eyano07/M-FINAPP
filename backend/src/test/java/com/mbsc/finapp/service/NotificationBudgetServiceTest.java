@@ -43,7 +43,7 @@ class NotificationBudgetServiceTest {
         users = mock(UserRepository.class);
         mail = mock(MailNotificationService.class);
         when(repository.save(any(Notification.class))).thenAnswer(i -> i.getArgument(0));
-        service = new NotificationService(repository, users, mock(CurrentUserProvider.class), mail);
+        service = new NotificationService(repository, users, mock(CurrentUserProvider.class), mail, mock(com.mbsc.finapp.service.push.PushService.class));
     }
 
     private List<Notification> enregistrees(int nombre) {

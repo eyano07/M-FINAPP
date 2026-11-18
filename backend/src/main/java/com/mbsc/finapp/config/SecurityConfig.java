@@ -43,6 +43,8 @@ public class SecurityConfig {
     private final com.mbsc.finapp.security.DoubleAuthObligatoireFilter doubleAuthObligatoireFilter;
     private final CleReplicationFilter cleReplicationFilter;
     private final MiroirLectureSeuleFilter miroirLectureSeuleFilter;
+    private final com.mbsc.finapp.security.ApplicationMobileFilter applicationMobileFilter;
+    private final com.mbsc.finapp.security.WidgetJetonFilter widgetJetonFilter;
     private final com.mbsc.finapp.audit.AuditFilter auditFilter;
     private final JwtAuthEntryPoint jwtAuthEntryPoint;
     private final AppUserDetailsService userDetailsService;
@@ -94,9 +96,13 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             // Appels entre serveurs (/replication/**) : signes avec la cle d'appairage, sans compte utilisateur (V132).
             .addFilterBefore(cleReplicationFilter, JwtAuthenticationFilter.class)
+            // Widgets Android : GET /widget/** avec le jeton du téléphone (X-Jeton-Widget), sans jeton d'acces.
+            .addFilterBefore(widgetJetonFilter, JwtAuthenticationFilter.class)
             .addFilterAfter(auditFilter, JwtAuthenticationFilter.class)
             // Serveur en lecture seule (copie en ligne d'un serveur local, ancien serveur local : V132) : saisies refusees (423).
             .addFilterAfter(miroirLectureSeuleFilter, AuditFilter.class)
+            // Application Android (17/11/2026) : consultation et decisions sur les notes seulement (403 sinon).
+            .addFilterAfter(applicationMobileFilter, MiroirLectureSeuleFilter.class)
             // Mot de passe provisoire (V131) : avant tout acces aux modules, seuls le profil et le changement de mot de passe.
             .addFilterAfter(motDePasseProvisoireFilter, MiroirLectureSeuleFilter.class)
             // Double authentification obligatoire pour les roles sensibles (audit SYSCOHADA, C-23).

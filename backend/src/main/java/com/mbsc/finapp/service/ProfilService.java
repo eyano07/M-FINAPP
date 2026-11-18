@@ -48,7 +48,9 @@ public class ProfilService {
      */
     static final Map<String, Set<String>> PREFERENCES_AUTORISEES = Map.of(
         // Page « Notes de frais » sur PC : cartes ou tableau.
-        "notes.affichage", Set.of("CARTES", "TABLEAU"));
+        "notes.affichage", Set.of("CARTES", "TABLEAU"),
+        // Widget « Trésorerie » de l'écran d'accueil Android, activé par chacun pour lui-même (V150, WidgetService).
+        "widget.tresorerie", Set.of("ACTIF", "INACTIF"));
 
     /** Preferences de l'appelant (jamais celles d'un autre utilisateur) : cle -> valeur. */
     @Transactional(readOnly = true)

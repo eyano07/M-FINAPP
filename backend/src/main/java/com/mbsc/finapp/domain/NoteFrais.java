@@ -19,6 +19,8 @@ import java.util.List;
 
 @Entity
 @Table(name = "notes_frais")
+// Widget « Notes de frais » : chaque changement d'étape met à jour les téléphones (MouvementsTresorerie.EcouteNote).
+@EntityListeners(com.mbsc.finapp.service.widget.MouvementsTresorerie.EcouteNote.class)
 @Getter
 @Setter
 @NoArgsConstructor

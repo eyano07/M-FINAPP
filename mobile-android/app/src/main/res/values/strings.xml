@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MBSC Finapp</string>
+    <string name="raccourci_serveur">Changer de serveur</string>
+    <string name="widget_notes_nom">Notes de frais</string>
+    <string name="widget_notes_description">Les notes qui vous attendent et vos notes en cours</string>
+    <string name="widget_tresorerie_nom">Trésorerie</string>
+    <string name="widget_tresorerie_description">Mini tableau de bord : soldes et mouvements du jour (à activer dans Mon profil)</string>
+</resources>

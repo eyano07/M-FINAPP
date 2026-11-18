@@ -64,10 +64,7 @@ async function submit() {
       <div class="visuel__photo" role="img" aria-label="Calculatrice, stylo et documents comptables sur un bureau" />
 
       <div class="visuel__marque">
-        <span class="logo" :class="{ 'logo--image': parametresStore.parametres.logoUrl }">
-          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="">
-          <v-icon v-else icon="mdi-finance" size="22" color="white" />
-        </span>
+        <span class="logo logo-principal"><LogoMfinapp /></span>
         <span class="visuel__nom">{{ parametresStore.parametres.nom }}</span>
       </div>
 
@@ -101,12 +98,19 @@ async function submit() {
         <v-icon :icon="modeEffectif === 'sombre' ? 'mdi-white-balance-sunny' : 'mdi-weather-night'" size="20" />
       </button>
 
+      <!-- Téléphone et tablette (< 960 px) : la photo du visuel en bandeau au-dessus du formulaire. -->
+      <div class="acces__banniere" aria-hidden="true">
+        <div class="acces__banniere-photo" />
+        <div class="acces__banniere-marque">
+          <span class="logo logo-principal"><LogoMfinapp /></span>
+          <span>{{ parametresStore.parametres.nom }}</span>
+        </div>
+        <p class="acces__banniere-texte">Gestion financière et comptable</p>
+      </div>
+
       <div class="acces__inner">
         <div class="acces__marque">
-          <span class="logo logo--clair" :class="{ 'logo--image': parametresStore.parametres.logoUrl }">
-            <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="">
-            <v-icon v-else icon="mdi-finance" size="20" color="primary" />
-          </span>
+          <span class="logo logo-principal"><LogoMfinapp /></span>
           <span>{{ parametresStore.parametres.nom }}</span>
         </div>
 
@@ -230,7 +234,34 @@ async function submit() {
 .acces__btn { margin-top: 4px; height: 52px !important; font-size: 1rem !important; font-weight: 600 !important; letter-spacing: 0 !important; border-radius: 10px !important; }
 .acces__pied { margin-top: 40px; font-size: 0.8125rem; color: var(--ink-faint); }
 
+/* Bandeau photo du téléphone : même photo que le visuel du PC, fondue dans la couleur de marque. */
+.acces__banniere { display: none; }
 @media (max-width: 959px) {
-  .acces { align-items: flex-start; padding-top: 72px; }
+  .acces { flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 0 0 32px; }
+  .acces__inner { align-self: center; padding: 28px 24px 0; }
+  .acces__marque { display: none; }
+  .acces__mode { z-index: 2; color: #fff; border-color: rgba(255, 255, 255, 0.4); background: rgba(0, 0, 0, 0.12); }
+  .acces__banniere {
+    display: block; position: relative; overflow: hidden; color: #fff;
+    height: clamp(190px, 32vh, 280px);
+    background: var(--hero-bg);
+    border-radius: 0 0 28px 28px;
+  }
+  .acces__banniere-photo {
+    position: absolute; inset: 0;
+    background: url('/images/connexion-comptabilite.jpg') 35% 40% / cover no-repeat;
+    filter: grayscale(1) contrast(1.08);
+    mix-blend-mode: luminosity;
+    opacity: 0.62;
+  }
+  .acces__banniere::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(0deg, var(--hero-bg) 6%, color-mix(in srgb, var(--hero-bg) 55%, transparent) 55%, transparent 100%);
+  }
+  .acces__banniere-marque {
+    position: absolute; z-index: 1; left: 24px; bottom: 44px;
+    display: flex; align-items: center; gap: 10px; font-size: 1.05rem; font-weight: 650;
+  }
+  .acces__banniere-texte { position: absolute; z-index: 1; left: 24px; bottom: 18px; margin: 0; font-size: 0.85rem; opacity: 0.82; }
 }
 </style>

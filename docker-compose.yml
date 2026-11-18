@@ -53,11 +53,14 @@ services:
       APP_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       APP_MAIL_FROM: ${MAIL_FROM:-}
       APP_AUDIT_DIR: /app/data/logs
+      APP_PUSH_COMPTE_SERVICE: ${PUSH_COMPTE_SERVICE:-/app/secrets/firebase-compte-service.json}
       # Chiffrement des cles d'API de l'IA saisies dans l'application (openssl rand -base64 32).
       APP_SECRETS_KEY: ${SECRETS_KEY:-}
     volumes:
       - backend_uploads:/app/data/uploads
       - backend_logs:/app/data/logs   # journal d'audit (audit.log) : a sauvegarder et a conserver
+      # Cle du compte de service Firebase (notifications push de l'application Android), hors depot : facultative.
+      - ./secrets:/app/secrets:ro
     expose: ["8080"]
     networks: [mbsc-net]
     healthcheck:
@@ -92,6 +95,8 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Application Android à télécharger (page À propos) : APK déposé à la main, jamais dans le dépôt.
+      - ./telechargements:/usr/share/nginx/telechargements:ro
     networks: [mbsc-net]
 
 volumes:

@@ -87,6 +87,22 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
     List<Object[]> calculerBalance();
 
     /**
+     * Mouvements du jour sur les comptes de trésorerie (classe 5), hors pièces en brouillon :
+     * [numeroCompte, totalDebit (entrées), totalCredit (sorties)]. Widget Trésorerie de l'écran d'accueil.
+     */
+    @Query("""
+        select c.numero, coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
+        from EcritureGrandLivre e
+        join e.compte c
+        left join e.piece p
+        where (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+          and c.numero like '5%'
+          and e.dateEcriture = :jour
+        group by c.numero
+    """)
+    List<Object[]> mouvementsTresorerieDu(@org.springframework.data.repository.query.Param("jour") java.time.LocalDate jour);
+
+    /**
      * Solde du compte dont le numéro commence par le préfixe donné, en
      * convention des comptes d'ACTIF (trésorerie) : solde = débits - crédits.
      * Un encaissement (débit caisse) augmente donc le solde, un décaissement

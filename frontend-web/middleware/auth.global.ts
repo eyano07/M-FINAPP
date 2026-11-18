@@ -1,5 +1,6 @@
 import { useAuthStore } from '~/stores/auth'
 import { usePermissionsStore, type ModuleMetier, type NiveauPermission } from '~/stores/permissions'
+import { accueilApplication, estApplicationMobile, routePermiseDansApplication } from '~/utils/applicationMobile'
 
 /**
  * Garde globale : restaure la session et protege les routes.
@@ -55,6 +56,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (auth.isAuthenticated && to.path === '/login') {
     return navigateTo(auth.homeRoute)
+  }
+
+  // Application Android : tableau de bord, notes de frais et comptabilité ; pour le caissier, en plus la trésorerie, la
+  // vente, les clients et les fournisseurs (le serveur refuse le reste des saisies). L'accueil choisi est une page que le
+  // rôle peut ouvrir : pas de boucle avec les gardes ci-dessous.
+  if (auth.isAuthenticated && estApplicationMobile() && !routePermiseDansApplication(to.path, auth.user?.roles ?? [])) {
+    const accueil = accueilApplication(auth.user?.roles ?? [])
+    if (to.path !== accueil) return navigateTo(accueil)
   }
 
   // Controle d'acces par role via meta.roles (pages hors modules configurables :

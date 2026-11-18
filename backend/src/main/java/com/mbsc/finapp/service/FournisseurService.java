@@ -22,8 +22,9 @@ import java.util.List;
  * Répertoire des fournisseurs (V141).
  *
  * <p>Lecture : les rôles qui achètent (logistique, responsables du restaurant, de la cuisine et du bar, gestionnaire
- * du patrimoine), la comptabilité et la direction. Écriture : les mêmes, sans le DA ni le DG. Le caissier n'y a pas
- * accès : il paie, il ne choisit pas les fournisseurs.</p>
+ * du patrimoine), la comptabilité et la direction. Écriture : les mêmes, sans le DA ni le DG. Le caissier (17/11/2026)
+ * lit, crée et modifie les fiches des fournisseurs qu'il paie (au site comme dans l'application mobile) ; il n'archive
+ * ni ne supprime : la tenue du répertoire reste aux acheteurs.</p>
  *
  * <p>Les achats gardent le nom du fournisseur en texte libre (lots de stock, immobilisations) : une fiche à laquelle
  * des achats renvoient s'archive ; seule une fiche sans achat se supprime.</p>
@@ -44,14 +45,14 @@ public class FournisseurService {
     private final DocumentationCompteService documentation;
 
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', "
-        + "'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+        + "'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN', 'CAISSIER')")
     @Transactional(readOnly = true)
     public List<FournisseurResponse> lister() {
         return repository.findAllByOrderByNomAsc().stream().map(this::versReponse).toList();
     }
 
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', "
-        + "'COMPTABLE', 'DFIN', 'ADMIN')")
+        + "'COMPTABLE', 'DFIN', 'ADMIN', 'CAISSIER')")
     @Transactional
     public FournisseurResponse creer(FournisseurRequest req) {
         Fournisseur f = new Fournisseur();
@@ -66,7 +67,7 @@ public class FournisseurService {
     }
 
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', "
-        + "'COMPTABLE', 'DFIN', 'ADMIN')")
+        + "'COMPTABLE', 'DFIN', 'ADMIN', 'CAISSIER')")
     @Transactional
     public FournisseurResponse modifier(Long id, FournisseurRequest req) {
         Fournisseur f = trouver(id);
