@@ -63,7 +63,7 @@ public final class PmsDtos {
      * Une ligne du folio. {@code hebergement} : NUIT, HEURE, SEMAINE ou MOIS (article de séjour fourni par M-FINAPP,
      * analytique 986) ; sinon {@code articleId} d'un article vendable (minibar, blanchisserie, restauration…).
      */
-    public record LigneFolio(@Pattern(regexp = "NUIT|HEURE|SEMAINE|MOIS") String hebergement, Long articleId,
+    public record LigneFolio(@Pattern(regexp = "NUIT|HEURE|SEMAINE|MOIS|CRENEAU|CHARGES") String hebergement, Long articleId,
                              @NotNull @Positive BigDecimal quantite, @NotNull @PositiveOrZero BigDecimal prixUnitaire,
                              @Size(max = 200) String designation) { }
 
@@ -91,6 +91,18 @@ public final class PmsDtos {
     public record MessageEnvoye(String cle, boolean envoye, boolean dejaTraite) { }
 
     /** Règlement ultérieur d'un folio laissé à crédit. */
+    /**
+     * Achat de la maintenance (pièces, prestation) : note de frais de décaissement créée et soumise au DFIN au nom de
+     * l'utilisateur (technicien ou direction de l'hébergement), sur un compte d'entretien admis.
+     */
+    public record DemandeAchat(@NotBlank @Size(max = 80) String cle, @NotBlank @Size(max = 200) String objet,
+                               @NotBlank @Size(max = 200) String beneficiaire, @Size(max = 2000) String description,
+                               @NotNull @Positive BigDecimal montant, @NotBlank @Size(max = 20) String compte,
+                               @Size(max = 1000) String justificationBudget) { }
+
+    public record NoteAchat(String cle, Long noteId, String reference, String statut, BigDecimal montant, String devise,
+                            boolean dejaTraite) { }
+
     public record ReglementFolio(@NotBlank @Size(max = 80) String cle, @NotNull ModeReglement mode, Long etablissementId,
                                  LocalDate date, @PositiveOrZero BigDecimal acompteImpute) { }
 }

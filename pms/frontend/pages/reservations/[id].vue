@@ -44,7 +44,37 @@ async function chargerReferentiel() {
   if (ref_.value) return
   try { ref_.value = await api<Referentiel>('/referentiel') } catch (e) { erreur.value = messageErreur(e, 'Référentiel de M-FINAPP indisponible.') }
 }
-onMounted(charger)
+onMounted(() => { charger().then(chargerAnnexes) })
+
+// ── Phase 3 : véhicules, bail, états des lieux ──────────────────────────────────────────────────────────────
+interface Vehicule { id: number, immatriculation: string, marque: string | null, couleur: string | null, placeNumero: string | null, entreeLe: string, sortieLe: string | null }
+interface PlaceLibre { id: number, numero: string, actif: boolean, vehiculeId: number | null, etablissementId: number }
+const vehicules = ref<Vehicule[]>([])
+const placesLibres = ref<PlaceLibre[]>([])
+const bail = ref<{ id: number, reference: string } | null>(null)
+const retenueProposee = ref(0)
+const veh = reactive({ ouvert: false, immatriculation: '', marque: '', couleur: '', placeId: null as number | null })
+async function chargerAnnexes() {
+  if (!r.value) return
+  try { vehicules.value = await api<Vehicule[]>('/parking/vehicules', { query: { reservationId: id } }) } catch { vehicules.value = [] }
+  try {
+    placesLibres.value = (await api<PlaceLibre[]>('/parking/places', { query: { etablissementId: r.value.etablissementId } })).filter(p => p.actif && !p.vehiculeId)
+  } catch { placesLibres.value = [] }
+  if (['MOIS', 'SEMAINE'].includes(r.value.uniteDuree)) {
+    try { bail.value = (await api<{ id: number, reference: string, reservationId: number }[]>('/baux')).find(b => b.reservationId === Number(id)) ?? null } catch { bail.value = null }
+  }
+}
+async function ajouterVehicule() {
+  try {
+    await api(`/reservations/${id}/vehicules`, { method: 'POST', body: { immatriculation: veh.immatriculation, marque: veh.marque || null, couleur: veh.couleur || null, placeId: veh.placeId } })
+    Object.assign(veh, { ouvert: false, immatriculation: '', marque: '', couleur: '', placeId: null })
+    await chargerAnnexes()
+  } catch (e) { erreur.value = messageErreur(e) }
+}
+async function sortirVehicule(v: Vehicule) {
+  try { await api(`/parking/vehicules/${v.id}/sortie`, { method: 'POST' }); await chargerAnnexes() } catch (e) { erreur.value = messageErreur(e) }
+}
+const logement = computed(() => !!r.value && (['MOIS', 'SEMAINE'].includes(r.value.uniteDuree) || !!bail.value))
 
 async function executer(nom: string, f: () => Promise<unknown>, ok?: string) {
   action.value = nom
@@ -164,7 +194,9 @@ async function ouvrirDepart() {
   const f = folio.value!
   Object.assign(depart, {
     ouvert: true, mode: 'CAISSE', etablissementId: null, entrepotId: ref_.value?.entrepots.length === 1 ? ref_.value.entrepots[0].id : null,
-    acompteImpute: Math.min(Number(f.acomptes), Number(f.totalTtc)), cautionRetenue: 0, restituerCaution: true,
+    acompteImpute: Math.min(Number(f.acomptes), Number(f.totalTtc)),
+    // Retenue proposée par l'état des lieux de sortie (dans la limite de la caution détenue).
+    cautionRetenue: Math.min(retenueProposee.value, Number(f.cautions)), restituerCaution: true,
     cle: nouvelleCle(`PMS-FOLIO-${r.value.reference}`),
   })
 }
@@ -260,6 +292,29 @@ const libCanal = (c: string) => CANAUX.find(x => x.value === c)?.title ?? c
           <div class="text-body-2 text-medium-emphasis mb-3">{{ r.clientTelephone || 'Pas de téléphone' }}</div>
           <v-btn size="small" variant="tonal" prepend-icon="mdi-card-account-details-outline" :to="`/clients/${r.clientId}`">Fiche client</v-btn>
         </v-card>
+        <v-card v-if="bail" class="classroom-card pa-5 mb-4">
+          <div class="kpi-label mb-2">Bail</div>
+          <div class="text-body-1 font-weight-bold">{{ bail.reference }}</div>
+          <div class="text-body-2 text-medium-emphasis mb-3">Loyers facturés par échéance : le départ ne les refacture pas.</div>
+          <v-btn size="small" variant="tonal" prepend-icon="mdi-file-sign" :to="`/baux/${bail.id}`">Échéancier</v-btn>
+        </v-card>
+        <v-card class="classroom-card pa-5 mb-4">
+          <div class="d-flex align-center mb-2"><div class="kpi-label">Véhicules</div><v-spacer />
+            <v-btn v-if="exploitant && ['OPTION', 'CONFIRMEE', 'ARRIVEE'].includes(r.statut)" size="x-small" variant="tonal" prepend-icon="mdi-plus" @click="veh.ouvert = !veh.ouvert">Véhicule</v-btn></div>
+          <div v-for="v in vehicules" :key="v.id" class="vehicule-ligne">
+            <span class="vehicule-plaque">{{ v.immatriculation }}</span>
+            <span class="text-caption text-medium-emphasis">{{ [v.marque, v.couleur, v.placeNumero ? `place ${v.placeNumero}` : null].filter(Boolean).join(' · ') }}{{ v.sortieLe ? ' · sorti' : '' }}</span>
+            <v-spacer /><v-btn v-if="!v.sortieLe && exploitant" size="x-small" variant="text" @click="sortirVehicule(v)">Sortie</v-btn>
+          </div>
+          <p v-if="!vehicules.length && !veh.ouvert" class="text-body-2 text-medium-emphasis mb-0">Aucun véhicule.</p>
+          <div v-if="veh.ouvert" class="mt-2">
+            <v-text-field v-model="veh.immatriculation" label="Plaque *" density="compact" />
+            <v-row dense><v-col cols="6"><v-text-field v-model="veh.marque" label="Marque" density="compact" /></v-col>
+              <v-col cols="6"><v-text-field v-model="veh.couleur" label="Couleur" density="compact" /></v-col></v-row>
+            <v-select v-model="veh.placeId" :items="placesLibres.map(p => ({ value: p.id, title: `Place ${p.numero}` }))" label="Place" clearable density="compact" />
+            <v-btn size="small" color="primary" variant="flat" block :disabled="!veh.immatriculation.trim()" @click="ajouterVehicule">Enregistrer</v-btn>
+          </div>
+        </v-card>
       </v-col>
 
       <v-col cols="12" md="8">
@@ -317,6 +372,11 @@ const libCanal = (c: string) => CANAUX.find(x => x.value === c)?.title ?? c
             </v-list-item>
           </v-list>
           <v-card-text v-else class="text-medium-emphasis">Aucun acompte ni caution.</v-card-text>
+        </v-card>
+
+        <v-card v-if="logement" class="classroom-card mt-4">
+          <v-card-title class="text-subtitle-1 font-weight-bold">États des lieux</v-card-title>
+          <v-card-text><EtatDesLieux :reservation-id="Number(id)" :peut="exploitant" @retenue="(m: number) => retenueProposee = m" /></v-card-text>
         </v-card>
       </v-col>
     </v-row>
@@ -435,6 +495,8 @@ const libCanal = (c: string) => CANAUX.find(x => x.value === c)?.title ?? c
 </template>
 
 <style scoped>
+.vehicule-ligne { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--d-line-strong); }
+.vehicule-plaque { padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; letter-spacing: 0.06em; background: #fde047; color: #111; box-shadow: inset 0 0 0 1.5px #111; }
 .info { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 0.9rem; border-bottom: 1px dashed var(--hairline, #eef0ee); }
 .info span { opacity: 0.7; }
 .totaux { display: grid; gap: 4px; max-width: 360px; margin-left: auto; }

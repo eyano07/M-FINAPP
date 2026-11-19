@@ -9,7 +9,7 @@ import java.time.temporal.ChronoUnit;
 
 /**
  * Nombre d'unités facturées d'un séjour : nuitées (dates d'arrivée et de départ), heures entamées, semaines ou mois
- * entamés (30 jours). Toujours au moins une unité.
+ * entamés (30 jours), forfait par créneau (une unité : le prix du forfait). Toujours au moins une unité.
  */
 public final class Durees {
 
@@ -38,6 +38,7 @@ public final class Durees {
             case "NUIT" -> nuits;
             case "SEMAINE" -> (nuits + 6) / 7;
             case "MOIS" -> (nuits + 29) / 30;
+            case "CRENEAU" -> 1;
             default -> throw new IllegalArgumentException("Durée inconnue : " + uniteDuree);
         };
         return Math.max(1, q);
@@ -48,6 +49,7 @@ public final class Durees {
             case "HEURE" -> "heure";
             case "NUIT" -> "nuit";
             case "SEMAINE" -> "semaine";
+            case "CRENEAU" -> "forfait";
             default -> "mois";
         };
         return quantite + " " + (quantite > 1 && !"mois".equals(u) ? u + "s" : u);

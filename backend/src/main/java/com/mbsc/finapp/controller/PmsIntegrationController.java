@@ -115,4 +115,15 @@ public class PmsIntegrationController {
     public VenteResponse vente(@PathVariable Long id) {
         return service.vente(id);
     }
+
+    /** Maintenance : achat de pièces ou de prestation, devenu note de frais soumise au DFIN. */
+    @PostMapping("/notes-frais")
+    public PmsDtos.NoteAchat demanderAchat(@Valid @RequestBody PmsDtos.DemandeAchat req) {
+        return service.demanderAchat(req);
+    }
+
+    @GetMapping("/notes-frais/{id}")
+    public PmsDtos.NoteAchat etatAchat(@PathVariable Long id) {
+        return service.etatAchat(id);
+    }
 }

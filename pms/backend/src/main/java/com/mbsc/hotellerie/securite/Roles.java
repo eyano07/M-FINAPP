@@ -20,6 +20,13 @@ public final class Roles {
     public static final String[] PARAMETRAGE = {DIRECTION, ADMIN};
     /** Ménage : état des unités et tâches. */
     public static final String[] MENAGE_ECRITURE = {MENAGE, RECEPTION, DIRECTION, ADMIN};
+    /** Maintenance : tout le personnel signale une panne ; le technicien et la direction la traitent. */
+    public static final String[] SIGNALEMENT = {RECEPTION, MENAGE, TECHNICIEN, DIRECTION, ADMIN};
+    public static final String[] MAINTENANCE = {TECHNICIEN, DIRECTION, ADMIN};
+    /** Achats de pièces (note de frais M-FINAPP) : technicien et direction (jamais l'administrateur : il ne décaisse pas). */
+    public static final String[] ACHATS = {TECHNICIEN, DIRECTION};
+    /** Baux, échéances et compteurs des appartements. */
+    public static final String[] BAUX = {RECEPTION, DIRECTION, ADMIN};
 
     private Roles() {
     }

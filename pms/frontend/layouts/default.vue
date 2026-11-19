@@ -28,9 +28,13 @@ const SECTIONS: Section[] = [
     { titre: 'Calendrier', icone: 'mdi-calendar-month-outline', vers: '/calendrier', roles: EXPLOITATION },
     { titre: 'Réservations', icone: 'mdi-book-open-page-variant-outline', vers: '/reservations', roles: EXPLOITATION },
     { titre: 'Clients', icone: 'mdi-account-group-outline', vers: '/clients', roles: ['RECEPTIONNISTE', 'DIR_HEBERGEMENT', 'ADMIN'] },
+    { titre: 'Motel', icone: 'mdi-car-estate', vers: '/motel', roles: ['RECEPTIONNISTE', 'DIR_HEBERGEMENT', 'ADMIN'] },
+    { titre: 'Baux', icone: 'mdi-file-sign', vers: '/baux', roles: ['RECEPTIONNISTE', 'DIR_HEBERGEMENT', 'ADMIN'] },
   ] },
   { titre: 'Opérations', entrees: [
     { titre: 'Ménage', icone: 'mdi-broom', vers: '/menage', roles: TOUS },
+    { titre: 'Maintenance', icone: 'mdi-wrench-outline', vers: '/maintenance', roles: TOUS },
+    { titre: 'Mode terrain', icone: 'mdi-cellphone-check', vers: '/terrain', roles: ['GOUVERNANTE', 'TECHNICIEN', 'DIR_HEBERGEMENT', 'RECEPTIONNISTE', 'ADMIN'] },
   ] },
   { titre: 'Distribution', entrees: [
     { titre: 'Canaux de vente', icone: 'mdi-calendar-sync-outline', vers: '/canaux', roles: EXPLOITATION },
@@ -38,6 +42,7 @@ const SECTIONS: Section[] = [
     { titre: 'Réservation en ligne', icone: 'mdi-web', vers: '/reserver', roles: EXPLOITATION, externe: true },
   ] },
   { titre: 'Gestion', entrees: [
+    { titre: 'Rapports', icone: 'mdi-chart-box-outline', vers: '/rapports', roles: ['DIR_HEBERGEMENT', 'ADMIN', 'DG', 'DFIN', 'DA', 'COMPTABLE'] },
     { titre: 'Établissements et tarifs', icone: 'mdi-office-building-cog-outline', vers: '/parametrage', roles: ['DIR_HEBERGEMENT', 'ADMIN'] },
   ] },
 ]

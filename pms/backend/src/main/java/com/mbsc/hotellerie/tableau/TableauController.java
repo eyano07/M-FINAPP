@@ -24,7 +24,8 @@ public class TableauController {
         Object[] p = {etablissementId, etablissementId};
         String filtre = " and (?::bigint is null or r.etablissement_id = ?)";
         Map<String, Object> t = new LinkedHashMap<>();
-        long unites = jdbc.queryForObject("select count(*) from unites u where u.actif and not u.hors_service"
+        // Hors service « maintenant » : une mise hors service datée ne compte que pendant sa période.
+        long unites = jdbc.queryForObject("select count(*) from unites u where u.actif and not (u.hors_service and coalesce(u.hors_service_du, '-infinity') <= now() and coalesce(u.hors_service_au, 'infinity') > now())"
             + " and (?::bigint is null or u.etablissement_id = ?)", Long.class, p);
         long occupees = jdbc.queryForObject("select count(distinct r.unite_id) from reservations r where r.statut = 'ARRIVEE'"
             + filtre, Long.class, p);
@@ -42,8 +43,17 @@ public class TableauController {
             + " and (?::bigint is null or u.etablissement_id = ?)", Long.class, p));
         t.put("demandesEnLigne", liste("r.demande_publique and r.statut = 'OPTION'" + filtre, p));
         t.put("alertesCanaux", jdbc.queryForObject("select count(*) from alertes_canaux where not traitee", Long.class));
-        t.put("unitesHorsService", jdbc.queryForObject("select count(*) from unites u where u.actif and u.hors_service"
+        t.put("unitesHorsService", jdbc.queryForObject("select count(*) from unites u where u.actif and u.hors_service and coalesce(u.hors_service_du, '-infinity') <= now() and coalesce(u.hors_service_au, 'infinity') > now()"
             + " and (?::bigint is null or u.etablissement_id = ?)", Long.class, p));
+        // Phase 3 : maintenance à traiter et loyers échus à facturer.
+        t.put("ticketsOuverts", jdbc.queryForObject("select count(*) from tickets_maintenance t where t.statut in ('OUVERT', 'EN_COURS', 'ATTENTE_PIECES')"
+            + " and (?::bigint is null or t.etablissement_id = ?)", Long.class, p));
+        t.put("ticketsUrgents", jdbc.queryForObject("select count(*) from tickets_maintenance t where t.statut in ('OUVERT', 'EN_COURS', 'ATTENTE_PIECES')"
+            + " and t.priorite in ('HAUTE', 'URGENTE') and (?::bigint is null or t.etablissement_id = ?)", Long.class, p));
+        t.put("echeancesAFacturer", jdbc.queryForObject("""
+            select count(*) from echeances_bail x join baux b on b.id = x.bail_id join reservations r on r.id = b.reservation_id
+            where x.statut in ('A_FACTURER', 'EN_ATTENTE') and x.date_echeance <= current_date
+            """ + filtre, Long.class, p));
         return t;
     }
 

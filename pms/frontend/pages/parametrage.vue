@@ -10,7 +10,8 @@ interface TypeU { id: number, etablissementId: number, nom: string, capacite: nu
 interface Unite { id: number, etablissementId: number, etablissementNom: string, typeId: number, typeNom: string, numero: string, etage: string | null,
   capacite: number | null, equipements: string | null, horsService: boolean, motifHorsService: string | null, notes: string | null, ordre: number, actif: boolean }
 interface Tarif { id: number, typeId: number, typeNom: string, etablissementId: number, uniteDuree: string, prix: number, libelle: string | null,
-  debutSaison: string | null, finSaison: string | null, actif: boolean }
+  debutSaison: string | null, finSaison: string | null, actif: boolean, dureeHeures: number | null, plageDebut: string | null, plageFin: string | null }
+interface TarifCompteur { etablissementId: number, type: 'EAU' | 'ELECTRICITE', prixUnite: number }
 
 const api = useApi()
 const dialogues = useDialogues()
@@ -112,14 +113,35 @@ async function basculerHorsService(u: Unite) {
 
 // Tarif
 const fta = reactive({ ouvert: false, id: null as number | null, typeId: null as number | null, uniteDuree: 'NUIT', prix: null as number | null,
-  libelle: '', debutSaison: '', finSaison: '', actif: true })
+  libelle: '', debutSaison: '', finSaison: '', actif: true, dureeHeures: 3 as number | null, plageDebut: '', plageFin: '' })
 function ouvrirTarif(t?: Tarif) {
   Object.assign(fta, t ? { ouvert: true, id: t.id, typeId: t.typeId, uniteDuree: t.uniteDuree, prix: Number(t.prix), libelle: t.libelle ?? '',
-    debutSaison: t.debutSaison ?? '', finSaison: t.finSaison ?? '', actif: t.actif }
-    : { ouvert: true, id: null, typeId: types.value[0]?.id ?? null, uniteDuree: 'NUIT', prix: null, libelle: '', debutSaison: '', finSaison: '', actif: true })
+    debutSaison: t.debutSaison ?? '', finSaison: t.finSaison ?? '', actif: t.actif, dureeHeures: t.dureeHeures ?? 3,
+    plageDebut: t.plageDebut?.slice(0, 5) ?? '', plageFin: t.plageFin?.slice(0, 5) ?? '' }
+    : { ouvert: true, id: null, typeId: types.value[0]?.id ?? null, uniteDuree: 'NUIT', prix: null, libelle: '', debutSaison: '', finSaison: '', actif: true,
+      dureeHeures: 3, plageDebut: '', plageFin: '' })
 }
+const creneau = computed(() => fta.uniteDuree === 'CRENEAU')
 const sauverTarif = () => enregistrer('/tarifs', fta.id, { typeId: fta.typeId, uniteDuree: fta.uniteDuree, prix: fta.prix, libelle: fta.libelle || null,
-  debutSaison: fta.debutSaison || null, finSaison: fta.finSaison || null, actif: fta.actif }, () => { fta.ouvert = false })
+  debutSaison: fta.debutSaison || null, finSaison: fta.finSaison || null, actif: fta.actif,
+  dureeHeures: creneau.value ? fta.dureeHeures : null, plageDebut: creneau.value && fta.plageDebut ? fta.plageDebut : null,
+  plageFin: creneau.value && fta.plageFin ? fta.plageFin : null }, () => { fta.ouvert = false })
+
+// Compteurs (appartements) : prix du m³ d'eau et du kWh refacturés aux locataires.
+const tarifsCompteurs = ref<TarifCompteur[]>([])
+async function chargerCompteurs() {
+  try { tarifsCompteurs.value = await api<TarifCompteur[]>('/compteurs/tarifs') } catch { tarifsCompteurs.value = [] }
+}
+onMounted(chargerCompteurs)
+const prixCompteur = (etab: number, type: string) => tarifsCompteurs.value.find(t => t.etablissementId === etab && t.type === type)?.prixUnite ?? null
+async function sauverCompteur(etab: number, type: string, valeur: string) {
+  const prix = Number(String(valeur).replace(',', '.'))
+  if (Number.isNaN(prix) || prix < 0) return
+  try {
+    await api('/compteurs/tarifs', { method: 'PUT', body: { etablissementId: etab, type, prixUnite: prix } })
+    await chargerCompteurs()
+  } catch (e) { erreur.value = messageErreur(e) }
+}
 const libDuree = (d: string) => DUREES.find(x => x.value === d)?.title ?? d
 const libType = (t: string) => TYPES_ETABLISSEMENT.find(x => x.value === t)?.title ?? t
 </script>
@@ -140,6 +162,7 @@ const libType = (t: string) => TYPES_ETABLISSEMENT.find(x => x.value === t)?.tit
       <v-tab value="etablissements">Établissements</v-tab>
       <v-tab value="unites">Types et unités</v-tab>
       <v-tab value="tarifs">Tarifs</v-tab>
+      <v-tab value="compteurs">Compteurs</v-tab>
     </v-tabs>
 
     <v-window v-model="onglet">
@@ -196,12 +219,30 @@ const libType = (t: string) => TYPES_ETABLISSEMENT.find(x => x.value === t)?.tit
             :headers="[{ title: 'Type d\'unité', key: 'typeNom' }, { title: 'Durée', key: 'uniteDuree' }, { title: 'Prix HT', key: 'prix', align: 'end' },
                        { title: 'Libellé', key: 'libelle' }, { title: 'Saison', key: 'debutSaison' }, { title: '', key: 'actions', sortable: false, align: 'end' }]">
             <template #[`item.typeNom`]="{ item }">{{ item.typeNom }} <span class="text-caption text-medium-emphasis">{{ nomEtab(item.etablissementId) }}</span></template>
-            <template #[`item.uniteDuree`]="{ item }">{{ libDuree(item.uniteDuree) }}</template>
+            <template #[`item.uniteDuree`]="{ item }">{{ libDuree(item.uniteDuree) }}<span v-if="item.uniteDuree === 'CRENEAU'" class="text-caption text-medium-emphasis">
+              · {{ item.dureeHeures }} h<template v-if="item.plageDebut"> · {{ item.plageDebut.slice(0, 5) }}–{{ item.plageFin?.slice(0, 5) }}</template></span></template>
             <template #[`item.prix`]="{ item }"><strong>{{ usd(item.prix) }}</strong></template>
             <template #[`item.debutSaison`]="{ item }">{{ item.debutSaison ? `${item.debutSaison} → ${item.finSaison ?? '…'}` : 'Toute l\'année' }}</template>
             <template #[`item.actions`]="{ item }"><v-btn v-if="peut" size="small" variant="text" icon="mdi-pencil" aria-label="Modifier" @click="ouvrirTarif(item)" /></template>
           </v-data-table>
         </v-card>
+      </v-window-item>
+
+      <v-window-item value="compteurs">
+        <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+          Prix refacturés aux locataires des baux : la consommation entre deux relevés (eau en m³, électricité en kWh) s’ajoute aux charges de l’échéance.
+        </v-alert>
+        <div class="compteurs">
+          <v-card v-for="e in etabs" :key="e.id" class="classroom-card pa-5">
+            <div class="font-weight-bold mb-3">{{ e.nom }}</div>
+            <v-row dense>
+              <v-col cols="6"><v-text-field :model-value="prixCompteur(e.id, 'EAU') ?? ''" type="number" min="0" step="0.01" label="Eau (USD / m³)" prepend-inner-icon="mdi-water-outline"
+                :readonly="!peut" @change="(ev: Event) => sauverCompteur(e.id, 'EAU', (ev.target as HTMLInputElement).value)" /></v-col>
+              <v-col cols="6"><v-text-field :model-value="prixCompteur(e.id, 'ELECTRICITE') ?? ''" type="number" min="0" step="0.01" label="Électricité (USD / kWh)" prepend-inner-icon="mdi-flash-outline"
+                :readonly="!peut" @change="(ev: Event) => sauverCompteur(e.id, 'ELECTRICITE', (ev.target as HTMLInputElement).value)" /></v-col>
+            </v-row>
+          </v-card>
+        </div>
       </v-window-item>
     </v-window>
 
@@ -268,7 +309,13 @@ const libType = (t: string) => TYPES_ETABLISSEMENT.find(x => x.value === t)?.tit
             <v-col cols="6"><v-select v-model="fta.uniteDuree" :items="DUREES" label="Durée" /></v-col>
             <v-col cols="6"><v-text-field v-model.number="fta.prix" type="number" min="0" label="Prix (USD HT) *" /></v-col>
           </v-row>
-          <v-text-field v-model="fta.libelle" label="Libellé (ex. Haute saison, Week-end)" />
+          <v-text-field v-model="fta.libelle" :label="creneau ? 'Nom du forfait * (ex. Sieste 3 h, Nuit motel)' : 'Libellé (ex. Haute saison, Week-end)'" />
+          <v-row v-if="creneau" dense>
+            <v-col cols="4"><v-text-field v-model.number="fta.dureeHeures" type="number" min="1" max="24" label="Durée (heures) *" /></v-col>
+            <v-col cols="4"><v-text-field v-model="fta.plageDebut" type="time" label="Arrivée de" hint="facultatif" persistent-hint /></v-col>
+            <v-col cols="4"><v-text-field v-model="fta.plageFin" type="time" label="à" /></v-col>
+          </v-row>
+          <p v-if="creneau" class="text-caption text-medium-emphasis">Le prix est celui du forfait entier. La plage d’arrivée (qui peut passer minuit) fait proposer ce forfait en premier.</p>
           <v-row dense>
             <v-col cols="6"><v-text-field v-model="fta.debutSaison" type="date" label="Saison : du" /></v-col>
             <v-col cols="6"><v-text-field v-model="fta.finSaison" type="date" label="au" /></v-col>
@@ -280,3 +327,7 @@ const libType = (t: string) => TYPES_ETABLISSEMENT.find(x => x.value === t)?.tit
     </v-dialog>
   </div>
 </template>
+
+<style scoped>
+.compteurs { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+</style>

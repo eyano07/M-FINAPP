@@ -14,7 +14,7 @@ interface Ligne { id: number, reference: string, debut: string, fin: string, sta
 interface Tableau {
   unitesDisponibles: number, unitesOccupees: number, tauxOccupation: number, presents: number, unitesANettoyer: number,
   unitesHorsService: number, arriveesDuJour: Ligne[], departsDuJour: Ligne[], encaissementsEnAttente: Ligne[],
-  demandesEnLigne?: Ligne[], alertesCanaux?: number
+  demandesEnLigne?: Ligne[], alertesCanaux?: number, ticketsOuverts?: number, ticketsUrgents?: number, echeancesAFacturer?: number
 }
 interface Unite { id: number, etablissementNom: string, numero: string, typeNom: string, etage: string | null, etatMenage: string,
   horsService: boolean, motifHorsService: string | null, occupee: boolean, clientActuel: string | null, departPrevu: string | null, arriveePrevue: string | null }
@@ -94,6 +94,12 @@ const aTraiter = computed(() => {
   }
   if (t.value.alertesCanaux) {
     r.push({ icone: 'mdi-calendar-alert', c: '#e11d48', titre: `${t.value.alertesCanaux} conflit(s) avec les canaux`, texte: 'Une réservation reçue tombe sur des dates déjà occupées.', vers: '/canaux', action: 'Résoudre' })
+  }
+  if (t.value.ticketsUrgents) {
+    r.push({ icone: 'mdi-wrench-clock', c: '#e11d48', titre: `${t.value.ticketsUrgents} panne(s) urgente(s)`, texte: `${t.value.ticketsOuverts ?? 0} ticket(s) de maintenance ouverts au total`, vers: '/maintenance', action: 'Voir' })
+  }
+  if (t.value.echeancesAFacturer) {
+    r.push({ icone: 'mdi-file-clock-outline', c: '#4338ca', titre: `${t.value.echeancesAFacturer} loyer(s) échu(s) à facturer`, texte: 'Baux des appartements : la facture part à crédit dans M-FINAPP', vers: '/baux', action: 'Facturer' })
   }
   for (const l of t.value.encaissementsEnAttente) {
     r.push({ icone: 'mdi-cash-clock', c: '#d97706', titre: `Encaissement en attente · ${l.client}`, texte: `${l.reference} — M-FINAPP était injoignable au départ`, vers: `/reservations/${l.id}`, action: 'Encaisser' })

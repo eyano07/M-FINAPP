@@ -66,8 +66,9 @@ public class PubliqueService {
                    (select ta.prix from tarifs ta where ta.type_id = t.id and ta.unite_duree = 'NUIT' and ta.actif
                       and (ta.debut_saison is null or ta.debut_saison <= ?) and (ta.fin_saison is null or ta.fin_saison >= ?)
                     order by (ta.debut_saison is null) asc, ta.id desc limit 1) as prix
-            from types_unite t join unites u on u.type_id = t.id and u.actif and not u.hors_service
+            from types_unite t join unites u on u.type_id = t.id and u.actif
             where t.etablissement_id = ? and t.actif and coalesce(u.capacite, t.capacite) >= ?
+              and not (u.hors_service and tstzrange(coalesce(u.hors_service_du, '-infinity'), coalesce(u.hors_service_au, 'infinity'), '[)') && tstzrange(?, ?, '[)'))
               and not exists (select 1 from reservations r where r.unite_id = u.id and r.statut in ('OPTION', 'CONFIRMEE', 'ARRIVEE')
                   and tstzrange(r.debut, r.fin, '[)') && tstzrange(?, ?, '[)'))
             group by t.id, t.nom, t.description, t.capacite order by prix nulls last, t.nom
@@ -75,7 +76,7 @@ public class PubliqueService {
             BigDecimal prix = rs.getBigDecimal("prix");
             return new Offre(rs.getLong("id"), rs.getString("nom"), rs.getString("description"), rs.getInt("capacite"), prix, nuits,
                 prix == null ? null : Durees.ht(prix, BigDecimal.valueOf(nuits)), rs.getInt("libres"));
-        }, arrivee, arrivee, etablissementId, personnes, p[0], p[1]).stream().filter(o -> o.prixNuit() != null).toList();
+        }, arrivee, arrivee, etablissementId, personnes, p[0], p[1], p[0], p[1]).stream().filter(o -> o.prixNuit() != null).toList();
     }
 
     public record Demande(@NotNull Long etablissementId, @NotNull Long typeId, @NotNull LocalDate arrivee, @NotNull LocalDate depart,
@@ -99,11 +100,12 @@ public class PubliqueService {
             .orElseThrow(() -> Refus.conflit("Plus de disponibilité pour ce type d'unité à ces dates : choisissez-en un autre."));
         Long uniteId = jdbc.queryForObject("""
             select u.id from unites u join types_unite t on t.id = u.type_id
-            where u.type_id = ? and u.actif and not u.hors_service and coalesce(u.capacite, t.capacite) >= ?
+            where u.type_id = ? and u.actif and coalesce(u.capacite, t.capacite) >= ?
+              and not (u.hors_service and tstzrange(coalesce(u.hors_service_du, '-infinity'), coalesce(u.hors_service_au, 'infinity'), '[)') && tstzrange(?, ?, '[)'))
               and not exists (select 1 from reservations r where r.unite_id = u.id and r.statut in ('OPTION', 'CONFIRMEE', 'ARRIVEE')
                   and tstzrange(r.debut, r.fin, '[)') && tstzrange(?, ?, '[)'))
             order by u.ordre, u.numero limit 1
-            """, Long.class, d.typeId(), d.adultes() + d.enfants(), p[0], p[1]);
+            """, Long.class, d.typeId(), d.adultes() + d.enfants(), p[0], p[1], p[0], p[1]);
         Long clientId = jdbc.queryForObject("""
             insert into clients (nom, prenom, telephone, email, notes) values (?, ?, ?, ?, 'Créé par une demande en ligne.') returning id
             """, Long.class, d.nom().strip(), vide(d.prenom()), d.telephone().strip(), vide(d.email()));

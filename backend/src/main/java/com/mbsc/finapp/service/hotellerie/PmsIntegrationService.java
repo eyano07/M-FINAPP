@@ -51,6 +51,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -82,7 +83,18 @@ public class PmsIntegrationService {
         "NUIT", new String[] {"HEB-NUIT", "Hébergement — nuitée", "nuit"},
         "HEURE", new String[] {"HEB-HEURE", "Hébergement — heure", "heure"},
         "SEMAINE", new String[] {"HEB-SEMAINE", "Hébergement — semaine", "semaine"},
-        "MOIS", new String[] {"HEB-MOIS", "Hébergement — mois", "mois"});
+        "MOIS", new String[] {"HEB-MOIS", "Hébergement — mois", "mois"},
+        // Phase 3 : forfait par créneau (motels) et charges refacturées d'un bail (eau, électricité).
+        "CRENEAU", new String[] {"HEB-FORFAIT", "Hébergement — forfait", "forfait"},
+        "CHARGES", new String[] {"HEB-CHARGES", "Charges refacturées (eau, électricité)", "unité"});
+    /** Achats de la maintenance par le PMS : réservés au technicien et à la direction de l'hébergement. */
+    static final String MAINTENANCE = "hasAnyRole('TECHNICIEN', 'DIR_HEBERGEMENT')";
+    /**
+     * Comptes d'imputation admis pour un achat de maintenance : entretien et réparations des biens immobiliers (6241),
+     * mobiliers (6242), maintenance (6243), autres entretiens (6248), fournitures d'atelier (6044), petit matériel et
+     * outillage (6056), produits d'entretien (6043).
+     */
+    public static final Set<String> COMPTES_MAINTENANCE = Set.of("6241", "6242", "6243", "6248", "6044", "6056", "6043");
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -99,6 +111,7 @@ public class PmsIntegrationService {
     private final TauxTvaService tauxTva;
     private final ConversionDeviseService conversion;
     private final com.mbsc.finapp.service.MailNotificationService mails;
+    private final com.mbsc.finapp.service.NoteFraisService notesFrais;
 
     // ── Lecture ─────────────────────────────────────────────────────────────
 
@@ -226,6 +239,57 @@ public class PmsIntegrationService {
         memoriser(req.cle(), type, resultat, auteur);
         log.info("Hôtellerie : {} {} [{} {}]", nature, req.reference(), montant, piece.getReference());
         return resultat;
+    }
+
+    // ── Maintenance : achats par note de frais ─────────────────────────────
+
+    /**
+     * Ticket de maintenance du PMS qui demande un achat : note de frais de décaissement en devise de base, une ligne sur
+     * un compte d'entretien admis, créée et soumise au DFIN au nom de l'utilisateur. Rejouée avec la même clé, la
+     * demande renvoie la note déjà créée (jamais deux notes pour un même clic).
+     */
+    @PreAuthorize(MAINTENANCE)
+    @Transactional
+    public PmsDtos.NoteAchat demanderAchat(PmsDtos.DemandeAchat d) {
+        var deja = deja(d.cle(), PmsDtos.NoteAchat.class);
+        if (deja.isPresent()) {
+            return etat(deja.get().noteId(), d.cle(), true);
+        }
+        if (!COMPTES_MAINTENANCE.contains(d.compte())) {
+            throw new IllegalArgumentException("Compte non admis pour un achat de maintenance : " + d.compte()
+                + " (6241, 6242, 6243, 6248, 6044, 6056 ou 6043).");
+        }
+        User auteur = currentUser.requireUser();
+        var ligne = new com.mbsc.finapp.dto.notes.LigneNoteFraisRequest(d.montant().setScale(2, RoundingMode.HALF_UP), d.compte(),
+            d.objet(), false, null, null, null, null, false, null, false, false);
+        var note = notesFrais.creerEtSoumettreHotellerieInterne(new com.mbsc.finapp.dto.notes.NoteFraisRequest(d.objet(),
+            d.beneficiaire(), d.description(), ConversionDeviseService.DEVISE_BASE, com.mbsc.finapp.domain.enums.SensTransaction.DECAISSEMENT,
+            List.of(ligne), d.justificationBudget(), null));
+        var resultat = new PmsDtos.NoteAchat(d.cle(), note.id(), note.reference(), note.statut().name(), note.montant(),
+            note.devise().name(), false);
+        memoriser(d.cle(), "NOTE_FRAIS", resultat, auteur);
+        AuditService.detailler("Achat de maintenance demandé depuis l'hôtellerie : note " + note.reference() + ", "
+            + note.montant().toPlainString() + " " + note.devise() + " au compte " + d.compte() + " (" + d.objet() + ").");
+        log.info("Hôtellerie : note de maintenance {} ({} {})", note.reference(), note.montant(), d.compte());
+        return resultat;
+    }
+
+    /** Avancement d'une note créée par l'hôtellerie (jamais d'une autre note). */
+    @PreAuthorize(LECTEURS)
+    @Transactional(readOnly = true)
+    public PmsDtos.NoteAchat etatAchat(Long noteId) {
+        Integer connue = jdbc.queryForObject("""
+            select count(*) from pms_operations where type_operation = 'NOTE_FRAIS' and (resultat::jsonb ->> 'noteId')::bigint = ?
+            """, Integer.class, noteId);
+        if (connue == null || connue == 0) {
+            throw new IllegalArgumentException("Cette note de frais n'a pas été créée par l'hôtellerie.");
+        }
+        return etat(noteId, null, false);
+    }
+
+    private PmsDtos.NoteAchat etat(Long noteId, String cle, boolean dejaTraite) {
+        var n = notesFrais.lireInterne(noteId);
+        return new PmsDtos.NoteAchat(cle, n.id(), n.reference(), n.statut().name(), n.montant(), n.devise().name(), dejaTraite);
     }
 
     // ── Folio ───────────────────────────────────────────────────────────────

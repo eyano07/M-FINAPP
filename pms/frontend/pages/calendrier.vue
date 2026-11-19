@@ -10,7 +10,8 @@ import { MENAGE, STATUTS, jourIso } from '~/utils/libelles'
  */
 useHead({ title: 'Calendrier' })
 
-interface Unite { id: number, etablissementId: number, etablissementNom: string, typeNom: string, numero: string, etatMenage: string, horsService: boolean, actif: boolean }
+interface Unite { id: number, etablissementId: number, etablissementNom: string, typeNom: string, numero: string, etatMenage: string, horsService: boolean, actif: boolean,
+  motifHorsService: string | null, horsServiceDu: string | null, horsServiceAu: string | null }
 interface Etab { id: number, nom: string }
 interface Resa { id: number, reference: string, uniteId: number, clientNom: string, debut: string, fin: string, statut: string, uniteDuree: string }
 
@@ -84,6 +85,31 @@ function barre(r: Resa) {
   if (droite <= 0 || gauche >= nbJours.value) return null
   return { left: `${gauche * LARGEUR}px`, width: `${Math.max(0.5, droite - gauche) * LARGEUR - 4}px` }
 }
+/** Bande « hors service » : de la mise hors service à la fin prévue des travaux (sans fin : jusqu'au bout de la vue). */
+function bandeHs(u: Unite) {
+  if (!u.horsService) return null
+  const jour = 86_400_000
+  const origine = debut.value.getTime()
+  const d = u.horsServiceDu ? new Date(u.horsServiceDu) : new Date()
+  const iDebut = Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - origine) / jour)
+  let iFin = nbJours.value
+  if (u.horsServiceAu) {
+    const f = new Date(u.horsServiceAu)
+    iFin = Math.ceil((new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime() - origine) / jour) + 1
+  }
+  const gauche = Math.max(0, iDebut)
+  const droite = Math.min(nbJours.value, iFin)
+  if (droite <= 0 || gauche >= nbJours.value) return null
+  return { left: `${gauche * LARGEUR}px`, width: `${(droite - gauche) * LARGEUR}px` }
+}
+/** Case de la vue bloquée par une mise hors service datée. */
+function caseBloquee(u: Unite, j: Date) {
+  if (!u.horsService) return false
+  const debutJour = new Date(j.getFullYear(), j.getMonth(), j.getDate()).getTime()
+  const du = u.horsServiceDu ? new Date(u.horsServiceDu).getTime() : 0
+  const au = u.horsServiceAu ? new Date(u.horsServiceAu).getTime() : Number.POSITIVE_INFINITY
+  return debutJour + 86_400_000 > du && debutJour < au
+}
 const resasParUnite = computed(() => {
   const m = new Map<number, Resa[]>()
   for (const r of resas.value) {
@@ -135,7 +161,7 @@ async function deposer(u: Unite, jour: Date) {
 }
 
 function caseVide(u: Unite, jour: Date) {
-  if (!peutReserver.value || u.horsService) return
+  if (!peutReserver.value || caseBloquee(u, jour)) return
   Object.assign(nouvelle, { ouvert: true, uniteId: u.id, date: jourIso(jour) })
 }
 </script>
@@ -191,7 +217,10 @@ function caseVide(u: Unite, jour: Date) {
                 <v-icon v-else :icon="MENAGE[u.etatMenage]?.icone" size="16" :style="{ color: MENAGE[u.etatMenage]?.couleur }"
                   :title="MENAGE[u.etatMenage]?.libelle" />
               </div>
-              <div class="planning__piste" :class="{ 'planning__piste--hs': u.horsService }">
+              <div class="planning__piste">
+                <div v-if="bandeHs(u)" class="planning__hs" :style="bandeHs(u)!" :title="`Hors service${u.motifHorsService ? ' : ' + u.motifHorsService : ''}`">
+                  <v-icon icon="mdi-wrench-outline" size="14" /><span>{{ u.motifHorsService || 'Hors service' }}</span>
+                </div>
                 <div v-for="j in jours" :key="j.toISOString()" class="planning__case"
                   :class="{ 'planning__case--we': [0, 6].includes(j.getDay()), 'planning__case--aujourdhui': jourIso(j) === aujourdhui }"
                   @click="caseVide(u, j)" @dragover.prevent @drop.prevent="deposer(u, j)" />
@@ -240,7 +269,11 @@ function caseVide(u: Unite, jour: Date) {
   background: var(--surface, #fff); border-right: 1px solid var(--hairline, #eef0ee); transition: background 0.16s; }
 .planning__unite strong { font-weight: 760; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .planning__piste { position: relative; display: grid; grid-template-columns: repeat(var(--jours), var(--jour)); }
-.planning__piste--hs { background: repeating-linear-gradient(45deg, transparent 0 8px, color-mix(in srgb, #dc2626 8%, transparent) 8px 16px); }
+.planning__hs { position: absolute; top: 0; bottom: 0; z-index: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px; overflow: hidden; white-space: nowrap;
+  font-size: 0.72rem; font-weight: 650; color: color-mix(in srgb, var(--d-hs) 90%, var(--d-ink)); pointer-events: none;
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--d-hs) 14%, transparent) 0 6px, color-mix(in srgb, var(--d-hs) 4%, transparent) 6px 12px);
+  border-left: 2px solid color-mix(in srgb, var(--d-hs) 60%, transparent); }
+.planning__hs span { overflow: hidden; text-overflow: ellipsis; }
 .planning__case { border-right: 1px solid var(--hairline, #eef0ee); cursor: pointer; transition: background 0.14s; }
 .planning__case:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
 .planning__case--we { background: color-mix(in srgb, var(--color-primary) 3%, transparent); }

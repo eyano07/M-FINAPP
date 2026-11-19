@@ -144,6 +144,13 @@ public class CanalService {
             """, (rs, i) -> new Ical.Evenement(rs.getString(1),
             rs.getObject(2, OffsetDateTime.class).atZoneSameInstant(Durees.FUSEAU).toLocalDate(),
             rs.getObject(3, OffsetDateTime.class).atZoneSameInstant(Durees.FUSEAU).toLocalDate(), "Réservé", false), unite[0]));
+        // Unité hors service (travaux) : les canaux voient la période bloquée (jusqu'à la fin prévue, sinon 90 jours).
+        occupations.addAll(jdbc.query("""
+            select hors_service_du, coalesce(hors_service_au, greatest(now(), hors_service_du) + interval '90 days') from unites
+            where id = ? and hors_service and coalesce(hors_service_au, 'infinity') > now()
+            """, (rs, i) -> new Ical.Evenement("hs-" + unite[0] + "@hotellerie",
+            (rs.getObject(1, OffsetDateTime.class) == null ? OffsetDateTime.now() : rs.getObject(1, OffsetDateTime.class)).atZoneSameInstant(Durees.FUSEAU).toLocalDate(),
+            rs.getObject(2, OffsetDateTime.class).atZoneSameInstant(Durees.FUSEAU).toLocalDate().plusDays(1), "Indisponible", false), unite[0]));
         return Ical.ecrire(unite[2] + " — " + unite[1], occupations);
     }
 

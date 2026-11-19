@@ -274,6 +274,45 @@ public class NoteFraisService {
         return NoteFraisDetailResponse.from(note);
     }
 
+    /**
+     * Hôtellerie (PMS) : achat de pièces ou de prestation d'un ticket de maintenance, créé ET soumis au DFIN au nom de
+     * l'utilisateur connecté (technicien ou direction de l'hébergement). La garde de rôle et la liste des comptes admis
+     * sont portées par {@code PmsIntegrationService} ; le contrôle du périmètre du restaurant, qui range aussi les rôles
+     * hôteliers, ne s'applique pas à cet achat. La note suit ensuite le circuit ordinaire (DFIN, DA, caisse) et son
+     * contrôle budgétaire ; hors budget, elle n'est jamais bloquée (le DA décide).
+     */
+    @Transactional
+    public NoteFraisDetailResponse creerEtSoumettreHotellerieInterne(NoteFraisRequest req) {
+        User auteur = currentUser.requireUser();
+        NoteFrais note = NoteFrais.builder()
+            .reference(referenceGenerator.pourNoteFrais())
+            .objet(req.objet())
+            .beneficiaire(req.beneficiaire())
+            .description(req.description())
+            .montant(BigDecimal.ZERO)
+            .devise(req.devise() == null ? ConversionDeviseService.DEVISE_BASE : req.devise())
+            .statut(StatutNote.BROUILLON)
+            .sens(SensTransaction.DECAISSEMENT)
+            .createur(auteur)
+            .justificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null)
+            .service(resoudreService(req.serviceId(), null))
+            .build();
+        construireLignes(note, req.lignes());
+        note.recalculerMontant();
+        note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Création depuis l'hôtellerie (maintenance)"));
+        note = noteRepository.save(note);
+        log.info("Note de maintenance (hôtellerie) créée [ref={}, montant={}, par={}]", note.getReference(), note.getMontant(),
+            auteur.getEmail());
+        // Appel interne : sans le mandataire Spring, donc sans la garde @PreAuthorize de soumettre (portée par l'appelant).
+        return soumettre(note.getId(), new ActionWorkflowRequest("Demande d'achat de la maintenance (hôtellerie)"));
+    }
+
+    /** Statut d'une note (lecture pour l'hôtellerie, qui en suit l'avancement sur son ticket). */
+    @Transactional(readOnly = true)
+    public NoteFraisDetailResponse lireInterne(Long id) {
+        return NoteFraisDetailResponse.from(charger(id));
+    }
+
     @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse modifier(Long id, NoteFraisRequest req) {

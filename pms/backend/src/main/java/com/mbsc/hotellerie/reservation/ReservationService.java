@@ -113,17 +113,28 @@ public class ReservationService {
      * {@code dateArrivee}/{@code dateDepart} pour un séjour à la nuit, à la semaine ou au mois (heures de l'établissement) ;
      * {@code debut}/{@code fin} pour un séjour à l'heure. Prix vide : tarif de l'unité.
      */
+    /**
+     * {@code CRENEAU} (motels) : {@code tarifId} = le forfait choisi et {@code debut} = l'heure d'arrivée ; la fin découle
+     * de la durée du forfait.
+     */
     public record ReservationRequest(@NotNull Long uniteId, Long clientId, @Valid NouveauClient nouveauClient,
-                                     @NotNull @Pattern(regexp = "HEURE|NUIT|SEMAINE|MOIS") String uniteDuree,
+                                     @NotNull @Pattern(regexp = "HEURE|NUIT|SEMAINE|MOIS|CRENEAU") String uniteDuree,
                                      LocalDate dateArrivee, LocalDate dateDepart, OffsetDateTime debut, OffsetDateTime fin,
                                      @PositiveOrZero BigDecimal prixUnitaire, @Min(0) Integer adultes, @Min(0) Integer enfants,
                                      @Pattern(regexp = "RECEPTION|TELEPHONE|DIRECT|BOOKING|AIRBNB|EXPEDIA|AUTRE") String canal,
-                                     @Pattern(regexp = "OPTION|CONFIRMEE") String statut, @Size(max = 2000) String notes) { }
+                                     @Pattern(regexp = "OPTION|CONFIRMEE") String statut, @Size(max = 2000) String notes,
+                                     Long tarifId) { }
 
     @Transactional
     public Reservation creer(ReservationRequest r, Session session) {
+        return creer(r, session, false);
+    }
+
+    /** {@code express} : arrivée express du motel (la réservation est créée au comptoir, à l'instant). */
+    @Transactional
+    public Reservation creer(ReservationRequest r, Session session, boolean express) {
         var unite = parametrage.unite(r.uniteId());
-        exigerDisponible(unite);
+        if (!unite.actif()) throw Refus.conflit("L'unité " + unite.numero() + " est désactivée.");
         Long clientId = r.clientId();
         if (clientId == null) {
             if (r.nouveauClient() == null) throw Refus.invalide("Choisissez le client ou saisissez son nom.");
@@ -133,16 +144,31 @@ public class ReservationService {
         } else {
             clients.client(clientId);
         }
-        OffsetDateTime[] periode = periode(unite.etablissementId(), r.uniteDuree(), r.dateArrivee(), r.dateDepart(), r.debut(), r.fin());
-        BigDecimal prix = prix(r.prixUnitaire(), unite.id(), r.uniteDuree(), periode[0]);
+        ParametrageService.Tarif forfait = null;
+        OffsetDateTime[] periode;
+        if ("CRENEAU".equals(r.uniteDuree())) {
+            if (r.tarifId() == null) throw Refus.invalide("Forfait par créneau : choisissez le forfait.");
+            if (r.debut() == null) throw Refus.invalide("Forfait par créneau : précisez l'heure d'arrivée.");
+            forfait = parametrage.tarif(r.tarifId());
+            if (!"CRENEAU".equals(forfait.uniteDuree()) || !forfait.typeId().equals(unite.typeId())) {
+                throw Refus.invalide("Ce forfait ne s'applique pas à ce type d'unité.");
+            }
+            periode = new OffsetDateTime[] {r.debut(), r.debut().plusHours(forfait.dureeHeures())};
+        } else {
+            periode = periode(unite.etablissementId(), r.uniteDuree(), r.dateArrivee(), r.dateDepart(), r.debut(), r.fin());
+        }
+        exigerDisponible(unite, periode[0], periode[1]);
+        BigDecimal prix = forfait != null ? (r.prixUnitaire() != null ? r.prixUnitaire() : forfait.prix())
+            : prix(r.prixUnitaire(), unite.id(), r.uniteDuree(), periode[0]);
         String reference = "RES-" + Year.now(Durees.FUSEAU) + "-"
             + String.format("%06d", jdbc.queryForObject("select nextval('reference_reservation_seq')", Long.class));
         Long id = jdbc.queryForObject("""
             insert into reservations (reference, etablissement_id, unite_id, client_id, debut, fin, unite_duree, prix_unitaire,
-            adultes, enfants, canal, statut, notes, cree_par) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id
+            adultes, enfants, canal, statut, notes, cree_par, tarif_id, express)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id
             """, Long.class, reference, unite.etablissementId(), unite.id(), clientId, periode[0], periode[1], r.uniteDuree(), prix,
             r.adultes() == null ? 1 : r.adultes(), r.enfants() == null ? 0 : r.enfants(), r.canal() == null ? "RECEPTION" : r.canal(),
-            r.statut() == null ? "CONFIRMEE" : r.statut(), vide(r.notes()), session.email());
+            r.statut() == null ? "CONFIRMEE" : r.statut(), vide(r.notes()), session.email(), forfait == null ? null : forfait.id(), express);
         journal.noter("RESERVATION_CREEE", reference, "unité " + unite.numero() + ", " + periode[0] + " → " + periode[1]);
         return reservation(id);
     }
@@ -158,7 +184,6 @@ public class ReservationService {
         if (!ACTIVES.contains(r.statut())) throw Refus.conflit("Seule une réservation en cours ou à venir se modifie.");
         Long uniteId = m.uniteId() == null ? r.uniteId() : m.uniteId();
         var unite = parametrage.unite(uniteId);
-        if (!uniteId.equals(r.uniteId())) exigerDisponible(unite);
         if (!unite.etablissementId().equals(r.etablissementId())) {
             throw Refus.invalide("Le déplacement se fait dans le même établissement.");
         }
@@ -171,6 +196,10 @@ public class ReservationService {
                 m.debut() != null ? m.debut() : debut, m.fin() != null ? m.fin() : fin);
             debut = "ARRIVEE".equals(r.statut()) ? r.debut() : p[0];
             fin = p[1];
+        }
+        if (!uniteId.equals(r.uniteId()) || !debut.equals(r.debut()) || !fin.equals(r.fin())) {
+            if (!unite.actif()) throw Refus.conflit("L'unité " + unite.numero() + " est désactivée.");
+            exigerDisponible(unite, "ARRIVEE".equals(r.statut()) ? OffsetDateTime.now() : debut, fin);
         }
         if (m.clientId() != null) clients.client(m.clientId());
         jdbc.update("""
@@ -216,7 +245,10 @@ public class ReservationService {
         Reservation r = reservation(id);
         if (!Set.of("OPTION", "CONFIRMEE").contains(r.statut())) throw Refus.conflit("Cette réservation n'attend pas d'arrivée.");
         var unite = parametrage.unite(r.uniteId());
-        if (unite.horsService()) throw Refus.conflit("L'unité " + unite.numero() + " est hors service : attribuez-en une autre.");
+        if (unite.bloquee(OffsetDateTime.now(), r.fin())) {
+            throw Refus.conflit("L'unité " + unite.numero() + " est hors service" + (unite.motifHorsService() == null ? "" : " (" + unite.motifHorsService() + ")")
+                + " : attribuez-en une autre.");
+        }
         if (!"PROPRE".equals(unite.etatMenage()) && !Boolean.TRUE.equals(a.forcer())) {
             throw Refus.conflit("L'unité " + unite.numero() + " n'est pas encore propre (" + unite.etatMenage()
                 + ") : attendez le ménage ou confirmez l'arrivée quand même.");
@@ -243,10 +275,13 @@ public class ReservationService {
         Reservation r = reservation(id);
         BigDecimal taux = tauxTvaSansEchec(session);
         List<LigneFolio> lignes = new ArrayList<>();
-        long q = Durees.quantite(r.uniteDuree(), r.debut(), r.fin());
-        BigDecimal ht = Durees.ht(r.prixUnitaire(), BigDecimal.valueOf(q));
-        lignes.add(new LigneFolio(null, "HEBERGEMENT", null, designationSejour(r, q), BigDecimal.valueOf(q), r.prixUnitaire(), ht,
-            Durees.tva(ht, taux, true), false, r.debut().atZoneSameInstant(Durees.FUSEAU).toLocalDate()));
+        // Un bail (appartement) facture ses loyers par échéance : le folio ne garde que les extras.
+        if (!sousBail(id)) {
+            long q = Durees.quantite(r.uniteDuree(), r.debut(), r.fin());
+            BigDecimal ht = Durees.ht(r.prixUnitaire(), BigDecimal.valueOf(q));
+            lignes.add(new LigneFolio(null, "HEBERGEMENT", null, designationSejour(r, q), BigDecimal.valueOf(q), r.prixUnitaire(), ht,
+                Durees.tva(ht, taux, true), false, r.debut().atZoneSameInstant(Durees.FUSEAU).toLocalDate()));
+        }
         jdbc.query("select * from folio_lignes where reservation_id = ? order by date_ligne, id", rs -> {
             BigDecimal qte = rs.getBigDecimal("quantite");
             BigDecimal prix = rs.getBigDecimal("prix_unitaire");
@@ -378,6 +413,17 @@ public class ReservationService {
             throw Refus.invalide("Des extras sortent du stock : précisez l'entrepôt (minibar, bar…).");
         }
         String cle = d.cle() == null || d.cle().isBlank() ? "PMS-FOLIO-" + r.reference() + "-" + UUID.randomUUID() : d.cle();
+        if (f.lignes().isEmpty()) {
+            // Fin de bail sans extra : les loyers sont déjà facturés par échéance, rien à encaisser au départ.
+            jdbc.update("update reservations set statut = 'PARTIE', depart_le = now(), encaissement = 'ENCAISSE', maj_le = now() where id = ?", id);
+            jdbc.update("update vehicules set sortie_le = now() where reservation_id = ? and sortie_le is null", id);
+            jdbc.update("update baux set statut = 'TERMINE', termine_le = now() where reservation_id = ? and statut = 'ACTIF'", id);
+            jdbc.update("update unites set etat_menage = 'A_NETTOYER' where id = ?", r.uniteId());
+            menage.creerTache(r.uniteId(), id, "DEPART", "Départ de " + r.clientNom());
+            journal.noter("DEPART", r.reference(), "fin de bail, rien à facturer au départ");
+            return new Depart(reservation(id), "Départ enregistré : les loyers sont facturés par échéance, rien à encaisser."
+                + (f.cautions().signum() > 0 ? " Caution détenue : " + f.cautions() + " (à rendre depuis le folio)." : ""), true);
+        }
         Map<String, Object> demande = demandeEncaissement(r, f, client, d, acompte, caution, cle);
         // Le départ est acquis dès maintenant (unité à nettoyer) ; l'encaissement suit.
         jdbc.update("""
@@ -385,6 +431,8 @@ public class ReservationService {
             encaissement_demande = ?, maj_le = now() where id = ?
             """, cle, ecrire(demande), id);
         jdbc.update("update unites set etat_menage = 'A_NETTOYER' where id = ?", r.uniteId());
+        jdbc.update("update vehicules set sortie_le = now() where reservation_id = ? and sortie_le is null", id);
+        jdbc.update("update baux set statut = 'TERMINE', termine_le = now() where reservation_id = ? and statut = 'ACTIF'", id);
         menage.creerTache(r.uniteId(), id, "DEPART", "Départ de " + r.clientNom());
         journal.noter("DEPART", r.reference(), "unité " + r.uniteNumero() + " à nettoyer");
         String message = encaisserDemande(id, demande, session);
@@ -470,14 +518,23 @@ public class ReservationService {
 
     // ── Outils ──────────────────────────────────────────────────────────────
 
-    private void exigerDisponible(ParametrageService.Unite u) {
-        if (!u.actif()) throw Refus.conflit("L'unité " + u.numero() + " est désactivée.");
-        if (u.horsService()) throw Refus.conflit("L'unité " + u.numero() + " est hors service" + (u.motifHorsService() == null ? "." : " : " + u.motifHorsService() + "."));
+    /** Refuse une période qui chevauche la mise hors service de l'unité (datée ou sans fin). */
+    private void exigerDisponible(ParametrageService.Unite u, OffsetDateTime debut, OffsetDateTime fin) {
+        if (u.bloquee(debut, fin)) {
+            throw Refus.conflit("L'unité " + u.numero() + " est hors service" + (u.horsServiceAu() == null ? ""
+                : " jusqu'au " + u.horsServiceAu().atZoneSameInstant(Durees.FUSEAU).toLocalDate())
+                + (u.motifHorsService() == null ? "." : " : " + u.motifHorsService() + "."));
+        }
+    }
+
+    /** Vrai si la réservation porte un bail d'appartement (loyers facturés par échéance). */
+    public boolean sousBail(Long reservationId) {
+        return !jdbc.queryForList("select 1 from baux where reservation_id = ?", Integer.class, reservationId).isEmpty();
     }
 
     private OffsetDateTime[] periode(Long etablissementId, String uniteDuree, LocalDate arrivee, LocalDate depart,
                                      OffsetDateTime debut, OffsetDateTime fin) {
-        if ("HEURE".equals(uniteDuree)) {
+        if ("HEURE".equals(uniteDuree) || "CRENEAU".equals(uniteDuree)) {
             if (debut == null || fin == null) throw Refus.invalide("Séjour à l'heure : précisez l'heure d'arrivée et de départ.");
             if (!fin.isAfter(debut)) throw Refus.invalide("Le départ doit suivre l'arrivée.");
             return new OffsetDateTime[] {debut, fin};
@@ -499,13 +556,18 @@ public class ReservationService {
         return p;
     }
 
-    private static String designationSejour(Reservation r, long q) {
+    private String designationSejour(Reservation r, long q) {
         var d = r.debut().atZoneSameInstant(Durees.FUSEAU);
         var f = r.fin().atZoneSameInstant(Durees.FUSEAU);
-        String periode = "HEURE".equals(r.uniteDuree())
+        String periode = "HEURE".equals(r.uniteDuree()) || "CRENEAU".equals(r.uniteDuree())
             ? String.format("%02d/%02d %02d:%02d → %02d:%02d", d.getDayOfMonth(), d.getMonthValue(), d.getHour(), d.getMinute(),
                 f.getHour(), f.getMinute())
             : String.format("%02d/%02d → %02d/%02d/%d", d.getDayOfMonth(), d.getMonthValue(), f.getDayOfMonth(), f.getMonthValue(), f.getYear());
+        if ("CRENEAU".equals(r.uniteDuree())) {
+            String nom = jdbc.queryForList("select t.libelle from tarifs t join reservations x on x.tarif_id = t.id where x.id = ?", String.class, r.id())
+                .stream().findFirst().orElse("forfait");
+            return "Hébergement " + r.typeNom() + " " + r.uniteNumero() + " — " + nom + " (" + periode + ")";
+        }
         return "Hébergement " + r.typeNom() + " " + r.uniteNumero() + " — " + Durees.libelle(r.uniteDuree(), q) + " (" + periode + ")";
     }
 

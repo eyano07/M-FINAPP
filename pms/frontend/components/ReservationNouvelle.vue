@@ -20,13 +20,15 @@ const nouveau = ref(false)
 const enregistrement = ref(false)
 const erreur = ref('')
 const prixPropose = ref<number | null>(null)
+interface Forfait { id: number, libelle: string, prix: number, dureeHeures: number }
+const forfaits = ref<Forfait[]>([])
 
 const demain = () => { const d = new Date(); d.setDate(d.getDate() + 1); return jourIso(d) }
 const form = reactive({
   uniteId: null as number | null, clientId: null as number | null,
   nc: { nom: '', prenom: '', telephone: '', email: '' },
   uniteDuree: 'NUIT', dateArrivee: jourIso(new Date()), dateDepart: demain(),
-  heureDebut: '', heureFin: '', prixUnitaire: null as number | null,
+  heureDebut: '', heureFin: '', prixUnitaire: null as number | null, tarifId: null as number | null,
   adultes: 1, enfants: 0, canal: 'RECEPTION', statut: 'CONFIRMEE', notes: '',
 })
 
@@ -39,7 +41,7 @@ watch(() => props.modelValue, async (v) => {
   Object.assign(form, {
     uniteId: props.uniteId ?? null, clientId: null, nc: { nom: '', prenom: '', telephone: '', email: '' },
     uniteDuree: 'NUIT', dateArrivee: props.dateArrivee ?? jourIso(new Date()), heureDebut: '', heureFin: '',
-    prixUnitaire: null, adultes: 1, enfants: 0, canal: 'RECEPTION', statut: 'CONFIRMEE', notes: '',
+    prixUnitaire: null, adultes: 1, enfants: 0, canal: 'RECEPTION', statut: 'CONFIRMEE', notes: '', tarifId: null,
   })
   const a = new Date(form.dateArrivee + 'T00:00:00')
   a.setDate(a.getDate() + 1)
@@ -70,6 +72,16 @@ const optionsClients = computed(() => clients.value.map(c => ({
 async function proposerPrix() {
   prixPropose.value = null
   if (!form.uniteId) return
+  if (form.uniteDuree === 'CRENEAU') {
+    // Forfaits de l'unité pour l'heure d'arrivée choisie ; le premier (plage couverte) est proposé.
+    try {
+      const arrivee = new Date(`${form.dateArrivee}T${form.heureDebut || '12:00'}:00`).toISOString()
+      forfaits.value = await api<Forfait[]>(`/unites/${form.uniteId}/forfaits`, { query: { arrivee } })
+      if (!forfaits.value.some(f => f.id === form.tarifId)) form.tarifId = forfaits.value[0]?.id ?? null
+    } catch { forfaits.value = [] }
+    prixPropose.value = forfaits.value.find(f => f.id === form.tarifId)?.prix ?? null
+    return
+  }
   try {
     const r = await api<{ prix: number | null }>('/tarifs/propose', {
       query: { uniteId: form.uniteId, uniteDuree: form.uniteDuree, date: form.dateArrivee },
@@ -77,9 +89,10 @@ async function proposerPrix() {
     prixPropose.value = r.prix
   } catch { prixPropose.value = null }
 }
-watch(() => [form.uniteId, form.uniteDuree, form.dateArrivee], proposerPrix)
+watch(() => [form.uniteId, form.uniteDuree, form.dateArrivee, form.heureDebut, form.tarifId], proposerPrix)
 
-const aLHeure = computed(() => form.uniteDuree === 'HEURE')
+const aLHeure = computed(() => form.uniteDuree === 'HEURE' || form.uniteDuree === 'CRENEAU')
+const creneau = computed(() => form.uniteDuree === 'CRENEAU')
 
 function enIso(jour: string, heure: string) {
   return new Date(`${jour}T${heure || '00:00'}:00`).toISOString()
@@ -100,7 +113,11 @@ async function enregistrer() {
       prixUnitaire: form.prixUnitaire ?? undefined,
       adultes: form.adultes, enfants: form.enfants, canal: form.canal, statut: form.statut, notes: form.notes || null,
     }
-    if (aLHeure.value) {
+    if (creneau.value) {
+      if (!form.tarifId) { erreur.value = 'Choisissez le forfait.'; enregistrement.value = false; return }
+      corps.debut = enIso(form.dateArrivee, form.heureDebut)
+      corps.tarifId = form.tarifId
+    } else if (aLHeure.value) {
       corps.debut = enIso(form.dateArrivee, form.heureDebut)
       corps.fin = enIso(form.dateArrivee, form.heureFin)
     } else {
@@ -141,7 +158,11 @@ async function enregistrer() {
           <template v-else>
             <v-col cols="12" sm="4"><v-text-field v-model="form.dateArrivee" type="date" label="Jour" /></v-col>
             <v-col cols="6" sm="4"><v-text-field v-model="form.heureDebut" type="time" label="Arrivée" /></v-col>
-            <v-col cols="6" sm="4"><v-text-field v-model="form.heureFin" type="time" label="Départ" /></v-col>
+            <v-col v-if="!creneau" cols="6" sm="4"><v-text-field v-model="form.heureFin" type="time" label="Départ" /></v-col>
+            <v-col v-else cols="12">
+              <v-select v-model="form.tarifId" :items="forfaits.map(f => ({ value: f.id, title: `${f.libelle} — ${f.dureeHeures} h · ${usd(f.prix)}` }))"
+                label="Forfait" :no-data-text="'Aucun forfait pour ce type d’unité (Établissements et tarifs)'" />
+            </v-col>
           </template>
         </v-row>
 
