@@ -31,7 +31,7 @@ public final class AuditLibelles {
         Map.entry("CAISSE", "Caisse"), Map.entry("BANQUE", "Banque"), Map.entry("MOBILE_MONEY", "Mobile Money"),
         Map.entry("COMPTABILITE", "Comptabilité"), Map.entry("RAPPROCHEMENT", "Rapprochement bancaire"),
         Map.entry("BUDGET", "Budget"), Map.entry("FACTURATION_NORMALISEE", "Facture normalisée (DGI)"),
-        Map.entry("VENTES", "Ventes"), Map.entry("LOGISTIQUE", "Logistique"), Map.entry("TRANSPORT", "Transport"),
+        Map.entry("VENTES", "Ventes"), Map.entry("LOGISTIQUE", "Logistique"), Map.entry("MINE", "Mine"), Map.entry("HOTELLERIE", "Hôtellerie"), Map.entry("TRANSPORT", "Transport"),
         Map.entry("PATRIMOINE", "Patrimoine"), Map.entry("RESTAURANT", "Restaurant"), Map.entry("DRH", "DRH"),
         Map.entry("DRH_PERSONNEL", "DRH › Personnel"), Map.entry("DRH_PRESENCES", "DRH › Présences"),
         Map.entry("DRH_PAIE", "DRH › Paie"), Map.entry("DRH_MISSIONS", "DRH › Missions & Terrain"));

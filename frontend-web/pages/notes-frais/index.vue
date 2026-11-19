@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 import { estApplicationMobile } from '~/utils/applicationMobile'
 import { useDisplay } from 'vuetify'
 import { useInstanceStore } from '~/stores/instance'
@@ -139,6 +140,7 @@ const notesFiltrees = computed(() =>
 // Une frappe plus récente peut lancer une nouvelle requête avant la réponse de la précédente :
 // seule la dernière met la liste à jour.
 let derniereRequete = 0
+const exerciceConsulte = useExerciceStore()
 
 async function charger() {
   const numero = ++derniereRequete
@@ -149,6 +151,12 @@ async function charger() {
     if (filterStatut.value) query.statut = filterStatut.value
     if (dateDu.value) query.du = dateDu.value
     if (dateAu.value) query.au = dateAu.value
+    // Ancien exercice choisi dans la barre du haut : ses notes seulement (dates de la note dans l'exercice). L'exercice
+    // en cours garde toutes les notes, pour ne pas cacher une note de décembre encore dans le circuit.
+    if (exerciceConsulte.enConsultation) {
+      if (!query.du || query.du < exerciceConsulte.debut) query.du = exerciceConsulte.debut
+      if (!query.au || query.au > exerciceConsulte.fin) query.au = exerciceConsulte.fin
+    }
     if (rechercheReference.value.trim()) query.reference = rechercheReference.value.trim()
     if (rechercheLibelle.value.trim()) query.libelle = rechercheLibelle.value.trim()
     if (rechercheCompte.value.trim()) query.compte = rechercheCompte.value.trim()
@@ -215,16 +223,6 @@ const form = reactive({
   serviceId: null as number | null,
 })
 
-// Services budgétaires actifs : la dépense se rattache au service qui l'engage (contrôlée et suivie sur son budget).
-const servicesActifs = ref<{ id: number, titre: string }[]>([])
-async function chargerServices() {
-  try {
-    const liste = await api<{ id: number, nom: string, responsable: string, actif: boolean }[]>('/services-budgetaires')
-    servicesActifs.value = liste.filter(s => s.actif).map(s => ({ id: s.id, titre: `${s.nom} — ${s.responsable}` }))
-  } catch {
-    servicesActifs.value = []
-  }
-}
 // Résultat du contrôle budgétaire des lignes en cours de saisie (composant BudgetControleBudgetaire) : une
 // dépense non couverte par le budget en exécution exige une justification avant la soumission.
 const controleCreation = ref<any | null>(null)
@@ -233,7 +231,6 @@ const devises = ['CDF', 'USD']
 function ouvrirDialog() {
   form.sens = activeSens.value
   dialog.value = true
-  chargerServices()
 }
 
 // « + » de la barre du bas de l'application (?nouvelle=DECAISSEMENT|ENCAISSEMENT) : ouvre directement la saisie.
@@ -800,21 +797,6 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
             <v-textarea v-model="form.description" rows="2" placeholder="Détails supplémentaires..." hide-details="auto" />
           </div>
 
-          <div v-if="form.sens === 'DECAISSEMENT' && servicesActifs.length" class="nf-field">
-            <label class="nf-label">Service qui engage la dépense</label>
-            <v-select
-              v-model="form.serviceId"
-              :items="servicesActifs"
-              item-title="titre"
-              item-value="id"
-              placeholder="Aucun service"
-              prepend-inner-icon="mdi-account-group-outline"
-              clearable
-              hint="La dépense est contrôlée et suivie sur le budget de ce service."
-              persistent-hint
-            />
-          </div>
-
           <NotesFraisLignesNoteFrais v-model="form.lignes" :devise="form.devise" :sens="form.sens" />
 
           <BudgetControleBudgetaire :lignes="form.lignes" :devise="form.devise" :sens="form.sens" :service-id="form.serviceId" @resultat="(r: any) => controleCreation = r" />
@@ -1211,13 +1193,20 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   flex-direction: column;
   max-height: 88vh;
 }
-/* Plein écran (application Android, téléphone) : la saisie occupe tout l'écran, l'en-tête reste en haut, le corps défile. */
+/* Plein écran (application Android, téléphone) : la saisie occupe tout l'écran, l'en-tête reste en haut.
+   Les boutons ne sont pas fixés en bas : ils suivent le formulaire et apparaissent en défilant, pour que le clavier
+   ne laisse pas la saisie coincée entre l'en-tête et les boutons. */
 .nf-dialog--plein {
   border-radius: 0;
+  width: 100%;
   height: 100dvh;
   max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-.nf-dialog--plein .nf-dialog__footer { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+.nf-dialog--plein .nf-dialog__head { position: sticky; top: 0; z-index: 2; flex-shrink: 0; }
+.nf-dialog--plein .nf-dialog__body { flex: 0 0 auto; overflow: visible; min-height: auto; }
+.nf-dialog--plein .nf-dialog__footer { border-top: none; padding-top: 0; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 
 .nf-dialog__head {
   position: relative;

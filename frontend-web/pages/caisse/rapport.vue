@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // Rapport de caisse du jour, de la semaine (lundi au dimanche) ou du mois : solde d'ouverture, chaque entrée et chaque
 // sortie avec sa contrepartie, résumé par jour et par nature, solde de clôture. Tiré du compte de caisse du grand livre
 // (comme le journal de caisse), converti par le serveur dans la devise choisie (USD / FC), imprimable en PDF.
@@ -79,8 +80,10 @@ const periodeValide = (v: unknown): v is Periode => v === 'JOUR' || v === 'SEMAI
 const dateValide = (v: unknown): v is string =>
   typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v))
 
-const periode = ref<Periode>(periodeValide(route.query.periode) ? route.query.periode : 'JOUR')
-const date = ref<string>(dateValide(route.query.date) ? route.query.date : dateLocale())
+// Ancien exercice choisi dans la barre du haut : rapport du mois de décembre de cet exercice.
+const exerciceConsulte = useExerciceStore()
+const periode = ref<Periode>(periodeValide(route.query.periode) ? route.query.periode : exerciceConsulte.enConsultation ? 'MOIS' : 'JOUR')
+const date = ref<string>(dateValide(route.query.date) ? route.query.date : exerciceConsulte.enConsultation ? exerciceConsulte.fin : dateLocale())
 const loading = ref(false)
 const erreur = ref('')
 const rapport = ref<Rapport | null>(null)

@@ -169,7 +169,8 @@ async function charger() {
         : Promise.resolve([] as SalleAvecTables[]),
     ])
     catalogueComplet.value = arts
-    articles.value = arts.filter((a) => a.vendable)
+    // Module Mine coupé : les minerais ne se vendent plus d'ici.
+    articles.value = arts.filter((a) => a.vendable && (!a.minerais || permissions.peutVoir('MINE')))
     clients.value = cls.filter((c) => c.actif)
     banques.value = bqs.filter((b) => b.actif)
     operateurs.value = ops.filter((o) => o.actif)

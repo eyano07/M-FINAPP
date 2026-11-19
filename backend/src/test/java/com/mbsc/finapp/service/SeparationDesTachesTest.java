@@ -47,6 +47,19 @@ class SeparationDesTachesTest {
         reserveAuCaissier(SyncController.class, "batch");     // synchronisation des opérations du poste de caisse
     }
 
+    /**
+     * Hôtellerie (V152) : la réception (et la direction de l'hébergement) encaisse les folios, les acomptes et les cautions ;
+     * jamais l'administrateur, et pas le caissier depuis l'hôtellerie (il garde la caisse de M-FINAPP).
+     */
+    @Test
+    void laReceptionEncaisseLesFoliosEtPasLAdministrateur() {
+        for (String methode : List.of("encaisserFolio", "reglerFolio", "acompte", "caution", "restituerCaution", "rembourserAcompte",
+            "creerClient")) {
+            String r = regle(com.mbsc.finapp.service.hotellerie.PmsIntegrationService.class, methode);
+            assertEquals("hasAnyRole('RECEPTIONNISTE', 'DIR_HEBERGEMENT')", r, "PmsIntegrationService." + methode);
+        }
+    }
+
     @Test
     void lAdministrateurGardeLaConsultationDeLaTresorerie() {
         for (String lecture : List.of("listerTransactions", "journal")) {

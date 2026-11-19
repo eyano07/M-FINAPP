@@ -1,0 +1,552 @@
+/* ============================================================
+   MBSC Finapp - Design System 2026
+   ============================================================ */
+
+:root {
+  --mbsc-radius: 10px;
+  --mbsc-border: #dde5e1;
+  --mbsc-text-secondary: #55645c;
+  /* « Malachite » : surfaces teintées de la couleur de marque (papier vert très pâle), encre quasi noire verte. */
+  --canvas: color-mix(in srgb, var(--color-primary) 5%, #eef2f0);
+  --ink: #0d1a15;
+  --ink-soft: #55645c;
+  --hairline: #dde5e1;
+  --font-ui: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --surface: #ffffff;
+  --surface-2: #f7faf8;
+  --ink-2: #2b3a33;
+  --ink-faint: #7b8a82;
+  --color-primary-nuit: #3fbf7f;
+  /* Barre latérale et panneau de trésorerie (sombres dans les deux thèmes). */
+  --nav-bg: color-mix(in srgb, var(--color-primary) 38%, #04120c);
+  --hero-bg: color-mix(in srgb, var(--color-primary) 40%, #04120c);
+  --mbsc-appbar-h: 60px;
+  /* Couleur de marque personnalisable (admin > paramètres) — valeur de
+     repli pour le tout premier rendu (SSR/avant hydratation), avant que
+     stores/parametres.ts n'applique la couleur réellement configurée.
+     Les teintes derivees se recalculent automatiquement via color-mix() a
+     chaque changement de --color-primary : aucune ne se redefinit en JS. */
+  --color-primary: #15803d;
+  --color-primary-dark: color-mix(in srgb, var(--color-primary) 85%, black);
+  --color-primary-darker: color-mix(in srgb, var(--color-primary) 65%, black);
+  --color-primary-darkest: color-mix(in srgb, var(--color-primary) 45%, black);
+  --color-primary-light: color-mix(in srgb, var(--color-primary) 12%, white);
+  --color-primary-lighter: color-mix(in srgb, var(--color-primary) 6%, white);
+  --color-primary-mid: color-mix(in srgb, var(--color-primary) 45%, white);
+}
+
+/* ── Thème nuit « Malachite nuit » ─────────────────────────────
+   Écran seulement : une impression reste toujours en noir sur blanc. Le vert de marque est remplacé par sa version
+   éclaircie (calculée par stores/parametres.ts) ; !important car la couleur de marque est posée en style en ligne. */
+@media screen {
+  html[data-theme='dark'] {
+    --color-primary: var(--color-primary-nuit) !important;
+    --color-primary-dark: color-mix(in srgb, var(--color-primary) 80%, white);
+    --color-primary-darker: color-mix(in srgb, var(--color-primary) 55%, #07110d);
+    --color-primary-darkest: color-mix(in srgb, var(--color-primary) 30%, #07110d);
+    --color-primary-light: color-mix(in srgb, var(--color-primary) 16%, var(--nuit-surface, #0d1a14));
+    --color-primary-lighter: color-mix(in srgb, var(--color-primary) 9%, var(--nuit-surface, #0d1a14));
+    --color-primary-mid: color-mix(in srgb, var(--color-primary) 50%, var(--nuit-surface, #0d1a14));
+    --canvas: var(--nuit-canvas, #07110d);
+    --surface: var(--nuit-surface, #0d1a14);
+    --surface-2: var(--nuit-surface-2, #12221a);
+    --hairline: var(--nuit-hairline, #1f3329);
+    --mbsc-border: var(--nuit-hairline, #1f3329);
+    --ink: #e7f0ea;
+    --ink-2: #c9d6ce;
+    --ink-soft: #97aa9f;
+    --ink-faint: #6c8075;
+    --mbsc-text-secondary: #97aa9f;
+    --nav-bg: var(--nuit-nav, #050c09);
+    --hero-bg: color-mix(in srgb, var(--color-primary) 22%, #08140f);
+    color-scheme: dark;
+  }
+  html[data-theme='dark'] .classroom-card:hover { box-shadow: 0 0 0 1px var(--hairline) !important; }
+  html[data-theme='dark'] img:not([src*='.svg']) { filter: brightness(0.92); }
+}
+
+html,
+body {
+  font-family: var(--font-ui);
+  background-color: var(--canvas);
+  color: var(--ink);
+}
+/* Vuetify impose Roboto sur .v-application et sur les classes typographiques : on reprend la main. */
+.v-application,
+.v-application [class*='text-'],
+.v-application .v-btn,
+.v-application .v-field,
+.v-application .v-label {
+  font-family: var(--font-ui) !important;
+}
+.v-application { background: var(--canvas) !important; color: var(--ink); }
+
+/* Shared surface card */
+.classroom-card {
+  border: 1px solid var(--mbsc-border) !important;
+  border-radius: var(--mbsc-radius) !important;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+  box-shadow: none !important;
+}
+.classroom-card:hover {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07) !important;
+}
+
+/* ── Page header (modern 2026) ─────────────────────────────── */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+.page-title {
+  font-size: clamp(1.4rem, 2.6vw, 1.85rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.15;
+}
+.page-sub {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  margin: 4px 0 0;
+}
+
+/* ── Champs date Vuetify ───────────────────────────────────── */
+/* Le contenu natif d'un <input type="date"> (Chrome, Edge, Safari) ajoute 2 px de marge interne : le champ
+   mesure alors 50 px au lieu des 48 px d'un champ « comfortable », et se decale de ses voisins (liste, bouton
+   d'action) dans une barre de filtres. On retire cette marge pour que tous les champs aient la meme hauteur. */
+.v-field__input[type="date"]::-webkit-datetime-edit,
+.v-field__input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* ── Data table modern styling ─────────────────────────────── */
+.v-data-table {
+  border-radius: var(--mbsc-radius);
+}
+.v-data-table .v-data-table__th {
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  color: var(--ink-soft) !important;
+  background: var(--surface-2) !important;
+}
+.v-data-table .v-data-table__td {
+  font-size: 0.875rem !important;
+}
+
+/* Cartes mobiles des tableaux (< 960 px) et en-tête fixe des tableaux (PC) : voir responsive.scss. */
+
+/* ── Pastel chips (status) ─────────────────────────────────── */
+.chip-soft {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+/* FAB en bas a droite */
+.classroom-fab {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  z-index: 6;
+}
+
+.content-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ============================================================
+   Impression : ne conserver que le contenu imprimable des pages
+   (barre d'application, menu lateral et marges de mise en page
+   sont retires pour laisser toute la place au document).
+   ============================================================ */
+/* En-tete de document imprime (etats financiers, rapports) : masquee a
+   l'ecran, visible uniquement sur le PDF/impression genere via window.print()
+   — memes classes reutilisables par toute page qui a besoin d'un "papier a
+   en-tete" imprimable (voir pages/comptabilite/{bilan,compte-resultat,
+   balance-verification}). */
+.etat-print-header { display: none; }
+
+/* @page doit rester une regle de premier niveau : imbriquee dans @media
+   print (comme c'etait le cas ici), certains moteurs de rendu l'ignorent
+   silencieusement au moment de l'impression — le navigateur retombe alors
+   sur l'orientation par defaut de la boite de dialogue (souvent paysage),
+   sans qu'aucune erreur ne le signale. @page n'a de toute facon d'effet
+   qu'a l'impression : l'envelopper dans @media print n'apportait rien. */
+@page {
+  size: A4 portrait;
+  margin: 10mm 12mm;
+}
+
+/* Page nommee, reservee aux impressions qui doivent etre en paysage (grilles
+   larges : fiche de presence). Seuls les documents qui portent la classe
+   `print-paysage` sur <html> (ajoutee/retiree par le composant concerne via
+   onMounted/onUnmounted — voir pages/drh/presences/index.vue) basculent sur
+   cette page — contrairement a une regle @page anonyme, qui s'appliquerait a
+   toute impression suivante et peut "fuiter" d'une page a l'autre lors d'une
+   navigation cote client dans la SPA (incident deja rencontre et corrige sur
+   fiche-manuelle.vue : @page anonyme retire au profit de cette approche
+   nommee). La classe est portee par <html> plutot que par un element scope
+   profondement imbrique dans l'arbre flex de Vuetify (.v-application >
+   .v-application__wrap > .v-main) : appliquer `page` via un selecteur scope
+   sur un tel element faisait deraper le calcul de pagination de Chromium
+   (grand espace vide puis 2e feuille quasi blanche). */
+@page fiche-paysage {
+  size: A4 landscape;
+  margin: 10mm 12mm;
+}
+
+@media print {
+  html.print-paysage {
+    page: fiche-paysage;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .v-application,
+  .v-main {
+    background: #fff !important;
+  }
+
+  .v-app-bar,
+  .v-navigation-drawer,
+  .v-overlay__scrim,
+  .v-overlay-container {
+    display: none !important;
+  }
+
+  /* L'app-shell Vuetify (.v-application > .v-application__wrap > .v-main)
+     est en display:flex avec .v-main en flex:1 0 auto, pour occuper l'espace
+     restant a cote de la barre d'appli/du menu lateral a l'ecran — deux
+     elements deja masques ci-dessus a l'impression. Sans ce reset, ce
+     flex-grow peut fausser la hauteur budgetee par Chromium pour la
+     pagination (meme symptome que ci-dessus : grand vide puis page
+     supplementaire quasi blanche). Aucune page imprimee n'a besoin de ce
+     comportement flex : le contenu doit simplement occuper sa hauteur
+     naturelle. */
+  .v-application,
+  .v-application__wrap,
+  .v-main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .v-main {
+    padding: 0 !important;
+    --v-layout-left: 0px !important;
+    --v-layout-right: 0px !important;
+    --v-layout-top: 0px !important;
+  }
+
+  .v-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .no-print,
+  .v-data-table-footer { display: none !important; }
+
+  /* Tableau dense imprime (grand livre de stock, etat du stock) : lignes compactes et pas de
+     defilement interne, pour que toutes les colonnes tiennent dans la largeur de la page et que le
+     document tienne sur moins de feuilles. A poser via class="table-impression-compacte". */
+  .table-impression-compacte .v-table__wrapper { overflow: visible !important; }
+  .table-impression-compacte .v-table__wrapper > table > tbody > tr > td,
+  .table-impression-compacte .v-table__wrapper > table > thead > tr > th {
+    padding: 0 8px !important;
+    height: 30px !important;
+    font-size: 0.78rem !important;
+  }
+
+  * { box-shadow: none !important; }
+
+  .etat-print-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    border-bottom: 3px solid var(--color-primary);
+  }
+  .etat-print-header__brand { display: flex; align-items: center; gap: 10px; }
+  .etat-print-header__logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--color-primary);
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .etat-print-header__logo--image { background: #fff; border: 1px solid #e5e7eb; }
+  .etat-print-header__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
+  .etat-print-header__company { display: block; font-size: 1.1rem; font-weight: 800; color: #111827; }
+  .etat-print-header__doc {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--color-primary);
+    margin-top: 1px;
+  }
+  .etat-print-header__service {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: #6b7280;
+    margin-top: 1px;
+  }
+  .etat-print-header__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: right;
+    font-size: 0.75rem;
+    color: #374151;
+  }
+  .etat-print-header__meta strong { color: #111827; }
+}
+
+/* ============================================================
+   Modele de papier a en-tete choisi par l'administrateur (Parametres) :
+   habille l'en-tete de toutes les impressions (classe print-entete posee
+   sur l'en-tete imprime de chaque page). Le modele est porte par
+   <html data-entete="..."> (stores/parametres.ts), la couleur par
+   --color-primary et --color-on-primary (texte lisible sur cette couleur).
+   CLASSIQUE = style propre a chaque page (filet epais).
+   Memes cinq modeles que les PDF du serveur (EnteteDocumentRendu) : bandeau
+   en degrade avec cercles translucides, epure a trait d'accent, institutionnel
+   centre a ornement, lateral a rail de couleur, encadre en carte arrondie.
+   ============================================================ */
+@media print {
+  html[data-entete] .print-entete {
+    position: relative;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ---------- Bandeau : degrade de la couleur du theme, cercles translucides ---------- */
+  html[data-entete="BANDEAU"] .print-entete {
+    padding: 16px 22px !important;
+    gap: 24px !important;
+    border: 0 !important;
+    border-radius: 14px;
+    color: var(--color-on-primary, #fff);
+    background:
+      radial-gradient(circle at 94% -30%, rgba(255, 255, 255, 0.17) 0 84px, transparent 85px),
+      radial-gradient(circle at 80% 140%, rgba(255, 255, 255, 0.1) 0 62px, transparent 63px),
+      linear-gradient(105deg, var(--color-primary-darker), var(--color-primary)) !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__logo {
+    width: 46px !important;
+    height: 46px !important;
+    border-radius: 13px !important;
+    background: #fff !important;
+    border: 0 !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__logo img { padding: 5px; }
+  html[data-entete="BANDEAU"] .print-entete__logo .v-icon { color: var(--color-primary) !important; }
+  html[data-entete="BANDEAU"] .print-entete__marque { gap: 14px !important; }
+  html[data-entete="BANDEAU"] .print-entete__nom {
+    color: var(--color-on-primary, #fff) !important;
+    font-size: 1.25rem !important;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  html[data-entete="BANDEAU"] .etat-print-header__doc,
+  html[data-entete="BANDEAU"] .etat-print-header__service {
+    color: color-mix(in srgb, var(--color-on-primary, #fff) 80%, var(--color-primary)) !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__meta {
+    color: var(--color-on-primary, #fff) !important;
+    padding-left: 18px;
+    border-left: 1px solid color-mix(in srgb, var(--color-on-primary, #fff) 38%, transparent);
+    font-size: 0.72rem !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__meta strong { color: var(--color-on-primary, #fff) !important; }
+
+  /* ---------- Epure : blanc, trait d'accent, texte noir ---------- */
+  html[data-entete="EPURE"] .print-entete {
+    padding: 14px 0 14px !important;
+    border-bottom: 1px solid #e5e7eb !important;
+  }
+  html[data-entete="EPURE"] .print-entete::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 30px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--color-primary);
+  }
+  html[data-entete="EPURE"] .print-entete__marque { padding-top: 8px; }
+  html[data-entete="EPURE"] .print-entete__meta { padding-top: 8px; }
+  html[data-entete="EPURE"] .print-entete__nom {
+    color: #111827 !important;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  html[data-entete="EPURE"] .etat-print-header__doc { color: var(--color-primary-dark) !important; }
+  html[data-entete="EPURE"] .print-entete__meta { color: #6b7280 !important; font-size: 0.72rem !important; }
+
+  /* ---------- Institutionnel : tout centre, nom espace, ornement a losange ---------- */
+  html[data-entete="CENTRE"] .print-entete {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 9px !important;
+    padding-bottom: 22px !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-primary) 42%, white) !important;
+  }
+  html[data-entete="CENTRE"] .print-entete::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -4px;
+    width: 7px;
+    height: 7px;
+    margin-left: -3.5px;
+    transform: rotate(45deg);
+    background: var(--color-primary);
+    outline: 5px solid #fff;
+  }
+  html[data-entete="CENTRE"] .print-entete__marque { flex-direction: column !important; text-align: center; gap: 8px !important; }
+  html[data-entete="CENTRE"] .print-entete__logo { width: 44px !important; height: 44px !important; border-radius: 50% !important; }
+  html[data-entete="CENTRE"] .print-entete__nom {
+    color: var(--color-primary-darker) !important;
+    font-size: 1.1rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+  }
+  html[data-entete="CENTRE"] .etat-print-header__doc { letter-spacing: 0.2em !important; }
+  html[data-entete="CENTRE"] .print-entete__meta {
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 3px 0 !important;
+    font-size: 0.72rem !important;
+    color: #6b7280 !important;
+  }
+  html[data-entete="CENTRE"] .print-entete__meta span + span {
+    margin-left: 11px;
+    padding-left: 11px;
+    border-left: 1px solid #d1d5db;
+  }
+
+  /* ---------- Lateral : rail de couleur le long de l'en-tete, filet signe ----------
+     (Chrome ne peint pas dans les marges de la page : le rail longe l'en-tete, dans la zone imprimable.) */
+  html[data-entete="LATERAL"] .print-entete {
+    padding: 4px 0 16px 22px !important;
+    border-bottom: 1px solid #e5e7eb !important;
+  }
+  html[data-entete="LATERAL"] .print-entete::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 16px;
+    width: 7px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--color-primary), var(--color-primary-darker));
+  }
+  html[data-entete="LATERAL"] .print-entete::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -2px;
+    width: 46px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--color-primary);
+  }
+  html[data-entete="LATERAL"] .print-entete__nom { color: var(--color-primary-darker) !important; letter-spacing: 0.02em; }
+  html[data-entete="LATERAL"] .print-entete__meta {
+    padding-left: 13px;
+    border-left: 2.5px solid var(--color-primary);
+    font-size: 0.72rem !important;
+  }
+
+  /* ---------- Encadre : carte arrondie teintee, pastilles ---------- */
+  html[data-entete="ENCADRE"] .print-entete {
+    padding: 15px 20px !important;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 26%, white) !important;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--color-primary) 5%, white) !important;
+    outline: 3px solid color-mix(in srgb, var(--color-primary) 6%, white);
+  }
+  html[data-entete="ENCADRE"] .print-entete__logo {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 12px !important;
+    background: #fff !important;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, white) !important;
+  }
+  html[data-entete="ENCADRE"] .print-entete__logo .v-icon { color: var(--color-primary) !important; }
+  html[data-entete="ENCADRE"] .print-entete__nom {
+    color: var(--color-primary-darker) !important;
+    font-size: 1.2rem !important;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  html[data-entete="ENCADRE"] .print-entete__meta { align-items: flex-end; gap: 4px !important; }
+  html[data-entete="ENCADRE"] .print-entete__meta > span {
+    display: inline-block;
+    padding: 2px 11px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 11%, white);
+    color: var(--color-primary-darker) !important;
+    font-size: 0.7rem !important;
+  }
+  html[data-entete="ENCADRE"] .print-entete__meta strong { color: var(--color-primary-darker) !important; }
+}
+
+/* Thème nuit : un bouton plein désactivé (« Produire » tant que le formulaire est incomplet) ne doit pas briller en vert
+   menthe ; il devient une surface à peine teintée, texte estompé (17/11). */
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-flat,
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated {
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 12%, var(--surface)) !important;
+  color: color-mix(in srgb, var(--ink) 40%, transparent) !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-flat .v-btn__overlay,
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay { opacity: 0 !important; }
+
+/* Logo principal M-FINAPP (18/11/2026), monochrome (composant LogoMfinapp, couleur = currentColor) : celui de
+   l'application, sur le site et l'application mobile (barre, menu, connexion). Couleur de marque sur fond clair, blanc
+   sur les fonds sombres (menu latéral, visuels). Le logo de l'entreprise (Paramètres) reste celui des documents :
+   en-têtes, factures, reçus, états. */
+.logo-principal {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 3px !important;
+  overflow: visible !important;
+  color: var(--color-primary);
+}
+.modern-drawer .logo-principal,
+.visuel .logo-principal,
+.acces__banniere .logo-principal,
+.apropos__logo {
+  color: #ffffff;
+}

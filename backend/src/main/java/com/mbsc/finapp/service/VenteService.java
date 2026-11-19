@@ -145,6 +145,15 @@ public class VenteService {
     @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse creer(VenteRequest req) {
+        return creerInterne(req, OrigineVente.CAISSE);
+    }
+
+    /**
+     * Création sans contrôle de rôle, pour un service qui a déjà vérifié ses propres droits (folio de l'application
+     * Hôtellerie : PmsIntegrationService, réservé à la réception). Même règles que {@link #creer}.
+     */
+    @Transactional
+    public VenteResponse creerInterne(VenteRequest req, OrigineVente origine) {
         User auteur = currentUser.requireUser();
         LocalDate date = req.dateVente() != null ? req.dateVente() : LocalDate.now();
         Devise devise = req.devise() != null ? req.devise() : ConversionDeviseService.DEVISE_BASE;
@@ -174,6 +183,7 @@ public class VenteService {
             .devise(devise)
             .tauxJournalier(tauxDuJour)
             .table(table)
+            .origine(origine == null ? OrigineVente.CAISSE : origine)
             .createdBy(auteur)
             .build();
 
@@ -330,6 +340,12 @@ public class VenteService {
     @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse valider(Long id) {
+        return validerInterne(id);
+    }
+
+    /** Validation sans contrôle de rôle (folio de l'application Hôtellerie, voir {@link #creerInterne}). */
+    @Transactional
+    public VenteResponse validerInterne(Long id) {
         Vente vente = charger(id);
         if (vente.getStatut() != StatutVente.BROUILLON) {
             throw new TransitionInvalideException(
@@ -488,7 +504,27 @@ public class VenteService {
     @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public VenteResponse reglerCreance(Long id, ReglerCreanceRequest req) {
-        return appliquerReglementCreance(charger(id), req).vente();
+        return appliquerReglementCreance(charger(id), req, List.of()).vente();
+    }
+
+    /**
+     * Fonds déjà reçus imputés sur la créance au règlement (V152, folio de séjour) : acompte (4191, clients avances
+     * reçues) ou caution retenue (1651, dépôts). Chaque imputation débite son compte, le reste est encaissé en trésorerie.
+     */
+    public record Imputation(String compteNumero, BigDecimal montant, String libelle) {
+        public Imputation {
+            if (compteNumero == null || compteNumero.isBlank()) throw new IllegalArgumentException("Compte d'imputation manquant.");
+            if (montant == null || montant.signum() <= 0) throw new IllegalArgumentException("Montant d'imputation invalide.");
+        }
+    }
+
+    /**
+     * Règlement d'une créance sans contrôle de rôle, avec imputation des fonds déjà reçus (folio de l'application
+     * Hôtellerie, voir {@link #creerInterne}). Sans imputation : identique à {@link #reglerCreance}.
+     */
+    @Transactional
+    public VenteResponse reglerCreanceInterne(Long id, ReglerCreanceRequest req, List<Imputation> imputations) {
+        return appliquerReglementCreance(charger(id), req, imputations == null ? List.of() : imputations).vente();
     }
 
     /**
@@ -513,7 +549,7 @@ public class VenteService {
         List<VenteResponse> ventesReglees = new ArrayList<>();
         BigDecimal totalEncaisse = BigDecimal.ZERO;
         for (Vente v : creances) {
-            ResultatReglement r = appliquerReglementCreance(v, req);
+            ResultatReglement r = appliquerReglementCreance(v, req, List.of());
             ventesReglees.add(r.vente());
             totalEncaisse = totalEncaisse.add(r.montantEncaisseDeviseBase());
         }
@@ -522,7 +558,7 @@ public class VenteService {
 
     private record ResultatReglement(VenteResponse vente, BigDecimal montantEncaisseDeviseBase) {}
 
-    private ResultatReglement appliquerReglementCreance(Vente vente, ReglerCreanceRequest req) {
+    private ResultatReglement appliquerReglementCreance(Vente vente, ReglerCreanceRequest req, List<Imputation> imputations) {
         if (vente.getStatut() != StatutVente.VALIDEE) {
             throw new TransitionInvalideException(
                 "Seule une vente VALIDEE peut etre reglee (etat actuel : " + vente.getStatut() + ")");
@@ -587,18 +623,42 @@ public class VenteService {
 
         String libelle = "Reglement creance " + vente.getReference() + " - " + vente.designationClient();
         List<EcritureGrandLivre> lignes = new ArrayList<>();
-        lignes.add(ligneReglement(compteTresorerie, montantEncaisse, BigDecimal.ZERO, libelle, dateReglement));
+        // Fonds déjà reçus (acompte, caution retenue : V152) : ils soldent d'abord la créance, la trésorerie ne reçoit
+        // que le reste. Imputations en devise de base seulement (elles ont été encaissées dans cette devise).
+        BigDecimal impute = BigDecimal.ZERO;
+        if (!imputations.isEmpty()) {
+            if (vente.getDevise() != ConversionDeviseService.DEVISE_BASE) {
+                throw new IllegalArgumentException("Les acomptes et cautions ne s'imputent que sur un folio en "
+                    + ConversionDeviseService.DEVISE_BASE + ".");
+            }
+            for (Imputation i : imputations) {
+                BigDecimal m = i.montant().setScale(2, RoundingMode.HALF_UP);
+                lignes.add(ligneReglement(compteParNumero(i.compteNumero()), m, BigDecimal.ZERO,
+                    i.libelle() == null ? libelle : i.libelle(), dateReglement));
+                impute = impute.add(m);
+            }
+            if (impute.compareTo(montantEncaisse) > 0) {
+                throw new IllegalArgumentException("Les acomptes et cautions imputés (" + impute.toPlainString()
+                    + ") dépassent le montant dû (" + montantEncaisse.toPlainString() + ") : imputez seulement ce qui est dû, "
+                    + "le surplus se rembourse au client.");
+            }
+            montantEncaisse = montantEncaisse.subtract(impute);
+        }
+        if (montantEncaisse.signum() > 0) {
+            lignes.add(ligneReglement(compteTresorerie, montantEncaisse, BigDecimal.ZERO, libelle, dateReglement));
+        }
         lignes.add(ligneReglement(compteParNumero(compteCreance(vente)), BigDecimal.ZERO, montantDu, libelle, dateReglement));
 
         // Ecart de change realise : encaisse > du => gain (756), sinon perte (656).
-        BigDecimal ecart = montantEncaisse.subtract(montantDu);
+        BigDecimal ecart = montantEncaisse.add(impute).subtract(montantDu);
         if (ecart.signum() > 0) {
             lignes.add(ligneReglement(compteParNumero(COMPTE_GAIN_CHANGE), BigDecimal.ZERO, ecart, libelle, dateReglement));
         } else if (ecart.signum() < 0) {
             lignes.add(ligneReglement(compteParNumero(COMPTE_PERTE_CHANGE), ecart.abs(), BigDecimal.ZERO, libelle, dateReglement));
         }
 
-        JournalComptable journal = switch (req.modeReglement()) {
+        // Créance soldée tout entière par des fonds déjà reçus : aucune trésorerie ne bouge, opérations diverses.
+        JournalComptable journal = montantEncaisse.signum() == 0 ? JournalComptable.OPERATIONS_DIVERSES : switch (req.modeReglement()) {
             case CAISSE -> JournalComptable.CAISSE;
             case BANQUE -> JournalComptable.BANQUE;
             case MOBILE_MONEY -> JournalComptable.MOBILE_MONEY;
@@ -615,7 +675,7 @@ public class VenteService {
         vente.setEcartLatentCumule(BigDecimal.ZERO);
         log.info("Creance reglee [vente={}, encaisse={} {}, piece={}]",
             vente.getReference(), montantEncaisse, ConversionDeviseService.DEVISE_BASE, piece.getReference());
-        return new ResultatReglement(VenteResponse.from(vente), montantEncaisse);
+        return new ResultatReglement(VenteResponse.from(vente), montantEncaisse.add(impute));
     }
 
     private EcritureGrandLivre ligneReglement(CompteOHADA compte, BigDecimal debit, BigDecimal credit,

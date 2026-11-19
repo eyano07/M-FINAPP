@@ -40,7 +40,8 @@ class EtatModulesTest {
         ModuleMetier.DRH_MISSIONS, ModuleMetier.DRH,
         ModuleMetier.BUDGET, ModuleMetier.COMPTABILITE,
         ModuleMetier.RAPPROCHEMENT, ModuleMetier.COMPTABILITE,
-        ModuleMetier.FACTURATION_NORMALISEE, ModuleMetier.VENTES);
+        ModuleMetier.FACTURATION_NORMALISEE, ModuleMetier.VENTES,
+        ModuleMetier.MINE, ModuleMetier.LOGISTIQUE);
 
     /** Les modules dont on fait varier l'etat : un parent, un de ses enfants, un module autonome, et un parent isole. */
     private static final List<ModuleMetier> VARIABLES = List.of(
@@ -115,7 +116,7 @@ class EtatModulesTest {
         }
     }
 
-    /** La hierarchie du code reproduit exactement celle des migrations : les memes sept liens, rien de plus. */
+    /** La hierarchie du code reproduit exactement celle des migrations : les memes huit liens, rien de plus. */
     @Test
     void la_hierarchie_du_code_est_celle_des_migrations() {
         for (ModuleMetier module : ModuleMetier.values()) {

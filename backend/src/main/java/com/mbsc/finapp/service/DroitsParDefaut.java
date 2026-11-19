@@ -41,30 +41,33 @@ public final class DroitsParDefaut {
         // le DA, qui rouvre un mois rapproché, a l'écriture sur le module (V138).
         definir(RoleType.CAISSIER,
             modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, RESTAURANT),
-            modules(ModuleMetier.LOGISTIQUE, ModuleMetier.RAPPROCHEMENT));
+            modules(ModuleMetier.LOGISTIQUE, ModuleMetier.MINE, ModuleMetier.RAPPROCHEMENT));
         // Audit DRH du 15/11/2026, D-11 : le DFIN clôture, rouvre et comptabilise la paie (seul rôle autorisé depuis
         // C-14) ; avec la seule lecture sur DRH_PAIE, ces actions étaient refusées à tout le monde (V146).
         definir(RoleType.DFIN,
-            modules(COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT, ModuleMetier.LOGISTIQUE, DRH_PAIE),
-            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, TRANSPORT, PATRIMOINE, RESTAURANT));
+            modules(COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT, ModuleMetier.LOGISTIQUE, ModuleMetier.MINE, DRH_PAIE),
+            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, TRANSPORT, PATRIMOINE, RESTAURANT, ModuleMetier.HOTELLERIE));
         definir(RoleType.DA,
             modules(COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT),
-            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, ModuleMetier.LOGISTIQUE, TRANSPORT, PATRIMOINE, RESTAURANT));
+            modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, ModuleMetier.LOGISTIQUE, ModuleMetier.MINE, TRANSPORT, PATRIMOINE, RESTAURANT,
+                ModuleMetier.HOTELLERIE));
         definir(RoleType.DG,
             modules(),
             modules(CAISSE, BANQUE, MOBILE_MONEY, COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT, VENTES,
-                ModuleMetier.LOGISTIQUE,
-                TRANSPORT, PATRIMOINE, RESTAURANT));
+                ModuleMetier.LOGISTIQUE, ModuleMetier.MINE,
+                TRANSPORT, PATRIMOINE, RESTAURANT, ModuleMetier.HOTELLERIE));
         // Le comptable saisit les pièces, le DFIN les valide (C-06) : la comptabilité en écriture (V138).
         definir(RoleType.COMPTABLE,
             modules(COMPTABILITE, ModuleMetier.RAPPROCHEMENT),
-            modules(CAISSE, ModuleMetier.BUDGET, VENTES, ModuleMetier.LOGISTIQUE, PATRIMOINE, RESTAURANT));
+            modules(CAISSE, ModuleMetier.BUDGET, VENTES, ModuleMetier.LOGISTIQUE, ModuleMetier.MINE, PATRIMOINE, RESTAURANT,
+                ModuleMetier.HOTELLERIE));
+        // Le responsable logistique tient aussi l'inventaire et les fiches d'amortissement du patrimoine (V153).
         definir(RoleType.LOGISTIQUE,
-            modules(ModuleMetier.LOGISTIQUE, TRANSPORT),
+            modules(ModuleMetier.LOGISTIQUE, ModuleMetier.MINE, TRANSPORT, PATRIMOINE),
             modules());
         definir(RoleType.GEST_PATRIMOINE,
             modules(PATRIMOINE),
-            modules(ModuleMetier.LOGISTIQUE));
+            modules(ModuleMetier.LOGISTIQUE, ModuleMetier.MINE));
         definir(RoleType.RESP_DRH,
             modules(DRH_PERSONNEL, DRH_PRESENCES, DRH_PAIE, DRH_MISSIONS),
             modules());
@@ -81,6 +84,20 @@ public final class DroitsParDefaut {
         definir(RoleType.RESP_BAR,
             modules(RESTAURANT),
             modules(ModuleMetier.LOGISTIQUE));
+        // Hôtellerie (V152) : les rôles de l'hébergement écrivent par le PMS ; la direction de l'hébergement lit aussi les
+        // ventes (folios devenus ventes) de M-FINAPP.
+        definir(RoleType.RECEPTIONNISTE,
+            modules(ModuleMetier.HOTELLERIE),
+            modules());
+        definir(RoleType.GOUVERNANTE,
+            modules(ModuleMetier.HOTELLERIE),
+            modules());
+        definir(RoleType.TECHNICIEN,
+            modules(ModuleMetier.HOTELLERIE),
+            modules());
+        definir(RoleType.DIR_HEBERGEMENT,
+            modules(ModuleMetier.HOTELLERIE),
+            modules(VENTES));
     }
 
     private DroitsParDefaut() {

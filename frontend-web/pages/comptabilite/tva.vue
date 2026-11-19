@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // Aucune ecriture ne se fait depuis cette page (la TVA se genere depuis les
 // ventes et les notes de frais), donc aucun role d'ecriture a restreindre.
 // DA exclu explicitement de la consultation.
@@ -57,8 +58,10 @@ async function declarer() {
   }
 }
 
-const debutAnnee = new Date().getFullYear() + '-01-01'
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
+const exerciceConsulte = useExerciceStore()
+const debutAnnee = exerciceConsulte.debut
+const aujourdhui = exerciceConsulte.fin
 const filtres = reactive({ du: debutAnnee, au: aujourdhui })
 
 const filtreNature = ref<'TOUS' | 'COLLECTEE' | 'RECUPERABLE'>('TOUS')

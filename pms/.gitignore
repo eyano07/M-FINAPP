@@ -1,0 +1,6 @@
+# Fichiers construits ou installés : jamais dans le dépôt.
+backend/target/
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/build.log

@@ -16,5 +16,10 @@ public enum RoleType {
     RESP_DRH, // Responsable DRH : personnel, presences, paie, missions
     RESP_RESTAURANT, // Responsable restaurant : carte (plats, boissons) et parc d'emballages consignes
     RESP_CUISINE, // Responsable cuisine : plats, fiches techniques, production, provisions (voir PerimetreRestaurant)
-    RESP_BAR // Responsable bar : boissons, bouteilles vides, achats de boissons (voir PerimetreRestaurant)
+    RESP_BAR, // Responsable bar : boissons, bouteilles vides, achats de boissons (voir PerimetreRestaurant)
+    // Hôtellerie (V152, application PMS reliée à M-FINAPP) :
+    RECEPTIONNISTE, // Réservations, arrivées et départs, folio ; encaisse les folios (et seulement eux)
+    GOUVERNANTE, // Ménage : état des unités, tâches de nettoyage
+    TECHNICIEN, // Maintenance : tickets de réparation
+    DIR_HEBERGEMENT // Direction de l'hébergement : établissements, tarifs, rapports ; encaisse aussi les folios
 }

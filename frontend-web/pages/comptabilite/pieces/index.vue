@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // DA exclu explicitement : voir NavigationDrawer.vue (comptabiliteItems).
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
@@ -93,11 +94,17 @@ const journalLabel: Record<string, string> = {
   A_NOUVEAUX: 'À-nouveaux',
 }
 
+const exerciceConsulte = useExerciceStore()
+
 async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    pieces.value = await api<Piece[]>('/comptabilite/pieces')
+    const toutes = await api<Piece[]>('/comptabilite/pieces')
+    // Exercice choisi dans la barre du haut ; la pièce d'un lien de notification reste visible quel que soit son exercice.
+    const annee = String(exerciceConsulte.anneeChoisie)
+    const demandee = Number(useRoute().query.piece) || null
+    pieces.value = toutes.filter(x => x.datePiece?.startsWith(annee) || x.id === demandee)
   } catch (e: any) {
     erreur.value = e?.data?.message || 'Impossible de charger les pièces comptables.'
   } finally {

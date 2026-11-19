@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // Provision pour congés payés de fin d'exercice (audit DRH du 15/11/2026, D-05). Simulation : RESP_DRH, DFIN,
 // ADMIN ; constitution et annulation : DFIN seul (le serveur le vérifie aussi).
 definePageMeta({ module: 'DRH_PAIE' })
@@ -48,9 +49,10 @@ const dialogues = useDialogues()
 const estDfin = computed(() => auth.hasRole('DFIN'))
 
 const anneeCourante = new Date().getFullYear()
-const annee = ref(anneeCourante)
+// Exercice choisi dans la barre du haut.
+const annee = ref(useExerciceStore().anneeChoisie)
 const annees = Array.from({ length: 6 }, (_, i) => anneeCourante - i)
-const dateArrete = ref(`${anneeCourante}-12-31`)
+const dateArrete = ref(`${annee.value}-12-31`)
 watch(annee, a => { dateArrete.value = `${a}-12-31` })
 
 const simulation = ref<Simulation | null>(null)

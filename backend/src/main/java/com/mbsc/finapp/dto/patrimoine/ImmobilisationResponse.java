@@ -33,7 +33,12 @@ public record ImmobilisationResponse(
     /** Bien principal dont celle-ci est un composant (null : bien principal). */
     Long parentId,
     String parentReference,
-    com.mbsc.finapp.domain.enums.TypeCession typeCession
+    com.mbsc.finapp.domain.enums.TypeCession typeCession,
+    /** Code d'inventaire collé sur le bien (V153). */
+    String codeInventaire,
+    /** Vrai si une dotation est déjà comptabilisée (la valeur et la date ne se modifient plus). */
+    boolean dotationsComptabilisees,
+    com.mbsc.finapp.domain.enums.ModeAmortissement modeAmortissement
 ) {
     public static ImmobilisationResponse from(Immobilisation i) {
         return new ImmobilisationResponse(
@@ -50,6 +55,9 @@ public record ImmobilisationResponse(
             i.getDateSortie(), i.getValeurCession(),
             i.getParent() != null ? i.getParent().getId() : null,
             i.getParent() != null ? i.getParent().getReference() : null,
-            i.getTypeCession());
+            i.getTypeCession(),
+            i.getCodeInventaire(),
+            i.getPlanAmortissement().stream().anyMatch(com.mbsc.finapp.domain.LigneAmortissement::isComptabilise),
+            i.getModeAmortissement());
     }
 }

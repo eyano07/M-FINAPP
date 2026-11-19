@@ -50,6 +50,12 @@ public class Vente {
     @Column(name = "client_nom", length = 200)
     private String clientNom;
 
+    /** Caisse de M-FINAPP ou folio de l'application Hôtellerie (V152). */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private com.mbsc.finapp.domain.enums.OrigineVente origine = com.mbsc.finapp.domain.enums.OrigineVente.CAISSE;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default

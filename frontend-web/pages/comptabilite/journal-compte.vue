@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
 
 interface Ligne {
@@ -38,7 +39,9 @@ const dateImpression = ref('')
 
 // Mois en cours par défaut ; compte de l'adresse (?compte=571) ou la caisse.
 const dateLocale = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-const maintenant = new Date()
+// Exercice passé choisi dans la barre du haut : son mois de décembre.
+const exerciceConsulte = useExerciceStore()
+const maintenant = exerciceConsulte.anneeChoisie === new Date().getFullYear() ? new Date() : new Date(exerciceConsulte.anneeChoisie, 11, 31)
 const filtres = reactive({
   compte: (typeof route.query.compte === 'string' ? route.query.compte : '571') as string | null,
   du: dateLocale(new Date(maintenant.getFullYear(), maintenant.getMonth(), 1)),

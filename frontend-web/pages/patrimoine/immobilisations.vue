@@ -19,6 +19,10 @@ interface Immo {
   numeroSerie: string | null
   cumulAmortissements: number
   valeurNetteComptable: number
+  description?: string | null
+  codeInventaire?: string | null
+  dotationsComptabilisees?: boolean
+  modeAmortissement?: 'LINEAIRE' | 'DEGRESSIF'
 }
 
 const CATEGORIES = [
@@ -26,6 +30,7 @@ const CATEGORIES = [
   { value: 'BATIMENT', title: 'Bâtiment' },
   { value: 'MATERIEL_INDUSTRIEL', title: 'Matériel industriel' },
   { value: 'MATERIEL_BUREAU', title: 'Matériel de bureau' },
+  { value: 'MATERIEL_INFORMATIQUE', title: 'Matériel informatique' },
   { value: 'MOBILIER', title: 'Mobilier' },
   { value: 'MATERIEL_TRANSPORT', title: 'Matériel de transport' },
   { value: 'AUTRE', title: 'Autre' },
@@ -46,8 +51,8 @@ const auth = useAuthStore()
 const canCreer = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'LOGISTIQUE']))
 const canSortir = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE']))
 
-// Le montant est stocke en devise de base (FC) au grand livre ; la saisie et
-// l'affichage se font en USD, comme sur le catalogue articles.
+// Le grand livre est tenu en dollars (devise de base) : la saisie et l'affichage se font en USD, sans conversion.
+// (19/11/2026 : la page multipliait la saisie par le taux du jour, comme si le grand livre était en francs.)
 const tauxChange = ref(0)
 const loading = ref(false)
 const saving = ref(false)
@@ -88,15 +93,20 @@ const biensPrincipaux = computed(() => biens.value
   .filter((b: any) => !b.parentId && b.statut === 'EN_SERVICE')
   .map((b: any) => ({ title: `${b.reference} — ${b.libelle}`, value: b.id })))
 
+const aValoriser = ref(0)
+
 async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [data, taux] = await Promise.all([
+    const [data, taux, inv] = await Promise.all([
       api<Immo[]>('/patrimoine/immobilisations'),
       api<{ taux: number }>('/admin/taux-change').catch(() => ({ taux: 0 })),
+      api<{ statut: string }[]>('/patrimoine/inventaire').catch(() => []),
     ])
     biens.value = data
+    // Biens relevés à l'inventaire sans valeur : ils n'entrent au registre qu'une fois valorisés.
+    aValoriser.value = inv.filter(x => x.statut === 'A_VALORISER').length
     tauxChange.value = taux.taux || 0
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger le registre des immobilisations.')
@@ -127,18 +137,12 @@ async function enregistrer() {
   saving.value = true
   erreur.value = ''
   try {
-    if (!(tauxChange.value > 0)) {
-      erreur.value = "Aucun taux de change n'est défini : impossible de convertir les montants saisis "
-        + "en dollars. Demandez à un administrateur d'enregistrer le taux du jour."
-      saving.value = false
-      return
-    }
     await api('/patrimoine/immobilisations', {
       method: 'POST',
       body: {
         ...form,
-        valeurAcquisition: (form.valeurAcquisition ?? 0) * tauxChange.value,
-        valeurResiduelle: (form.valeurResiduelle ?? 0) * tauxChange.value,
+        valeurAcquisition: form.valeurAcquisition ?? 0,
+        valeurResiduelle: form.valeurResiduelle ?? 0,
       },
     })
     succes.value = 'Bien enregistré et plan d’amortissement généré.'
@@ -168,7 +172,7 @@ async function confirmerSortie() {
   try {
     await api(`/patrimoine/immobilisations/${bienSortie.value.id}/sortie`, {
       method: 'POST',
-      body: { ...formSortie, valeurCession: (formSortie.valeurCession ?? 0) * tauxChange.value },
+      body: { ...formSortie, valeurCession: formSortie.valeurCession ?? 0 },
     })
     succes.value = formSortie.valeurCession > 0 ? 'Cession comptabilisée.' : 'Mise au rebut comptabilisée.'
     dialogSortie.value = false
@@ -180,7 +184,8 @@ async function confirmerSortie() {
   }
 }
 
-const toUSD = (fc: number) => (tauxChange.value > 0 ? (fc || 0) / tauxChange.value : 0)
+// Le grand livre est tenu en dollars (ConversionDeviseService.DEVISE_BASE) : les montants s'affichent tels quels.
+const toUSD = (usd: number) => Number(usd) || 0
 /** Montants affiches en dollars, convertis depuis la valeur FC enregistree. */
 const fmt = (fc: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
@@ -191,6 +196,38 @@ const totalBrut = computed(() => biens.value.filter(b => b.statut === 'EN_SERVIC
   .reduce((s, b) => s + Number(b.valeurAcquisition), 0))
 const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE')
   .reduce((s, b) => s + Number(b.valeurNetteComptable), 0))
+
+// ── Modification de la fiche d'amortissement (responsable logistique, 19/11/2026) ──
+const fiche = reactive({ ouvert: false, bien: null as Immo | null, libelle: '', categorie: '', description: '', localisation: '', fournisseur: '',
+  numeroSerie: '', dureeMois: 60, modeAmortissement: 'LINEAIRE', valeurResiduelle: 0, valeurAcquisition: 0, dateAcquisition: '',
+  dateMiseService: '', motif: '', enCours: false, erreur: '' })
+function ouvrirFiche(b: Immo) {
+  Object.assign(fiche, { ouvert: true, bien: b, libelle: b.libelle, categorie: b.categorie, description: b.description ?? '',
+    localisation: b.localisation ?? '', fournisseur: b.fournisseur ?? '', numeroSerie: b.numeroSerie ?? '', dureeMois: b.dureeMois,
+    modeAmortissement: b.modeAmortissement ?? 'LINEAIRE', valeurResiduelle: Number(b.valeurResiduelle) || 0,
+    valeurAcquisition: Number(b.valeurAcquisition), dateAcquisition: b.dateAcquisition, dateMiseService: b.dateMiseService,
+    motif: '', enCours: false, erreur: '' })
+}
+async function enregistrerFiche() {
+  if (!fiche.bien) return
+  fiche.enCours = true
+  fiche.erreur = ''
+  try {
+    await api(`/patrimoine/immobilisations/${fiche.bien.id}`, { method: 'PUT', body: {
+      libelle: fiche.libelle, categorie: fiche.categorie, description: fiche.description || null, localisation: fiche.localisation || null,
+      fournisseur: fiche.fournisseur || null, numeroSerie: fiche.numeroSerie || null, dureeMois: fiche.dureeMois,
+      modeAmortissement: fiche.modeAmortissement, valeurResiduelle: fiche.valeurResiduelle, valeurAcquisition: fiche.valeurAcquisition,
+      dateAcquisition: fiche.dateAcquisition, dateMiseService: fiche.dateMiseService, motif: fiche.motif || null,
+    } })
+    fiche.ouvert = false
+    succes.value = `Fiche ${fiche.bien.reference} modifiée : le plan d'amortissement est recalculé.`
+    await charger()
+  } catch (e) {
+    fiche.erreur = messageErreurApi(e, "La fiche n'a pas été modifiée.")
+  } finally {
+    fiche.enCours = false
+  }
+}
 </script>
 
 <template>
@@ -206,6 +243,11 @@ const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE
       </v-btn>
     </div>
 
+    <v-alert v-if="aValoriser" type="info" variant="tonal" class="mb-4" icon="mdi-tag-text-outline">
+      <strong>{{ aValoriser }} bien(s) de l’inventaire attendent leur valeur.</strong>
+      Ils entrent au registre (fiche, plan d’amortissement et écriture) dès que leur valeur et leur date d’acquisition sont saisies.
+      <template #append><v-btn to="/patrimoine/inventaire" variant="flat" color="primary" size="small">Valoriser</v-btn></template>
+    </v-alert>
     <v-alert v-if="succes" type="success" variant="tonal" class="mb-4" closable @click:close="succes = ''">{{ succes }}</v-alert>
     <v-alert v-if="erreur && !dialog && !dialogSortie" type="error" variant="tonal" class="mb-4" closable @click:close="erreur = ''">{{ erreur }}</v-alert>
 
@@ -252,6 +294,10 @@ const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE
         :loading="loading"
         items-per-page="25"
       >
+        <template #item.libelle="{ item }">
+          {{ item.libelle }}
+          <div v-if="item.codeInventaire" class="text-caption text-medium-emphasis"><code>{{ item.codeInventaire }}</code></div>
+        </template>
         <template #item.dateMiseService="{ item }">{{ fmtDate(item.dateMiseService) }}</template>
         <template #item.valeurAcquisition="{ item }">{{ fmt(item.valeurAcquisition) }}</template>
         <template #item.valeurNetteComptable="{ item }">{{ fmt(item.valeurNetteComptable) }}</template>
@@ -264,6 +310,8 @@ const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE
           </span>
         </template>
         <template #item.actions="{ item }">
+          <v-btn v-if="canCreer && item.statut === 'EN_SERVICE'" size="small" variant="text" icon="mdi-pencil"
+            title="Modifier la fiche d'amortissement" @click="ouvrirFiche(item)" />
           <v-btn size="small" variant="text" icon="mdi-chart-timeline-variant-shimmer"
             :to="`/patrimoine/amortissements?bien=${item.id}`" title="Plan d'amortissement" />
           <v-btn v-if="canSortir && item.statut === 'EN_SERVICE'" size="small" variant="text"
@@ -271,7 +319,7 @@ const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
-            Aucun bien enregistré. Utilisez « Ajouter un bien » pour créer le premier.
+            {{ aValoriser ? 'Aucun bien valorisé pour l’instant : commencez par l’inventaire (bouton « Valoriser » ci-dessus).' : 'Aucun bien enregistré. Utilisez « Ajouter un bien » pour créer le premier.' }}
           </div>
         </template>
       </v-data-table>
@@ -352,6 +400,37 @@ const totalVnc = computed(() => biens.value.filter(b => b.statut === 'EN_SERVICE
           <v-btn variant="text" :disabled="saving" @click="dialogSortie = false">Annuler</v-btn>
           <v-btn color="error" variant="flat" :loading="saving" @click="confirmerSortie">Confirmer</v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+    <v-dialog v-model="fiche.ouvert" max-width="640" scrollable>
+      <v-card class="pa-2">
+        <v-card-title class="font-weight-bold">Fiche {{ fiche.bien?.reference }}</v-card-title>
+        <v-card-text>
+          <v-alert v-if="fiche.erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ fiche.erreur }}</v-alert>
+          <v-alert v-if="fiche.bien?.dotationsComptabilisees" type="info" variant="tonal" density="compact" class="mb-3">
+            Des dotations sont déjà comptabilisées : la valeur et les dates sont figées ; un changement de durée ou de mode ne recalcule que
+            les échéances à venir (changement d'estimation, sans effet rétroactif).
+          </v-alert>
+          <v-row dense>
+            <v-col cols="12"><v-text-field v-model="fiche.libelle" label="Libellé" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" sm="6"><v-select v-model="fiche.categorie" :items="CATEGORIES" label="Catégorie" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" sm="6"><v-text-field v-model="fiche.localisation" label="Emplacement" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" sm="4"><v-text-field v-model.number="fiche.valeurAcquisition" type="number" label="Valeur (USD)" variant="outlined" density="comfortable" :disabled="fiche.bien?.dotationsComptabilisees" /></v-col>
+            <v-col cols="6" sm="4"><v-text-field v-model="fiche.dateAcquisition" type="date" label="Acquisition" variant="outlined" density="comfortable" :disabled="fiche.bien?.dotationsComptabilisees" /></v-col>
+            <v-col cols="6" sm="4"><v-text-field v-model="fiche.dateMiseService" type="date" label="Mise en service" variant="outlined" density="comfortable" :disabled="fiche.bien?.dotationsComptabilisees" /></v-col>
+            <v-col cols="6" sm="4"><v-text-field v-model.number="fiche.dureeMois" type="number" min="1" label="Durée (mois)" variant="outlined" density="comfortable"
+              :hint="`${fiche.dureeMois ? (1200 / fiche.dureeMois).toFixed(2) : '—'} % par an`" persistent-hint /></v-col>
+            <v-col cols="6" sm="4"><v-select v-model="fiche.modeAmortissement" :items="[{ value: 'LINEAIRE', title: 'Linéaire' }, { value: 'DEGRESSIF', title: 'Dégressif' }]"
+              label="Mode" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" sm="4"><v-text-field v-model.number="fiche.valeurResiduelle" type="number" min="0" label="Valeur résiduelle (USD)" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" sm="6"><v-text-field v-model="fiche.fournisseur" label="Fournisseur" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" sm="6"><v-text-field v-model="fiche.numeroSerie" label="N° de série" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12"><v-textarea v-model="fiche.description" label="Description" rows="2" auto-grow variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12"><v-text-field v-model="fiche.motif" label="Motif de la modification (journal d'audit)" variant="outlined" density="comfortable" /></v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions><v-spacer /><v-btn variant="text" @click="fiche.ouvert = false">Annuler</v-btn>
+          <v-btn color="primary" variant="flat" :loading="fiche.enCours" @click="enregistrerFiche">Enregistrer</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
   </div>

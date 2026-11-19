@@ -20,6 +20,7 @@ export const AIDE_COMMUNE: EtapeAide[] = [
   { titre: 'Mode clair ou nuit', texte: 'Le bouton soleil/lune de la barre du haut bascule entre clair, nuit et le réglage du système. Ce choix est propre à chaque appareil.' },
   { titre: 'Application mobile', texte: "L'application Android sert à valider les notes de frais et à consulter le tableau de bord, les notes et la comptabilité. Le caissier y encaisse, décaisse et vend ; le comptable y crée ses notes. Au premier lancement, saisissez l'adresse du serveur donnée par l'administrateur." },
   { titre: "Widgets de l'écran d'accueil", texte: "Sur Android, appui long sur l'écran d'accueil › Widgets › MBSC Finapp : le widget « Notes de frais » montre les notes qui vous attendent et vos notes en cours ; le widget « Trésorerie » (caissier, DA, DFIN, comptable, DG) est un mini tableau de bord des soldes et des mouvements du jour, à activer dans Mon profil ; il se met à jour à chaque opération. Connectez-vous une fois dans l'application pour qu'ils se remplissent." },
+  { titre: "Changer d'exercice", texte: "Sur le site, la liste « Exercice 2026 » de la barre du haut donne accès aux exercices précédents. La page ouverte se recharge avec les données de l'exercice choisi : journaux, balance, grand livre, bilan, compte de résultat, pièces… Un exercice clôturé (cadenas) se consulte en lecture seule : vous pouvez imprimer et exporter les documents permis par vos droits, mais rien n'y est saisi. « Revenir à 2026 », dans le bandeau, ramène à l'exercice en cours." },
   { titre: 'Imprimer et exporter', texte: "Les boutons PDF et Excel des pages enregistrent le fichier ; sur le téléphone il arrive dans Téléchargements › MBSC Finapp et s'ouvre dans l'application adaptée." },
 ]
 
@@ -119,7 +120,9 @@ export const FICHES_AIDE: FicheAide[] = [
       { titre: 'Articles et entrepôts', texte: 'Logistique › Articles, Services, Entrepôts : tenez le catalogue et les lieux de stockage.' },
       { titre: 'Mouvements', texte: "Logistique › Mouvements : entrées, sorties et transferts. L'état du stock et le grand livre stock se mettent à jour." },
       { titre: 'Inventaires', texte: 'Inventaires physiques : comptez, saisissez les écarts, validez.' },
-      { titre: 'Camions de minerais', texte: 'Suivi des camions et de leur règlement.' },
+      { titre: 'Camions de minerais', texte: "Suivi des camions et de leur règlement (module Mine, activé par l'administrateur)." },
+      { titre: 'Inventaire du patrimoine', texte: "Patrimoine › Inventaire et étiquettes : chaque bien relevé a son code ; imprimez les étiquettes (code QR) et collez-les. « Valoriser » : saisissez la valeur et la date. À partir de 100 USD, la fiche d'amortissement (durée SYSCOHADA de la catégorie) est créée et l'acquisition comptabilisée ; en dessous, c'est du petit matériel suivi sans écriture. La fiche se modifie ensuite dans Patrimoine › Immobilisations (crayon)." },
+      { titre: 'Sorties de consommables', texte: "Patrimoine › Sorties de consommables › Nouvelle sortie : choisissez le consommable et l'entrepôt, la quantité et le service qui le reçoit. La sortie est validée d'un coup et sa charge passe en comptabilité au coût moyen." },
     ],
   },
   {
@@ -129,9 +132,51 @@ export const FICHES_AIDE: FicheAide[] = [
     taches: [
       { titre: 'Immobilisations', texte: "Patrimoine › Immobilisations : enregistrez chaque bien (date, valeur, durée) ; le plan d'amortissement est calculé." },
       { titre: 'Amortissements', texte: 'Patrimoine › Amortissements : dotations de la période, à comptabiliser.' },
-      { titre: 'Consommables et inventaires', texte: 'Suivez les consommables et faites les inventaires du patrimoine.' },
+      { titre: 'Consommables et inventaires', texte: 'Suivez les consommables et faites les inventaires du patrimoine. Patrimoine › Sorties de consommables liste les fournitures remises aux services (saisies par la logistique).' },
       { titre: 'Notes de frais', texte: 'Vos dépenses passent par une note de frais, comme pour les autres services.' },
     ],
+  },
+  {
+    role: 'RECEPTIONNISTE',
+    icone: 'mdi-room-service-outline',
+    resume: "Vous tenez la réception de l'hôtellerie : réservations, arrivées, départs et encaissement des folios.",
+    taches: [
+      { titre: "Ouvrir l'hôtellerie", texte: "Menu Hôtellerie › Ouvrir l'hôtellerie : l'application s'ouvre dans un nouvel onglet, déjà connectée à votre compte." },
+      { titre: 'Réservations et calendrier', texte: 'Le calendrier montre chaque unité jour par jour ; une unité ne peut pas être réservée deux fois sur les mêmes dates.' },
+      { titre: 'Arrivée', texte: "Fiche du client, pièce d'identité, unité attribuée, code d'accès ou clé ; acompte et caution s'encaissent ici." },
+      { titre: 'Départ et encaissement', texte: "Le folio (nuitées et extras) devient une vente M-FINAPP : vous l'encaissez en caisse, banque ou mobile money ; l'acompte et la caution retenue s'imputent d'eux-mêmes." },
+    ],
+    limites: ["Vous n'encaissez que les folios de l'hôtellerie.", 'Les annulations de ventes validées restent à l\'administrateur de M-FINAPP.'],
+  },
+  {
+    role: 'GOUVERNANTE',
+    icone: 'mdi-broom',
+    resume: "Vous suivez le ménage : état de chaque unité et tâches de nettoyage créées aux départs.",
+    taches: [
+      { titre: 'État des unités', texte: 'Propre, à nettoyer, en cours, hors service : mettez à jour l\'état depuis la tablette ou le téléphone.' },
+      { titre: 'Tâches', texte: 'Chaque départ crée une tâche « à nettoyer » ; marquez-la terminée pour rendre l\'unité disponible.' },
+    ],
+    limites: ["Vous n'encaissez rien et ne modifiez pas les réservations."],
+  },
+  {
+    role: 'TECHNICIEN',
+    icone: 'mdi-tools',
+    resume: 'Vous traitez la maintenance des unités : réparations signalées par la réception ou le ménage.',
+    taches: [
+      { titre: 'Tickets', texte: 'Ouvrez le ticket, indiquez l\'avancement ; une unité hors service est bloquée dans le calendrier jusqu\'à la fin de la réparation.' },
+    ],
+    limites: ["Les achats de pièces passent par une note de frais dans M-FINAPP."],
+  },
+  {
+    role: 'DIR_HEBERGEMENT',
+    icone: 'mdi-office-building-marker-outline',
+    resume: "Vous dirigez l'hébergement : établissements, unités, tarifs, et vous suivez l'occupation et le chiffre d'affaires.",
+    taches: [
+      { titre: 'Établissements et unités', texte: 'Hôtel, motel ou résidence ; types d\'unité, chambres et appartements, capacités.' },
+      { titre: 'Tarifs', texte: "Prix à l'heure, à la nuit, à la semaine ou au mois, par type d'unité." },
+      { titre: 'Suivi', texte: "Tableau de bord de l'hôtellerie : arrivées, départs, occupation ; le chiffre d'affaires figure aussi dans M-FINAPP (ventes, analytique 986)." },
+    ],
+    limites: ['Vous pouvez encaisser les folios comme la réception.'],
   },
   {
     role: 'RESP_RESTAURANT',

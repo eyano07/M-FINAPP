@@ -35,6 +35,10 @@ public class RoleLibelleService {
         PAR_DEFAUT.put(RoleType.RESP_RESTAURANT, "Responsable restaurant");
         PAR_DEFAUT.put(RoleType.RESP_CUISINE, "Responsable cuisine");
         PAR_DEFAUT.put(RoleType.RESP_BAR, "Responsable bar");
+        PAR_DEFAUT.put(RoleType.RECEPTIONNISTE, "Réceptionniste");
+        PAR_DEFAUT.put(RoleType.GOUVERNANTE, "Gouvernante (ménage)");
+        PAR_DEFAUT.put(RoleType.TECHNICIEN, "Technicien de maintenance");
+        PAR_DEFAUT.put(RoleType.DIR_HEBERGEMENT, "Directeur de l'hébergement");
     }
 
     private final RoleLibelleRepository repository;

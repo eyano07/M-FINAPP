@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // Audit SYSCOHADA du 10/11/2026, C-11 : charges et produits constatés d'avance, factures non parvenues, produits à
 // recevoir. Chaque régularisation écrit sa pièce à la date d'arrêté et son extourne au lendemain.
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
@@ -30,7 +31,8 @@ const TYPES = [
   { value: 'FAE', title: 'Facture à établir (D 4181 / C produit)', prefixe: '7', defaut: '4181' },
 ]
 
-const annee = ref(new Date().getFullYear() - (new Date().getMonth() < 3 ? 1 : 0))
+const exerciceConsulte = useExerciceStore()
+const annee = ref(exerciceConsulte.enConsultation ? exerciceConsulte.anneeChoisie : new Date().getFullYear() - (new Date().getMonth() < 3 ? 1 : 0))
 const liste = ref<Regularisation[]>([])
 const loading = ref(false)
 const envoi = ref(false)

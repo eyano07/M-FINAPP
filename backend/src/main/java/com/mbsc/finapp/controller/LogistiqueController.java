@@ -23,6 +23,7 @@ public class LogistiqueController {
 
     private final StockService service;
     private final StockExcelService excelService;
+    private final com.mbsc.finapp.service.SortieConsommableService sortiesConsommables;
 
     // Articles
     @GetMapping("/articles")
@@ -79,6 +80,20 @@ public class LogistiqueController {
     @ResponseStatus(HttpStatus.CREATED)
     public MouvementResponse creerMouvement(@Valid @RequestBody MouvementRequest req) {
         return service.creerMouvement(req);
+    }
+
+    /** Sorties de consommables (19/11/2026) : lignes de sortie des articles CONSOMMABLE, la plus récente d'abord. */
+    @GetMapping("/consommables/sorties")
+    public List<com.mbsc.finapp.dto.logistique.SortieConsommableResponse> listerSortiesConsommables() {
+        return sortiesConsommables.lister();
+    }
+
+    /** Sortie de consommables : mouvement de SORTIE créé et validé d'un coup (charge au coût moyen). */
+    @PostMapping("/consommables/sorties")
+    @ResponseStatus(HttpStatus.CREATED)
+    public MouvementResponse sortirConsommables(
+            @Valid @RequestBody com.mbsc.finapp.dto.logistique.SortieConsommableRequest req) {
+        return sortiesConsommables.sortir(req);
     }
 
     @PostMapping("/mouvements/{id}/valider")

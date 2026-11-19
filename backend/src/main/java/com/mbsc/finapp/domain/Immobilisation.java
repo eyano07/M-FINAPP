@@ -97,6 +97,10 @@ public class Immobilisation {
     @Column(name = "numero_serie", length = 100)
     private String numeroSerie;
 
+    /** Code d'inventaire collé sur le bien (V153), repris de la fiche d'inventaire. */
+    @Column(name = "code_inventaire", length = 60, unique = true)
+    private String codeInventaire;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "piece_acquisition_id")
     private PieceComptable pieceAcquisition;

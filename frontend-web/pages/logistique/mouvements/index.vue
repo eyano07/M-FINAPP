@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // StockService.listerMouvements exclut le caissier, qui a pourtant le
 // module en LECTURE pour le catalogue : sans ce controle il voyait la page.
 definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] })
@@ -53,7 +54,8 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    mouvements.value = await api<Mouvement[]>('/logistique/mouvements')
+    // Ancien exercice choisi dans la barre du haut : ses mouvements seulement.
+    mouvements.value = (await api<Mouvement[]>('/logistique/mouvements')).filter(m => useExerciceStore().dansExercice(m.dateMouvement))
   } catch (e: any) {
     erreur.value = e?.data?.message || 'Impossible de charger les mouvements.'
   } finally {

@@ -41,6 +41,11 @@ public enum ModuleMetier {
      */
     FACTURATION_NORMALISEE,
     LOGISTIQUE,
+    /**
+     * Mine (19/11/2026), sous-module de LOGISTIQUE : minerais suivis camion par camion (réception, charges, vente au
+     * prix du chargement, règlement des camions). Désactivé, ses pages et ses fonctions disparaissent du site.
+     */
+    MINE,
     TRANSPORT,
     /** Biens immobilises et consommables (registre, amortissements). */
     PATRIMOINE,
@@ -59,7 +64,12 @@ public enum ModuleMetier {
      * (bouteilles, bacs). Module plat, sans sous-module : l'administrateur
      * l'active ou le coupe d'un seul geste, comme {@link #PATRIMOINE}.
      */
-    RESTAURANT;
+    RESTAURANT,
+    /**
+     * Hôtellerie (V152) : M-FINAPP Hôtellerie, application à part (PMS) reliée à celle-ci par une clé d'appairage. Le
+     * module ouvre la connexion unique et l'API {@code /pms/**} (folios, acomptes, cautions) ; coupé, le PMS est refusé.
+     */
+    HOTELLERIE;
 
     /**
      * Module parent dans la hierarchie (DRH et ses quatre sous-modules, COMPTABILITE avec BUDGET et RAPPROCHEMENT,
@@ -73,6 +83,7 @@ public enum ModuleMetier {
             case DRH_PERSONNEL, DRH_PRESENCES, DRH_PAIE, DRH_MISSIONS -> DRH;
             case BUDGET, RAPPROCHEMENT -> COMPTABILITE;
             case FACTURATION_NORMALISEE -> VENTES;
+            case MINE -> LOGISTIQUE;
             default -> null;
         };
     }

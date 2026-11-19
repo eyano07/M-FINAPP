@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'MOBILE_MONEY', niveau: 'ECRITURE', roles: ['CAISSIER'] })
 
 interface Transaction {
@@ -93,7 +94,8 @@ async function charger() {
         manifestement fausse plutot que plausible. */,
       api<Etablissement[]>('/etablissements?type=MOBILE_MONEY').catch(() => []),
     ])
-    transactions.value = txs
+    // Ancien exercice consulté : soldes cumulés jusqu'au 31 décembre, tableau limité à l'exercice.
+    transactions.value = useExerciceStore().enConsultation ? txs.filter(t => t.dateOperation.slice(0, 10) <= useExerciceStore().fin) : txs
     comptes.value = cpts
     // 0 et non 1 : un repli a 1 traiterait les FC comme des USD sans le signaler.
     tauxChange.value = tauxData.taux || 0
@@ -273,6 +275,7 @@ const totalDecaissement = computed(() =>
   transactions.value.filter((t) => t.sens === 'DECAISSEMENT').reduce((s, t) => s + t.montant, 0)
 )
 const solde = computed(() => totalEncaissement.value - totalDecaissement.value)
+const transactionsExercice = computed(() => transactions.value.filter(t => useExerciceStore().dansExercice(t.dateOperation)))
 
 const comptesOptions = computed(() =>
   comptes.value.map((c) => ({ title: `${c.numero} — ${c.libelle}`, value: c.numero }))
@@ -402,7 +405,7 @@ const fmtTaux = computed(() =>
         Historique des opérations
       </v-card-title>
       <v-data-table
-        :items="transactions"
+        :items="transactionsExercice"
         :loading="loading"
         density="comfortable"
         items-per-page="15"

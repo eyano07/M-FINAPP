@@ -1,3 +1,4 @@
+import { useExerciceStore } from '~/stores/exercice'
 import { defineStore } from 'pinia'
 import { usePermissionsStore, type ModuleMetier } from '~/stores/permissions'
 
@@ -130,6 +131,10 @@ export const useAuthStore = defineStore('auth', {
       // bord est celui des provisions.
       if (roles.includes('RESP_CUISINE') && accessible('RESTAURANT')) {
         return '/restaurant/provisions/tableau-bord'
+      }
+      // Hôtellerie (V152) : les rôles de l'hébergement travaillent dans l'application Hôtellerie, ouverte d'ici.
+      if (roles.some(r => ['RECEPTIONNISTE', 'GOUVERNANTE', 'TECHNICIEN', 'DIR_HEBERGEMENT'].includes(r)) && accessible('HOTELLERIE')) {
+        return '/hotellerie'
       }
       // Directeur metier (et tout role sans tableau de bord) : ses notes.
       return '/notes-frais'
@@ -271,6 +276,8 @@ export const useAuthStore = defineStore('auth', {
         localStorage.removeItem('mbsc_refresh')
         localStorage.removeItem('mbsc_user')
       }
+      // Exercice consulté : le prochain compte connecté repart de l'exercice en cours.
+      useExerciceStore().oublier()
       // Le store des permissions ne recharge qu'une fois par session (son
       // flag "charge" reste a true tant que la page n'est pas rechargee) :
       // sans cette reinitialisation, le prochain compte connecte dans la

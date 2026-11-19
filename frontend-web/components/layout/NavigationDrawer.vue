@@ -159,14 +159,18 @@ const logistiqueItems: NavItem[] = [
   { title: 'État du stock', icon: 'mdi-clipboard-list-outline', to: '/logistique/stock', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
   // Minerais : suivi camion par camion, chaque chargement ayant son propre
   // prix de vente (voir pages/logistique/minerais.vue).
-  { title: 'Camions de minerais', icon: 'mdi-dump-truck', to: '/logistique/minerais', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
+  { title: 'Camions de minerais', icon: 'mdi-dump-truck', to: '/logistique/minerais', module: 'MINE', roles: LOGISTIQUE_HORS_CAISSIER },
   { title: 'Grand livre stock', icon: 'mdi-book-open-page-variant-outline', to: '/logistique/stock/grand-livre', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
   { title: 'Inventaires physiques', icon: 'mdi-clipboard-check-multiple-outline', to: '/logistique/inventaires', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
 ]
 const patrimoineItems: NavItem[] = [
   { title: 'Immobilisations', icon: 'mdi-office-building-cog-outline', to: '/patrimoine/immobilisations', module: 'PATRIMOINE' },
+  // Inventaire (19/11/2026) : biens relevés, codes à coller (étiquettes QR), valorisation par la logistique.
+  { title: 'Inventaire et étiquettes', icon: 'mdi-qrcode-scan', to: '/patrimoine/inventaire', module: 'PATRIMOINE' },
   { title: 'Amortissements', icon: 'mdi-chart-timeline-variant-shimmer', to: '/patrimoine/amortissements', module: 'PATRIMOINE' },
   { title: 'Consommables', icon: 'mdi-package-variant', to: '/patrimoine/consommables', module: 'PATRIMOINE' },
+  // Sorties de consommables (19/11/2026) : remises aux services, passées en charge automatiquement.
+  { title: 'Sorties de consommables', icon: 'mdi-package-variant-remove', to: '/patrimoine/sorties-consommables', module: 'PATRIMOINE' },
   { title: 'Inventaires', icon: 'mdi-clipboard-check-outline', to: '/patrimoine/inventaires', module: 'PATRIMOINE' },
 ]
 const transportItems: NavItem[] = [
@@ -252,6 +256,11 @@ const drhItems: NavItem[] = [
   { title: 'Rotations', icon: 'mdi-account-sync-outline', to: '/drh/rotations', module: 'DRH_MISSIONS' },
 ]
 
+// Hôtellerie (V152) : l'application PMS s'ouvre par une connexion unique depuis cette page.
+const hotellerieItems: NavItem[] = [
+  { title: "Ouvrir l'hôtellerie", icon: 'mdi-bed-outline', to: '/hotellerie', module: 'HOTELLERIE' },
+]
+
 const adminItems: NavItem[] = [
   { title: 'Utilisateurs', icon: 'mdi-account-group-outline', to: '/admin/users', roles: ['ADMIN'] },
   { title: 'Banques & Mobile Money', icon: 'mdi-bank-outline', to: '/admin/etablissements', roles: ['ADMIN'] },
@@ -263,6 +272,7 @@ const adminItems: NavItem[] = [
   { title: "Journal d'audit", icon: 'mdi-clipboard-text-clock-outline', to: '/admin/audit', roles: ['ADMIN'] },
   { title: 'Messagerie (e-mails)', icon: 'mdi-email-fast-outline', to: '/admin/messagerie', roles: ['ADMIN'] },
   { title: 'Modules', icon: 'mdi-view-grid-outline', to: '/admin/modules', roles: ['ADMIN'] },
+  { title: 'Hôtellerie (PMS)', icon: 'mdi-bed-outline', to: '/admin/hotellerie', roles: ['ADMIN'], module: 'HOTELLERIE' },
   { title: 'Serveur local et synchronisation', icon: 'mdi-server-network', to: '/admin/synchronisation', roles: ['ADMIN'] },
   { title: 'Permissions', icon: 'mdi-shield-key-outline', to: '/admin/permissions', roles: ['ADMIN'] },
   // Administrateur seul : l'import ecrit la tresorerie sans note de frais.
@@ -315,6 +325,7 @@ const GROUPES: NavGroup[] = [
   { id: 'logistique', label: 'Logistique', items: logistiqueItems },
   { id: 'patrimoine', label: 'Patrimoine', items: patrimoineItems },
   { id: 'restaurant', label: 'Restaurant', items: restaurantItems },
+  { id: 'hotellerie', label: 'Hôtellerie', items: hotellerieItems },
   { id: 'drh', label: 'DRH', items: drhItems },
   { id: 'transport', label: 'Transport', items: transportItems },
   { id: 'admin', label: 'Administration', items: adminItems },

@@ -3,6 +3,7 @@ import { useAuthStore } from '~/stores/auth'
 import { useNotificationsStore, type NotificationItem } from '~/stores/notifications'
 import { useParametresStore } from '~/stores/parametres'
 import { useInstanceStore } from '~/stores/instance'
+import { useExerciceStore, type Exercice } from '~/stores/exercice'
 import { estApplicationMobile } from '~/utils/applicationMobile'
 
 defineProps<{ drawerOpen: boolean }>()
@@ -23,6 +24,16 @@ const auth = useAuthStore()
 const { logout } = useAuth()
 const notif = useNotificationsStore()
 const parametresStore = useParametresStore()
+
+// Exercice consulté (19/11/2026) : liste déroulante du site (pas dans l'application Android). Un exercice clôturé se
+// consulte en lecture seule ; la page en cours est reconstruite avec les bornes du nouvel exercice (layouts/default.vue).
+const exercice = useExerciceStore()
+const STATUTS_EXERCICE: Record<Exercice['statut'], { libelle: string, icone: string, couleur: string }> = {
+  CLOTURE: { libelle: 'Clôturé · lecture seule', icone: 'mdi-lock-outline', couleur: 'deep-purple' },
+  A_CLOTURER: { libelle: 'À clôturer', icone: 'mdi-calendar-alert', couleur: 'warning' },
+  EN_COURS: { libelle: 'En cours', icone: 'mdi-calendar-check', couleur: 'success' },
+  A_VENIR: { libelle: 'À venir', icone: 'mdi-calendar-arrow-right', couleur: 'info' },
+}
 const instance = useInstanceStore()
 
 /** Serveur local : état de la synchronisation avec le serveur en ligne (pastille de la barre). */
@@ -166,6 +177,30 @@ async function ouvrirNotification(n: NotificationItem) {
 
     <v-spacer class="modern-appbar__espace" />
 
+    <v-menu v-if="!applicationMobile && exercice.liste.length > 0" location="bottom end" max-height="420">
+      <template #activator="{ props }">
+        <v-btn v-bind="props" variant="tonal" size="small" rounded="lg" class="modern-appbar__exercice"
+          :color="exercice.lectureSeule ? 'deep-purple' : exercice.enConsultation ? 'warning' : undefined"
+          :class="{ 'modern-appbar__exercice--courant': !exercice.enConsultation }"
+          :aria-label="`Exercice comptable ${exercice.anneeChoisie} : changer d'exercice`">
+          <v-icon :icon="exercice.lectureSeule ? 'mdi-lock-outline' : 'mdi-calendar-blank-outline'" size="18" class="mr-1" />
+          <span class="modern-appbar__exercice-libelle">Exercice&nbsp;</span>{{ exercice.anneeChoisie }}
+          <v-icon icon="mdi-chevron-down" size="18" class="ml-1" />
+        </v-btn>
+      </template>
+      <v-list density="compact" class="exercice-menu" aria-label="Exercices comptables">
+        <v-list-subheader>Exercices comptables</v-list-subheader>
+        <v-list-item v-for="e in exercice.liste" :key="e.annee" :active="e.annee === exercice.anneeChoisie"
+          color="primary" @click="exercice.choisir(e.annee)">
+          <template #prepend>
+            <v-icon :icon="STATUTS_EXERCICE[e.statut].icone" :color="STATUTS_EXERCICE[e.statut].couleur" size="20" />
+          </template>
+          <v-list-item-title>Exercice {{ e.annee }}</v-list-item-title>
+          <v-list-item-subtitle>{{ STATUTS_EXERCICE[e.statut].libelle }}</v-list-item-subtitle>
+        </v-list-item>
+      </v-list>
+    </v-menu>
+
     <v-menu location="bottom end">
       <template #activator="{ props }">
         <v-btn icon variant="text" size="small" class="modern-appbar__action" v-bind="props"
@@ -179,7 +214,7 @@ async function ouvrirNotification(n: NotificationItem) {
       </v-list>
     </v-menu>
 
-    <v-btn icon variant="text" size="small" aria-label="Aide" class="modern-appbar__action modern-appbar__action--pc">
+    <v-btn icon variant="text" size="small" aria-label="Aide" class="modern-appbar__action modern-appbar__action--pc" to="/aide">
       <v-icon icon="mdi-help-circle-outline" size="20" />
     </v-btn>
 
@@ -349,6 +384,7 @@ async function ouvrirNotification(n: NotificationItem) {
 .modern-appbar__page { display: none; }
 @media screen and (max-width: 959px) {
   .modern-appbar__brand,
+  .modern-appbar__exercice-libelle { display: none; }
   .modern-appbar__action--pc,
   .modern-appbar__espace { display: none !important; }
 
@@ -640,4 +676,19 @@ async function ouvrirNotification(n: NotificationItem) {
 <style>
 /* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
 html[data-theme='dark'] .user-menu__logout:hover { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+.modern-appbar__exercice {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  margin-right: 6px;
+  min-width: 0;
+  padding: 0 10px !important;
+}
+.exercice-menu { min-width: 240px; }
+/* Exercice en cours : couleur du thème choisi (variable --color-primary), pas le vert fixe de Vuetify. */
+.modern-appbar__exercice--courant {
+  color: var(--color-primary) !important;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important;
+}
+.modern-appbar__exercice--courant :deep(.v-btn__overlay) { background: var(--color-primary); }
 </style>

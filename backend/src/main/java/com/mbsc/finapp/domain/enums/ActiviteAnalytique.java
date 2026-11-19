@@ -13,7 +13,9 @@ public enum ActiviteAnalytique {
     CUISINE("982", "Cuisine (plats)"),
     MARCHANDISES("983", "Marchandises"),
     MINERAIS("984", "Minerais"),
-    SERVICES("985", "Services");
+    SERVICES("985", "Services"),
+    /** Hébergement (V152) : séjours vendus par l'application Hôtellerie. */
+    HEBERGEMENT("986", "Hébergement");
 
     private final String compte;
     private final String libelle;
@@ -50,6 +52,9 @@ public enum ActiviteAnalytique {
     public static ActiviteAnalytique de(Article article) {
         if (article.isMinerais()) {
             return MINERAIS;
+        }
+        if (article.isHebergement()) {
+            return HEBERGEMENT;
         }
         return switch (article.getType()) {
             case BOISSON -> BAR;

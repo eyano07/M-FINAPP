@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { usePermissionsStore } from '~/stores/permissions'
+import { useExerciceStore } from '~/stores/exercice'
 // Comptabilité analytique de gestion (CAGE) — SYSCOHADA révisé, classe 9,
 // comptes 92 à 99. Le référentiel ne fixe que ces rubriques à deux chiffres :
 // l'entité les subdivise librement (ex. 9411 Coût atelier A).
@@ -68,8 +70,8 @@ const etat = ref<EtatAnalytique | null>(null)
 const afficherRubriques = ref(false)
 
 const filtres = reactive({
-  du: new Date().getFullYear() + '-01-01',
-  au: new Date().toISOString().slice(0, 10),
+  du: useExerciceStore().debut,
+  au: useExerciceStore().fin,
 })
 
 onMounted(charger)
@@ -174,8 +176,8 @@ const headers = [
 
     <v-alert type="info" variant="tonal" density="compact" class="mb-4 ana-info" icon="mdi-chart-box-outline">
       Les <strong>ventes validées</strong> alimentent automatiquement la classe 9 : leur chiffre d'affaires HT et leur coût des
-      ventes passent, par activité, dans les comptes <strong>98</strong> (981 Bar, 982 Cuisine, 983 Marchandises, 984 Minerais,
-      985 Services), en contrepartie des comptes réfléchis 927 et 926. Le solde créditeur d'un compte 98 est la marge de
+      ventes passent, par activité, dans les comptes <strong>98</strong> (<template v-if="usePermissionsStore().peutVoir('RESTAURANT')">981 Bar,
+      982 Cuisine, </template>983 Marchandises, <template v-if="usePermissionsStore().peutVoir('MINE')">984 Minerais, </template>985 Services), en contrepartie des comptes réfléchis 927 et 926. Le solde créditeur d'un compte 98 est la marge de
       l'activité ; une vente annulée est contre-passée. Toute autre analyse (coûts par centre, répartitions) se saisit en pièce
       comptable, journal « Analytique ».
     </v-alert>

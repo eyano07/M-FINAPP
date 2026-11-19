@@ -73,15 +73,19 @@ class DroitsParDefautTest {
      * Total de la grille livree par les migrations V28 a V104 : 49 lignes une fois V29, V30 et V40 appliquees,
      * plus les 4 droits du module BUDGET (V104 : DFIN, DA, DG, COMPTABLE) et les 5 du module RAPPROCHEMENT (V105),
      * plus les 4 droits des responsables cuisine et bar (V124 : RESTAURANT en ecriture et LOGISTIQUE en lecture,
-     * pour chacun des deux roles — poses a la creation du premier compte, voir DroitsParDefaut).
+     * pour chacun des deux roles — poses a la creation du premier compte, voir DroitsParDefaut), plus les 7 du module
+     * MINE (V151 : les droits LOGISTIQUE du caissier, du DFIN, du DA, du DG, du comptable, de la logistique et du
+     * patrimoine, sans les responsables du restaurant), plus les 9 du module HOTELLERIE (V152 : lecture du DG, du DFIN,
+     * du DA et du comptable ; écriture des quatre rôles de l'hébergement ; ventes en lecture pour la direction de
+     * l'hébergement), plus 1 pour la logistique, qui tient l'inventaire et les fiches du patrimoine (V153).
      */
     @Test
-    void la_grille_d_origine_reprend_les_62_droits_des_migrations() {
+    void la_grille_d_origine_reprend_les_79_droits_des_migrations() {
         int total = 0;
         for (RoleType role : RoleType.values()) {
             total += DroitsParDefaut.pour(role).size();
         }
-        assertThat(total).isEqualTo(62);
+        assertThat(total).isEqualTo(79);
     }
 
     /**
@@ -145,7 +149,7 @@ class DroitsParDefautTest {
             List.of(RoleType.LOGISTIQUE, RoleType.GEST_PATRIMOINE, RoleType.LOGISTIQUE));
 
         assertThat(appliques).containsExactly(RoleType.LOGISTIQUE, RoleType.GEST_PATRIMOINE);
-        // LOGISTIQUE : 2 modules, GEST_PATRIMOINE : 2 modules.
-        verify(repository, times(4)).save(any(RolePermission.class));
+        // LOGISTIQUE : 4 modules (LOGISTIQUE, MINE, TRANSPORT, PATRIMOINE), GEST_PATRIMOINE : 3 (PATRIMOINE, LOGISTIQUE, MINE).
+        verify(repository, times(7)).save(any(RolePermission.class));
     }
 }

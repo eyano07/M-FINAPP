@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Extension du stock : même module, mêmes rôles que les autres écrans
 // logistiques (le caissier reste exclu, comme sur Articles).
-definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN'] })
+definePageMeta({ module: 'MINE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN'] })
 
 interface Article { id: number; code: string; libelle: string; minerais?: boolean; actif: boolean }
 interface Entrepot { id: number; nom: string; actif: boolean }

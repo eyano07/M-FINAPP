@@ -1,4 +1,5 @@
 import { useAuthStore } from '~/stores/auth'
+import { useExerciceStore } from '~/stores/exercice'
 
 /** Promesse partagée : un seul rafraîchissement simultané pour toute l'app. */
 let refreshEnCours: Promise<boolean> | null = null
@@ -25,6 +26,13 @@ export function useApi() {
       if (auth.accessToken) {
         options.headers = new Headers(options.headers as HeadersInit)
         options.headers.set('Authorization', `Bearer ${auth.accessToken}`)
+      }
+      // Autre exercice que l'exercice en cours, choisi dans la barre du haut : le serveur refuse les saisies s'il est
+      // clôturé (ExerciceConsulteFilter, 423).
+      const exercice = useExerciceStore()
+      if (exercice.enConsultation) {
+        options.headers = new Headers(options.headers as HeadersInit)
+        options.headers.set('X-Exercice', String(exercice.anneeChoisie))
       }
     },
     async onResponseError({ response }) {

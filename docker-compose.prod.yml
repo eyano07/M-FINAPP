@@ -115,10 +115,93 @@ services:
     networks: [mbsc-net]
     logging: *journaux
 
+  # ---------------------------------------------------------------------------------------------------------------
+  # M-FINAPP Hôtellerie (PMS), profil « pms » : docker compose --profile pms up -d
+  # Une application à part (sa base mbsc_pms dans le même conteneur de base), reliée à M-FINAPP par une clé
+  # d'appairage : Administration › Hôtellerie (adresse de ce serveur et port PMS_PORT, 8090 par défaut).
+  # Variables du .env : PMS_DB_PASSWORD, PMS_LECTEUR_PASSWORD, PMS_SECRETS_KEY (voir pms/README.md).
+  # ---------------------------------------------------------------------------------------------------------------
+  pms-init:
+    image: postgres:16-alpine
+    container_name: ${CONTENEURS:-mbsc}-pms-init
+    profiles: [pms]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      POSTGRES_DB: ${POSTGRES_DB:-mbsc}
+      POSTGRES_USER: ${POSTGRES_USER:-mbsc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mbsc_secret}
+      PMS_DB_PASSWORD: ${PMS_DB_PASSWORD:-}
+      PMS_LECTEUR_PASSWORD: ${PMS_LECTEUR_PASSWORD:-}
+    volumes:
+      - ./pms/init/init-pms.sh:/init-pms.sh:ro
+    entrypoint: ["sh", "/init-pms.sh"]
+    restart: "no"
+    networks: [mbsc-net]
+    logging: *journaux
+
+  pms-backend:
+    image: ${PMS_BACKEND_IMAGE:-eyano3535/finapp:pms-backend-1.0}
+    container_name: ${CONTENEURS:-mbsc}-pms-backend
+    profiles: [pms]
+    restart: unless-stopped
+    depends_on:
+      pms-init:
+        condition: service_completed_successfully
+    environment:
+      PMS_DATASOURCE_URL: jdbc:postgresql://db:5432/mbsc_pms
+      PMS_DATASOURCE_USERNAME: pms_app
+      PMS_DATASOURCE_PASSWORD: ${PMS_DB_PASSWORD:-}
+      PMS_FINAPP_URL: ${PMS_FINAPP_URL:-http://backend:8080}
+      PMS_SECRETS_KEY: ${PMS_SECRETS_KEY:-}
+      # Même fuseau que M-FINAPP : heures d'arrivée et de départ des établissements.
+      PMS_FUSEAU_HORAIRE: ${APP_FUSEAU_HORAIRE:-Africa/Lubumbashi}
+    volumes:
+      - pms_uploads:/app/data/uploads   # pièces d'identité des clients
+      - pms_logs:/app/data/logs         # journal d'audit de l'hôtellerie : à conserver, jamais à supprimer
+    expose: ["8080"]
+    networks: [mbsc-net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/sante || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+    logging: *journaux
+
+  pms-frontend:
+    image: ${PMS_FRONTEND_IMAGE:-eyano3535/finapp:pms-frontend-1.0}
+    container_name: ${CONTENEURS:-mbsc}-pms-frontend
+    profiles: [pms]
+    restart: unless-stopped
+    depends_on: [pms-backend]
+    environment:
+      NUXT_PUBLIC_API_BASE: /api
+    expose: ["3000"]
+    networks: [mbsc-net]
+    logging: *journaux
+
+  pms-nginx:
+    image: nginx:1.27-alpine
+    container_name: ${CONTENEURS:-mbsc}-pms-nginx
+    profiles: [pms]
+    restart: unless-stopped
+    depends_on: [pms-backend, pms-frontend]
+    ports:
+      - "${PMS_PORT:-8090}:80"
+    volumes:
+      - ./pms/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [mbsc-net]
+    logging: *journaux
+
 volumes:
   db_data:
   backend_uploads:
   backend_logs:   # journal d'audit : a conserver et a sauvegarder, jamais a supprimer
+  pms_uploads:
+  pms_logs:       # journal d'audit de l'hôtellerie : à conserver, jamais à supprimer
 
 networks:
   mbsc-net:

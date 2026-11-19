@@ -86,6 +86,20 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
     """)
     List<Object[]> calculerBalance();
 
+    /** Comme {@link #calculerBalance()}, arrêtée au jour donné inclus (exercice passé consulté : soldes au 31/12). */
+    @Query("""
+        select c.numero, c.libelle, c.type,
+               coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
+        from EcritureGrandLivre e
+        join e.compte c
+        left join e.piece p
+        where (p is null or p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON)
+          and e.dateEcriture <= :au
+        group by c.numero, c.libelle, c.type
+        order by c.numero
+    """)
+    List<Object[]> calculerBalanceAu(@org.springframework.data.repository.query.Param("au") java.time.LocalDate au);
+
     /**
      * Mouvements du jour sur les comptes de trésorerie (classe 5), hors pièces en brouillon :
      * [numeroCompte, totalDebit (entrées), totalCredit (sorties)]. Widget Trésorerie de l'écran d'accueil.

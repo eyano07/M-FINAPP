@@ -109,7 +109,9 @@ enum RegleVisibiliteNote {
 
     /** Les trois roles du restaurant : le responsable global, le responsable cuisine et le responsable bar. */
     private static final List<String> AUTORITES_RESTAURANT =
-        List.of("ROLE_RESP_RESTAURANT", "ROLE_RESP_CUISINE", "ROLE_RESP_BAR");
+        List.of("ROLE_RESP_RESTAURANT", "ROLE_RESP_CUISINE", "ROLE_RESP_BAR",
+            // Hôtellerie (V152) : même règle pour les quatre rôles de l'hébergement, qui ne voient que leurs notes.
+            "ROLE_RECEPTIONNISTE", "ROLE_GOUVERNANTE", "ROLE_TECHNICIEN", "ROLE_DIR_HEBERGEMENT");
 
     /**
      * Vrai si l'utilisateur n'a QUE des roles du restaurant (RESP_RESTAURANT, RESP_CUISINE, RESP_BAR : pas

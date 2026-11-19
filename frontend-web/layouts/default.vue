@@ -2,6 +2,7 @@
 import { useDisplay } from 'vuetify'
 import { useInstanceStore } from '~/stores/instance'
 import { useAuthStore } from '~/stores/auth'
+import { useExerciceStore } from '~/stores/exercice'
 import { estApplicationMobile } from '~/utils/applicationMobile'
 
 // Ferme par defaut sur mobile (l'overlay couvrirait sinon toute la page a
@@ -14,7 +15,11 @@ const drawer = ref(!mobile.value)
 // Mode du serveur (copie en ligne, serveur local...) : bandeau et pastille de la barre, rafraîchis chaque minute.
 const instance = useInstanceStore()
 let minuterie: ReturnType<typeof setInterval> | null = null
+// Exercice consulté (sélecteur de la barre du haut) : la page est reconstruite à chaque changement, avec ses bornes.
+const exercice = useExerciceStore()
+exercice.hydrater()
 onMounted(() => {
+  void exercice.charger()
   void instance.charger()
   minuterie = setInterval(() => { void instance.charger() }, 60_000)
 })
@@ -34,7 +39,10 @@ const avecBarreBas = computed(() => estApplicationMobile() && auth.hasAnyRole(['
       <!-- Marges de page : 12 px (téléphone), 16 px (tablette), 24 px (PC). -->
       <v-container fluid class="pa-3 pa-sm-4 pa-md-6">
         <LayoutBandeauInstance />
-        <slot />
+        <LayoutBandeauExercice />
+        <div :key="exercice.anneeChoisie" class="page-exercice">
+          <slot />
+        </div>
       </v-container>
     </v-main>
     <LayoutBarreApplication />

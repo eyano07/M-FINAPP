@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 import type { RetourFonds } from '~/components/notes-frais/DetailRetourFonds.vue'
 
 const rolesStore = useRolesStore()
@@ -265,9 +266,11 @@ async function charger() {
       // (saisie caisse, journal importe, piece manuelle). Les transactions du
       // module ci-dessus n'en sont qu'une partie. Soldes de tresorerie seuls :
       // la balance generale est fermee au caissier.
-      api<LigneBalance[]>('/caisse/soldes-tresorerie').catch(() => [] as LigneBalance[]),
+      // Ancien exercice consulté : soldes arrêtés au 31 décembre.
+      api<LigneBalance[]>('/caisse/soldes-tresorerie', { query: useExerciceStore().enConsultation ? { au: useExerciceStore().fin } : undefined })
+        .catch(() => [] as LigneBalance[]),
     ])
-    transactions.value = txs
+    transactions.value = txs.filter(t => useExerciceStore().dansExercice(t.dateOperation))
     comptes.value = cpts
     soldeComptable.value = bal.find((l) => l.compteNumero === COMPTE_CAISSE) ?? null
     // 0 et non 1 : un repli a 1 traiterait les FC comme des USD sans le signaler.

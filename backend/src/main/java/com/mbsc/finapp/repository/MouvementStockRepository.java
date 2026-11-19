@@ -165,4 +165,23 @@ public interface MouvementStockRepository extends JpaRepository<MouvementStock, 
         where m.id in :ids
     """)
     List<MouvementStock> findAllByIdInWithLignes(@Param("ids") Collection<Long> ids);
+
+    /**
+     * Lignes de sortie de consommables (19/11/2026, page Patrimoine › Sorties de consommables) : chaque ligne avec son
+     * mouvement, l'article, l'entrepôt source et l'auteur, la plus récente d'abord. Mouvements annulés compris (statut
+     * affiché).
+     */
+    @Query("""
+        select l from LigneMouvementStock l
+        join fetch l.mouvement m
+        join fetch l.article a
+        left join fetch l.entrepotSource
+        left join fetch a.compteCharge
+        left join fetch m.createdBy
+        left join fetch m.piece
+        where m.type = com.mbsc.finapp.domain.enums.TypeMouvementStock.SORTIE
+          and a.type = com.mbsc.finapp.domain.enums.TypeArticle.CONSOMMABLE
+        order by m.dateMouvement desc, m.id desc, l.id
+    """)
+    List<com.mbsc.finapp.domain.LigneMouvementStock> lignesSortiesConsommables();
 }

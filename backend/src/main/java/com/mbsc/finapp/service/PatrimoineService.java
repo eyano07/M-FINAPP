@@ -180,6 +180,123 @@ public class PatrimoineService {
     }
 
     // -----------------------------------------------------------------
+    // Modification de la fiche (responsable logistique, 19/11/2026)
+    // -----------------------------------------------------------------
+
+    @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'LOGISTIQUE', 'ADMIN')")
+    @Transactional
+    public ImmobilisationResponse modifierFiche(Long id, com.mbsc.finapp.dto.patrimoine.FicheImmobilisationRequest req) {
+        Immobilisation immo = charger(id);
+        if (immo.estSorti()) {
+            throw new TransitionInvalideException("Le bien " + immo.getReference() + " est sorti du patrimoine : sa fiche est close.");
+        }
+        boolean dotationsPassees = immo.getPlanAmortissement().stream().anyMatch(LigneAmortissement::isComptabilise);
+        boolean acquisitionPassee = immo.getPieceAcquisition() != null;
+        StringBuilder changements = new StringBuilder();
+
+        immo.setLibelle(req.libelle().strip());
+        immo.setDescription(req.description());
+        immo.setLocalisation(req.localisation());
+        immo.setFournisseur(req.fournisseur());
+        immo.setNumeroSerie(req.numeroSerie());
+        if (req.categorie() != null && req.categorie() != immo.getCategorie()) {
+            changements.append("catégorie ").append(immo.getCategorie()).append(" → ").append(req.categorie()).append(" ; ");
+            immo.setCategorie(req.categorie());
+        }
+
+        // Valeur, dates et compte d'immobilisation : figés dès que l'acquisition ou une dotation est comptabilisée
+        // (une correction passe alors par une sortie ou une écriture de régularisation).
+        boolean valeurChange = req.valeurAcquisition() != null && req.valeurAcquisition().compareTo(immo.getValeurAcquisition()) != 0;
+        boolean dateChange = (req.dateMiseService() != null && !req.dateMiseService().equals(immo.getDateMiseService()))
+            || (req.dateAcquisition() != null && !req.dateAcquisition().equals(immo.getDateAcquisition()));
+        boolean compteImmoChange = req.compteImmobilisationNumero() != null && immo.getCompteImmobilisation() != null
+            && !req.compteImmobilisationNumero().equals(immo.getCompteImmobilisation().getNumero());
+        if ((valeurChange || dateChange || compteImmoChange) && (acquisitionPassee || dotationsPassees)) {
+            throw new TransitionInvalideException("La valeur, les dates et le compte d'immobilisation de " + immo.getReference()
+                + " sont déjà comptabilisés : ils ne se modifient plus (sortie du bien ou écriture de régularisation).");
+        }
+        if (valeurChange) {
+            changements.append("valeur ").append(immo.getValeurAcquisition()).append(" → ").append(req.valeurAcquisition()).append(" ; ");
+            immo.setValeurAcquisition(req.valeurAcquisition());
+        }
+        if (req.dateAcquisition() != null) immo.setDateAcquisition(req.dateAcquisition());
+        if (req.dateMiseService() != null) immo.setDateMiseService(req.dateMiseService());
+        if (immo.getDateMiseService().isBefore(immo.getDateAcquisition())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La mise en service ne peut pas précéder l'acquisition.");
+        }
+        if (compteImmoChange) {
+            immo.setCompteImmobilisation(resoudreCompte(req.compteImmobilisationNumero(), null, "immobilisation"));
+        }
+        if (req.compteAmortissementNumero() != null && !dotationsPassees) {
+            immo.setCompteAmortissement(resoudreCompte(req.compteAmortissementNumero(), null, "amortissement"));
+        }
+        if (req.compteDotationNumero() != null) {
+            immo.setCompteDotation(resoudreCompte(req.compteDotationNumero(), null, "dotation"));
+        }
+
+        // Plan : durée, mode, valeur résiduelle.
+        int duree = req.dureeMois() == null ? immo.getDureeMois() : req.dureeMois();
+        ModeAmortissement mode = req.modeAmortissement() == null ? immo.getModeAmortissement() : req.modeAmortissement();
+        BigDecimal residuelle = req.valeurResiduelle() == null ? immo.getValeurResiduelle() : req.valeurResiduelle();
+        boolean planChange = valeurChange || dateChange || duree != immo.getDureeMois() || mode != immo.getModeAmortissement()
+            || residuelle.compareTo(immo.getValeurResiduelle()) != 0;
+        if (residuelle.compareTo(immo.getValeurAcquisition()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La valeur résiduelle doit rester inférieure à la valeur d'acquisition.");
+        }
+        if (planChange) {
+            changements.append("plan : ").append(immo.getDureeMois()).append(" → ").append(duree).append(" mois, ")
+                .append(mode).append(", résiduelle ").append(residuelle).append(" ; ");
+            immo.setDureeMois(duree);
+            immo.setModeAmortissement(mode);
+            immo.setValeurResiduelle(residuelle);
+            if (dotationsPassees) {
+                replanifierSuite(immo);
+            } else {
+                immo.getPlanAmortissement().clear();
+                immobilisationRepository.flush();
+                construirePlan(immo);
+            }
+        }
+        com.mbsc.finapp.audit.AuditService.detailler("Fiche " + immo.getReference() + " modifiée : "
+            + (changements.length() == 0 ? "informations" : changements) + (req.motif() == null ? "" : " Motif : " + req.motif()));
+        log.info("Fiche d'immobilisation modifiee [ref={}, {}]", immo.getReference(), changements);
+        return ImmobilisationResponse.from(immobilisationRepository.save(immo));
+    }
+
+    /**
+     * Changement d'estimation après des dotations comptabilisées : les échéances passées restent ; le reste à amortir
+     * (base moins cumul comptabilisé) est réparti, en linéaire, sur les mois restants de la nouvelle durée — jamais moins
+     * d'un mois. Le mode dégressif ne se reprend pas en cours de plan (il resterait sinon un résidu fiscal incohérent).
+     */
+    private void replanifierSuite(Immobilisation immo) {
+        List<LigneAmortissement> passees = immo.getPlanAmortissement().stream().filter(LigneAmortissement::isComptabilise).toList();
+        immo.getPlanAmortissement().removeIf(l -> !l.isComptabilise());
+        immobilisationRepository.flush();
+        BigDecimal base = immo.baseAmortissable();
+        BigDecimal cumul = immo.cumulComptabilise();
+        BigDecimal reste = base.subtract(cumul);
+        if (reste.signum() <= 0) return;
+        int restants = Math.max(1, immo.getDureeMois() - passees.size());
+        LocalDate periode = passees.get(passees.size() - 1).getPeriode().plusMonths(1);
+        BigDecimal mensualite = reste.divide(BigDecimal.valueOf(restants), 2, RoundingMode.HALF_UP);
+        for (int i = 0; i < restants; i++) {
+            BigDecimal dotation = i == restants - 1 ? base.subtract(cumul) : mensualite.min(base.subtract(cumul));
+            cumul = cumul.add(dotation);
+            immo.addLigne(LigneAmortissement.builder()
+                .periode(periode).baseAmortissable(base).dotation(dotation).cumul(cumul)
+                .valeurNette(immo.getValeurAcquisition().subtract(cumul)).comptabilise(false).build());
+            periode = periode.plusMonths(1);
+        }
+    }
+
+    /** Lie la fiche au code d'inventaire collé sur le bien (V153). */
+    @Transactional
+    public void lierCodeInventaireInterne(Long immobilisationId, String code) {
+        Immobilisation immo = charger(immobilisationId);
+        immo.setCodeInventaire(code);
+    }
+
+    // -----------------------------------------------------------------
     // Moteur d'amortissement lineaire
     // -----------------------------------------------------------------
 

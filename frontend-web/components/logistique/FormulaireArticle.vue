@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePermissionsStore } from '~/stores/permissions'
 // Boîte de saisie d'un article du catalogue, partagée par trois pages qui ne mélangent plus les natures (16/11/2026) :
 //   - Logistique › Articles      : MARCHANDISE (biens stockés destinés à la vente, minerais compris) ;
 //   - Logistique › Services      : SERVICE (vendable, ni stock, ni entrepôt, ni coût des ventes) ;
@@ -148,7 +149,7 @@ const fc = (usd: number | null) => new Intl.NumberFormat('fr-FR').format(Math.ro
 
         <!-- Minerais : suivi camion par camion, chaque chargement ayant son propre prix de vente
              (voir Logistique > Camions de minerais). -->
-        <div v-if="estMarchandise" class="minerai-toggle mb-4">
+        <div v-if="estMarchandise && (usePermissionsStore().peutVoir('MINE') || form.minerais)" class="minerai-toggle mb-4">
           <div class="minerai-toggle__texte">
             <span class="minerai-toggle__titre">
               <v-icon icon="mdi-dump-truck" size="18" class="mr-1" />Minerais

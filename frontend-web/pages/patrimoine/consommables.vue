@@ -126,6 +126,9 @@ const sousSeuil = computed(() => stock.value.filter(l => l.sousSeuil))
           prepend-icon="mdi-printer-outline" @click="imprimer">
           Imprimer
         </v-btn>
+        <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-package-variant-remove" to="/patrimoine/sorties-consommables">
+          Sorties
+        </v-btn>
         <v-btn v-if="canWrite" color="primary" rounded="lg" prepend-icon="mdi-plus" @click="formulaire?.ouvrir()">
           Nouveau consommable
         </v-btn>

@@ -26,7 +26,9 @@ public class ReplicationSchema {
         "actions_distantes_appliquees", "audit_a_envoyer", "parametres_ia", "parametres_mail", "parametres_emcf",
         // Audit SYSCOHADA du 10/11/2026, C-23 : secrets de double authentification chiffres avec la cle du serveur,
         // et verrou de connexion propre a chaque serveur.
-        "double_authentification", "tentatives_connexion");
+        "double_authentification", "tentatives_connexion",
+        // Hôtellerie (V152) : clé d'appairage du PMS chiffrée avec la clé du serveur, codes de connexion unique.
+        "integration_pms", "pms_codes_sso");
 
     /** Une table recopiee : colonnes ecrivables (ordre du catalogue) et colonnes de la cle primaire. */
     public record Table(String nom, List<String> colonnes, List<String> cle) {

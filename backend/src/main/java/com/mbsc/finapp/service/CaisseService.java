@@ -715,6 +715,18 @@ public class CaisseService {
             .toList();
     }
 
+    /** Mêmes soldes, arrêtés au jour donné (exercice passé consulté) ; sans date, à ce jour. */
+    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @Transactional(readOnly = true)
+    public List<LigneBalanceResponse> soldesTresorerie(java.time.LocalDate au) {
+        if (au == null) return soldesTresorerie();
+        return ecritureRepository.calculerBalanceAu(au).stream()
+            .map(row -> LigneBalanceResponse.of((String) row[0], (String) row[1], (TypeCompte) row[2],
+                (BigDecimal) row[3], (BigDecimal) row[4]))
+            .filter(l -> l.compteNumero() != null && l.compteNumero().startsWith("5"))
+            .toList();
+    }
+
     private List<LigneBalanceResponse> calculerBalance() {
         return ecritureRepository.calculerBalance().stream()
             .map(row -> LigneBalanceResponse.of(

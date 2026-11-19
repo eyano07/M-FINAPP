@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'TRANSPORT' })
 
 interface Trajet {
@@ -52,7 +53,7 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    trajets.value = await api<Trajet[]>('/transport/trajets')
+    trajets.value = (await api<Trajet[]>('/transport/trajets')).filter(t => useExerciceStore().dansExercice(t.dateDepart))
     vehicules.value = await api<Vehicule[]>('/transport/vehicules')
   } catch (e: any) {
     erreur.value = e?.data?.message || 'Impossible de charger les trajets.'
@@ -124,6 +125,10 @@ function versChampLocal(iso?: string) {
 function fmt(v: number) {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(v)
 }
+
+/** Date de départ du trajet (jour et heure locale). */
+const fmtDateTrajet = (iso: string) =>
+  new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 </script>
 
 <template>
@@ -143,6 +148,7 @@ function fmt(v: number) {
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
+          { title: 'Date', key: 'dateDepart' },
           { title: 'Référence', key: 'reference' },
           { title: 'Véhicule', key: 'vehiculeImmatriculation' },
           { title: 'Origine', key: 'origine' },
@@ -156,6 +162,10 @@ function fmt(v: number) {
         :loading="loading"
         items-per-page="15"
       >
+        <template #item.dateDepart="{ item }">
+          <span v-if="item.dateDepart">{{ fmtDateTrajet(item.dateDepart) }}</span>
+          <span v-else class="text-medium-emphasis">—</span>
+        </template>
         <template #item.distanceKm="{ item }">{{ fmt(item.distanceKm) }}</template>
         <template #item.motif="{ item }">{{ item.motif || '—' }}</template>
         <template #item.statut="{ item }">

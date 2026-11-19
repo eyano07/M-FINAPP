@@ -35,6 +35,10 @@ class RegleVisibiliteNoteTest {
     /** Roles ajoutes depuis : ils suivent exactement la regle du responsable restaurant. */
     private static final List<String> ROLES_RESTAURANT_AJOUTES = List.of("RESP_CUISINE", "RESP_BAR");
 
+    /** Hôtellerie (V152) : les quatre rôles de l'hébergement suivent la règle du responsable restaurant. */
+    private static final List<String> ROLES_HOTELLERIE_AJOUTES =
+        List.of("RECEPTIONNISTE", "GOUVERNANTE", "TECHNICIEN", "DIR_HEBERGEMENT");
+
     private static final List<String> AUTORITES = ROLES_HISTORIQUES.stream().map(r -> "ROLE_" + r).toList();
 
     private static final Long MOI = 7L;
@@ -131,6 +135,7 @@ class RegleVisibiliteNoteTest {
     void chaque_role_de_l_enum_est_classe_explicitement() {
         Set<String> classes = new HashSet<>(ROLES_HISTORIQUES);
         classes.addAll(ROLES_RESTAURANT_AJOUTES);
+        classes.addAll(ROLES_HOTELLERIE_AJOUTES);
 
         assertThat(classes).containsExactlyInAnyOrderElementsOf(
             Arrays.stream(RoleType.values()).map(Enum::name).toList());
@@ -145,7 +150,9 @@ class RegleVisibiliteNoteTest {
     void les_responsables_cuisine_et_bar_suivent_la_regle_du_responsable_restaurant_pour_toutes_les_combinaisons() {
         List<String> autres = ROLES_HISTORIQUES.stream().filter(r -> !r.equals("RESP_RESTAURANT")).toList();
 
-        for (String ajoute : ROLES_RESTAURANT_AJOUTES) {
+        List<String> etroits = new java.util.ArrayList<>(ROLES_RESTAURANT_AJOUTES);
+        etroits.addAll(ROLES_HOTELLERIE_AJOUTES);
+        for (String ajoute : etroits) {
             for (int masque = 0; masque < (1 << autres.size()); masque++) {
                 Set<String> avecAjoute = new HashSet<>();
                 Set<String> avecReference = new HashSet<>();

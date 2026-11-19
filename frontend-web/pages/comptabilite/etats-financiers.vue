@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // COMPTABLE, DA et DG exclus explicitement.
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN'] })
 
@@ -29,8 +30,10 @@ const api = useApi()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
 
-const debutAnnee = new Date().getFullYear() + '-01-01'
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
+const exerciceConsulte = useExerciceStore()
+const debutAnnee = exerciceConsulte.debut
+const aujourdhui = exerciceConsulte.fin
 const filtres = reactive({ du: debutAnnee, au: aujourdhui })
 
 const loading = ref(false)

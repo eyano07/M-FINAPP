@@ -44,6 +44,12 @@ public class ClientService {
     @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
     @Transactional
     public ClientResponse creer(ClientRequest req) {
+        return creerInterne(req);
+    }
+
+    /** Création sans contrôle de rôle (client d'un séjour créé par la réception de l'application Hôtellerie, V152). */
+    @Transactional
+    public ClientResponse creerInterne(ClientRequest req) {
         // Demande du 15/11/2026 : le code (CLI-0001…) et le compte propre sous 4111 sont attribués ici, plus saisis.
         CompteOHADA compte = ouvrirCompte(req.nom().strip());
         Client client = clientRepository.save(Client.builder()

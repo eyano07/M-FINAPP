@@ -20,6 +20,32 @@ import java.util.List;
 public class PatrimoineController {
 
     private final PatrimoineService service;
+    private final com.mbsc.finapp.service.patrimoine.InventairePatrimoineService inventaire;
+
+    /** Modification de la fiche d'amortissement par le responsable logistique (19/11/2026). */
+    @org.springframework.web.bind.annotation.PutMapping("/immobilisations/{id}")
+    public ImmobilisationResponse modifierFiche(@PathVariable Long id,
+            @jakarta.validation.Valid @RequestBody com.mbsc.finapp.dto.patrimoine.FicheImmobilisationRequest req) {
+        return service.modifierFiche(id, req);
+    }
+
+    /** Inventaire du patrimoine (V153) : biens relevés, codes collés, valorisation. */
+    @GetMapping("/inventaire")
+    public List<com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien> inventaire() {
+        return inventaire.lister();
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/inventaire/{id}")
+    public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien corriger(@PathVariable Long id,
+            @jakarta.validation.Valid @RequestBody com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.CorrectionRequest req) {
+        return inventaire.corriger(id, req);
+    }
+
+    @PostMapping("/inventaire/{id}/valorisation")
+    public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien valoriser(@PathVariable Long id,
+            @jakarta.validation.Valid @RequestBody com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.ValorisationRequest req) {
+        return inventaire.valoriser(id, req);
+    }
 
     @GetMapping("/immobilisations")
     public List<ImmobilisationResponse> lister() {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'PATRIMOINE' })
 
 interface Immo { id: number; reference: string; libelle: string; statut: string; valeurNetteComptable: number }
@@ -26,7 +27,8 @@ const traitement = ref(false)
 const erreur = ref('')
 const succes = ref('')
 const rapport = ref<{ lignesComptabilisees: number; totalDotations: number; piecesCreees: string[]; ignorees: string[] } | null>(null)
-const jusqua = ref(new Date().toISOString().slice(0, 10))
+// Jusqu'à la fin de l'exercice choisi dans la barre du haut (aujourd'hui pour l'exercice en cours).
+const jusqua = ref(useExerciceStore().fin)
 
 async function chargerBiens() {
   try {
@@ -82,7 +84,8 @@ async function comptabiliser() {
   }
 }
 
-const toUSD = (fc: number) => (tauxChange.value > 0 ? (fc || 0) / tauxChange.value : 0)
+// Le grand livre est tenu en dollars (ConversionDeviseService.DEVISE_BASE) : les montants s'affichent tels quels.
+const toUSD = (usd: number) => Number(usd) || 0
 const fmt = (fc: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
     .format(toUSD(fc))

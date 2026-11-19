@@ -40,6 +40,11 @@ public final class ModulesDesRoles {
         lier(RoleType.RESP_DRH, ModuleMetier.DRH_PERSONNEL, ModuleMetier.DRH_PRESENCES, ModuleMetier.DRH_PAIE,
             ModuleMetier.DRH_MISSIONS);
         lier(RoleType.GEST_PATRIMOINE, ModuleMetier.PATRIMOINE);
+        // Hôtellerie (V152) : les quatre rôles de l'hébergement disparaissent avec le module.
+        lier(RoleType.RECEPTIONNISTE, ModuleMetier.HOTELLERIE);
+        lier(RoleType.GOUVERNANTE, ModuleMetier.HOTELLERIE);
+        lier(RoleType.TECHNICIEN, ModuleMetier.HOTELLERIE);
+        lier(RoleType.DIR_HEBERGEMENT, ModuleMetier.HOTELLERIE);
         lier(RoleType.LOGISTIQUE, ModuleMetier.LOGISTIQUE, ModuleMetier.TRANSPORT);
         // Le caissier opere la Caisse, mais aussi la Banque et le Mobile Money (seul role autorise a y ecrire) :
         // il reste tant que l'une de ces trois fonctions tourne, et en tout cas tant que la Caisse est active.

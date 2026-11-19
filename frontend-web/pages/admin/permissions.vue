@@ -24,6 +24,10 @@ const ROLES: { role: string; label: string }[] = [
   { role: 'RESP_RESTAURANT', label: 'Responsable restaurant' },
   { role: 'RESP_CUISINE', label: 'Responsable cuisine' },
   { role: 'RESP_BAR', label: 'Responsable bar' },
+  { role: 'RECEPTIONNISTE', label: 'Réceptionniste' },
+  { role: 'GOUVERNANTE', label: 'Gouvernante (ménage)' },
+  { role: 'TECHNICIEN', label: 'Technicien de maintenance' },
+  { role: 'DIR_HEBERGEMENT', label: "Directeur de l'hébergement" },
   { role: 'DFIN', label: 'DFIN' },
   { role: 'DA', label: 'DA' },
   { role: 'DG', label: 'DG' },
@@ -41,11 +45,13 @@ const MODULES: { module: string; label: string }[] = [
   { module: 'RAPPROCHEMENT', label: 'Rapprochement' },
   { module: 'VENTES', label: 'Ventes' },
   { module: 'LOGISTIQUE', label: 'Logistique' },
+  { module: 'MINE', label: 'Mine' },
   { module: 'TRANSPORT', label: 'Transport' },
   { module: 'PATRIMOINE', label: 'Patrimoine' },
   // Insere AVANT le bloc DRH : ses 4 colonnes doivent rester contigues pour
   // que leur en-tete groupe (colspan 4) reste aligne.
   { module: 'RESTAURANT', label: 'Restaurant' },
+  { module: 'HOTELLERIE', label: 'Hôtellerie' },
   { module: 'DRH_PERSONNEL', label: 'Personnel' },
   { module: 'DRH_PRESENCES', label: 'Présences' },
   { module: 'DRH_PAIE', label: 'Paie' },
@@ -88,7 +94,7 @@ async function charger() {
 onMounted(charger)
 
 // ── Noms affichés des rôles (cosmétique : les droits restent liés au rôle) ──
-const TOUS_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']
+const TOUS_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'RECEPTIONNISTE', 'GOUVERNANTE', 'TECHNICIEN', 'DIR_HEBERGEMENT']
 const brouillons = reactive<Record<string, string>>({})
 const enregistrementLibelle = ref<string | null>(null)
 const succesLibelle = ref('')

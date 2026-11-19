@@ -45,6 +45,8 @@ public class SecurityConfig {
     private final MiroirLectureSeuleFilter miroirLectureSeuleFilter;
     private final com.mbsc.finapp.security.ApplicationMobileFilter applicationMobileFilter;
     private final com.mbsc.finapp.security.WidgetJetonFilter widgetJetonFilter;
+    private final com.mbsc.finapp.security.ExerciceConsulteFilter exerciceConsulteFilter;
+    private final com.mbsc.finapp.security.ClePmsFilter clePmsFilter;
     private final com.mbsc.finapp.audit.AuditFilter auditFilter;
     private final JwtAuthEntryPoint jwtAuthEntryPoint;
     private final AppUserDetailsService userDetailsService;
@@ -98,11 +100,15 @@ public class SecurityConfig {
             .addFilterBefore(cleReplicationFilter, JwtAuthenticationFilter.class)
             // Widgets Android : GET /widget/** avec le jeton du téléphone (X-Jeton-Widget), sans jeton d'acces.
             .addFilterBefore(widgetJetonFilter, JwtAuthenticationFilter.class)
+            // Hôtellerie (V152) : appels /pms/** signés avec la clé d'appairage du PMS (+ jeton de l'utilisateur hors /pms/systeme).
+            .addFilterBefore(clePmsFilter, JwtAuthenticationFilter.class)
             .addFilterAfter(auditFilter, JwtAuthenticationFilter.class)
             // Serveur en lecture seule (copie en ligne d'un serveur local, ancien serveur local : V132) : saisies refusees (423).
             .addFilterAfter(miroirLectureSeuleFilter, AuditFilter.class)
             // Application Android (17/11/2026) : consultation et decisions sur les notes seulement (403 sinon).
             .addFilterAfter(applicationMobileFilter, MiroirLectureSeuleFilter.class)
+            // Exercice clôturé choisi dans la barre du haut (en-tete X-Exercice) : lecture et impression seulement (423).
+            .addFilterAfter(exerciceConsulteFilter, MiroirLectureSeuleFilter.class)
             // Mot de passe provisoire (V131) : avant tout acces aux modules, seuls le profil et le changement de mot de passe.
             .addFilterAfter(motDePasseProvisoireFilter, MiroirLectureSeuleFilter.class)
             // Double authentification obligatoire pour les roles sensibles (audit SYSCOHADA, C-23).
@@ -118,7 +124,7 @@ public class SecurityConfig {
         config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         // Liste blanche explicite des en-tetes acceptes (plus de joker "*").
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Requested-With"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Requested-With", "X-Exercice"));
         config.setExposedHeaders(List.of("Authorization"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);

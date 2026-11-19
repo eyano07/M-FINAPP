@@ -21,7 +21,7 @@ interface UserRow {
 }
 
 const rolesStore = useRolesStore()
-const ALL_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']
+const ALL_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'RECEPTIONNISTE', 'GOUVERNANTE', 'TECHNICIEN', 'DIR_HEBERGEMENT']
 
 /**
  * Rôles qu'on peut attribuer aujourd'hui : ceux dont le module n'est pas désactivé (le serveur en décide, voir
@@ -250,6 +250,8 @@ const roleColor: Record<string, string> = {
   GEST_PATRIMOINE: '#9333ea', RESP_DRH: '#c026d3', RESP_RESTAURANT: '#e11d48',
   // Cuisine : orange (comme les plats dans l'analyse des ventes) ; bar : indigo (comme les boissons).
   RESP_CUISINE: '#ea580c', RESP_BAR: '#4f46e5',
+  // Hôtellerie (V152) : teintes sarcelle.
+  RECEPTIONNISTE: '#0f766e', GOUVERNANTE: '#0891b2', TECHNICIEN: '#475569', DIR_HEBERGEMENT: '#115e59',
 }
 </script>
 

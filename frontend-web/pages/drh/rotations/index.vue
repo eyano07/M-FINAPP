@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'DRH_MISSIONS' })
 
 interface Employe { id: number; matricule: string; nomComplet: string; superviseur: boolean }
@@ -18,8 +19,10 @@ const parametresStore = useParametresStore()
 const canWrite = computed(() => auth.hasAnyRole(['RESP_DRH']))
 
 const aujourdhui = new Date()
-const mois = ref(aujourdhui.getMonth() + 1)
-const annee = ref(aujourdhui.getFullYear())
+// Ancien exercice choisi dans la barre du haut : son mois de décembre ; sinon le mois en cours.
+const exerciceConsulte = useExerciceStore()
+const mois = ref(exerciceConsulte.enConsultation ? 12 : aujourdhui.getMonth() + 1)
+const annee = ref(exerciceConsulte.enConsultation ? exerciceConsulte.anneeChoisie : aujourdhui.getFullYear())
 
 const loading = ref(false)
 const saving = ref(false)

@@ -63,12 +63,18 @@ public class ModuleAccessFilter extends OncePerRequestFilter {
         Map.entry("/ventes", ModuleMetier.VENTES),
         Map.entry("/clients", ModuleMetier.VENTES),
         Map.entry("/logistique", ModuleMetier.LOGISTIQUE),
+        // Mine (19/11/2026) : sous-module de LOGISTIQUE, préfixe plus long que /logistique (tri ci-dessous).
+        Map.entry("/logistique/minerais", ModuleMetier.MINE),
         Map.entry("/transport", ModuleMetier.TRANSPORT),
         Map.entry("/patrimoine", ModuleMetier.PATRIMOINE),
         // Restaurant : le module expose ses propres endpoints plutot que de
         // taper /logistique/*, sinon un RESP_RESTAURANT (qui n'a pas le module
         // LOGISTIQUE) recevrait un 403 sur sa propre carte.
         Map.entry("/restaurant", ModuleMetier.RESTAURANT),
+        // Hôtellerie (V152) : réglages et connexion unique (/hotellerie), API du PMS au nom de l'utilisateur (/pms).
+        // Les appels du PMS sans utilisateur (/pms/systeme/**) sont exclus plus bas : ils n'ont pas de rôle.
+        Map.entry("/hotellerie", ModuleMetier.HOTELLERIE),
+        Map.entry("/pms", ModuleMetier.HOTELLERIE),
         // DRH : chaque prefixe vise un sous-module feuille, jamais le
         // conteneur DRH lui-meme (aucun controleur ne s'y rattache).
         Map.entry("/drh/employes", ModuleMetier.DRH_PERSONNEL),
@@ -85,12 +91,29 @@ public class ModuleAccessFilter extends OncePerRequestFilter {
     ).sorted(Comparator.<Map.Entry<String, ModuleMetier>>comparingInt(e -> e.getKey().length()).reversed())
      .toList();
 
+    /**
+     * Règlements de camions de minerais passés par la caisse ou par une note de frais (19/11/2026) : en plus du module
+     * de leur chemin, ils exigent le module MINE actif et au moins lisible pour le rôle.
+     */
+    private static final java.util.Set<String> REGLEMENTS_MINE = java.util.Set.of(
+        "/caisse/reglements-minerais", "/notes-frais/reglement-camions-minerai");
+
     @Override
     protected void doFilterInternal(
         @NonNull HttpServletRequest request,
         @NonNull HttpServletResponse response,
         @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
+
+        if (REGLEMENTS_MINE.contains(request.getServletPath())
+            && SecurityContextHolder.getContext().getAuthentication() != null
+            && !permissionService.autorise(ModuleMetier.MINE, NiveauPermission.LECTURE)) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"error\":\"Forbidden\",\"message\":\"Module MINE desactive ou droits insuffisants pour ce role.\"}");
+            return;
+        }
 
         ModuleMetier module = resoudreModule(request.getServletPath());
         if (module == null) {
@@ -123,6 +146,9 @@ public class ModuleAccessFilter extends OncePerRequestFilter {
     }
 
     private ModuleMetier resoudreModule(String path) {
+        if (path.startsWith("/pms/systeme/")) {
+            return null;
+        }
         for (var entree : PREFIXES) {
             if (path.equals(entree.getKey()) || path.startsWith(entree.getKey() + "/")) {
                 return entree.getValue();

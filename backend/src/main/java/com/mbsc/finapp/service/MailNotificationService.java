@@ -92,6 +92,22 @@ public class MailNotificationService {
     }
 
     /** Envoie un e-mail de test avec la configuration courante ; l'exception est remontée à l'appelant. */
+    /** true si la messagerie est activée et configurée (envoi possible). */
+    public boolean pret() {
+        return parametres.config().pret();
+    }
+
+    /**
+     * Message à un client de l'hôtellerie (V152, phase 2) : confirmation, rappel d'arrivée, code d'accès, remerciement.
+     * Même présentation que les notifications ; aucun lien vers M-FINAPP.
+     */
+    public void envoyerMessageClient(String adresse, String nom, String titre, String message) throws Exception {
+        ConfigMail c = parametres.config();
+        if (!c.pret()) throw new IllegalStateException("La messagerie de M-FINAPP n'est pas configurée (Administration › Messagerie).");
+        envoyer(c, adresse, nom, titre, message, null);
+        parametres.noterEnvoi(null);
+    }
+
     public void envoyerTest(String adresse, String prenom) throws Exception {
         ConfigMail c = parametres.config();
         if (!StringUtils.hasText(c.hote())) throw new IllegalStateException("Aucun serveur SMTP renseigné.");

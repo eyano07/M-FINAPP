@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // DA exclu explicitement : voir NavigationDrawer.vue (comptabiliteItems).
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
@@ -31,8 +32,10 @@ const loading = ref(false)
 const erreur = ref('')
 const resultat = ref<GrandLivreCompte | null>(null)
 
-const debutAnnee = new Date().getFullYear() + '-01-01'
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
+const exerciceConsulte = useExerciceStore()
+const debutAnnee = exerciceConsulte.debut
+const aujourdhui = exerciceConsulte.fin
 
 // Pré-sélection depuis un lien entrant (ex. "Grand livre" depuis la page
 // Caisse, ?compte=571) : le compte est chargé directement sans que

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePermissionsStore } from '~/stores/permissions'
 import type { LigneMouvementForm } from '~/components/logistique/LignesMouvement.vue'
 
 // Creation d'un mouvement : LOGISTIQUE, et l'administrateur en dernier
@@ -81,7 +82,8 @@ async function enregistrer() {
     </div>
 
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4">{{ erreur }}</v-alert>
-    <v-alert v-if="estAdmin" type="info" variant="tonal" density="compact" class="mb-4">
+    <!-- Seulement avec le module Restaurant actif : coupé, ses plats, boissons et provisions ne sont plus proposés. -->
+    <v-alert v-if="estAdmin && usePermissionsStore().peutVoir('RESTAURANT')" type="info" variant="tonal" density="compact" class="mb-4">
       Vous pouvez aussi corriger ici les plats, boissons et provisions du restaurant. Un tel mouvement ne met pas
       à jour le compteur de bouteilles vides : ajustez-le au besoin depuis les mouvements de vides.
     </v-alert>

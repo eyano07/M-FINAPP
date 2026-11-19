@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
+import { usePermissionsStore } from '~/stores/permissions'
 definePageMeta({ module: 'VENTES' })
 
 interface Vente {
@@ -42,7 +44,8 @@ async function charger() {
         convertisseurs (tous gardes par `taux > 0`) renvoient 0, valeur
         manifestement fausse plutot que plausible. */,
     ])
-    ventes.value = data
+    // Ancien exercice choisi dans la barre du haut : ses ventes seulement.
+    ventes.value = data.filter(v => useExerciceStore().dansExercice(v.dateVente))
     tauxChange.value = tauxData.taux || 0
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les ventes.')
@@ -56,18 +59,34 @@ onMounted(charger)
 // toujours sur l'ensemble des ventes chargées, pas sur ce sous-ensemble). Par
 // defaut, seule la date du jour : la liste des ventes grossit vite et
 // personne ne veut refaire defiler l'historique complet chaque matin.
+// Ancien exercice choisi dans la barre du haut : tout l'exercice, du 1er janvier au 31 décembre.
+const exerciceConsulte = useExerciceStore()
+// Colonne « Table » : seulement avec le module Restaurant.
+const permissionsVentes = usePermissionsStore()
+const entetes = computed(() => [
+  { title: 'Date', key: 'dateVente' },
+  { title: 'Référence', key: 'reference' },
+  { title: 'Client', key: 'clientNom', sortable: false },
+  ...(permissionsVentes.peutVoir('RESTAURANT') ? [{ title: 'Table', key: 'tableNumero', sortable: false }] : []),
+  { title: 'Règlement', key: 'modeReglement', sortable: false },
+  { title: 'Total HT', key: 'totalHt', align: 'end' as const },
+  { title: 'TVA', key: 'totalTva', align: 'end' as const },
+  { title: 'Total TTC', key: 'totalTtc', align: 'end' as const },
+  { title: 'Statut', key: 'statut', align: 'center' as const },
+  { title: 'Pièce', key: 'pieceReference', sortable: false },
+])
 const aujourdhui = () => new Date().toISOString().slice(0, 10)
-const filtreDu = ref(aujourdhui())
-const filtreAu = ref(aujourdhui())
-const filtreTable = ref('')
+const duParDefaut = () => exerciceConsulte.enConsultation ? exerciceConsulte.debut : aujourdhui()
+const auParDefaut = () => exerciceConsulte.enConsultation ? exerciceConsulte.fin : aujourdhui()
+const filtreDu = ref(duParDefaut())
+const filtreAu = ref(auParDefaut())
 const filtreClient = ref('')
 const filtrePiece = ref('')
 const filtreReference = ref('')
 
 function reinitialiserFiltres() {
-  filtreDu.value = aujourdhui()
-  filtreAu.value = aujourdhui()
-  filtreTable.value = ''
+  filtreDu.value = duParDefaut()
+  filtreAu.value = auParDefaut()
   filtreClient.value = ''
   filtrePiece.value = ''
   filtreReference.value = ''
@@ -76,7 +95,6 @@ function reinitialiserFiltres() {
 const ventesFiltrees = computed(() => ventes.value.filter((v) => {
   if (filtreDu.value && v.dateVente < filtreDu.value) return false
   if (filtreAu.value && v.dateVente > filtreAu.value) return false
-  if (filtreTable.value && !(v.tableNumero || '').toLowerCase().includes(filtreTable.value.toLowerCase())) return false
   if (filtreClient.value && !(v.clientNom || '').toLowerCase().includes(filtreClient.value.toLowerCase())) return false
   if (filtrePiece.value && !(v.pieceReference || '').toLowerCase().includes(filtrePiece.value.toLowerCase())) return false
   if (filtreReference.value && !(v.reference || '').toLowerCase().includes(filtreReference.value.toLowerCase())) return false
@@ -175,7 +193,6 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
     <div class="d-flex ga-3 mt-4 mb-2 flex-wrap align-end vte-filtres">
       <v-text-field v-model="filtreDu" type="date" label="Du" variant="outlined" density="comfortable" rounded="lg" hide-details style="max-width: 170px" />
       <v-text-field v-model="filtreAu" type="date" label="Au" variant="outlined" density="comfortable" rounded="lg" hide-details style="max-width: 170px" />
-      <v-text-field v-model="filtreTable" label="Table" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 140px" />
       <v-text-field v-model="filtreClient" label="Client" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 180px" />
       <v-text-field v-model="filtrePiece" label="Pièce" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 160px" />
       <v-text-field v-model="filtreReference" label="Référence" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 180px" />
@@ -195,18 +212,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
         :loading="loading"
         density="comfortable"
         items-per-page="15"
-        :headers="[
-          { title: 'Date', key: 'dateVente' },
-          { title: 'Référence', key: 'reference' },
-          { title: 'Client', key: 'clientNom', sortable: false },
-          { title: 'Table', key: 'tableNumero', sortable: false },
-          { title: 'Règlement', key: 'modeReglement', sortable: false },
-          { title: 'Total HT', key: 'totalHt', align: 'end' },
-          { title: 'TVA', key: 'totalTva', align: 'end' },
-          { title: 'Total TTC', key: 'totalTtc', align: 'end' },
-          { title: 'Statut', key: 'statut', align: 'center' },
-          { title: 'Pièce', key: 'pieceReference', sortable: false },
-        ]"
+        :headers="entetes"
         @click:row="(_: unknown, { item }: any) => navigateTo(`/ventes/${item.id}`)"
       >
         <template #[`item.dateVente`]="{ item }">{{ fmtDate(item.dateVente) }}</template>

@@ -96,8 +96,15 @@
   .v-alert { padding: 10px 12px !important; font-size: 0.85rem; line-height: 1.4; }
   .v-alert .v-alert__prepend { align-self: flex-start; margin-inline-end: 10px !important; }
 
-  /* Boîtes de dialogue : presque pleine largeur, marge de 12 px, défilement dans la boîte. */
-  .v-dialog > .v-overlay__content {
+  /* Boîtes de dialogue : presque pleine largeur, marge de 12 px, défilement dans la boîte.
+     Sauf en plein écran : la largeur réduite y laissait une bande vide de 24 px à droite. */
+  .v-dialog--fullscreen > .v-overlay__content {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 100%;
+    margin: 0;
+  }
+  .v-dialog:not(.v-dialog--fullscreen) > .v-overlay__content {
     width: calc(100% - 24px) !important;
     max-width: none !important;
     max-height: calc(100% - 24px);

@@ -136,6 +136,24 @@ public class AuthService {
         });
     }
 
+    /**
+     * Connexion unique depuis l'application Hôtellerie (V152) : le code à usage unique émis par M-FINAPP a été vérifié
+     * par l'appelant (PmsSsoService) ; on ouvre ici la session de son titulaire, comme après un mot de passe, en la
+     * consignant au journal d'audit. Un compte désactivé est refusé.
+     */
+    @Transactional(readOnly = true)
+    public AuthResponse ouvrirSessionUnique(Long userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new BadCredentialsException("Compte introuvable"));
+        UserPrincipal principal = new UserPrincipal(user);
+        if (!principal.isEnabled()) {
+            audit.authentification("CONNEXION_HOTELLERIE", user.getEmail(), userId, false, "compte desactive");
+            throw new BadCredentialsException("Compte désactivé.");
+        }
+        audit.authentification("CONNEXION_HOTELLERIE", user.getEmail(), userId, true, "connexion unique vers l'hotellerie");
+        return buildResponse(principal);
+    }
+
     private AuthResponse buildResponse(UserPrincipal principal) {
         User user = principal.getDomainUser();
         String accessToken = jwtService.generateAccessToken(principal);

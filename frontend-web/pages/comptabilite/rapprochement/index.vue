@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 /**
  * Rapprochement bancaire : comptes de banque et de mobile money × mois de l'année. Un relevé se crée à
  * partir d'un fichier lu par l'IA (PDF, photo, Excel, CSV), relu avant enregistrement, ou se saisit à la
@@ -16,7 +17,7 @@ const auth = useAuthStore()
 const grandEcran = useGrandEcran()
 const peutEcrire = computed(() => auth.hasAnyRole(['DFIN', 'COMPTABLE']))
 
-const annee = ref(new Date().getFullYear())
+const annee = ref(useExerciceStore().anneeChoisie)
 const etablissements = ref<Etablissement[]>([])
 const releves = ref<Resume[]>([])
 const chargement = ref(false)

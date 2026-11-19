@@ -64,6 +64,14 @@ public class Article {
     @Builder.Default
     private boolean minerais = false;
 
+    /**
+     * true pour une prestation d'hébergement vendue par l'application Hôtellerie (nuitée, heure, semaine, mois : V152) :
+     * reflétée dans l'activité analytique 986 Hébergement plutôt que 985 Services.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean hebergement = false;
+
     /** Entrepot d'affectation, obligatoire pour une marchandise, toujours nul pour un service. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "entrepot_id")

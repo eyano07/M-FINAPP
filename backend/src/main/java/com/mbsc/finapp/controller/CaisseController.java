@@ -115,8 +115,11 @@ public class CaisseController {
 
     /** Soldes des comptes de trésorerie (classe 5), seuls lisibles par le caissier. */
     @GetMapping("/soldes-tresorerie")
-    public List<LigneBalanceResponse> soldesTresorerie() {
-        return service.soldesTresorerie();
+    public List<LigneBalanceResponse> soldesTresorerie(
+            @org.springframework.web.bind.annotation.RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate au) {
+        return service.soldesTresorerie(au);
     }
 
     /** Journal de caisse ; {@code devise} : USD (devise de base, par defaut) ou CDF (converti au taux du dernier jour). */

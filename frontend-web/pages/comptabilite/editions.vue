@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // Audit SYSCOHADA du 10/11/2026 (C-09, C-19, C-25) : grand livre général, centralisation des journaux, fichier des
 // écritures pour l'administration fiscale et journal des événements comptables (chaîné, en ajout seul).
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
@@ -11,9 +12,8 @@ interface Evenements { chaineIntacte: boolean, premiereLigneAlteree: number | nu
 
 const api = useApi()
 const onglet = ref('grand-livre')
-const annee = new Date().getFullYear()
-const du = ref(`${annee}-01-01`)
-const au = ref(new Date().toISOString().slice(0, 10))
+const du = ref(useExerciceStore().debut)
+const au = ref(useExerciceStore().fin)
 const loading = ref(false)
 const erreur = ref('')
 

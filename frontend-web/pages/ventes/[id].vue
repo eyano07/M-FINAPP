@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePermissionsStore } from '~/stores/permissions'
 definePageMeta({ module: 'VENTES' })
 
 import QRCode from 'qrcode'
@@ -1267,8 +1268,13 @@ const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '
         <v-card-text>
           <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-3">{{ erreur }}</v-alert>
           <p class="text-body-2 text-medium-emphasis mb-3">
-            Indiquez ce que le client rend. Le responsable du bar (boissons), de la cuisine (plats) ou du restaurant doit
-            approuver, puis vous remboursez. Une bouteille intacte revient en stock ; un plat servi, non.
+            <template v-if="usePermissionsStore().peutVoir('RESTAURANT')">
+              Indiquez ce que le client rend. Le responsable du bar (boissons), de la cuisine (plats) ou du restaurant doit
+              approuver, puis vous remboursez. Une bouteille intacte revient en stock ; un plat servi, non.
+            </template>
+            <template v-else>
+              Indiquez ce que le client rend. Le retour doit être approuvé, puis vous remboursez ; un article intact revient en stock.
+            </template>
           </p>
           <div v-for="l in formRetour.lignes" :key="l.ligneVenteId" class="vd-retour-ligne">
             <div class="vd-retour-ligne__article">

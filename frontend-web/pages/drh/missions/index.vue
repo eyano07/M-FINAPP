@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'DRH_MISSIONS' })
 
 interface Employe { id: number; matricule: string; nomComplet: string }
@@ -76,7 +77,7 @@ async function charger() {
       provinces.value.length ? Promise.resolve(provinces.value) : api<string[]>('/drh/missions/provinces'),
       moyensTransport.value.length ? Promise.resolve(moyensTransport.value) : api<string[]>('/drh/missions/moyens-transport'),
     ])
-    missions.value = m
+    missions.value = m.filter(x => useExerciceStore().dansExercice(x.dateDepart))
     employes.value = e
     provinces.value = p
     moyensTransport.value = t

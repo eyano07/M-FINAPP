@@ -138,7 +138,8 @@ public class PermissionService {
     private static final List<RoleType> ROLES_CONFIGURABLES = List.of(
         RoleType.DG, RoleType.DA, RoleType.DFIN, RoleType.DIRECTEUR, RoleType.CAISSIER, RoleType.COMPTABLE,
         RoleType.LOGISTIQUE, RoleType.GEST_PATRIMOINE, RoleType.RESP_DRH, RoleType.RESP_RESTAURANT,
-        RoleType.RESP_CUISINE, RoleType.RESP_BAR);
+        RoleType.RESP_CUISINE, RoleType.RESP_BAR,
+        RoleType.RECEPTIONNISTE, RoleType.GOUVERNANTE, RoleType.TECHNICIEN, RoleType.DIR_HEBERGEMENT);
 
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional

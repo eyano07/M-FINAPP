@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // DA exclu explicitement de la consultation du Bilan.
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
@@ -28,7 +29,8 @@ const exportEnCours = ref(false)
 const erreur = ref('')
 const bilan = ref<Bilan | null>(null)
 
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// Date du bilan par défaut : fin de l'exercice choisi dans la barre du haut (aujourd'hui pour l'exercice en cours).
+const aujourdhui = useExerciceStore().fin
 const filtres = reactive({ au: aujourdhui })
 
 const peutExporter = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
