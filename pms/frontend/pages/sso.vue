@@ -28,7 +28,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="acces">
+  <CadreAcces>
     <v-card class="acces__carte pa-8" rounded="xl">
       <div class="acces__logo logo-principal"><LogoMfinapp /></div>
       <template v-if="!erreur">
@@ -40,7 +40,7 @@ onMounted(async () => {
         <v-btn class="mt-4" color="primary" variant="tonal" to="/login">Se connecter avec ses identifiants</v-btn>
       </template>
     </v-card>
-  </div>
+  </CadreAcces>
 </template>
 
 <style scoped>

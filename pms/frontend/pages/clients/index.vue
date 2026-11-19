@@ -39,9 +39,10 @@ async function creer() {
 </script>
 
 <template>
-  <div>
+  <div class="d-apparait">
     <div class="page-head">
       <div>
+        <div class="page-eyebrow">Exploitation</div>
         <h1 class="page-title">Clients</h1>
         <p class="page-sub">Fiches, préférences et historique des séjours</p>
       </div>

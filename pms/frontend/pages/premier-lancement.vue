@@ -44,7 +44,7 @@ async function enregistrer() {
 </script>
 
 <template>
-  <div class="acces">
+  <CadreAcces>
     <v-card class="acces__carte pa-8" rounded="xl">
       <div class="acces__logo logo-principal"><LogoMfinapp /></div>
       <h1 class="text-h5 font-weight-bold mt-4">Relier l'hôtellerie à M-FINAPP</h1>
@@ -72,7 +72,7 @@ async function enregistrer() {
         Enregistrer la clé
       </v-btn>
     </v-card>
-  </div>
+  </CadreAcces>
 </template>
 
 <style scoped>

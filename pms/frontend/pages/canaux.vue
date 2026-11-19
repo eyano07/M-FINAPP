@@ -100,9 +100,10 @@ async function traitee(a: Alerte) {
 </script>
 
 <template>
-  <div>
+  <div class="d-apparait">
     <div class="page-head">
       <div>
+        <div class="page-eyebrow">Distribution</div>
         <h1 class="page-title">Canaux de vente</h1>
         <p class="page-sub">Calendriers iCal échangés avec Booking.com, Airbnb et Expedia / VRBO</p>
       </div>

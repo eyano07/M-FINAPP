@@ -144,6 +144,7 @@ function caseVide(u: Unite, jour: Date) {
   <div>
     <div class="page-head">
       <div>
+        <div class="page-eyebrow">Exploitation</div>
         <h1 class="page-title">Calendrier</h1>
         <p class="page-sub">Occupation en temps réel — glissez une réservation pour la déplacer</p>
       </div>
@@ -224,23 +225,32 @@ function caseVide(u: Unite, jour: Date) {
 .planning__entete { position: sticky; top: 0; z-index: 2; background: var(--surface, #fff); border-bottom: 1px solid var(--hairline, #e5e7eb); }
 .planning__entete { grid-template-columns: 150px repeat(var(--jours), var(--jour)); }
 .planning__coin { padding: 10px 12px; font-weight: 700; font-size: 0.8rem; }
-.planning__jour { display: flex; flex-direction: column; align-items: center; padding: 6px 0; font-size: 0.72rem; text-transform: capitalize; }
-.planning__jour strong { font-size: 0.95rem; }
+.planning__jour { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; font-size: 0.68rem; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--d-ink-faint); }
+.planning__jour strong { font-size: 0.95rem; font-weight: 750; letter-spacing: -0.02em; color: var(--d-ink); width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+.planning__jour--aujourdhui strong { color: #fff; background: var(--d-grad); box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--color-primary) 90%, transparent); }
 .planning__jour--we { background: color-mix(in srgb, var(--color-primary) 4%, transparent); }
 .planning__jour--aujourdhui { color: var(--color-primary); }
-.planning__groupe { padding: 8px 12px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7;
-  background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
-.planning__ligne { border-bottom: 1px solid var(--hairline, #eef0ee); min-height: 46px; }
-.planning__unite { display: flex; align-items: center; gap: 6px; padding: 6px 12px; position: sticky; left: 0; z-index: 1;
-  background: var(--surface, #fff); border-right: 1px solid var(--hairline, #eef0ee); }
+.planning__groupe { padding: 10px 14px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--d-ink-faint);
+  background: var(--d-surface-2); border-bottom: 1px solid var(--hairline); }
+.planning__ligne { border-bottom: 1px solid var(--hairline, #eef0ee); min-height: 50px; }
+.planning__ligne:hover .planning__unite { background: var(--d-surface-2); }
+.planning__unite { display: flex; align-items: center; gap: 8px; padding: 6px 14px; position: sticky; left: 0; z-index: 1;
+  background: var(--surface, #fff); border-right: 1px solid var(--hairline, #eef0ee); transition: background 0.16s; }
+.planning__unite strong { font-weight: 760; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .planning__piste { position: relative; display: grid; grid-template-columns: repeat(var(--jours), var(--jour)); }
 .planning__piste--hs { background: repeating-linear-gradient(45deg, transparent 0 8px, color-mix(in srgb, #dc2626 8%, transparent) 8px 16px); }
-.planning__case { border-right: 1px dashed var(--hairline, #eef0ee); cursor: pointer; }
+.planning__case { border-right: 1px solid var(--hairline, #eef0ee); cursor: pointer; transition: background 0.14s; }
 .planning__case:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
 .planning__case--we { background: color-mix(in srgb, var(--color-primary) 3%, transparent); }
-.planning__case--aujourdhui { box-shadow: inset 2px 0 0 var(--color-primary); }
-.planning__barre { position: absolute; top: 7px; height: 32px; border-radius: 9px; padding: 0 10px; display: flex; align-items: center;
-  font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
-  color: #fff; background: color-mix(in srgb, var(--c) 80%, #000); box-shadow: 0 2px 6px color-mix(in srgb, var(--c) 35%, transparent); }
+.planning__case--aujourdhui { background: color-mix(in srgb, var(--color-primary) 5%, transparent); box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-primary) 60%, transparent); }
+.planning__barre { position: absolute; top: 8px; height: 34px; border-radius: 11px; padding: 0 12px 0 14px; display: flex; align-items: center;
+  font-size: 0.78rem; font-weight: 650; letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+  color: #fff; background: linear-gradient(180deg, color-mix(in srgb, var(--c) 88%, #fff), color-mix(in srgb, var(--c) 82%, #000));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 14px -8px color-mix(in srgb, var(--c) 80%, transparent);
+  transition: transform 0.16s, box-shadow 0.16s; }
+.planning__barre::before { content: ''; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.55); }
+.planning__barre:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 10px 20px -10px color-mix(in srgb, var(--c) 90%, transparent); }
 .planning__barre[draggable='true'] { cursor: grab; }
 </style>

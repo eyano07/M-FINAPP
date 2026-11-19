@@ -23,6 +23,7 @@ export default defineNuxtConfig({
     '~/assets/styles/classroom.scss',
     '~/assets/styles/responsive.scss',
     '~/assets/styles/hotellerie.scss',
+    '~/assets/styles/design-2027.scss',
   ],
   vite: { vue: { template: { transformAssetUrls } } },
   app: {

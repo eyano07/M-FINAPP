@@ -15,9 +15,9 @@ const route = useRoute()
 const resas = ref<Resa[]>([])
 const chargement = ref(false)
 const erreur = ref('')
-const q = ref('')
+const q = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const statut = ref<string | null>(null)
-const periode = ref<'avenir' | 'present' | 'toutes'>('avenir')
+const periode = ref<'avenir' | 'present' | 'toutes'>(route.query.q ? 'toutes' : 'avenir')
 const nouvelle = ref(route.query.nouvelle === '1')
 
 async function charger() {
@@ -42,6 +42,8 @@ async function charger() {
 onMounted(charger)
 let attente: ReturnType<typeof setTimeout> | null = null
 watch([q, statut, periode], () => { if (attente) clearTimeout(attente); attente = setTimeout(charger, 250) })
+// Recherche lancée depuis la barre du haut alors que la page est déjà ouverte.
+watch(() => route.query.q, v => { if (typeof v === 'string' && v) { q.value = v; periode.value = 'toutes' } })
 
 const entetes = [
   { title: 'Référence', key: 'reference' },
@@ -57,9 +59,10 @@ const libDuree = (d: string) => DUREES.find(x => x.value === d)?.title ?? d
 </script>
 
 <template>
-  <div>
+  <div class="d-apparait">
     <div class="page-head">
       <div>
+        <div class="page-eyebrow">Exploitation</div>
         <h1 class="page-title">Réservations</h1>
         <p class="page-sub">Toutes les réservations et séjours de vos établissements</p>
       </div>

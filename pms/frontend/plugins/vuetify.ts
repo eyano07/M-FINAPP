@@ -10,7 +10,7 @@ import { classerCellule } from '~/utils/classerCellule'
 const classroomLight = {
   dark: false,
   colors: {
-    background: '#EEF3F0',
+    background: '#F4F5F2',
     surface: '#FFFFFF',
     primary: '#15803D',
     secondary: '#2563EB',
@@ -23,6 +23,8 @@ const classroomLight = {
     'on-background': '#0D1A15',
     'surface-variant': '#55645C',
   },
+  // Filets presque invisibles (design 2027) : cartes, champs, séparateurs.
+  variables: { 'border-color': '#0E1512', 'border-opacity': 0.08 },
 }
 
 /**
@@ -32,9 +34,9 @@ const classroomLight = {
 const malachiteNuit = {
   dark: true,
   colors: {
-    background: '#07110D',
-    surface: '#0D1A14',
-    'surface-bright': '#14251D',
+    background: '#080C0A',
+    surface: '#101614',
+    'surface-bright': '#18211D',
     'surface-variant': '#97AA9F',
     primary: '#3FBF7F',
     secondary: '#8DB7FF',
@@ -46,6 +48,7 @@ const malachiteNuit = {
     'on-surface': '#E7F0EA',
     'on-background': '#E7F0EA',
   },
+  variables: { 'border-color': '#FFFFFF', 'border-opacity': 0.08 },
 }
 
 export default defineNuxtPlugin((nuxtApp) => {
@@ -69,22 +72,46 @@ export default defineNuxtPlugin((nuxtApp) => {
     },
     defaults: {
       VCard: {
-        rounded: 'lg',
+        rounded: 'xl',
         elevation: 0,
         border: true,
       },
       VBtn: {
         rounded: 'lg',
-        style: 'text-transform: none; letter-spacing: 0.25px;',
+        style: 'text-transform: none; letter-spacing: 0;',
       },
       VTextField: {
         variant: 'outlined',
         density: 'comfortable',
         color: 'primary',
+        rounded: 'lg',
+      },
+      VTextarea: {
+        variant: 'outlined',
+        density: 'comfortable',
+        color: 'primary',
+        rounded: 'lg',
       },
       VSelect: {
         variant: 'outlined',
         density: 'comfortable',
+        color: 'primary',
+        rounded: 'lg',
+      },
+      VAutocomplete: {
+        variant: 'outlined',
+        density: 'comfortable',
+        color: 'primary',
+        rounded: 'lg',
+      },
+      VAlert: {
+        rounded: 'lg',
+      },
+      VChip: {
+        rounded: 'pill',
+      },
+      VDialog: {
+        scrim: true,
       },
       VAppBar: {
         flat: true,

@@ -47,7 +47,7 @@ async function changer() {
 </script>
 
 <template>
-  <div class="acces">
+  <CadreAcces>
     <v-card class="acces__carte pa-8" rounded="xl">
       <div class="acces__logo logo-principal"><LogoMfinapp /></div>
       <h1 class="text-h5 font-weight-bold mt-4">Choisissez votre mot de passe</h1>
@@ -78,7 +78,7 @@ async function changer() {
         <v-btn variant="text" class="mt-3" @click="session.fermer(); navigateTo('/login')">Se déconnecter</v-btn>
       </template>
     </v-card>
-  </div>
+  </CadreAcces>
 </template>
 
 <style scoped>

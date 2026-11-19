@@ -125,9 +125,10 @@ const libType = (t: string) => TYPES_ETABLISSEMENT.find(x => x.value === t)?.tit
 </script>
 
 <template>
-  <div>
+  <div class="d-apparait">
     <div class="page-head">
       <div>
+        <div class="page-eyebrow">Gestion</div>
         <h1 class="page-title">Établissements et tarifs</h1>
         <p class="page-sub">Hôtels, motels et résidences ; types d'unité, unités et prix</p>
       </div>
