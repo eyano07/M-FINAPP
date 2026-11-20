@@ -15,8 +15,9 @@ interface Folio {
   reservation: any, lignes: Ligne[], fonds: Fonds[], totalHt: number, totalTva: number, totalTtc: number, acomptes: number,
   cautions: number, resteAPayer: number, tauxTva: number, devise: string
 }
+/** Prix du catalogue M-FINAPP (prixVente) tenus en francs (FC) ; tauxChange : francs pour 1 dollar, au jour. */
 interface Referentiel { banques: { id: number, nom: string }[], mobileMoney: { id: number, nom: string }[], entrepots: { id: number, nom: string, code: string }[],
-  articles: { id: number, code: string, libelle: string, type: string, prixVente: number | null }[] }
+  articles: { id: number, code: string, libelle: string, type: string, prixVente: number | null }[], tauxChange: number | null }
 
 const api = useApi()
 const session = useSessionStore()
@@ -148,8 +149,19 @@ watch(() => extra.articleId, (a) => {
   const art = ref_.value?.articles.find(x => x.id === a)
   if (art) {
     extra.designation = art.libelle
-    if (art.prixVente != null) extra.prix = Number(art.prixVente)
+    // Le folio est en USD : le prix catalogue (francs) est converti au taux du jour, jamais repris tel quel
+    // (une boisson à 5 000 FC devenait 5 000 USD). Sans taux connu, la réception saisit le prix.
+    const taux = Number(ref_.value?.tauxChange) || 0
+    extra.prix = art.prixVente != null && taux > 0 ? Math.round(Number(art.prixVente) / taux * 100) / 100 : null
   }
+})
+/** Rappel du prix catalogue en francs et du taux appliqué. */
+const prixCatalogue = computed(() => {
+  const art = ref_.value?.articles.find(x => x.id === extra.articleId)
+  const taux = Number(ref_.value?.tauxChange) || 0
+  if (!art || art.prixVente == null) return ''
+  const fc = new Intl.NumberFormat('fr-FR').format(Number(art.prixVente))
+  return taux > 0 ? `Catalogue : ${fc} FC, au taux de ${new Intl.NumberFormat('fr-FR').format(taux)} FC/USD` : `Catalogue : ${fc} FC (taux du jour inconnu : saisissez le prix en USD)`
 })
 async function ajouterExtra() {
   const art = ref_.value?.articles.find(x => x.id === extra.articleId)
@@ -427,7 +439,7 @@ const libCanal = (c: string) => CANAUX.find(x => x.value === c)?.title ?? c
           <v-text-field v-model="extra.designation" label="Libellé sur le folio" />
           <v-row dense>
             <v-col cols="6"><v-text-field v-model.number="extra.quantite" type="number" min="1" label="Quantité" /></v-col>
-            <v-col cols="6"><v-text-field v-model.number="extra.prix" type="number" min="0" label="Prix unitaire (USD HT)" /></v-col>
+            <v-col cols="6"><v-text-field v-model.number="extra.prix" type="number" min="0" label="Prix unitaire (USD HT)" :hint="prixCatalogue" persistent-hint /></v-col>
           </v-row>
         </v-card-text>
         <v-card-actions><v-spacer /><v-btn variant="text" @click="extra.ouvert = false">Annuler</v-btn>
