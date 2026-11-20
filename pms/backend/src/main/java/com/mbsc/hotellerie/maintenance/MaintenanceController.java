@@ -91,6 +91,7 @@ public class MaintenanceController {
 
     @DeleteMapping("/photos/{id}")
     public void supprimerPhoto(@PathVariable Long id) {
-        photos.supprimer(id, SessionCourante.exiger(Roles.RECEPTION, Roles.TECHNICIEN, Roles.DIRECTION, Roles.ADMIN));
+        photos.supprimer(id, "UNITE".equals(photos.objet(id)) ? SessionCourante.exiger(Roles.PARAMETRAGE)
+            : SessionCourante.exiger(Roles.RECEPTION, Roles.TECHNICIEN, Roles.DIRECTION, Roles.ADMIN));
     }
 }

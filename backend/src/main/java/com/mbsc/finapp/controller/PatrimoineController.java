@@ -21,6 +21,73 @@ public class PatrimoineController {
 
     private final PatrimoineService service;
     private final com.mbsc.finapp.service.patrimoine.InventairePatrimoineService inventaire;
+    private final com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService emplacements;
+
+    // ── Emplacements (affectations) et photos des biens (V154) ─────────────────
+
+    @GetMapping("/emplacements")
+    public List<com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService.Emplacement> emplacements() {
+        return emplacements.lister();
+    }
+
+    @GetMapping("/emplacements/unites-hotellerie")
+    public List<com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService.UniteHotellerie> unitesHotellerie() {
+        return emplacements.unitesHotellerie();
+    }
+
+    @PostMapping("/emplacements")
+    public com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService.Emplacement creerEmplacement(
+            @Valid @RequestBody com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService.EmplacementRequest req) {
+        return emplacements.enregistrer(null, req);
+    }
+
+    @PutMapping("/emplacements/{id}")
+    public com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService.Emplacement modifierEmplacement(@PathVariable Long id,
+            @Valid @RequestBody com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService.EmplacementRequest req) {
+        return emplacements.enregistrer(id, req);
+    }
+
+    @DeleteMapping("/emplacements/{id}")
+    public void supprimerEmplacement(@PathVariable Long id) {
+        emplacements.supprimer(id);
+    }
+
+    @PostMapping("/emplacements/import-hotellerie")
+    public com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService.Import importerUnites() {
+        return emplacements.importerUnitesHotellerie();
+    }
+
+    @PutMapping("/inventaire/affectation")
+    public List<com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien> affecter(
+            @Valid @RequestBody com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.AffectationRequest req) {
+        return inventaire.affecter(req);
+    }
+
+    @GetMapping("/inventaire/{id}/photos")
+    public List<com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Photo> photos(@PathVariable Long id) {
+        return inventaire.photos(id);
+    }
+
+    @PostMapping(value = "/inventaire/{id}/photos", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Photo ajouterPhoto(@PathVariable Long id,
+            @RequestPart("fichier") org.springframework.web.multipart.MultipartFile fichier) {
+        return inventaire.ajouterPhoto(id, fichier);
+    }
+
+    @GetMapping("/inventaire/{id}/photos/{photoId}")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> photo(@PathVariable Long id, @PathVariable Long photoId) {
+        var f = inventaire.fichierPhoto(id, photoId);
+        if (f == null) return org.springframework.http.ResponseEntity.notFound().build();
+        return org.springframework.http.ResponseEntity.ok()
+            .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
+            .contentType(org.springframework.http.MediaType.parseMediaType(f.typeContenu()))
+            .body(f.ressource());
+    }
+
+    @DeleteMapping("/inventaire/{id}/photos/{photoId}")
+    public void supprimerPhoto(@PathVariable Long id, @PathVariable Long photoId) {
+        inventaire.supprimerPhoto(id, photoId);
+    }
 
     /** Modification de la fiche d'amortissement par le responsable logistique (19/11/2026). */
     @org.springframework.web.bind.annotation.PutMapping("/immobilisations/{id}")

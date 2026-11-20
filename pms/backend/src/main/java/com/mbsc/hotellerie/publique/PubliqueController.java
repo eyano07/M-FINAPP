@@ -20,6 +20,17 @@ import java.util.List;
 public class PubliqueController {
 
     private final PubliqueService service;
+    private final com.mbsc.hotellerie.commun.PhotoService photos;
+
+    /** Photo d'une unité (chambre, appartement) montrée sur la réservation en ligne ; aucune autre photo n'est publique. */
+    @GetMapping("/photos/{id}")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.FileSystemResource> photo(@org.springframework.web.bind.annotation.PathVariable Long id) {
+        var f = photos.fichierPublic(id);
+        return org.springframework.http.ResponseEntity.ok()
+            .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
+            .contentType(org.springframework.http.MediaType.parseMediaType(f.type()))
+            .body(new org.springframework.core.io.FileSystemResource(f.chemin()));
+    }
 
     @GetMapping("/etablissements")
     public List<PubliqueService.Etablissement> etablissements() {

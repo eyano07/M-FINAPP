@@ -64,11 +64,11 @@ public class BailService {
                        Long etablissementId, String etablissementNom, Long uniteId, String uniteNumero, String typeNom, Long clientId,
                        String clientNom, LocalDate dateDebut, LocalDate dateFin, BigDecimal loyerMensuel, BigDecimal chargesForfait,
                        boolean refacturerCompteurs, String statut, String conditions, int echeancesAFacturer, BigDecimal duFacture,
-                       LocalDate prochaineEcheance) { }
+                       LocalDate prochaineEcheance, String ameublement) { }
 
     private static final String SELECT = """
         select b.*, r.reference as res_ref, r.statut as res_statut, r.etablissement_id, e.nom as etab_nom, r.unite_id, u.numero as unite_numero,
-               t.nom as type_nom, r.client_id, trim(coalesce(c.prenom, '') || ' ' || c.nom) as client_nom, r.debut, r.fin,
+               t.nom as type_nom, t.ameublement, r.client_id, trim(coalesce(c.prenom, '') || ' ' || c.nom) as client_nom, r.debut, r.fin,
                (select count(*) from echeances_bail x where x.bail_id = b.id and x.statut in ('A_FACTURER', 'EN_ATTENTE') and x.date_echeance <= current_date) as a_facturer,
                (select coalesce(sum(x.total_ttc), 0) from echeances_bail x where x.bail_id = b.id and x.statut = 'FACTUREE') as du,
                (select min(x.date_echeance) from echeances_bail x where x.bail_id = b.id and x.statut in ('A_FACTURER', 'EN_ATTENTE')) as prochaine
@@ -82,7 +82,8 @@ public class BailService {
         rs.getObject("debut", OffsetDateTime.class).atZoneSameInstant(Durees.FUSEAU).toLocalDate(),
         rs.getObject("fin", OffsetDateTime.class).atZoneSameInstant(Durees.FUSEAU).toLocalDate(), rs.getBigDecimal("loyer_mensuel"),
         rs.getBigDecimal("charges_forfait"), rs.getBoolean("refacturer_compteurs"), rs.getString("statut"), rs.getString("conditions"),
-        rs.getInt("a_facturer"), rs.getBigDecimal("du"), rs.getDate("prochaine") == null ? null : rs.getDate("prochaine").toLocalDate());
+        rs.getInt("a_facturer"), rs.getBigDecimal("du"), rs.getDate("prochaine") == null ? null : rs.getDate("prochaine").toLocalDate(),
+        rs.getString("ameublement"));
 
     public List<Bail> lister(Long etablissementId, String statut) {
         return jdbc.query(SELECT + """

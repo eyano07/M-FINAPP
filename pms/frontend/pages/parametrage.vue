@@ -6,9 +6,10 @@ import { DUREES, TYPES_ETABLISSEMENT, usd } from '~/utils/libelles'
 useHead({ title: 'Établissements et tarifs' })
 
 interface Etab { id: number, nom: string, type: string, adresse: string | null, telephone: string | null, heureArrivee: string, heureDepart: string, actif: boolean, unites: number }
-interface TypeU { id: number, etablissementId: number, nom: string, capacite: number, description: string | null, actif: boolean }
+interface TypeU { id: number, etablissementId: number, nom: string, capacite: number, description: string | null, actif: boolean, ameublement: string | null }
 interface Unite { id: number, etablissementId: number, etablissementNom: string, typeId: number, typeNom: string, numero: string, etage: string | null,
-  capacite: number | null, equipements: string | null, horsService: boolean, motifHorsService: string | null, notes: string | null, ordre: number, actif: boolean }
+  capacite: number | null, equipements: string | null, horsService: boolean, motifHorsService: string | null, notes: string | null, ordre: number, actif: boolean,
+  nbPhotos?: number }
 interface Tarif { id: number, typeId: number, typeNom: string, etablissementId: number, uniteDuree: string, prix: number, libelle: string | null,
   debutSaison: string | null, finSaison: string | null, actif: boolean, dureeHeures: number | null, plageDebut: string | null, plageFin: string | null }
 interface TarifCompteur { etablissementId: number, type: 'EAU' | 'ELECTRICITE', prixUnite: number }
@@ -61,13 +62,34 @@ const sauverEtab = () => enregistrer('/etablissements', fe.id, { nom: fe.nom, ty
   heureArrivee: fe.heureArrivee, heureDepart: fe.heureDepart, actif: fe.actif }, () => { fe.ouvert = false })
 
 // Type d'unité
-const ft = reactive({ ouvert: false, id: null as number | null, etablissementId: null as number | null, nom: '', capacite: 2, description: '', actif: true })
+const ft = reactive({ ouvert: false, id: null as number | null, etablissementId: null as number | null, nom: '', capacite: 2, description: '', actif: true,
+  ameublement: null as string | null })
 function ouvrirType(t?: TypeU) {
-  Object.assign(ft, t ? { ouvert: true, id: t.id, etablissementId: t.etablissementId, nom: t.nom, capacite: t.capacite, description: t.description ?? '', actif: t.actif }
-    : { ouvert: true, id: null, etablissementId: etabs.value[0]?.id ?? null, nom: '', capacite: 2, description: '', actif: true })
+  Object.assign(ft, t ? { ouvert: true, id: t.id, etablissementId: t.etablissementId, nom: t.nom, capacite: t.capacite, description: t.description ?? '', actif: t.actif,
+    ameublement: t.ameublement }
+    : { ouvert: true, id: null, etablissementId: etabs.value[0]?.id ?? null, nom: '', capacite: 2, description: '', actif: true, ameublement: null })
 }
+/** Appartements (établissement d'appartements ou mixte) : meublé ou non meublé. */
+const avecAmeublement = computed(() => ['APPARTEMENTS', 'MIXTE'].includes(etabs.value.find(e => e.id === ft.etablissementId)?.type ?? ''))
 const sauverType = () => enregistrer('/types-unite', ft.id, { etablissementId: ft.etablissementId, nom: ft.nom, capacite: ft.capacite,
-  description: ft.description || null, actif: ft.actif }, () => { ft.ouvert = false })
+  description: ft.description || null, actif: ft.actif, ameublement: avecAmeublement.value ? ft.ameublement : null }, () => { ft.ouvert = false })
+const AMEUBLEMENTS: Record<string, string> = { MEUBLE: 'Meublé', NON_MEUBLE: 'Non meublé' }
+
+// Photos de l'unité (réservation en ligne : 3 au moins par type d'unité)
+const photosUnite = ref<{ id: number, legende: string | null }[]>([])
+async function chargerPhotosUnite() {
+  photosUnite.value = fu.id ? await api<{ id: number, legende: string | null }[]>(`/unites/${fu.id}/photos`).catch(() => []) : []
+}
+/** Photos par type : un type n'est proposé en ligne qu'à partir de 3 photos (toutes unités du type confondues). */
+const photosParType = computed(() => {
+  const m = new Map<number, number>()
+  for (const u of unites.value) m.set(u.typeId, (m.get(u.typeId) ?? 0) + (u.nbPhotos ?? 0))
+  return m
+})
+async function retirerPhotoUnite(id: number) {
+  if (!(await dialogues.confirmer({ titre: 'Retirer cette photo ?', bouton: 'Retirer', nature: 'danger' }))) return
+  try { await api(`/photos/${id}`, { method: 'DELETE' }); await chargerPhotosUnite(); await charger() } catch (e) { erreur.value = messageErreur(e) }
+}
 
 // Unité
 const fu = reactive({ ouvert: false, id: null as number | null, typeId: null as number | null, numero: '', etage: '', capacite: null as number | null,
@@ -76,6 +98,7 @@ function ouvrirUnite(u?: Unite) {
   Object.assign(fu, u ? { ouvert: true, id: u.id, typeId: u.typeId, numero: u.numero, etage: u.etage ?? '', capacite: u.capacite, equipements: u.equipements ?? '',
     notes: u.notes ?? '', ordre: u.ordre, actif: u.actif, serie: false, jusqua: '' }
     : { ouvert: true, id: null, typeId: types.value[0]?.id ?? null, numero: '', etage: '', capacite: null, equipements: '', notes: '', ordre: 0, actif: true, serie: false, jusqua: '' })
+  chargerPhotosUnite()
 }
 async function sauverUnite() {
   const base = { typeId: fu.typeId, etage: fu.etage || null, capacite: fu.capacite || null, equipements: fu.equipements || null, notes: fu.notes || null, ordre: fu.ordre, actif: fu.actif }
@@ -188,13 +211,19 @@ const libType = (t: string) => TYPES_ETABLISSEMENT.find(x => x.value === t)?.tit
         </div>
         <div class="d-flex flex-wrap ga-2 mb-4">
           <v-chip v-for="t in types" :key="t.id" :color="t.actif ? 'primary' : 'grey'" variant="tonal" prepend-icon="mdi-pencil" @click="peut && ouvrirType(t)">
-            {{ t.nom }} · {{ t.capacite }} pers. · {{ nomEtab(t.etablissementId) }}
+            {{ t.nom }} · {{ t.capacite }} pers.<template v-if="t.ameublement"> · {{ AMEUBLEMENTS[t.ameublement] }}</template> · {{ nomEtab(t.etablissementId) }}
+            <v-icon :icon="(photosParType.get(t.id) ?? 0) >= 3 ? 'mdi-web-check' : 'mdi-web-off'" size="16" class="ml-2"
+              :title="(photosParType.get(t.id) ?? 0) >= 3 ? 'Proposé en ligne' : `Pas en ligne : ${photosParType.get(t.id) ?? 0}/3 photos`" />
           </v-chip>
         </div>
         <v-card class="classroom-card">
           <v-data-table :items="unites" items-per-page="50" density="comfortable" no-data-text="Aucune unité."
             :headers="[{ title: 'Unité', key: 'numero' }, { title: 'Type', key: 'typeNom' }, { title: 'Établissement', key: 'etablissementNom' },
-                       { title: 'Étage', key: 'etage' }, { title: 'État', key: 'horsService' }, { title: '', key: 'actions', sortable: false, align: 'end' }]">
+                       { title: 'Étage', key: 'etage' }, { title: 'Photos', key: 'nbPhotos' }, { title: 'État', key: 'horsService' }, { title: '', key: 'actions', sortable: false, align: 'end' }]">
+            <template #[`item.nbPhotos`]="{ item }">
+              <v-chip size="small" variant="tonal" :color="(item.nbPhotos ?? 0) >= 3 ? 'success' : 'warning'" prepend-icon="mdi-image-multiple-outline"
+                :title="(item.nbPhotos ?? 0) >= 3 ? 'Montrées aux clients' : '3 photos au moins pour la réservation en ligne'">{{ item.nbPhotos ?? 0 }}</v-chip>
+            </template>
             <template #[`item.numero`]="{ item }"><strong>{{ item.numero }}</strong><v-chip v-if="!item.actif" size="x-small" class="ml-1">inactive</v-chip></template>
             <template #[`item.horsService`]="{ item }">
               <v-chip v-if="item.horsService" size="small" color="error" variant="tonal" prepend-icon="mdi-wrench-outline">Hors service</v-chip>
@@ -271,7 +300,17 @@ const libType = (t: string) => TYPES_ETABLISSEMENT.find(x => x.value === t)?.tit
           <v-select v-model="ft.etablissementId" :items="etabs" item-title="nom" item-value="id" label="Établissement" :disabled="!!ft.id" />
           <v-text-field v-model="ft.nom" label="Nom (ex. Chambre double, Studio, Suite) *" />
           <v-text-field v-model.number="ft.capacite" type="number" min="1" label="Capacité (personnes)" />
-          <v-textarea v-model="ft.description" label="Description" rows="2" auto-grow />
+          <v-textarea v-model="ft.description" label="Description (vue par les clients en ligne)" rows="2" auto-grow />
+          <template v-if="avecAmeublement">
+            <div class="text-caption text-medium-emphasis mb-2">Appartement</div>
+            <v-btn-toggle v-model="ft.ameublement" divided variant="outlined" density="comfortable" class="mb-1 w-100">
+              <v-btn value="MEUBLE" class="flex-grow-1" prepend-icon="mdi-sofa-outline">Meublé</v-btn>
+              <v-btn value="NON_MEUBLE" class="flex-grow-1" prepend-icon="mdi-home-outline">Non meublé</v-btn>
+            </v-btn-toggle>
+            <p class="text-caption text-medium-emphasis mb-3">{{ ft.ameublement === 'NON_MEUBLE'
+              ? 'Le locataire apporte ses meubles et son électroménager : l’état des lieux ne porte que sur le logement (murs, sols, sanitaires, compteurs).'
+              : ft.ameublement === 'MEUBLE' ? 'Meubles et équipements fournis : inventoriés à l’entrée et à la sortie du locataire.' : 'Choisissez le type d’appartement.' }}</p>
+          </template>
           <v-switch v-model="ft.actif" label="Actif" color="primary" hide-details inset />
         </v-card-text>
         <v-card-actions><v-spacer /><v-btn variant="text" @click="ft.ouvert = false">Annuler</v-btn><v-btn color="primary" variant="flat" :disabled="!ft.nom || !ft.etablissementId" @click="sauverType">Enregistrer</v-btn></v-card-actions>
@@ -295,6 +334,18 @@ const libType = (t: string) => TYPES_ETABLISSEMENT.find(x => x.value === t)?.tit
           <v-text-field v-model="fu.equipements" label="Équipements (climatisation, TV, cuisine…)" />
           <v-text-field v-model="fu.notes" label="Notes" />
           <v-switch v-model="fu.actif" label="Active" color="primary" hide-details inset />
+          <template v-if="fu.id">
+            <div class="d-flex align-center mt-4 mb-2">
+              <div class="text-subtitle-2">Photos (réservation en ligne)</div><v-spacer />
+              <v-chip size="small" variant="tonal" :color="photosUnite.length >= 3 ? 'success' : 'warning'">{{ photosUnite.length }} / 3 minimum</v-chip>
+            </div>
+            <GaleriePhotos :photos="photosUnite" :envoi="`/unites/${fu.id}/photos`" :peut-ajouter="peut" @change="chargerPhotosUnite(); charger()" />
+            <div v-if="peut && photosUnite.length" class="d-flex flex-wrap ga-1 mt-2">
+              <v-btn v-for="(p, i) in photosUnite" :key="p.id" size="x-small" variant="text" color="error" prepend-icon="mdi-delete-outline" @click="retirerPhotoUnite(p.id)">Photo {{ i + 1 }}</v-btn>
+            </div>
+            <p class="text-caption text-medium-emphasis mt-2 mb-0">Le type d'unité n'est proposé sur la réservation en ligne qu'avec 3 photos au moins : les clients les voient avant de réserver.</p>
+          </template>
+          <p v-else class="text-caption text-medium-emphasis mt-3 mb-0">Les photos s'ajoutent une fois l'unité enregistrée.</p>
         </v-card-text>
         <v-card-actions><v-spacer /><v-btn variant="text" @click="fu.ouvert = false">Annuler</v-btn><v-btn color="primary" variant="flat" :disabled="!fu.numero || !fu.typeId" @click="sauverUnite">Enregistrer</v-btn></v-card-actions>
       </v-card>

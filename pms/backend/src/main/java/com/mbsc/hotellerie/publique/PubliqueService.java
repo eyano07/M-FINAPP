@@ -48,8 +48,13 @@ public class PubliqueService {
     public record Etablissement(Long id, String nom, String type, String adresse, String telephone, LocalTime heureArrivee,
                                 LocalTime heureDepart) { }
 
+    /**
+     * {@code photos} : photos des unités du type (adresses /public/photos/{id}) ; un type n'est proposé en ligne qu'avec au
+     * moins {@link com.mbsc.hotellerie.commun.PhotoService#MINIMUM_EN_LIGNE} photos. {@code ameublement} : MEUBLE ou
+     * NON_MEUBLE pour un appartement.
+     */
     public record Offre(Long typeId, String type, String description, int capacite, BigDecimal prixNuit, long nuits,
-                        BigDecimal totalHt, int disponibles) { }
+                        BigDecimal totalHt, int disponibles, String ameublement, List<Long> photos) { }
 
     public List<Etablissement> etablissements() {
         return jdbc.query("select * from etablissements where actif order by nom", (rs, i) -> new Etablissement(rs.getLong("id"),
@@ -62,7 +67,7 @@ public class PubliqueService {
         OffsetDateTime[] p = periode(etablissementId, arrivee, depart);
         long nuits = ChronoUnit.DAYS.between(arrivee, depart);
         return jdbc.query("""
-            select t.id, t.nom, t.description, t.capacite, count(u.id) as libres,
+            select t.id, t.nom, t.description, t.capacite, t.ameublement, count(u.id) as libres,
                    (select ta.prix from tarifs ta where ta.type_id = t.id and ta.unite_duree = 'NUIT' and ta.actif
                       and (ta.debut_saison is null or ta.debut_saison <= ?) and (ta.fin_saison is null or ta.fin_saison >= ?)
                     order by (ta.debut_saison is null) asc, ta.id desc limit 1) as prix
@@ -71,12 +76,25 @@ public class PubliqueService {
               and not (u.hors_service and tstzrange(coalesce(u.hors_service_du, '-infinity'), coalesce(u.hors_service_au, 'infinity'), '[)') && tstzrange(?, ?, '[)'))
               and not exists (select 1 from reservations r where r.unite_id = u.id and r.statut in ('OPTION', 'CONFIRMEE', 'ARRIVEE')
                   and tstzrange(r.debut, r.fin, '[)') && tstzrange(?, ?, '[)'))
-            group by t.id, t.nom, t.description, t.capacite order by prix nulls last, t.nom
+            group by t.id, t.nom, t.description, t.capacite, t.ameublement order by prix nulls last, t.nom
             """, (rs, i) -> {
             BigDecimal prix = rs.getBigDecimal("prix");
             return new Offre(rs.getLong("id"), rs.getString("nom"), rs.getString("description"), rs.getInt("capacite"), prix, nuits,
-                prix == null ? null : Durees.ht(prix, BigDecimal.valueOf(nuits)), rs.getInt("libres"));
-        }, arrivee, arrivee, etablissementId, personnes, p[0], p[1], p[0], p[1]).stream().filter(o -> o.prixNuit() != null).toList();
+                prix == null ? null : Durees.ht(prix, BigDecimal.valueOf(nuits)), rs.getInt("libres"), rs.getString("ameublement"), List.of());
+        }, arrivee, arrivee, etablissementId, personnes, p[0], p[1], p[0], p[1]).stream().filter(o -> o.prixNuit() != null)
+            // Photos des unités du type : sans 3 photos au moins, le type n'est pas proposé en ligne.
+            .map(o -> new Offre(o.typeId(), o.type(), o.description(), o.capacite(), o.prixNuit(), o.nuits(), o.totalHt(), o.disponibles(),
+                o.ameublement(), photosDuType(o.typeId())))
+            .filter(o -> o.photos().size() >= com.mbsc.hotellerie.commun.PhotoService.MINIMUM_EN_LIGNE)
+            .toList();
+    }
+
+    /** Photos des unités actives d'un type, dans l'ordre des unités puis d'ajout (12 au plus). */
+    List<Long> photosDuType(Long typeId) {
+        return jdbc.queryForList("""
+            select p.id from photos p join unites u on u.id = p.objet_id
+            where p.objet = 'UNITE' and u.type_id = ? and u.actif order by u.ordre, u.numero, p.ordre, p.cree_le limit 12
+            """, Long.class, typeId);
     }
 
     public record Demande(@NotNull Long etablissementId, @NotNull Long typeId, @NotNull LocalDate arrivee, @NotNull LocalDate depart,

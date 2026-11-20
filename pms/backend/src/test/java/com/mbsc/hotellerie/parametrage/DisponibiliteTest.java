@@ -18,7 +18,7 @@ class DisponibiliteTest {
 
     private static ParametrageService.Unite unite(boolean hs, String du, String au) {
         return new ParametrageService.Unite(1L, 1L, "Hôtel", 1L, "Double", "101", "1", 2, null, "PROPRE", hs, "Climatiseur", null, 0, true,
-            du == null ? null : t(du), au == null ? null : t(au), null);
+            du == null ? null : t(du), au == null ? null : t(au), null, 0);
     }
 
     @Test

@@ -14,7 +14,14 @@ type Categorie = 'MOBILIER' | 'MATERIEL_BUREAU' | 'MATERIEL_INFORMATIQUE' | 'MAT
 interface Bien {
   id: number, code: string, libelle: string, categorie: Categorie, dureeMois: number, localisation: string | null, etat: string | null,
   statut: 'A_VALORISER' | 'IMMOBILISE' | 'PETIT_MATERIEL', valeurUsd: number | null, dateAcquisition: string | null,
-  dateMiseService: string | null, immobilisationId: number | null, immobilisationReference: string | null, ligneSource: number | null
+  dateMiseService: string | null, immobilisationId: number | null, immobilisationReference: string | null, ligneSource: number | null,
+  emplacementId: number | null, emplacementNom: string | null, emplacementType: string | null, nbPhotos: number
+}
+interface Emplacement { id: number, nom: string, type: string, actif: boolean, uniteLibelle: string | null }
+/** Icône de chaque type d'emplacement (voir Patrimoine › Emplacements). */
+const ICONES_EMPLACEMENT: Record<string, string> = {
+  BUREAU: 'mdi-desk', SALLE: 'mdi-table-chair', MAGASIN: 'mdi-warehouse', ATELIER: 'mdi-hammer-wrench', CHAMBRE: 'mdi-bed-outline',
+  APPARTEMENT: 'mdi-home-city-outline', UNITE_MOTEL: 'mdi-car-estate', PARTIE_COMMUNE: 'mdi-door-open', EXTERIEUR: 'mdi-tree-outline', AUTRE: 'mdi-map-marker-outline',
 }
 
 const CATEGORIES: { value: Categorie, title: string, duree: number }[] = [
@@ -58,14 +65,86 @@ async function charger() {
     chargement.value = false
   }
 }
-onMounted(charger)
+onMounted(() => { charger(); chargerEmplacements() })
 
-const lieux = computed(() => [...new Set(biens.value.map(b => b.localisation || '—'))].sort())
+// ── Emplacements (affectations) ─────────────────────────────────────────
+const emplacements = ref<Emplacement[]>([])
+async function chargerEmplacements() {
+  try { emplacements.value = await api<Emplacement[]>('/patrimoine/emplacements') } catch { emplacements.value = [] }
+}
+const optionsEmplacements = computed(() => emplacements.value.filter(e => e.actif)
+  .map(e => ({ value: e.id, title: e.nom, subtitle: e.uniteLibelle ? `Hôtellerie : ${e.uniteLibelle}` : '', icone: ICONES_EMPLACEMENT[e.type] ?? 'mdi-map-marker-outline' })))
+/** Lieu affiché : l'emplacement affecté, sinon le lieu relevé sur la fiche d'inventaire. */
+const lieu = (b: Bien) => b.emplacementNom ?? b.localisation ?? '—'
+const aff = reactive({ ouvert: false, biens: [] as number[], emplacementId: null as number | null, enCours: false })
+function affecter(ids: number[], actuel: number | null = null) {
+  Object.assign(aff, { ouvert: true, biens: ids, emplacementId: actuel, enCours: false })
+}
+async function confirmerAffectation() {
+  aff.enCours = true
+  try {
+    await api('/patrimoine/inventaire/affectation', { method: 'PUT', body: { biens: aff.biens, emplacementId: aff.emplacementId } })
+    const nom = emplacements.value.find(e => e.id === aff.emplacementId)?.nom
+    succes.value = nom ? `${aff.biens.length} bien(s) affecté(s) à « ${nom} ».` : `${aff.biens.length} bien(s) retiré(s) de leur emplacement.`
+    aff.ouvert = false
+    selection.value = []
+    await Promise.all([charger(), chargerEmplacements()])
+  } catch (e) {
+    erreur.value = messageErreurApi(e)
+  } finally {
+    aff.enCours = false
+  }
+}
+
+// ── Photos d'un bien ────────────────────────────────────────────────────
+const ph = reactive({ ouvert: false, bien: null as Bien | null, photos: [] as { id: number, url: string }[], enCours: false, grande: null as string | null })
+const champPhoto = ref<HTMLInputElement | null>(null)
+async function ouvrirPhotos(b: Bien) {
+  ph.photos.forEach(p => URL.revokeObjectURL(p.url))
+  Object.assign(ph, { ouvert: true, bien: b, photos: [], enCours: false, grande: null })
+  await chargerPhotos()
+}
+async function chargerPhotos() {
+  if (!ph.bien) return
+  try {
+    const liste = await api<{ id: number }[]>(`/patrimoine/inventaire/${ph.bien.id}/photos`)
+    ph.photos.forEach(p => URL.revokeObjectURL(p.url))
+    ph.photos = await Promise.all(liste.map(async p => ({ id: p.id,
+      url: URL.createObjectURL(await api<Blob>(`/patrimoine/inventaire/${ph.bien!.id}/photos/${p.id}`, { responseType: 'blob' })) })))
+  } catch (e) { erreur.value = messageErreurApi(e) }
+}
+async function envoyerPhotos(e: Event) {
+  const fichiers = (e.target as HTMLInputElement).files
+  if (!fichiers?.length || !ph.bien) return
+  ph.enCours = true
+  try {
+    for (const f of Array.from(fichiers)) {
+      const donnees = new FormData()
+      donnees.append('fichier', f)
+      await api(`/patrimoine/inventaire/${ph.bien.id}/photos`, { method: 'POST', body: donnees })
+    }
+    await Promise.all([chargerPhotos(), charger()])
+  } catch (err) {
+    erreur.value = messageErreurApi(err, "La photo n'a pas été enregistrée.")
+  } finally {
+    ph.enCours = false
+    if (champPhoto.value) champPhoto.value.value = ''
+  }
+}
+async function retirerPhoto(id: number) {
+  if (!ph.bien || !(await useDialogues().confirmer({ titre: 'Retirer cette photo ?', bouton: 'Retirer', nature: 'danger' }))) return
+  try {
+    await api(`/patrimoine/inventaire/${ph.bien.id}/photos/${id}`, { method: 'DELETE' })
+    await Promise.all([chargerPhotos(), charger()])
+  } catch (e) { erreur.value = messageErreurApi(e) }
+}
+
+const lieux = computed(() => [...new Set(biens.value.map(lieu))].sort())
 const filtres = computed(() => {
   const q = recherche.value.trim().toLowerCase()
   return biens.value.filter(b => (filtreStatut.value === 'TOUS' || b.statut === filtreStatut.value)
-    && (filtreLieu.value === 'TOUS' || (b.localisation || '—') === filtreLieu.value)
-    && (!q || `${b.code} ${b.libelle} ${b.localisation ?? ''}`.toLowerCase().includes(q)))
+    && (filtreLieu.value === 'TOUS' || lieu(b) === filtreLieu.value)
+    && (!q || `${b.code} ${b.libelle} ${b.localisation ?? ''} ${b.emplacementNom ?? ''}`.toLowerCase().includes(q)))
 })
 const compte = (s: string) => biens.value.filter(b => b.statut === s).length
 const totalImmobilise = computed(() => biens.value.filter(b => b.statut === 'IMMOBILISE').reduce((t, b) => t + Number(b.valeurUsd || 0), 0))
@@ -144,7 +223,7 @@ async function imprimerEtiquettes() {
   const choix = biens.value.filter(b => selection.value.includes(b.id))
   const liste = choix.length ? choix : filtres.value
   etiquettes.value = await Promise.all(liste.map(async b => ({
-    code: b.code, libelle: b.libelle, lieu: b.localisation ?? '',
+    code: b.code, libelle: b.libelle, lieu: b.emplacementNom ?? b.localisation ?? '',
     qr: await QRCode.toDataURL(b.code, { margin: 0, width: 160, errorCorrectionLevel: 'M' }),
   })))
   await nextTick()
@@ -162,6 +241,10 @@ async function imprimerEtiquettes() {
         <p class="page-sub">Biens relevés, codes collés et entrée en immobilisation (SYSCOHADA révisé)</p>
       </div>
       <div class="d-flex ga-2 flex-wrap">
+        <v-btn v-if="peutEcrire && selection.length" variant="tonal" prepend-icon="mdi-map-marker-radius-outline" @click="affecter([...selection])">
+          Affecter la sélection ({{ selection.length }})
+        </v-btn>
+        <v-btn variant="text" prepend-icon="mdi-map-marker-multiple-outline" to="/patrimoine/emplacements">Emplacements</v-btn>
         <v-btn v-if="lotAValoriser.length > 1" color="primary" variant="flat" prepend-icon="mdi-cash-plus" @click="ouvrirValorisationLot">
           Valoriser la sélection ({{ lotAValoriser.length }})
         </v-btn>
@@ -206,11 +289,15 @@ async function imprimerEtiquettes() {
       <v-data-table v-model="selection" :items="filtres" item-value="id" show-select select-strategy="all" :loading="chargement" items-per-page="50" density="comfortable"
         no-data-text="Aucun bien."
         :headers="[
-          { title: 'Code', key: 'code' }, { title: 'Désignation', key: 'libelle' }, { title: 'Emplacement', key: 'localisation' },
+          { title: 'Code', key: 'code' }, { title: 'Désignation', key: 'libelle' }, { title: 'Emplacement', key: 'emplacementNom' },
           { title: 'Catégorie', key: 'categorie' }, { title: 'Durée', key: 'dureeMois' }, { title: 'Valeur', key: 'valeurUsd', align: 'end' },
           { title: 'Statut', key: 'statut' }, { title: '', key: 'actions', sortable: false, align: 'end' },
         ]">
         <template #[`item.code`]="{ item }"><code class="code-bien">{{ item.code }}</code></template>
+        <template #[`item.emplacementNom`]="{ item }">
+          <span v-if="item.emplacementNom" class="lieu"><v-icon :icon="ICONES_EMPLACEMENT[item.emplacementType ?? ''] ?? 'mdi-map-marker-outline'" size="16" />{{ item.emplacementNom }}</span>
+          <span v-else class="text-medium-emphasis font-italic">{{ item.localisation ? `${item.localisation} (non affecté)` : 'Non affecté' }}</span>
+        </template>
         <template #[`item.categorie`]="{ item }">{{ libCategorie(item.categorie) }}</template>
         <template #[`item.dureeMois`]="{ item }">{{ duree(item.dureeMois) }}</template>
         <template #[`item.valeurUsd`]="{ item }">{{ item.valeurUsd == null ? '—' : usd(item.valeurUsd) }}</template>
@@ -219,10 +306,17 @@ async function imprimerEtiquettes() {
           <NuxtLink v-if="item.immobilisationReference" to="/patrimoine/immobilisations" class="ml-1 text-caption">{{ item.immobilisationReference }}</NuxtLink>
         </template>
         <template #[`item.actions`]="{ item }">
+          <div class="actions-bien">
+          <v-btn icon size="small" variant="text" :aria-label="`Photos (${item.nbPhotos})`" @click="ouvrirPhotos(item)">
+            <v-badge :content="item.nbPhotos" :model-value="item.nbPhotos > 0" color="primary" floating><v-icon icon="mdi-camera-outline" /></v-badge>
+          </v-btn>
+          <v-btn v-if="peutEcrire" size="small" variant="text" icon="mdi-map-marker-radius-outline" aria-label="Affecter à un emplacement"
+            @click="affecter([item.id], item.emplacementId)" />
           <template v-if="peutEcrire && item.statut === 'A_VALORISER'">
             <v-btn size="small" variant="text" icon="mdi-pencil" aria-label="Corriger" @click="ouvrirCorrection(item)" />
             <v-btn size="small" color="primary" variant="tonal" @click="ouvrirValorisation(item)">Valoriser</v-btn>
           </template>
+          </div>
         </template>
       </v-data-table>
     </v-card>
@@ -286,17 +380,71 @@ async function imprimerEtiquettes() {
           <v-select v-model="cor.categorie" :items="CATEGORIES" label="Catégorie" variant="outlined" density="comfortable"
             @update:model-value="(c: Categorie) => cor.dureeMois = CATEGORIES.find(x => x.value === c)?.duree ?? cor.dureeMois" />
           <v-text-field v-model.number="cor.dureeMois" type="number" min="1" label="Durée d'amortissement proposée (mois)" variant="outlined" density="comfortable" />
-          <v-text-field v-model="cor.localisation" label="Emplacement" variant="outlined" density="comfortable" />
+          <v-text-field v-model="cor.localisation" label="Lieu relevé (fiche d'inventaire)" variant="outlined" density="comfortable"
+            hint="L'affectation à un bureau, une chambre ou un appartement se fait avec le bouton « Affecter »." persistent-hint class="mb-2" />
           <v-text-field v-model="cor.etat" label="État" variant="outlined" density="comfortable" />
         </v-card-text>
         <v-card-actions><v-spacer /><v-btn variant="text" @click="cor.ouvert = false">Annuler</v-btn>
           <v-btn color="primary" variant="flat" @click="corriger">Enregistrer</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Affectation à un emplacement -->
+    <v-dialog v-model="aff.ouvert" max-width="520">
+      <v-card class="pa-2">
+        <v-card-title class="font-weight-bold">{{ aff.biens.length > 1 ? `Affecter ${aff.biens.length} biens` : 'Affecter le bien' }}</v-card-title>
+        <v-card-text>
+          <v-autocomplete v-model="aff.emplacementId" :items="optionsEmplacements" label="Emplacement (bureau, salle, chambre, appartement…)"
+            clearable variant="outlined" density="comfortable" no-data-text="Aucun emplacement : créez-en dans Patrimoine › Emplacements.">
+            <template #item="{ props: p, item }"><v-list-item v-bind="p" :prepend-icon="item.raw.icone" :subtitle="item.raw.subtitle" /></template>
+          </v-autocomplete>
+          <p class="text-caption text-medium-emphasis mb-0">Laissez vide pour retirer l'affectation. Une chambre ou un appartement de l'hôtellerie
+            montre ensuite ses biens dans l'application d'hôtellerie (inventaire type du logement).</p>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn variant="text" to="/patrimoine/emplacements">Gérer les emplacements</v-btn>
+          <v-spacer /><v-btn variant="text" @click="aff.ouvert = false">Annuler</v-btn>
+          <v-btn color="primary" variant="flat" :loading="aff.enCours" @click="confirmerAffectation">Affecter</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Photos du bien -->
+    <v-dialog v-model="ph.ouvert" max-width="760">
+      <v-card class="pa-2">
+        <v-card-title class="font-weight-bold">Photos · {{ ph.bien?.libelle }}</v-card-title>
+        <v-card-subtitle><code>{{ ph.bien?.code }}</code></v-card-subtitle>
+        <v-card-text>
+          <div class="photos">
+            <div v-for="p in ph.photos" :key="p.id" class="photo">
+              <img :src="p.url" alt="Photo du bien" @click="ph.grande = p.url">
+              <v-btn v-if="peutEcrire" icon="mdi-delete-outline" size="x-small" color="error" variant="flat" class="photo__retirer" aria-label="Retirer" @click="retirerPhoto(p.id)" />
+            </div>
+            <button v-if="peutEcrire" type="button" class="photo photo--ajout" :disabled="ph.enCours" @click="champPhoto?.click()">
+              <v-progress-circular v-if="ph.enCours" indeterminate size="22" width="2" />
+              <template v-else><v-icon icon="mdi-camera-plus-outline" size="28" /><span>Ajouter</span></template>
+            </button>
+          </div>
+          <p v-if="!ph.photos.length && !peutEcrire" class="text-medium-emphasis mb-0">Aucune photo.</p>
+          <input ref="champPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple hidden @change="envoyerPhotos">
+          <img v-if="ph.grande" :src="ph.grande" alt="Photo agrandie" class="photo-grande" @click="ph.grande = null">
+        </v-card-text>
+        <v-card-actions><v-spacer /><v-btn variant="text" @click="ph.ouvert = false">Fermer</v-btn></v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <style scoped>
+.lieu { display: inline-flex; align-items: center; gap: 6px; }
+.actions-bien { display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; white-space: nowrap; }
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.photo { position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: rgba(0, 0, 0, 0.04); border: 1px solid rgba(0, 0, 0, 0.08); }
+.photo img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
+.photo__retirer { position: absolute; top: 6px; right: 6px; }
+.photo--ajout { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; font: inherit; font-weight: 600;
+  color: rgb(var(--v-theme-primary)); border: 1.5px dashed rgba(var(--v-theme-primary), 0.5); background: rgba(var(--v-theme-primary), 0.05); }
+.photo-grande { display: block; width: 100%; max-height: 70vh; object-fit: contain; margin-top: 14px; border-radius: 14px; cursor: zoom-out; }
 .code-bien { font-size: 0.78rem; white-space: nowrap; }
 .etiquettes { display: none; }
 </style>

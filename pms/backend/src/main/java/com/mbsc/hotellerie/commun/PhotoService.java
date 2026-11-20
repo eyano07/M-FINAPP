@@ -26,7 +26,10 @@ import java.util.UUID;
 public class PhotoService {
 
     private static final Set<String> TYPES = Set.of("image/jpeg", "image/png", "image/webp");
-    public static final Set<String> OBJETS = Set.of("ETAT_LIEUX", "TICKET", "RELEVE");
+    /** UNITE : photos d'une chambre, d'une unité de motel ou d'un appartement, montrées sur la réservation en ligne. */
+    public static final Set<String> OBJETS = Set.of("ETAT_LIEUX", "TICKET", "RELEVE", "UNITE");
+    /** Photos minimales d'un type d'unité pour être proposé sur la réservation en ligne. */
+    public static final int MINIMUM_EN_LIGNE = 3;
 
     private final JdbcTemplate jdbc;
     private final Journal journal;
@@ -69,6 +72,18 @@ public class PhotoService {
             legende == null || legende.isBlank() ? null : legende.strip(), session.email());
         journal.noter("PHOTO_AJOUTEE", objet + " " + objetId, "photo " + id);
         return photos(objet, objetId).stream().filter(p -> p.id().equals(id)).findFirst().orElseThrow();
+    }
+
+    public String objet(Long id) {
+        return jdbc.queryForList("select objet from photos where id = ?", String.class, id).stream().findFirst()
+            .orElseThrow(() -> Refus.introuvable("Photo"));
+    }
+
+    /** Photo d'une unité seulement (adresse publique de la réservation en ligne) ; toute autre photo reste privée. */
+    public Fichier fichierPublic(Long id) {
+        return jdbc.query("select fichier, type_contenu from photos where id = ? and objet = 'UNITE'",
+            (rs, i) -> new Fichier(Path.of(uploads, "photos", rs.getString(1)), rs.getString(2)), id)
+            .stream().findFirst().orElseThrow(() -> Refus.introuvable("Photo"));
     }
 
     public Fichier fichier(Long id) {

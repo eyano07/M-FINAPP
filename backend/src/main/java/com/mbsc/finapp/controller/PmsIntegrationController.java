@@ -34,6 +34,7 @@ public class PmsIntegrationController {
     private final PmsIntegrationService service;
     private final IntegrationPmsService integration;
     private final AuthService auth;
+    private final com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService emplacements;
 
     @GetMapping("/systeme/etat")
     @PreAuthorize("hasRole('PMS')")
@@ -114,6 +115,19 @@ public class PmsIntegrationController {
     @GetMapping("/ventes/{id}")
     public VenteResponse vente(@PathVariable Long id) {
         return service.vente(id);
+    }
+
+    /** Unités de l'hôtellerie recopiées dans M-FINAPP (choix des emplacements du patrimoine). Appel système. */
+    @org.springframework.web.bind.annotation.PutMapping("/systeme/unites")
+    public java.util.Map<String, Integer> unites(
+            @RequestBody List<com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService.UniteTransmise> unites) {
+        return java.util.Map.of("recues", emplacements.recevoirUnites(unites));
+    }
+
+    /** Biens du patrimoine affectés à une unité (inventaire type d'un appartement, d'une chambre). */
+    @GetMapping("/patrimoine")
+    public List<com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService.BienUnite> patrimoine(@RequestParam Long uniteId) {
+        return emplacements.biensDeLUnite(uniteId);
     }
 
     /** Maintenance : achat de pièces ou de prestation, devenu note de frais soumise au DFIN. */

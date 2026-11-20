@@ -7,7 +7,7 @@ useHead({ title: 'Bail' })
 
 interface Bail { id: number, reference: string, reservationId: number, reservationReference: string, reservationStatut: string, etablissementId: number,
   etablissementNom: string, uniteId: number, uniteNumero: string, typeNom: string, clientNom: string, dateDebut: string, dateFin: string, loyerMensuel: number,
-  chargesForfait: number, refacturerCompteurs: boolean, statut: string, conditions: string | null, duFacture: number }
+  chargesForfait: number, refacturerCompteurs: boolean, statut: string, conditions: string | null, duFacture: number, ameublement: string | null }
 interface Echeance { id: number, numero: number, periodeDebut: string, periodeFin: string, dateEcheance: string, loyer: number, charges: number,
   detailCharges: string | null, statut: string, venteReference: string | null, totalTtc: number | null }
 interface Releve { id: number, type: 'EAU' | 'ELECTRICITE', date: string, index: number, echeanceId: number | null, notes: string | null }
@@ -98,6 +98,34 @@ async function enregistrerModele() {
     succes.value = 'Inventaire type enregistré.'
   } catch (x) { erreur.value = messageErreur(x) }
 }
+/**
+ * Biens du patrimoine de M-FINAPP affectés à cet appartement (Patrimoine › Emplacements) : repris dans l'inventaire type,
+ * un élément par désignation (quantités additionnées).
+ */
+const depuisPatrimoine = ref(false)
+async function reprendrePatrimoine() {
+  depuisPatrimoine.value = true
+  try {
+    const biens = await api<{ libelle: string, categorie: string }[]>(`/unites/${b.value!.uniteId}/patrimoine`)
+    if (!biens.length) { erreur.value = "Aucun bien du patrimoine n'est affecté à cet appartement (M-FINAPP › Patrimoine › Emplacements)."; return }
+    const parLibelle = new Map<string, number>()
+    for (const x of biens) parLibelle.set(x.libelle, (parLibelle.get(x.libelle) ?? 0) + 1)
+    for (const [libelle, n] of parLibelle) {
+      const existant = modele.value.find(e => e.element.toLowerCase() === libelle.toLowerCase())
+      if (existant) existant.quantite = Math.max(existant.quantite, n)
+      else modele.value.push({ piece: 'Patrimoine', element: libelle, quantite: n })
+    }
+    succes.value = `${biens.length} bien(s) du patrimoine repris : vérifiez les pièces puis enregistrez.`
+  } catch (e) { erreur.value = messageErreur(e, 'Patrimoine de M-FINAPP indisponible.') } finally { depuisPatrimoine.value = false }
+}
+/** Non meublé : le locataire apporte ses meubles, l'inventaire ne porte que sur le logement lui-même. */
+const MODELE_NON_MEUBLE: Element[] = [
+  { piece: 'Séjour', element: 'Murs et peinture', quantite: 1 }, { piece: 'Séjour', element: 'Sol', quantite: 1 }, { piece: 'Séjour', element: 'Fenêtres et vitres', quantite: 1 },
+  { piece: 'Séjour', element: 'Prises et interrupteurs', quantite: 1 }, { piece: 'Cuisine', element: 'Évier et robinetterie', quantite: 1 },
+  { piece: 'Cuisine', element: 'Placards fixes', quantite: 1 }, { piece: 'Chambre', element: 'Murs et peinture', quantite: 1 }, { piece: 'Chambre', element: 'Porte et serrure', quantite: 1 },
+  { piece: 'Salle de bain', element: 'Douche et robinetterie', quantite: 1 }, { piece: 'Salle de bain', element: 'WC', quantite: 1 },
+  { piece: 'Entrée', element: 'Porte d’entrée et clés', quantite: 1 }, { piece: 'Entrée', element: 'Compteurs (eau, électricité)', quantite: 1 },
+]
 const MODELE_DEPART: Element[] = [
   { piece: 'Séjour', element: 'Canapé', quantite: 1 }, { piece: 'Séjour', element: 'Télévision', quantite: 1 }, { piece: 'Séjour', element: 'Table et chaises', quantite: 1 },
   { piece: 'Cuisine', element: 'Réfrigérateur', quantite: 1 }, { piece: 'Cuisine', element: 'Plaques de cuisson', quantite: 1 }, { piece: 'Cuisine', element: 'Vaisselle (lot)', quantite: 1 },
@@ -115,6 +143,8 @@ const MODELE_DEPART: Element[] = [
         <h1 class="entete__titre">{{ b.clientNom }}</h1>
         <div class="entete__infos">
           <span><v-icon icon="mdi-home-outline" size="16" />{{ b.typeNom }} · {{ b.etablissementNom }}</span>
+          <span v-if="b.ameublement" class="entete__ameublement"><v-icon :icon="b.ameublement === 'MEUBLE' ? 'mdi-sofa-outline' : 'mdi-home-outline'" size="16" />
+            {{ b.ameublement === 'MEUBLE' ? 'Meublé' : 'Non meublé : meubles du locataire' }}</span>
           <span><v-icon icon="mdi-calendar-range" size="16" />{{ dateCourte(b.dateDebut) }} → {{ dateCourte(b.dateFin) }}</span>
           <span><v-icon icon="mdi-cash" size="16" />{{ usd(b.loyerMensuel) }} / mois{{ Number(b.chargesForfait) ? ` + ${usd(b.chargesForfait)}` : '' }}</span>
         </div>
@@ -203,7 +233,11 @@ const MODELE_DEPART: Element[] = [
           </div>
           <div v-if="peut" class="d-flex flex-wrap ga-2 mt-3">
             <v-btn size="small" variant="tonal" prepend-icon="mdi-plus" @click="modele.push({ piece: modele.at(-1)?.piece ?? 'Séjour', element: '', quantite: 1 })">Élément</v-btn>
-            <v-btn v-if="!modele.length" size="small" variant="text" prepend-icon="mdi-auto-fix" @click="modele = MODELE_DEPART.map(x => ({ ...x }))">Partir d’un modèle</v-btn>
+            <v-btn v-if="!modele.length" size="small" variant="text" prepend-icon="mdi-auto-fix"
+              @click="modele = (b.ameublement === 'NON_MEUBLE' ? MODELE_NON_MEUBLE : MODELE_DEPART).map(x => ({ ...x }))">
+              {{ b.ameublement === 'NON_MEUBLE' ? 'Modèle non meublé' : 'Partir d’un modèle' }}</v-btn>
+            <v-btn v-if="b.ameublement !== 'NON_MEUBLE'" size="small" variant="text" prepend-icon="mdi-package-variant-closed" :loading="depuisPatrimoine"
+              @click="reprendrePatrimoine">Depuis le patrimoine</v-btn>
             <v-spacer /><v-btn size="small" color="primary" variant="flat" @click="enregistrerModele">Enregistrer</v-btn>
           </div>
         </div>
@@ -237,6 +271,7 @@ const MODELE_DEPART: Element[] = [
 .entete__infos { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 6px; font-size: 0.86rem; color: var(--d-ink-soft); }
 .entete__infos span { display: inline-flex; align-items: center; gap: 6px; }
 .entete__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.entete__ameublement { font-weight: 650; color: #4338ca; }
 .onglets { display: inline-flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--d-surface-3); }
 .onglet { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px; border: 0; border-radius: 11px; cursor: pointer;
   font: inherit; font-size: 0.88rem; font-weight: 650; color: var(--d-ink-soft); background: transparent; }

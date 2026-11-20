@@ -74,28 +74,31 @@ public class ParametrageService {
 
     // ── Types d'unité ───────────────────────────────────────────────────────
 
-    public record TypeUnite(Long id, Long etablissementId, String nom, int capacite, String description, boolean actif) { }
+    /** {@code ameublement} : MEUBLE ou NON_MEUBLE pour un appartement (le locataire d'un non meublé apporte ses meubles) ; vide sinon. */
+    public record TypeUnite(Long id, Long etablissementId, String nom, int capacite, String description, boolean actif, String ameublement) { }
 
     public record TypeRequest(@NotNull Long etablissementId, @NotBlank @Size(max = 100) String nom, @Positive Integer capacite,
-                              @Size(max = 500) String description, Boolean actif) { }
+                              @Size(max = 500) String description, Boolean actif,
+                              @Pattern(regexp = "MEUBLE|NON_MEUBLE") String ameublement) { }
 
     public List<TypeUnite> types(Long etablissementId) {
         return jdbc.query("""
             select * from types_unite where (?::bigint is null or etablissement_id = ?) order by etablissement_id, nom
             """, (rs, i) -> new TypeUnite(rs.getLong("id"), rs.getLong("etablissement_id"), rs.getString("nom"),
-            rs.getInt("capacite"), rs.getString("description"), rs.getBoolean("actif")), etablissementId, etablissementId);
+            rs.getInt("capacite"), rs.getString("description"), rs.getBoolean("actif"), rs.getString("ameublement")), etablissementId, etablissementId);
     }
 
     @Transactional
     public TypeUnite enregistrerType(Long id, TypeRequest r) {
         int capacite = r.capacite() == null ? 2 : r.capacite();
         boolean actif = r.actif() == null || r.actif();
+        String ameublement = vide(r.ameublement());
         if (id == null) {
             id = jdbc.queryForObject("""
-                insert into types_unite (etablissement_id, nom, capacite, description, actif) values (?, ?, ?, ?, ?) returning id
-                """, Long.class, r.etablissementId(), r.nom().strip(), capacite, vide(r.description()), actif);
-        } else if (jdbc.update("update types_unite set nom = ?, capacite = ?, description = ?, actif = ? where id = ?",
-            r.nom().strip(), capacite, vide(r.description()), actif, id) == 0) {
+                insert into types_unite (etablissement_id, nom, capacite, description, actif, ameublement) values (?, ?, ?, ?, ?, ?) returning id
+                """, Long.class, r.etablissementId(), r.nom().strip(), capacite, vide(r.description()), actif, ameublement);
+        } else if (jdbc.update("update types_unite set nom = ?, capacite = ?, description = ?, actif = ?, ameublement = ? where id = ?",
+            r.nom().strip(), capacite, vide(r.description()), actif, ameublement, id) == 0) {
             throw Refus.introuvable("Type d'unité");
         }
         journal.noter("TYPE_UNITE", r.nom(), "capacité " + capacite);
@@ -112,7 +115,7 @@ public class ParametrageService {
     public record Unite(Long id, Long etablissementId, String etablissementNom, Long typeId, String typeNom, String numero,
                         String etage, Integer capacite, String equipements, String etatMenage, boolean horsService,
                         String motifHorsService, String notes, int ordre, boolean actif, OffsetDateTime horsServiceDu,
-                        OffsetDateTime horsServiceAu, Long ticketHorsServiceId) {
+                        OffsetDateTime horsServiceAu, Long ticketHorsServiceId, int nbPhotos) {
 
         /** Vrai si la mise hors service touche la période [debut, fin). */
         public boolean bloquee(OffsetDateTime debut, OffsetDateTime fin) {
@@ -129,7 +132,9 @@ public class ParametrageService {
 
     public List<Unite> unites(Long etablissementId) {
         return jdbc.query("""
-            select u.*, e.nom as etab_nom, t.nom as type_nom from unites u
+            select u.*, e.nom as etab_nom, t.nom as type_nom,
+                   (select count(*) from photos p where p.objet = 'UNITE' and p.objet_id = u.id) as nb_photos
+            from unites u
             join etablissements e on e.id = u.etablissement_id join types_unite t on t.id = u.type_id
             where (?::bigint is null or u.etablissement_id = ?)
             order by e.nom, u.ordre, u.numero
@@ -138,7 +143,7 @@ public class ParametrageService {
             (Integer) rs.getObject("capacite"), rs.getString("equipements"), rs.getString("etat_menage"),
             rs.getBoolean("hors_service"), rs.getString("motif_hors_service"), rs.getString("notes"), rs.getInt("ordre"),
             rs.getBoolean("actif"), rs.getObject("hors_service_du", OffsetDateTime.class),
-            rs.getObject("hors_service_au", OffsetDateTime.class), (Long) rs.getObject("ticket_hors_service_id")),
+            rs.getObject("hors_service_au", OffsetDateTime.class), (Long) rs.getObject("ticket_hors_service_id"), rs.getInt("nb_photos")),
             etablissementId, etablissementId);
     }
 

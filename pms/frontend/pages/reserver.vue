@@ -8,7 +8,8 @@ definePageMeta({ layout: false })
 useHead({ title: 'Réserver' })
 
 interface Etab { id: number, nom: string, type: string, adresse: string | null, telephone: string | null, heureArrivee: string, heureDepart: string }
-interface Offre { typeId: number, type: string, description: string | null, capacite: number, prixNuit: number, nuits: number, totalHt: number, disponibles: number }
+interface Offre { typeId: number, type: string, description: string | null, capacite: number, prixNuit: number, nuits: number, totalHt: number, disponibles: number,
+  ameublement: string | null, photos: number[] }
 
 const base = useRuntimeConfig().public.apiBase as string
 const jour = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -35,6 +36,15 @@ onMounted(async () => {
 })
 
 const etab = computed(() => etablissements.value.find(e => e.id === recherche.etablissementId))
+/** Photos des unités, servies sans connexion (seules les photos d'unités sont publiques). */
+const photo = (id: number) => `${base}/public/photos/${id}`
+const galerie = reactive({ ouvert: false, offre: null as Offre | null, index: 0 })
+function voirPhotos(o: Offre, index = 0) { Object.assign(galerie, { ouvert: true, offre: o, index }) }
+function defiler(pas: number) {
+  if (!galerie.offre) return
+  const n = galerie.offre.photos.length
+  galerie.index = (galerie.index + pas + n) % n
+}
 const usd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(v) || 0)
 
 async function chercher() {
@@ -120,15 +130,28 @@ async function demander() {
           <template v-if="etab?.telephone"> Appelez-nous au {{ etab.telephone }}.</template>
         </v-alert>
         <div class="offres">
-          <v-card v-for="o in offres" :key="o.typeId" class="pa-5 offre" rounded="xl" :class="{ 'offre--choisie': choix?.typeId === o.typeId }" @click="choix = o">
+          <v-card v-for="o in offres" :key="o.typeId" class="offre" rounded="xl" :class="{ 'offre--choisie': choix?.typeId === o.typeId }" @click="choix = o">
+            <div class="offre__photos" @click.stop="voirPhotos(o)">
+              <img :src="photo(o.photos[0])" :alt="o.type" class="offre__principale" loading="lazy">
+              <div class="offre__vignettes">
+                <img v-for="(p, i) in o.photos.slice(1, 3)" :key="p" :src="photo(p)" :alt="`${o.type}, photo ${i + 2}`" loading="lazy">
+              </div>
+              <span class="offre__nb"><v-icon icon="mdi-image-multiple-outline" size="14" />{{ o.photos.length }}</span>
+            </div>
+            <div class="pa-5">
             <div class="d-flex align-center">
               <div class="text-subtitle-1 font-weight-bold">{{ o.type }}</div>
               <v-spacer /><v-icon v-if="choix?.typeId === o.typeId" icon="mdi-check-circle" color="primary" />
+            </div>
+            <div v-if="o.ameublement" class="offre__ameublement">
+              <v-icon :icon="o.ameublement === 'MEUBLE' ? 'mdi-sofa-outline' : 'mdi-home-outline'" size="15" />
+              {{ o.ameublement === 'MEUBLE' ? 'Meublé' : 'Non meublé — vous apportez vos meubles' }}
             </div>
             <div class="text-body-2 text-medium-emphasis mb-3">{{ o.description || `Jusqu'à ${o.capacite} personne(s)` }}</div>
             <div class="text-h6 font-weight-bold">{{ usd(o.totalHt) }}</div>
             <div class="text-caption text-medium-emphasis">{{ o.nuits }} nuit(s) × {{ usd(o.prixNuit) }} · hors taxes</div>
             <div v-if="o.disponibles <= 2" class="text-caption text-warning mt-1">Plus que {{ o.disponibles }} disponible(s)</div>
+            </div>
           </v-card>
         </div>
 
@@ -151,6 +174,23 @@ async function demander() {
         </v-card>
       </template>
     </main>
+
+    <v-dialog v-model="galerie.ouvert" max-width="980">
+      <v-card v-if="galerie.offre" class="galerie" rounded="xl">
+        <div class="galerie__tete">
+          <strong>{{ galerie.offre.type }}</strong><span>{{ galerie.index + 1 }} / {{ galerie.offre.photos.length }}</span>
+          <v-spacer /><v-btn icon="mdi-close" variant="text" aria-label="Fermer" @click="galerie.ouvert = false" />
+        </div>
+        <div class="galerie__scene">
+          <img :src="photo(galerie.offre.photos[galerie.index])" :alt="`${galerie.offre.type}, photo ${galerie.index + 1}`">
+          <v-btn icon="mdi-chevron-left" class="galerie__nav galerie__nav--g" variant="flat" aria-label="Photo précédente" @click="defiler(-1)" />
+          <v-btn icon="mdi-chevron-right" class="galerie__nav galerie__nav--d" variant="flat" aria-label="Photo suivante" @click="defiler(1)" />
+        </div>
+        <div class="galerie__bande">
+          <img v-for="(p, i) in galerie.offre.photos" :key="p" :src="photo(p)" :class="{ actif: i === galerie.index }" alt="" @click="galerie.index = i">
+        </div>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -177,7 +217,24 @@ async function demander() {
 .public__contenu { max-width: 1024px; margin: -72px auto 0; padding: 0 16px 56px; position: relative; }
 .public__recherche { box-shadow: var(--d-shadow-3) !important; border: 1px solid var(--d-line) !important; }
 .offres { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
-.offre { cursor: pointer; border: 1px solid var(--d-line) !important; box-shadow: var(--d-shadow-1) !important; transition: transform .2s, box-shadow .2s; }
+.offre { cursor: pointer; overflow: hidden; border: 1px solid var(--d-line) !important; box-shadow: var(--d-shadow-1) !important; transition: transform .2s, box-shadow .2s; }
+.offre__photos { position: relative; display: grid; grid-template-columns: 2fr 1fr; gap: 3px; height: 170px; cursor: zoom-in; }
+.offre__photos img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.offre__vignettes { display: grid; grid-template-rows: 1fr 1fr; gap: 3px; min-height: 0; }
+.offre__vignettes img { min-height: 0; }
+.offre__nb { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 700; color: #fff; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(4px); }
+.offre__ameublement { display: inline-flex; align-items: center; gap: 5px; margin: 2px 0 6px; font-size: 0.8rem; font-weight: 600; color: var(--color-primary); }
+.galerie__tete { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 20px; }
+.galerie__tete span { font-size: 0.85rem; color: var(--d-ink-faint); }
+.galerie__scene { position: relative; background: #000; }
+.galerie__scene img { display: block; width: 100%; max-height: 68vh; object-fit: contain; }
+.galerie__nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255, 255, 255, 0.9) !important; color: #111 !important; }
+.galerie__nav--g { left: 12px; }
+.galerie__nav--d { right: 12px; }
+.galerie__bande { display: flex; gap: 6px; padding: 10px; overflow-x: auto; }
+.galerie__bande img { width: 84px; height: 60px; object-fit: cover; border-radius: 10px; cursor: pointer; opacity: 0.6; flex: none; }
+.galerie__bande img.actif { opacity: 1; outline: 2px solid var(--color-primary); }
 .offre:hover { transform: translateY(-3px); box-shadow: var(--d-shadow-3) !important; }
 .offre--choisie { box-shadow: var(--d-shadow-2), inset 0 0 0 2px var(--color-primary) !important; }
 .piege { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
