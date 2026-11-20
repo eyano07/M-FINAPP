@@ -341,6 +341,9 @@ const libCanal = (c: string) => CANAUX.find(x => x.value === c)?.title ?? c
                   <v-btn v-if="l.id && exploitant && r.statut !== 'PARTIE'" icon="mdi-close" size="x-small" variant="text" aria-label="Retirer" @click="retirerExtra(l)" />
                 </td>
               </tr>
+              <tr v-if="!folio!.lignes.length">
+                <td colspan="5" class="text-medium-emphasis">{{ bail ? 'Les loyers de ce bail sont facturés par échéance (fiche du bail) ; le folio ne porte que les extras.' : 'Aucune ligne.' }}</td>
+              </tr>
             </tbody>
           </v-table>
           <div class="totaux pa-4">

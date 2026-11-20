@@ -51,7 +51,13 @@ onMounted(async () => {
 })
 
 // ── Arrivée express ─────────────────────────────────────────────────────────────────────────────────────────
-const libres = computed(() => unites.value.filter(u => !u.horsService && !u.occupee))
+/** En vue « tous les établissements », seules les unités des motels (et des établissements mixtes) ; sinon celles de l'établissement choisi. */
+const unitesMotel = computed(() => {
+  if (etablissements.filtre != null) return unites.value
+  const motels = new Set(etablissements.liste.filter(e => ['MOTEL', 'MIXTE'].includes(e.type)).map(e => e.id))
+  return motels.size ? unites.value.filter(u => motels.has(u.etablissementId)) : unites.value
+})
+const libres = computed(() => unitesMotel.value.filter(u => !u.horsService && !u.occupee))
 const ex = reactive({ uniteId: null as number | null, formule: 'CRENEAU' as 'CRENEAU' | 'HEURE' | 'NUIT', tarifId: null as number | null, heures: 2,
   clientNom: '', clientTelephone: '', immatriculation: '', marque: '', couleur: '', placeId: null as number | null, codeAcces: '',
   payer: true, mode: 'CAISSE', etablissementPaiement: null as number | null, enCours: false })
@@ -190,7 +196,7 @@ const unitesDeLEtab = computed(() => unites.value.filter(u => u.etablissementId 
               <strong>{{ f.libelle }}</strong><span>{{ f.dureeHeures }} h<template v-if="f.plageDebut"> · {{ f.plageDebut.slice(0, 5) }}–{{ f.plageFin?.slice(0, 5) }}</template></span>
               <b>{{ usd(f.prix) }}</b>
             </button>
-            <p v-if="!forfaits.length" class="text-body-2 text-medium-emphasis mb-0">Aucun forfait pour ce type d’unité : créez-en dans Établissements et tarifs (durée « Forfait »).</p>
+            <p v-if="ex.uniteId && !forfaits.length" class="text-body-2 text-medium-emphasis mb-0">Aucun forfait pour ce type d’unité : créez-en dans Établissements et tarifs (durée « Forfait »).</p>
           </div>
           <div v-else-if="ex.formule === 'HEURE'" class="d-flex align-center ga-3 mb-4">
             <v-btn icon="mdi-minus" variant="tonal" size="small" :disabled="ex.heures <= 1" aria-label="Une heure de moins" @click="ex.heures--" />
@@ -199,14 +205,14 @@ const unitesDeLEtab = computed(() => unites.value.filter(u => u.etablissementId 
             <span class="text-body-2 text-medium-emphasis">départ vers {{ heure(new Date(Date.now() + ex.heures * 3_600_000).toISOString()) }}</span>
           </div>
           <v-row dense>
-            <v-col cols="12" sm="6"><v-text-field v-model="ex.clientNom" label="Nom du client (facultatif)" prepend-inner-icon="mdi-account-outline" hide-details /></v-col>
-            <v-col cols="12" sm="6"><v-text-field v-model="ex.clientTelephone" label="Téléphone" inputmode="tel" prepend-inner-icon="mdi-phone-outline" hide-details /></v-col>
-            <v-col cols="12" sm="4"><v-text-field v-model="ex.immatriculation" label="Plaque" prepend-inner-icon="mdi-car-outline" hide-details class="plaque" /></v-col>
-            <v-col cols="6" sm="4"><v-text-field v-model="ex.marque" label="Marque" hide-details /></v-col>
-            <v-col cols="6" sm="4"><v-text-field v-model="ex.couleur" label="Couleur" hide-details /></v-col>
-            <v-col cols="12" sm="6"><v-select v-model="ex.placeId" :items="placesLibres.map(p => ({ value: p.id, title: `Place ${p.numero}${p.couverte ? ' (couverte)' : ''}${p.uniteNumero ? ` · garage du ${p.uniteNumero}` : ''}` }))"
-              label="Place de parking" clearable hide-details :disabled="!ex.immatriculation" /></v-col>
-            <v-col cols="12" sm="6"><v-text-field v-model="ex.codeAcces" label="Code d’accès ou clé" prepend-inner-icon="mdi-key-outline" hide-details /></v-col>
+            <v-col cols="12"><v-text-field v-model="ex.clientNom" label="Nom du client (facultatif)" prepend-inner-icon="mdi-account-outline" hide-details /></v-col>
+            <v-col cols="6"><v-text-field v-model="ex.clientTelephone" label="Téléphone" inputmode="tel" prepend-inner-icon="mdi-phone-outline" hide-details /></v-col>
+            <v-col cols="6"><v-text-field v-model="ex.codeAcces" label="Code ou clé" prepend-inner-icon="mdi-key-outline" hide-details /></v-col>
+            <v-col cols="6"><v-text-field v-model="ex.immatriculation" label="Plaque" prepend-inner-icon="mdi-car-outline" hide-details class="plaque" /></v-col>
+            <v-col cols="6"><v-select v-model="ex.placeId" :items="placesLibres.map(p => ({ value: p.id, title: `${p.numero}${p.couverte ? ' (couverte)' : ''}${p.uniteNumero ? ` · garage ${p.uniteNumero}` : ''}` }))"
+              label="Place" clearable hide-details :disabled="!ex.immatriculation" /></v-col>
+            <v-col cols="6"><v-text-field v-model="ex.marque" label="Marque" hide-details /></v-col>
+            <v-col cols="6"><v-text-field v-model="ex.couleur" label="Couleur" hide-details /></v-col>
           </v-row>
         </div>
       </section>

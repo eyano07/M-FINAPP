@@ -262,8 +262,8 @@ const MODELE_DEPART: Element[] = [
 .releve__date { font-size: 0.82rem; color: var(--d-ink-soft); width: 90px; }
 .releve__index { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 
-.logement { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-.modele { display: grid; grid-template-columns: 1fr 1.4fr 70px auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+.logement { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.modele { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 64px auto; gap: 6px; align-items: center; margin-bottom: 6px; }
 .reg__montant { font-size: 2rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 14px; font-variant-numeric: tabular-nums; }
 .reg__montant small { font-size: 0.9rem; color: var(--d-ink-faint); }
 

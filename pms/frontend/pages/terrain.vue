@@ -21,6 +21,8 @@ const technicien = computed(() => session.a('TECHNICIEN', 'DIR_HEBERGEMENT'))
 const menage = computed(() => session.a('GOUVERNANTE', 'RECEPTIONNISTE', 'DIR_HEBERGEMENT', 'ADMIN'))
 const onglet = ref<'menage' | 'maintenance'>(session.a('TECHNICIEN') && !session.a('GOUVERNANTE') ? 'maintenance' : 'menage')
 const taches = ref<Tache[]>([])
+/** Unités de l'établissement : un numéro saisi à la main (« 107 ») est relié à son unité. */
+const unites = ref<{ id: number, numero: string }[]>([])
 const tickets = ref<Ticket[]>([])
 const erreur = ref('')
 const enCours = ref<string | null>(null)
@@ -34,6 +36,7 @@ async function charger() {
     ])
     taches.value = t.filter(x => x.statut !== 'TERMINEE')
     tickets.value = k
+    if (!unites.value.length) unites.value = await api<{ id: number, numero: string }[]>('/menage/unites', { query }).catch(() => [])
     erreur.value = ''
   } catch (e) { erreur.value = messageErreur(e) }
 }
@@ -56,6 +59,11 @@ const champPhoto = ref<HTMLInputElement | null>(null)
 async function envoyerPanne() {
   panne.enCours = true
   panne.erreur = ''
+  if (!panne.uniteId) {
+    const saisie = panne.uniteNumero.trim().toLowerCase().replace(/^(chambre|unité|unite|app\.?|appartement)\s*/, '')
+    const u = unites.value.find(x => x.numero.toLowerCase() === saisie)
+    if (u) panne.uniteId = u.id
+  }
   try {
     const t = await api<{ id: number }>('/maintenance/tickets', { method: 'POST', body: {
       uniteId: panne.uniteId, etablissementId: panne.uniteId ? null : (etablissements.filtre ?? etablissements.liste[0]?.id), lieu: panne.uniteId ? null : panne.uniteNumero || 'Parties communes',
@@ -79,7 +87,7 @@ async function resoudre(k: Ticket) {
   <div>
     <div class="salut">
       <div class="salut__titre">Bonjour{{ session.utilisateur?.prenom ? `, ${session.utilisateur.prenom}` : '' }}</div>
-      <div class="salut__sous">{{ taches.length }} chambre(s) à faire · {{ tickets.length }} panne(s) en cours</div>
+      <div class="salut__sous">{{ [menage ? `${taches.length} chambre(s) à faire` : null, `${tickets.length} panne(s) en cours`].filter(Boolean).join(' · ') }}</div>
     </div>
     <v-alert v-if="erreur" type="error" variant="tonal" closable class="mb-3" @click:close="erreur = ''">{{ erreur }}</v-alert>
 
@@ -97,13 +105,13 @@ async function resoudre(k: Ticket) {
             <small>{{ t.notes || dateHeure(t.creeLe) }}</small>
             <span v-if="t.priorite === 'HAUTE'" class="carte__urgent"><v-icon icon="mdi-flash" size="14" />Arrivée aujourd’hui</span>
           </div>
+          <v-btn icon="mdi-alert-plus-outline" variant="tonal" color="error" size="small" class="carte__panne" aria-label="Signaler une panne dans cette unité" @click="signaler(t)" />
         </div>
         <div class="carte__actions">
-          <v-btn v-if="t.statut === 'A_FAIRE'" size="x-large" variant="tonal" prepend-icon="mdi-play" :loading="enCours === `t${t.id}`"
+          <v-btn v-if="t.statut === 'A_FAIRE'" size="large" variant="tonal" prepend-icon="mdi-play" :loading="enCours === `t${t.id}`"
             @click="agir(`t${t.id}`, () => api(`/menage/taches/${t.id}/commencer`, { method: 'POST' }))">Commencer</v-btn>
-          <v-btn size="x-large" color="primary" variant="flat" prepend-icon="mdi-check" :loading="enCours === `t${t.id}`"
+          <v-btn size="large" color="primary" variant="flat" prepend-icon="mdi-check" :loading="enCours === `t${t.id}`"
             @click="agir(`t${t.id}`, () => api(`/menage/taches/${t.id}/terminer`, { method: 'POST' }))">Terminé</v-btn>
-          <v-btn size="x-large" icon="mdi-alert-plus-outline" variant="text" color="error" aria-label="Signaler une panne dans cette unité" @click="signaler(t)" />
         </div>
       </article>
       <div v-if="!taches.length" class="d-carte"><div class="d-vide"><div class="d-vide__icone"><v-icon icon="mdi-party-popper" size="28" /></div>
@@ -121,10 +129,9 @@ async function resoudre(k: Ticket) {
           </div>
         </div>
         <div v-if="technicien" class="carte__actions">
-          <v-btn v-if="k.statut === 'OUVERT' || k.statut === 'ATTENTE_PIECES'" size="x-large" variant="tonal" prepend-icon="mdi-play" :loading="enCours === `k${k.id}`"
+          <v-btn v-if="k.statut === 'OUVERT' || k.statut === 'ATTENTE_PIECES'" size="large" variant="tonal" prepend-icon="mdi-play" :loading="enCours === `k${k.id}`"
             @click="agir(`k${k.id}`, () => api(`/maintenance/tickets/${k.id}/statut`, { method: 'POST', body: { statut: 'EN_COURS' } }))">Commencer</v-btn>
-          <v-btn v-if="k.statut !== 'OUVERT'" size="x-large" color="success" variant="flat" prepend-icon="mdi-check" :loading="enCours === `k${k.id}`" @click="resoudre(k)">Résolu</v-btn>
-          <v-btn size="x-large" icon="mdi-open-in-new" variant="text" :to="'/maintenance'" aria-label="Ouvrir la maintenance" />
+          <v-btn v-if="k.statut !== 'OUVERT'" size="large" color="success" variant="flat" prepend-icon="mdi-check" :loading="enCours === `k${k.id}`" @click="resoudre(k)">Résolu</v-btn>
         </div>
       </article>
       <div v-if="!tickets.length" class="d-carte"><div class="d-vide"><div class="d-vide__icone"><v-icon icon="mdi-check-decagram-outline" size="28" /></div>
@@ -181,9 +188,10 @@ async function resoudre(k: Ticket) {
 .carte__texte small { font-size: 0.84rem; color: var(--d-ink-soft); }
 .carte__urgent { display: inline-flex; align-items: center; gap: 3px; margin-top: 4px; font-size: 0.78rem; font-weight: 700; color: var(--menage-sale); }
 .carte__actions { display: flex; gap: 8px; margin-top: 14px; }
-.carte__actions .v-btn:not(.v-btn--icon) { flex: 1; }
+.carte__actions .v-btn { flex: 1 1 0; min-width: 0; height: 52px !important; padding: 0 12px !important; font-size: 0.95rem; }
+.carte__panne { align-self: flex-start; flex: none; }
 .signaler { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20; display: inline-flex; align-items: center; gap: 10px; height: 56px;
-  padding: 0 24px; border: 0; border-radius: 999px; cursor: pointer; font: inherit; font-size: 1rem; font-weight: 750; color: #fff;
+  padding: 0 24px; border: 0; border-radius: 999px; cursor: pointer; font: inherit; font-size: 1rem; font-weight: 750; color: #fff; white-space: nowrap;
   background: linear-gradient(135deg, #fb7185, #e11d48); box-shadow: 0 16px 30px -12px rgba(225, 29, 72, 0.7); }
 .panne { background: var(--d-canvas) !important; }
 .panne__tete { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 1rem; }
