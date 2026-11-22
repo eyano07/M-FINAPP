@@ -100,12 +100,13 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, priorite, date_creation, date_maj)
+                 createur_id, priorite, date_creation, date_maj, beneficiaire)
             SELECT 'NF-2026-000001', 'Achat fournitures bureau',
                    'Stylos, ramettes papier A4 et enveloppes pour le departement administratif.',
                    45000.00, 'CDF', 'PAYEE',
                    u.id, 'HAUTE',
-                   NOW() - INTERVAL '12 days', NOW() - INTERVAL '2 days'
+                   NOW() - INTERVAL '12 days', NOW() - INTERVAL '2 days',
+                   TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, ''))
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
             ON CONFLICT (reference) DO NOTHING
@@ -114,12 +115,13 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, priorite, date_creation, date_maj)
+                 createur_id, priorite, date_creation, date_maj, beneficiaire)
             SELECT 'NF-2026-000002', 'Transport mission terrain Kinshasa',
                    'Frais de deplacement pour supervision des chantiers — 3 jours.',
                    120000.00, 'CDF', 'TRANSMISE_CAISSE',
                    u.id, 'HAUTE',
-                   NOW() - INTERVAL '7 days', NOW() - INTERVAL '1 day'
+                   NOW() - INTERVAL '7 days', NOW() - INTERVAL '1 day',
+                   TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, ''))
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
             ON CONFLICT (reference) DO NOTHING
@@ -128,12 +130,13 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, priorite, date_creation, date_maj)
+                 createur_id, priorite, date_creation, date_maj, beneficiaire)
             SELECT 'NF-2026-000003', 'Abonnement logiciels SaaS',
                    'Renouvellement annuel Microsoft 365 et Zoom — 5 licences.',
                    284000.00, 'CDF', 'TRANSMISE_CAISSE',
                    u.id, 'MOYENNE',
-                   NOW() - INTERVAL '5 days', NOW() - INTERVAL '12 hours'
+                   NOW() - INTERVAL '5 days', NOW() - INTERVAL '12 hours',
+                   TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, ''))
             FROM users u
             WHERE u.email = 'dfin@mbsc.cd'
             ON CONFLICT (reference) DO NOTHING
@@ -142,12 +145,13 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, date_creation, date_maj, beneficiaire)
             SELECT 'NF-2026-000004', 'Reparation vehicule de service',
                    'Remplacement plaquettes de frein et vidange — 4x4 terrain.',
                    67500.00, 'CDF', 'VERIFIEE_DFIN',
                    u.id,
-                   NOW() - INTERVAL '3 days', NOW() - INTERVAL '1 day'
+                   NOW() - INTERVAL '3 days', NOW() - INTERVAL '1 day',
+                   TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, ''))
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
             ON CONFLICT (reference) DO NOTHING
@@ -156,12 +160,13 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, date_creation, date_maj, beneficiaire)
             SELECT 'NF-2026-000005', 'Frais de reception clients',
                    'Dejeuner de travail avec partenaires — 8 personnes.',
                    52000.00, 'CDF', 'SOUMISE',
                    u.id,
-                   NOW() - INTERVAL '1 day', NOW() - INTERVAL '10 hours'
+                   NOW() - INTERVAL '1 day', NOW() - INTERVAL '10 hours',
+                   TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, ''))
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
             ON CONFLICT (reference) DO NOTHING
@@ -170,12 +175,13 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, date_creation, date_maj, beneficiaire)
             SELECT 'NF-2026-000006', 'Formation Excel avance',
                    'Session pour 3 agents comptables, 2 jours.',
                    38000.00, 'CDF', 'BROUILLON',
                    u.id,
-                   NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours'
+                   NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours',
+                   TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, ''))
             FROM users u
             WHERE u.email = 'dfin@mbsc.cd'
             ON CONFLICT (reference) DO NOTHING
@@ -184,12 +190,13 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, date_creation, date_maj, beneficiaire)
             SELECT 'NF-2026-000007', 'Achat mobilier de bureau',
                    'Chaises ergonomiques — 10 unites open space.',
                    230000.00, 'CDF', 'REJETEE_DA',
                    u.id,
-                   NOW() - INTERVAL '14 days', NOW() - INTERVAL '9 days'
+                   NOW() - INTERVAL '14 days', NOW() - INTERVAL '9 days',
+                   TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, ''))
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
             ON CONFLICT (reference) DO NOTHING

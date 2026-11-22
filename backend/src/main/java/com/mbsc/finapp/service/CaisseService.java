@@ -327,8 +327,10 @@ public class CaisseService {
             if (derniereLigne) {
                 montantCDF = conversionTotale.montantBase().subtract(sommeConvertie);
             } else if (conversionTotale.estConvertie()) {
-                montantCDF = ligne.getMontant().multiply(conversionTotale.tauxApplique())
-                    .setScale(2, RoundingMode.HALF_UP);
+                // Le taux est exprime en FC pour 1 USD : le sens de conversion
+                // (division ou multiplication) est delegue au service dedie.
+                montantCDF = conversionDevise.enDeviseBase(ligne.getMontant(),
+                    conversionTotale.deviseOrigine(), conversionTotale.tauxApplique()).montantBase();
             } else {
                 montantCDF = ligne.getMontant();
             }
