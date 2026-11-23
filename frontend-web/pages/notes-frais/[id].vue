@@ -2015,6 +2015,107 @@ const peutGererPieces = computed(() => !surCopie.value &&
 .nd-action-en-ligne__statut--appliquee { background: #dcfce7; color: #15803d; }
 .nd-action-en-ligne__statut--refusee { background: #fee2e2; color: #b91c1c; }
 .nd-action-en-ligne__message { color: #475569; }
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+   Impression — document moderne (21/11/2026) : en-tête de marque avec filet en dégradé, bandeau objet / montant,
+   informations sur deux colonnes, dépenses en facture, barre de total, cases de signature. Ces règles viennent après
+   les règles d'impression d'origine et les remplacent là où elles diffèrent.
+   ════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+@media print {
+  .nd-page { font-size: 11px; color: #111827; padding: 0 0 118px; }
+
+  /* En-tête : marque à gauche, référence en grand à droite, filet de marque en dégradé dessous. */
+  .nd-print-header {
+    align-items: center;
+    border-bottom: 0;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .nd-print-header::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 55%, #0891b2), color-mix(in srgb, var(--color-primary) 30%, #6366f1));
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .nd-print-header__logo { width: 42px; height: 42px; border-radius: 12px; }
+  .nd-print-header__company { font-size: 1.3rem; letter-spacing: -0.3px; }
+  .nd-print-header__doc { font-size: 0.64rem; letter-spacing: 1.6px; color: #6b7280; }
+  .nd-print-header__meta { flex-direction: column; align-items: flex-end; gap: 4px; }
+  .nd-print-header__ref { font-size: 1.05rem; letter-spacing: 0.3px; }
+  .nd-print-header__date { font-size: 0.62rem; color: #6b7280; }
+  .nd-print-status-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Bandeau : objet à gauche, montant en grand à droite, sur un fond teinté du statut. */
+  .nd-hero {
+    flex-direction: row;
+    align-items: flex-end;
+    padding: 16px 20px !important;
+    margin-bottom: 14px;
+    border: 0 !important;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--print-accent, var(--color-primary)) 9%, #fff) !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .nd-hero::after { display: none; }
+  .nd-hero__top { display: none; }
+  .nd-hero__body { display: flex; width: 100%; align-items: flex-end; justify-content: space-between; gap: 20px; text-align: left; }
+  .nd-hero__objet { font-size: 0.98rem; font-weight: 700; opacity: 1; color: #111827 !important; margin: 0; }
+  .nd-hero__montant { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.8px; white-space: nowrap;
+    color: color-mix(in srgb, var(--print-accent, var(--color-primary)) 80%, #111827) !important; }
+
+  /* Sections : sans cadre, titre en petites capitales souligné d'un trait de marque. */
+  .nd-card { border: 0 !important; border-radius: 0; margin-bottom: 14px; background: transparent !important; }
+  .nd-card__section-title {
+    padding: 0 0 6px; margin: 0 0 8px; font-size: 0.62rem; letter-spacing: 1.2px; color: #374151;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .nd-card__section-title::before { display: none; }
+
+  /* Informations : grille de deux colonnes, libellé au-dessus de la valeur, sans icône. */
+  .nd-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; padding: 0; }
+  .nd-info-row { padding: 0; }
+  .nd-info-row--full { grid-column: 1 / -1; }
+  .nd-info-icon { display: none !important; }
+  .nd-info-label { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.8px; color: #6b7280; }
+  .nd-info-val { font-size: 0.82rem; font-weight: 600; color: #111827; }
+
+  /* Dépenses : lignes de facture séparées d'un filet pointillé ; compte en étiquette claire. */
+  .nd-lignes { padding: 0; }
+  .nd-ligne { padding: 7px 0; border-bottom: 1px dashed #e5e7eb; }
+  .nd-ligne__compte {
+    background: color-mix(in srgb, var(--color-primary) 10%, #fff); color: color-mix(in srgb, var(--color-primary) 85%, #111827);
+    font-size: 0.66rem; padding: 2px 8px; border-radius: 6px;
+    justify-self: start; align-self: center; width: max-content; max-width: 100%;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .nd-ligne__desc { color: #4b5563; }
+  .nd-ligne__montant { font-size: 0.86rem; font-weight: 700; color: #111827; }
+  .nd-lignes-total {
+    margin: 10px 0 0; padding: 9px 14px; border-radius: 10px; font-size: 0.9rem; font-weight: 800;
+    color: #fff;
+    background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 60%, #0891b2));
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .nd-lignes-total * { color: #fff !important; }
+
+  /* Contrôle budgétaire : sans roue de chargement ni fond coloré. */
+  .nd-card .v-progress-circular, :deep(.v-progress-circular) { display: none !important; }
+  :deep(.cb) { background: transparent !important; border-radius: 10px; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+  /* Signatures : cinq cases arrondies épinglées en pied de page. */
+  .nd-print-signatures { border: 0; border-radius: 0; padding: 0 0 4px; background: #fff; }
+  .nd-print-signatures__title { font-size: 0.6rem; letter-spacing: 1.2px; color: #374151; padding-bottom: 6px;
+    border-bottom: 1px solid #e5e7eb; margin-bottom: 8px; }
+  .nd-print-signatures__row { gap: 8px; flex-wrap: nowrap; }
+  .nd-print-sign {
+    min-height: 72px; padding: 7px 8px 6px; border: 1px solid #e5e7eb; border-radius: 10px; text-align: left;
+  }
+  .nd-print-sign__label { font-size: 0.56rem; letter-spacing: 0.8px; color: #6b7280; }
+  .nd-print-sign__name { margin: 2px 0 auto; font-size: 0.72rem; font-weight: 600; }
+  .nd-print-sign__line { border-top: 1px dashed #9ca3af; margin-top: auto; }
+  .nd-print-sign__name + .nd-print-sign__line { margin-top: auto; }
+  .nd-print-sign__hint { font-size: 0.52rem; font-style: normal; color: #9ca3af; }
+}
 </style>
 
 <style>

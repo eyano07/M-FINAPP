@@ -741,3 +741,9 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
   .v-table__wrapper::-webkit-scrollbar-track,
   div.tableau-fixe::-webkit-scrollbar-track { margin-top: var(--entete-h, 0px); margin-bottom: 8px; }
 }
+
+/* Impression : jamais de fond coloré ni de verre, une page blanche (21/11/2026). */
+@media print {
+  .fond-aurore { display: none !important; }
+  .v-main .v-card, .v-main .v-table, .classroom-card { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+}
