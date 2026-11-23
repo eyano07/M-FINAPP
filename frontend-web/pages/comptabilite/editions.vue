@@ -81,21 +81,21 @@ const fmtMois = (a: number, m: number) => new Date(a, m - 1, 1).toLocaleDateStri
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4 no-print">{{ erreur }}</v-alert>
 
     <v-card class="classroom-card pa-4 mb-4 no-print">
-      <v-tabs v-model="onglet" color="primary" class="mb-3">
+      <v-tabs v-model="onglet" color="primary" class="mb-3 ed-onglets" show-arrows>
         <v-tab value="grand-livre">Grand livre général</v-tab>
         <v-tab value="centralisation">Centralisation des journaux</v-tab>
         <v-tab value="evenements">Journal des événements</v-tab>
       </v-tabs>
-      <div v-if="onglet !== 'evenements'" class="d-flex flex-wrap ga-3 align-center">
+      <div v-if="onglet !== 'evenements'" class="d-flex flex-wrap ga-3 align-center ed-filtres">
         <v-text-field v-model="du" type="date" label="Du" variant="outlined" density="compact" hide-details style="max-width: 180px" />
         <v-text-field v-model="au" type="date" label="Au" variant="outlined" density="compact" hide-details style="max-width: 180px" />
-        <v-btn color="primary" :loading="loading" @click="charger">Afficher</v-btn>
+        <v-btn color="primary" :loading="loading" class="ed-afficher" @click="charger">Afficher</v-btn>
         <v-autocomplete v-if="onglet === 'grand-livre'" v-model="compteChoisi" :items="comptesGL"
           label="Compte" placeholder="Tous les comptes" prepend-inner-icon="mdi-magnify"
-          variant="outlined" density="compact" hide-details clearable style="min-width: 280px; max-width: 420px"
+          variant="outlined" density="compact" hide-details clearable class="ed-compte" style="min-width: 280px; max-width: 420px"
           no-data-text="Aucun compte mouvementé sur la période" />
-        <v-btn variant="outlined" prepend-icon="mdi-printer" @click="imprimer">Imprimer</v-btn>
-        <v-btn variant="outlined" prepend-icon="mdi-file-delimited-outline" @click="exporterEcritures">
+        <v-btn variant="outlined" prepend-icon="mdi-printer" class="ed-action" @click="imprimer">Imprimer</v-btn>
+        <v-btn variant="outlined" prepend-icon="mdi-file-delimited-outline" class="ed-action" @click="exporterEcritures">
           Fichier des écritures (CSV)
         </v-btn>
       </div>
@@ -117,19 +117,21 @@ const fmtMois = (a: number, m: number) => new Date(a, m - 1, 1).toLocaleDateStri
             </thead>
             <tbody>
               <tr class="report">
-                <td colspan="4">Report au {{ fmtDate(du) }}</td>
-                <td class="nb">{{ fmt(c.reportDebit) }}</td><td class="nb">{{ fmt(c.reportCredit) }}</td>
-                <td class="nb">{{ fmt(c.reportDebit - c.reportCredit) }}</td>
+                <td colspan="4" class="ed-titre-ligne">Report au {{ fmtDate(du) }}</td>
+                <td class="nb ed-m" data-label="Débit">{{ fmt(c.reportDebit) }}</td><td class="nb ed-m" data-label="Crédit">{{ fmt(c.reportCredit) }}</td>
+                <td class="nb ed-s" data-label="Solde">{{ fmt(c.reportDebit - c.reportCredit) }}</td>
               </tr>
-              <tr v-for="(l, i) in c.lignes" :key="i">
-                <td>{{ fmtDate(l.date) }}</td><td>{{ l.journal }}</td><td>{{ l.piece }}</td><td>{{ l.libelle }}</td>
-                <td class="nb">{{ l.debit ? fmt(l.debit) : '' }}</td><td class="nb">{{ l.credit ? fmt(l.credit) : '' }}</td>
-                <td class="nb">{{ fmt(l.solde) }}</td>
+              <tr v-for="(l, i) in c.lignes" :key="i" class="ed-ligne">
+                <td class="ed-date">{{ fmtDate(l.date) }}</td><td class="ed-journal">{{ l.journal }}</td>
+                <td class="ed-piece">{{ l.piece }}</td><td class="ed-libelle">{{ l.libelle }}</td>
+                <td class="nb ed-m" data-label="Débit">{{ l.debit ? fmt(l.debit) : '—' }}</td>
+                <td class="nb ed-m" data-label="Crédit">{{ l.credit ? fmt(l.credit) : '—' }}</td>
+                <td class="nb ed-s" data-label="Solde">{{ fmt(l.solde) }}</td>
               </tr>
               <tr class="total">
-                <td colspan="4">Total de la période</td>
-                <td class="nb">{{ fmt(c.totalDebit) }}</td><td class="nb">{{ fmt(c.totalCredit) }}</td>
-                <td class="nb">{{ fmt(c.soldeFinal) }}</td>
+                <td colspan="4" class="ed-titre-ligne">Total de la période</td>
+                <td class="nb ed-m" data-label="Débit">{{ fmt(c.totalDebit) }}</td><td class="nb ed-m" data-label="Crédit">{{ fmt(c.totalCredit) }}</td>
+                <td class="nb ed-s" data-label="Solde final">{{ fmt(c.soldeFinal) }}</td>
               </tr>
             </tbody>
           </table>
@@ -144,13 +146,14 @@ const fmtMois = (a: number, m: number) => new Date(a, m - 1, 1).toLocaleDateStri
         <table>
           <thead><tr><th>Mois</th><th>Journal</th><th class="nb">Pièces</th><th class="nb">Débit</th><th class="nb">Crédit</th></tr></thead>
           <tbody>
-            <tr v-for="(l, i) in centralisation" :key="i">
-              <td>{{ fmtMois(l.annee, l.mois) }}</td><td>{{ l.journal }}</td><td class="nb">{{ l.pieces }}</td>
-              <td class="nb">{{ fmt(l.debit) }}</td><td class="nb">{{ fmt(l.credit) }}</td>
+            <tr v-for="(l, i) in centralisation" :key="i" class="ed-ligne">
+              <td class="ed-date">{{ fmtMois(l.annee, l.mois) }}</td><td class="ed-journal">{{ l.journal }}</td>
+              <td class="nb ed-s" data-label="Pièces">{{ l.pieces }}</td>
+              <td class="nb ed-m" data-label="Débit">{{ fmt(l.debit) }}</td><td class="nb ed-m" data-label="Crédit">{{ fmt(l.credit) }}</td>
             </tr>
             <tr class="total">
-              <td colspan="3">Total</td>
-              <td class="nb">{{ fmt(totauxCentralisation.debit) }}</td><td class="nb">{{ fmt(totauxCentralisation.credit) }}</td>
+              <td colspan="3" class="ed-titre-ligne">Total</td>
+              <td class="nb ed-m" data-label="Débit">{{ fmt(totauxCentralisation.debit) }}</td><td class="nb ed-m" data-label="Crédit">{{ fmt(totauxCentralisation.credit) }}</td>
             </tr>
           </tbody>
         </table>
@@ -168,14 +171,14 @@ const fmtMois = (a: number, m: number) => new Date(a, m - 1, 1).toLocaleDateStri
         <table>
           <thead><tr><th>N°</th><th>Date</th><th>Auteur</th><th>Action</th><th>Objet</th><th>Motif</th><th>Détail</th></tr></thead>
           <tbody>
-            <tr v-for="e in evenements?.evenements ?? []" :key="e.id">
-              <td>{{ e.id }}</td>
-              <td>{{ new Date(e.horodatage).toLocaleString('fr-FR') }}</td>
-              <td>{{ e.auteur }}</td>
-              <td>{{ e.action }}</td>
-              <td>{{ e.objetType }} {{ e.objetReference }}</td>
-              <td>{{ e.motif }}</td>
-              <td>
+            <tr v-for="e in evenements?.evenements ?? []" :key="e.id" class="ed-ligne">
+              <td class="ed-date">N° {{ e.id }}</td>
+              <td class="ed-journal">{{ new Date(e.horodatage).toLocaleString('fr-FR') }}</td>
+              <td data-label="Auteur">{{ e.auteur }}</td>
+              <td data-label="Action">{{ e.action }}</td>
+              <td class="ed-libelle" data-label="Objet">{{ e.objetType }} {{ e.objetReference }}</td>
+              <td class="ed-libelle" data-label="Motif">{{ e.motif }}</td>
+              <td class="ed-libelle">
                 <details>
                   <summary>avant / après</summary>
                   <pre class="json">{{ e.avant }}</pre>
@@ -239,5 +242,44 @@ th, td {
   .compte {
     break-inside: avoid;
   }
+}
+
+/* ── Téléphone (21/11/2026) : onglets en pilules, actions pleine largeur, chaque ligne en carte ───────────────────── */
+@media screen and (max-width: 699px) {
+  .ed-onglets { border-radius: 14px; background: color-mix(in srgb, var(--color-primary) 7%, transparent); padding: 4px; height: auto !important; }
+  .ed-onglets :deep(.v-tab) { border-radius: 10px; min-width: 0; padding-inline: 12px; font-size: 0.82rem; text-transform: none; letter-spacing: 0; }
+  .ed-onglets :deep(.v-tab--selected) { background: var(--verre-fort); box-shadow: var(--verre-ombre); }
+  .ed-onglets :deep(.v-tab__slider) { display: none; }
+
+  .ed-filtres { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px !important; }
+  .ed-filtres > * { max-width: none !important; min-width: 0 !important; width: 100%; }
+  .ed-filtres .ed-afficher, .ed-filtres .ed-compte { grid-column: 1 / -1; }
+  .ed-filtres .v-btn { height: 46px !important; }
+  .ed-filtres .ed-action { font-size: 0.78rem; padding-inline: 8px; }
+
+  .compte { padding: 14px !important; }
+  .tableau { overflow: visible; }
+  .tableau table, .tableau tbody { display: block; }
+  .tableau thead { display: none; }
+  .tableau tr {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-bottom: 8px; padding: 12px 14px;
+    border-radius: 16px; border: 1px solid var(--verre-bord);
+    background: color-mix(in srgb, var(--verre-fort) 70%, transparent);
+  }
+  .tableau td { display: block; padding: 0; border: 0; text-align: left; background: transparent !important; }
+  .tableau td[data-label]::before {
+    content: attr(data-label); display: block; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--ink-faint); margin-bottom: 1px;
+  }
+  .ed-date { font-weight: 800; }
+  .ed-journal { text-align: right !important; color: var(--ink-soft); font-size: 0.78rem; }
+  .ed-piece { grid-column: 1 / -1; font-size: 0.78rem; color: var(--ink-soft); }
+  .ed-libelle { grid-column: 1 / -1; font-weight: 600; }
+  .ed-titre-ligne { grid-column: 1 / -1; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--ink-soft); }
+  .tableau td.ed-m, .tableau td.ed-s { padding: 7px 10px !important; border-radius: 10px; font-weight: 800; text-align: left !important;
+    background: color-mix(in srgb, var(--color-primary) 7%, transparent) !important; }
+  .tableau td.ed-s { grid-column: 1 / -1; background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important; }
+  .report, .total { background: color-mix(in srgb, var(--color-primary) 9%, var(--verre)) !important; }
+  .json { max-width: 100%; }
 }
 </style>

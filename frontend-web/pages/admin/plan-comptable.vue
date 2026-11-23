@@ -965,6 +965,53 @@ const parentOptions = computed(() =>
 }
 .pc-submit-btn:hover:not(:disabled) { background: var(--color-primary-dark); }
 .pc-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Téléphone (21/11/2026) : épuré, en verre ─────────────────────────────────────────────────────────────────────── */
+@media (max-width: 599px) {
+  /* En-tête : bouton Actualiser carré et « Ajouter un compte » sur le reste de la ligne, même hauteur. */
+  .page-head > .pc-head-actions.pc-head-actions { width: 100%; display: grid; grid-template-columns: 48px 1fr; gap: 10px; }
+  .pc-head-actions > button { height: 48px; border-radius: 14px; justify-content: center; }
+  .pc-head-actions > button:only-child { grid-column: 1 / -1; }
+  .pc-refresh-btn { width: 48px; }
+  /* Recherche pleine largeur ; filtres en rangées défilantes, sans retour à la ligne. */
+  .pc-search { max-width: none; width: 100%; height: 48px; border-radius: 14px; }
+  .pc-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; margin-inline: -2px; }
+  .pc-chips::-webkit-scrollbar { display: none; }
+  .pc-chip { flex: 0 0 auto; }
+  /* Liste : les cartes posées sur le fond, sans cadre autour. */
+  .pc-card { background: transparent !important; border: 0 !important; box-shadow: none !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important; overflow: visible; }
+  .pc-cards { padding: 0; gap: 12px; }
+  .pc-card-item {
+    position: relative;
+    padding: 16px 16px 14px 18px;
+    background: var(--verre) !important;
+    -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+    border: 1px solid var(--verre-bord) !important;
+    border-radius: 20px;
+    box-shadow: var(--verre-ombre);
+  }
+  /* Repère de couleur discret à gauche de l'en-tête, au lieu de la barre pleine hauteur. */
+  .pc-card-item::before {
+    content: ''; position: absolute; left: 0; top: 18px; width: 4px; height: 20px; border-radius: 0 4px 4px 0;
+    background: color-mix(in srgb, var(--color-primary) 55%, var(--ink-faint));
+  }
+  .pc-card-item--manuel::before { background: var(--color-primary); }
+  .pc-card-item--manuel { background: color-mix(in srgb, var(--color-primary) 8%, var(--verre)) !important; }
+  .pc-card-item__top { margin-bottom: 6px; }
+  /* Numéro : grand et net, sans boîte. */
+  .pc-card-item .pc-numero {
+    padding: 0; border: 0 !important; background: transparent !important;
+    font-size: 1.15rem; font-weight: 800; letter-spacing: 0.3px; color: var(--ink);
+  }
+  .pc-card-item__libelle { font-size: 0.95rem; font-weight: 600; line-height: 1.4; }
+  .pc-card-item__tags { margin-top: 6px; gap: 6px; }
+  .pc-card-item__footer {
+    margin-top: 12px; padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--mbsc-border) 55%, transparent);
+  }
+  .pc-card-item .pc-classe { font-size: 0.78rem; color: var(--ink-soft); }
+}
 </style>
 
 <style>

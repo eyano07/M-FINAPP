@@ -298,4 +298,17 @@ async function appliquer(m: ModuleConfig, nouvelEtat: boolean) {
 .mod-impact { margin: 0 0 4px; padding-left: 20px; font-size: 0.85rem; color: var(--ink-2); }
 .mod-row__statut--on { background: var(--color-primary-light); color: var(--color-primary); }
 .mod-row__statut--off { background: var(--surface-2); color: var(--ink-faint); }
+
+/* ── Téléphone (21/11/2026) : icône et nom en tête, statut et interrupteur à droite, description sur toute la largeur. */
+@media (max-width: 599px) {
+  .mod-row { display: grid !important; grid-template-columns: auto 1fr auto auto; align-items: center; column-gap: 10px; row-gap: 6px; padding: 14px; }
+  .mod-row--enfant { margin-left: 14px; padding: 12px 14px; }
+  .mod-row__enfant-trait { display: none; }
+  .mod-row__body { display: contents; }
+  .mod-row__icon { grid-column: 1; grid-row: 1; }
+  .mod-row__label { grid-column: 2; grid-row: 1; }
+  .mod-row__statut { grid-column: 3; grid-row: 1; }
+  .mod-row > :last-child { grid-column: 4; grid-row: 1; }
+  .mod-row__desc { grid-column: 1 / -1; grid-row: 2; font-size: 0.8rem; line-height: 1.45; }
+}
 </style>

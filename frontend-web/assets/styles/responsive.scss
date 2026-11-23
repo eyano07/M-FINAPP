@@ -647,3 +647,152 @@ html.application-mobile {
     transition: none !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+   Téléphone et tablette en portrait — finitions du design « verre » (21/11/2026). Placé en fin de feuille pour l'emporter
+   sur les règles ci-dessus et sur le verre de classroom.scss.
+   ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+@media screen and (max-width: 959px) {
+  /* Le conteneur d'un tableau devient transparent : « Trier par », cartes et pagination se posent sur le fond. */
+  html body .v-main .v-card.v-card.v-card:has(> .v-data-table.v-table) {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    padding-inline: 0 !important;
+  }
+
+  /* « Trier par » : champ de verre sur toute la largeur (sélecteurs renforcés : l'en-tête fixe en verre opaque des
+     tableaux, classroom.scss, ne doit pas peindre cette ligne). */
+  html body .v-main .v-data-table.v-table .v-data-table-headers--mobile,
+  html body .v-main .v-data-table.v-table .v-data-table-headers--mobile > tr,
+  html body .v-main .v-data-table.v-table .v-data-table-headers--mobile > tr > th,
+  html body .v-main .v-data-table.v-table .v-data-table-headers--mobile > tr > td,
+  html body .v-main .v-data-table.v-table .v-data-table-headers--mobile .v-data-table__th {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .v-data-table.v-table .v-data-table-headers--mobile { padding-bottom: 10px !important; }
+  .v-data-table.v-table .v-data-table__td-sort-select { max-width: none !important; width: 100%; }
+  .v-data-table.v-table .v-data-table__td-sort-select .v-field {
+    min-height: 46px;
+    padding-inline: 10px;
+    background: var(--verre-fort) !important;
+    -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+    border: 1px solid var(--verre-bord) !important;
+    border-radius: 14px !important;
+    box-shadow: var(--verre-ombre);
+  }
+  .v-data-table.v-table .v-data-table__td-sort-select .v-field-label { color: var(--ink-soft); font-weight: 600; }
+
+  /* Tableau vide : une carte de verre centrée sur toute la largeur. */
+  .v-data-table.v-table .v-data-table-rows-no-data,
+  .v-data-table.v-table .v-data-table-rows-no-data > td {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    text-align: center !important;
+  }
+  .v-data-table.v-table .v-data-table-rows-no-data > td {
+    padding: 28px 16px !important;
+    background: var(--verre) !important;
+    -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+    border: 1px solid var(--verre-bord) !important;
+    border-radius: 18px;
+    color: var(--ink-soft);
+  }
+  .v-data-table.v-table .v-data-table-rows-no-data > td > * { margin-inline: auto; }
+
+  /* Carte d'une ligne : épurée — verre, coins doux, repère de couleur discret au lieu de la grosse barre. */
+  #{$carte} {
+    padding: 16px 16px 6px 18px;
+    border: 1px solid var(--verre-bord) !important;
+    border-radius: 20px;
+    background-color: var(--verre) !important;
+    background-image: linear-gradient(var(--carte-accent, var(--color-primary)), var(--carte-accent, var(--color-primary)));
+    background-size: 4px 22px;
+    background-position: 0 17px;
+    background-repeat: no-repeat;
+    gap: 0 12px;
+  }
+  /* Tuiles : plus de pavés gris, une étiquette fine au-dessus de sa valeur, deux par ligne. */
+  #{$carte} > .v-data-table__td {
+    flex: 1 1 calc(50% - 12px);
+    padding: 6px 0 8px !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+  }
+  #{$carte} .v-data-table__td-title { color: var(--ink-faint); letter-spacing: 0.6px; font-size: 0.62rem; }
+  /* Chiffres clés : par paires (Débit / Crédit, Soldes, Ant., Mvt), dans une bande teintée ; un chiffre seul prend la ligne. */
+  #{$carte} > .v-data-table__td.mc-montant {
+    flex: 1 1 calc(50% - 12px);
+    min-width: 0;
+    margin-bottom: 8px;
+    padding: 9px 12px 10px !important;
+    border-radius: 14px !important;
+    background: color-mix(in srgb, var(--color-primary) 7%, transparent) !important;
+  }
+  #{$carte} > .v-data-table__td.mc-montant .v-data-table__td-value { font-size: 1rem; overflow: hidden; text-overflow: ellipsis; }
+  /* Pied d'actions : simple filet, sans bande grise. */
+  #{$carte} > .v-data-table__td.mc-actions {
+    margin: 2px -16px -6px -18px;
+    padding: 4px 12px !important;
+    border-top: 1px solid color-mix(in srgb, var(--mbsc-border) 60%, transparent) !important;
+    background: transparent !important;
+  }
+
+  /* Pagination : une pilule de verre centrée. */
+  .v-data-table.v-table .v-data-table-footer {
+    background: var(--verre-fort);
+    -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+    border-radius: 18px;
+  }
+
+  /* Indicateurs (KPI) : deux par ligne ; s'ils sont trois, le premier (Pièces…) prend toute la ligne et Débit / Crédit
+     se partagent la suivante. */
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpi-grid:has(> :nth-child(3):last-child) > :first-child { grid-column: 1 / -1; }
+  .kpi-grid .kpi-value { font-size: clamp(0.98rem, 4.2vw, 1.2rem); }
+
+  /* Bascules segmentées (Actifs / Archivés / Tous, Tout / Collectée / Récupérable…) : toute la largeur, parts égales. */
+  .v-main .v-btn-toggle { display: flex; width: 100%; height: auto; }
+  .v-main .v-btn-toggle > .v-btn { flex: 1 1 0; min-width: 0; height: 42px; }
+
+  /* Onglets (Éditions comptables…) : défilables, bien visibles. */
+  .v-main .v-tabs { width: 100%; }
+}
+
+/* Téléphone : boutons d'en-tête de page sur toute la largeur, deux par ligne au plus, centrés. */
+@media screen and (max-width: 599px) {
+  .page-head { gap: 12px; margin-bottom: 18px; }
+  .page-head > :last-child:not(:first-child) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+  .page-head > :last-child:not(:first-child) > .v-btn,
+  .page-head > :last-child:not(:first-child) > a.v-btn {
+    flex: 1 1 calc(50% - 4px);
+    min-width: calc(50% - 4px);
+    height: 46px !important;
+    justify-content: center;
+  }
+}
+
+/* Menu latéral ouvert sur téléphone : la page derrière est floutée et voilée. */
+.v-navigation-drawer__scrim {
+  background: rgba(6, 18, 14, 0.28) !important;
+  opacity: 1 !important;
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  backdrop-filter: blur(8px) saturate(140%);
+}

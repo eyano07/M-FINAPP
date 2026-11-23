@@ -36,6 +36,8 @@ export function roleCellule(column: { key?: string | null; title?: string | null
   const cle = normaliser(column?.key)
   if (cle === 'data-table-select' || cle === 'data-table-expand' || cle === 'data-table-group') return null
   if (cle === 'actions' || cle === 'action' || normaliser(column?.title) === 'actions') return 'actions'
+  // Taux de change, cours : une information d'appoint, pas un chiffre clé — tuile, hors de la ligne Débit / Crédit (21/11/2026).
+  if (cle.includes('taux') || cle === 'cours') return 'tuile'
   if (column?.align === 'end') return 'montant'
   if (CLES_BADGE.has(cle)) return 'badge'
   if (FRAGMENTS_TEXTE.some(f => cle.includes(f))) return 'texte'

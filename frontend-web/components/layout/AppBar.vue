@@ -454,6 +454,11 @@ async function ouvrirNotification(n: NotificationItem) {
   justify-content: center;
   width: 34px;
   height: 34px;
+  /* Toujours un cercle : sur un écran étroit, la barre comprimait le bouton en largeur (ovale). */
+  flex: 0 0 auto;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  padding: 0;
   border-radius: 50%;
   background: var(--color-primary-darker);
   color: #fff;

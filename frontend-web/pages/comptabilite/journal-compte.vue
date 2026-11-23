@@ -167,7 +167,7 @@ function imprimer() {
           <v-btn value="CDF">FC</v-btn>
         </v-btn-toggle>
       </div>
-      <div class="jc-filtres mt-3">
+      <div class="jc-filtres jc-mois mt-3">
         <v-btn variant="text" size="small" prepend-icon="mdi-chevron-left" @click="moisCourant(-1)">Mois précédent</v-btn>
         <v-btn variant="text" size="small" @click="moisCourant(0)">Mois en cours</v-btn>
         <v-btn variant="text" size="small" append-icon="mdi-chevron-right" @click="moisCourant(1)">Mois suivant</v-btn>
@@ -234,18 +234,18 @@ function imprimer() {
               <td class="num">{{ fmtNombre(journal.soldeOuverture) }}</td>
             </tr>
             <tr v-for="(l, i) in lignesAffichees" :key="i" :class="{ 'jc-annulee': l.annulee }">
-              <td>{{ fmtDate(l.date) }}</td>
-              <td class="jc-nowrap">{{ l.note ? l.note.replace(/^NF-\d{4}-0*/, 'NF-') : '' }}</td>
-              <td>
+              <td class="jc-c-date">{{ fmtDate(l.date) }}</td>
+              <td class="jc-nowrap jc-c-note">{{ l.note ? l.note.replace(/^NF-\d{4}-0*/, 'NF-') : '' }}</td>
+              <td class="jc-c-objet">
                 {{ l.objet }}
                 <span v-if="l.annulee" class="jc-badge">annulée</span>
                 <span v-if="l.piece" class="jc-piece no-print">{{ l.piece }}</span>
               </td>
-              <td>{{ l.beneficiaire }}</td>
-              <td>{{ l.comptes }}</td>
-              <td class="num">{{ fmtNombre(l.entree) }}</td>
-              <td class="num">{{ fmtNombre(l.sortie) }}</td>
-              <td class="num">{{ fmtNombre(l.solde) }}</td>
+              <td class="jc-c-benef" data-label="Bénéficiaire">{{ l.beneficiaire }}</td>
+              <td class="jc-c-compte" data-label="Compte">{{ l.comptes }}</td>
+              <td class="num jc-c-montant" :data-label="libEntree">{{ fmtNombre(l.entree) }}</td>
+              <td class="num jc-c-montant" :data-label="libSortie">{{ fmtNombre(l.sortie) }}</td>
+              <td class="num jc-c-solde" data-label="Solde">{{ fmtNombre(l.solde) }}</td>
             </tr>
             <tr v-if="!lignesAffichees.length">
               <td colspan="8" class="jc-vide">Aucun mouvement sur cette période{{ filtreActif ? ' avec ces filtres' : '' }}.</td>
@@ -301,6 +301,55 @@ function imprimer() {
   .jc-table thead { display: table-header-group; }
   .jc-table tr { break-inside: avoid; }
   .jc-table-wrap { overflow: visible; }
+}
+
+/* ── Téléphone (21/11/2026) : filtres alignés, chaque mouvement devient une carte de verre ─────────────────────────── */
+@media screen and (max-width: 699px) {
+  .jc-filtres { gap: 10px; }
+  .jc-filtres__compte { flex: 1 1 100%; }
+  .jc-filtres > .v-text-field { flex: 1 1 calc(50% - 5px); }
+  .jc-filtres .jc-filtres__recherche { flex: 1 1 100%; }
+  .jc-filtres > .v-btn-toggle { flex: 1 1 100%; display: flex; }
+  .jc-filtres > .v-btn-toggle > .v-btn { flex: 1 1 0; }
+  /* Mois précédent / en cours / suivant : trois parts égales sur une ligne. */
+  .jc-mois { flex-wrap: nowrap; gap: 6px; }
+  .jc-mois > .v-btn { flex: 1 1 0; min-width: 0; padding-inline: 4px; font-size: 0.74rem; border-radius: 12px;
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+
+  .jc-titre { font-size: 1.1rem; }
+  .jc-table-wrap { overflow: visible; border: 0; border-radius: 0; }
+  .jc-table, .jc-table tbody, .jc-table tfoot { display: block; background: transparent; }
+  .jc-table thead { display: none; }
+  .jc-table tr {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-bottom: 10px; padding: 14px 16px;
+    background: var(--verre) !important; -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+    border: 1px solid var(--verre-bord); border-radius: 18px; box-shadow: var(--verre-ombre);
+  }
+  .jc-table tbody tr:hover td { background: transparent; }
+  .jc-table td { display: block; padding: 0; border: 0; background: transparent !important; text-align: left; }
+  .jc-table td[data-label]::before {
+    content: attr(data-label); display: block; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--ink-faint); margin-bottom: 1px;
+  }
+  .jc-c-date { font-weight: 800; color: var(--ink); }
+  .jc-c-note { text-align: right !important; color: var(--ink-soft); }
+  .jc-c-objet { grid-column: 1 / -1; font-weight: 600; font-size: 0.9rem; }
+  .jc-table td.jc-c-montant:empty::after { content: '—'; color: var(--ink-faint); font-weight: 600; }
+  .jc-c-benef, .jc-c-compte { font-size: 0.8rem; grid-column: 1 / -1; }
+  .jc-c-benef:empty, .jc-c-compte:empty { display: none !important; }
+  /* Entrée / Sortie côte à côte, le solde en dessous sur toute la ligne. */
+  .jc-table td.jc-c-montant, .jc-table td.jc-c-solde {
+    text-align: left; min-height: 52px; padding: 8px 12px !important; border-radius: 12px; font-weight: 800; font-size: 0.95rem;
+    background: color-mix(in srgb, var(--color-primary) 7%, transparent) !important;
+  }
+  .jc-table td.jc-c-solde { grid-column: 1 / -1; background: color-mix(in srgb, var(--color-primary) 13%, transparent) !important; }
+  /* Solde d'ouverture et totaux : bandeaux compacts. */
+  .jc-ouverture { grid-template-columns: auto 1fr auto !important; align-items: center; font-style: italic; }
+  .jc-ouverture td { background: transparent !important; }
+  .jc-table tfoot tr { grid-template-columns: 1fr 1fr 1fr; background: color-mix(in srgb, var(--color-primary) 12%, var(--verre)) !important; }
+  .jc-table tfoot td { border: 0; background: transparent !important; text-align: left; font-size: 0.85rem; }
+  .jc-table tfoot td:first-child { grid-column: 1 / -1; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--ink-soft); }
+  .jc-vide { grid-column: 1 / -1; }
 }
 </style>
 
