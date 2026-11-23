@@ -89,6 +89,30 @@ public class PatrimoineController {
         inventaire.supprimerPhoto(id, photoId);
     }
 
+    // ── Facture d'acquisition d'un bien (V155) ─────────────────────────────
+
+    @PostMapping(value = "/inventaire/{id}/facture", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien joindreFacture(@PathVariable Long id,
+            @RequestPart("fichier") org.springframework.web.multipart.MultipartFile fichier) {
+        return inventaire.joindreFacture(id, fichier);
+    }
+
+    @GetMapping("/inventaire/{id}/facture")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> facture(@PathVariable Long id) {
+        var f = inventaire.fichierFacture(id);
+        if (f == null) return org.springframework.http.ResponseEntity.notFound().build();
+        return org.springframework.http.ResponseEntity.ok()
+            .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
+            .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline")
+            .contentType(org.springframework.http.MediaType.parseMediaType(f.typeContenu()))
+            .body(f.ressource());
+    }
+
+    @DeleteMapping("/inventaire/{id}/facture")
+    public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien retirerFacture(@PathVariable Long id) {
+        return inventaire.retirerFacture(id);
+    }
+
     /** Modification de la fiche d'amortissement par le responsable logistique (19/11/2026). */
     @org.springframework.web.bind.annotation.PutMapping("/immobilisations/{id}")
     public ImmobilisationResponse modifierFiche(@PathVariable Long id,

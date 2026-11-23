@@ -58,7 +58,8 @@ public class InventairePatrimoineService {
     public record Bien(Long id, String code, String libelle, CategorieImmobilisation categorie, int dureeMois,
                        String localisation, String etat, String statut, BigDecimal valeurUsd, LocalDate dateAcquisition,
                        LocalDate dateMiseService, Long immobilisationId, String immobilisationReference, String source,
-                       Integer ligneSource, Long emplacementId, String emplacementNom, String emplacementType, int nbPhotos) { }
+                       Integer ligneSource, Long emplacementId, String emplacementNom, String emplacementType, int nbPhotos,
+                       String factureNom, String factureType) { }
 
     private static final RowMapper<Bien> LIGNE = (rs, i) -> new Bien(rs.getLong("id"), rs.getString("code"),
         rs.getString("libelle"), CategorieImmobilisation.valueOf(rs.getString("categorie")), rs.getInt("duree_mois"),
@@ -67,7 +68,7 @@ public class InventairePatrimoineService {
         rs.getDate("date_mise_service") == null ? null : rs.getDate("date_mise_service").toLocalDate(),
         (Long) rs.getObject("immobilisation_id"), rs.getString("reference"), rs.getString("source"),
         (Integer) rs.getObject("ligne_source"), (Long) rs.getObject("emplacement_id"), rs.getString("emplacement_nom"),
-        rs.getString("emplacement_type"), rs.getInt("nb_photos"));
+        rs.getString("emplacement_type"), rs.getInt("nb_photos"), rs.getString("facture_nom"), rs.getString("facture_type"));
 
     private static final String SELECT = """
         select b.*, i.reference, e.nom as emplacement_nom, e.type as emplacement_type,
@@ -162,6 +163,57 @@ public class InventairePatrimoineService {
             // Fichier resté sur le disque : sans conséquence, la référence est retirée.
         }
         AuditService.detailler("Photo retirée du bien " + bien(bienId).code() + ".");
+    }
+
+    // ── Facture d'acquisition (V155) : une image ou un PDF par bien ──────────
+
+    private static final java.util.Set<String> TYPES_FACTURE = java.util.Set.of("image/jpeg", "image/png", "image/webp", "application/pdf");
+
+    /** Joint (ou remplace) la facture d'un bien : image JPEG, PNG, WebP ou PDF, 15 Mo au plus. */
+    @PreAuthorize(ECRITURE)
+    @Transactional
+    public Bien joindreFacture(Long bienId, org.springframework.web.multipart.MultipartFile fichier) {
+        Bien b = bien(bienId);
+        if (fichier == null || fichier.isEmpty()) throw new IllegalArgumentException("Facture vide.");
+        String type = fichier.getContentType() == null ? "" : fichier.getContentType();
+        if (!TYPES_FACTURE.contains(type)) throw new IllegalArgumentException("Facture : image (JPEG, PNG, WebP) ou PDF seulement.");
+        if (fichier.getSize() > 15L * 1024 * 1024) throw new IllegalArgumentException("Facture trop lourde (15 Mo au plus).");
+        String ancien = jdbc.query("select facture_chemin from inventaire_biens where id = ?", rs -> rs.next() ? rs.getString(1) : null, bienId);
+        String chemin = stockage.enregistrer("patrimoine/factures", fichier);
+        jdbc.update("update inventaire_biens set facture_chemin = ?, facture_nom = ?, facture_type = ?, maj_le = now(), maj_par = ? where id = ?",
+            chemin, fichier.getOriginalFilename(), type, currentUser.requireUser().getEmail(), bienId);
+        effacerFichier(ancien);
+        AuditService.detailler("Facture jointe au bien " + b.code() + ".");
+        return bien(bienId);
+    }
+
+    @PreAuthorize(LECTURE)
+    @Transactional(readOnly = true)
+    public FichierPhoto fichierFacture(Long bienId) {
+        return jdbc.query("select facture_chemin, facture_type from inventaire_biens where id = ? and facture_chemin is not null",
+            rs -> rs.next() ? new FichierPhoto(stockage.charger(rs.getString(1)), rs.getString(2)) : null, bienId);
+    }
+
+    @PreAuthorize(ECRITURE)
+    @Transactional
+    public Bien retirerFacture(Long bienId) {
+        Bien b = bien(bienId);
+        String chemin = jdbc.query("select facture_chemin from inventaire_biens where id = ?", rs -> rs.next() ? rs.getString(1) : null, bienId);
+        if (chemin == null) throw RessourceIntrouvableException.of("Facture du bien", bienId);
+        jdbc.update("update inventaire_biens set facture_chemin = null, facture_nom = null, facture_type = null, maj_le = now(), maj_par = ? where id = ?",
+            currentUser.requireUser().getEmail(), bienId);
+        effacerFichier(chemin);
+        AuditService.detailler("Facture retirée du bien " + b.code() + ".");
+        return bien(bienId);
+    }
+
+    private void effacerFichier(String chemin) {
+        if (chemin == null) return;
+        try {
+            stockage.supprimer(chemin);
+        } catch (RuntimeException e) {
+            // Fichier resté sur le disque : sans conséquence, la référence est retirée.
+        }
     }
 
     public record CorrectionRequest(@NotNull @Size(max = 200) String libelle, @NotNull CategorieImmobilisation categorie,

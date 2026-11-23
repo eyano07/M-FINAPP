@@ -15,7 +15,8 @@ interface Bien {
   id: number, code: string, libelle: string, categorie: Categorie, dureeMois: number, localisation: string | null, etat: string | null,
   statut: 'A_VALORISER' | 'IMMOBILISE' | 'PETIT_MATERIEL', valeurUsd: number | null, dateAcquisition: string | null,
   dateMiseService: string | null, immobilisationId: number | null, immobilisationReference: string | null, ligneSource: number | null,
-  emplacementId: number | null, emplacementNom: string | null, emplacementType: string | null, nbPhotos: number
+  emplacementId: number | null, emplacementNom: string | null, emplacementType: string | null, nbPhotos: number,
+  factureNom: string | null, factureType: string | null
 }
 interface Emplacement { id: number, nom: string, type: string, actif: boolean, uniteLibelle: string | null }
 /** Icône de chaque type d'emplacement (voir Patrimoine › Emplacements). */
@@ -152,12 +153,57 @@ const usd = (v: number | null) => new Intl.NumberFormat('en-US', { style: 'curre
 const libCategorie = (c: Categorie) => CATEGORIES.find(x => x.value === c)?.title ?? c
 const duree = (m: number) => (m % 12 === 0 ? `${m / 12} an${m > 12 ? 's' : ''}` : `${m} mois`)
 
+// ── Facture d'acquisition (image ou PDF) ─────────────────────────────
+const TYPES_FACTURE = 'image/jpeg,image/png,image/webp,application/pdf'
+function verifierFacture(f: File | null): string | true {
+  if (!f) return true
+  if (!TYPES_FACTURE.split(',').includes(f.type)) return 'Image (JPEG, PNG, WebP) ou PDF seulement.'
+  if (f.size > 15 * 1024 * 1024) return 'Fichier trop lourd (15 Mo au plus).'
+  return true
+}
+async function envoyerFacture(bienId: number, f: File) {
+  const donnees = new FormData()
+  donnees.append('fichier', f)
+  await api(`/patrimoine/inventaire/${bienId}/facture`, { method: 'POST', body: donnees })
+}
+async function voirFacture(b: Bien) {
+  try {
+    const blob = await api<Blob>(`/patrimoine/inventaire/${b.id}/facture`, { responseType: 'blob' })
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (e) {
+    erreur.value = messageErreurApi(e, "La facture n'a pas pu être ouverte.")
+  }
+}
+// Joindre ou remplacer la facture d'un bien déjà relevé (sélecteur de fichier caché).
+const choixFacture = ref<HTMLInputElement | null>(null)
+let bienFacture: Bien | null = null
+function choisirFacture(b: Bien) {
+  bienFacture = b
+  if (choixFacture.value) { choixFacture.value.value = ''; choixFacture.value.click() }
+}
+async function factureChoisie(ev: Event) {
+  const f = (ev.target as HTMLInputElement).files?.[0]
+  if (!f || !bienFacture) return
+  const ok = verifierFacture(f)
+  if (ok !== true) { erreur.value = ok; return }
+  try {
+    await envoyerFacture(bienFacture.id, f)
+    succes.value = `Facture jointe au bien ${bienFacture.code}.`
+    await charger()
+  } catch (e) {
+    erreur.value = messageErreurApi(e, "La facture n'a pas été enregistrée.")
+  }
+}
+
 // ── Valorisation ────────────────────────────────────────────────────────
 const val = reactive({ ouvert: false, bien: null as Bien | null, valeurUsd: null as number | null, dateAcquisition: '', dateMiseService: '',
-  categorie: 'MOBILIER' as Categorie, dureeMois: 120, fournisseur: '', numeroSerie: '', enCours: false, erreur: '', lot: [] as Bien[], fait: 0 })
+  categorie: 'MOBILIER' as Categorie, dureeMois: 120, fournisseur: '', numeroSerie: '', enCours: false, erreur: '', lot: [] as Bien[], fait: 0,
+  facture: null as File | null })
 function ouvrirValorisation(b: Bien, lot: Bien[] = []) {
   Object.assign(val, { ouvert: true, bien: b, valeurUsd: null, dateAcquisition: '', dateMiseService: '', categorie: b.categorie,
-    dureeMois: b.dureeMois, fournisseur: '', numeroSerie: '', enCours: false, erreur: '', lot, fait: 0 })
+    dureeMois: b.dureeMois, fournisseur: '', numeroSerie: '', enCours: false, erreur: '', lot, fait: 0, facture: null })
 }
 /** Biens cochés encore à valoriser : même valeur unitaire, même date et même fiche pour chacun (ex. 103 chaises identiques). */
 const lotAValoriser = computed(() => biens.value.filter(b => selection.value.includes(b.id) && b.statut === 'A_VALORISER'))
@@ -184,6 +230,8 @@ async function valoriser() {
         categorie: val.categorie, dureeMois: val.dureeMois, fournisseur: val.fournisseur || null,
         numeroSerie: cibles.length > 1 ? null : (val.numeroSerie || null),
       } })
+      // Facture jointe (image ou PDF) : la même pour chaque bien d'un lot acheté ensemble.
+      if (val.facture) await envoyerFacture(b.id, val.facture)
       val.fait++
     }
     const quoi = cibles.length > 1 ? `${cibles.length} biens` : val.bien.code
@@ -310,6 +358,10 @@ async function imprimerEtiquettes() {
           <v-btn icon size="small" variant="text" :aria-label="`Photos (${item.nbPhotos})`" @click="ouvrirPhotos(item)">
             <v-badge :content="item.nbPhotos" :model-value="item.nbPhotos > 0" color="primary" floating><v-icon icon="mdi-camera-outline" /></v-badge>
           </v-btn>
+          <v-btn v-if="item.factureNom" size="small" variant="text" icon="mdi-file-document-check-outline" color="primary"
+            :aria-label="`Voir la facture ${item.factureNom}`" :title="`Facture : ${item.factureNom}`" @click="voirFacture(item)" />
+          <v-btn v-else-if="peutEcrire && item.statut !== 'A_VALORISER'" size="small" variant="text" icon="mdi-file-document-plus-outline"
+            aria-label="Joindre la facture" title="Joindre la facture (image ou PDF)" @click="choisirFacture(item)" />
           <v-btn v-if="peutEcrire" size="small" variant="text" icon="mdi-map-marker-radius-outline" aria-label="Affecter à un emplacement"
             @click="affecter([item.id], item.emplacementId)" />
           <template v-if="peutEcrire && item.statut === 'A_VALORISER'">
@@ -334,6 +386,8 @@ async function imprimerEtiquettes() {
       </div>
     </div>
 
+    <input ref="choixFacture" type="file" :accept="TYPES_FACTURE" hidden @change="factureChoisie">
+
     <v-dialog v-model="val.ouvert" max-width="560">
       <v-card class="pa-2">
         <v-card-title class="font-weight-bold">{{ val.lot.length > 1 ? `Valoriser ${val.lot.length} biens` : `Valoriser ${val.bien?.libelle}` }}</v-card-title>
@@ -354,6 +408,11 @@ async function imprimerEtiquettes() {
               :hint="`Taux linéaire : ${val.dureeMois ? (1200 / val.dureeMois).toFixed(2) : '—'} % par an`" persistent-hint /></v-col>
             <v-col cols="12" sm="6"><v-text-field v-model="val.fournisseur" label="Fournisseur" variant="outlined" density="comfortable" /></v-col>
             <v-col v-if="val.lot.length <= 1" cols="12"><v-text-field v-model="val.numeroSerie" label="N° de série" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12">
+              <v-file-input v-model="val.facture" :accept="TYPES_FACTURE" label="Facture (image ou PDF)" variant="outlined" density="comfortable"
+                prepend-icon="" prepend-inner-icon="mdi-file-document-outline" show-size clearable :multiple="false" :rules="[verifierFacture]"
+                :hint="val.lot.length > 1 ? 'Jointe à chacun des biens du lot.' : 'Facultative ; elle peut aussi se joindre plus tard.'" persistent-hint />
+            </v-col>
           </v-row>
           <v-alert v-if="sousSeuil" type="info" variant="tonal" density="compact">
             Sous {{ SEUIL }} USD : petit matériel de faible valeur, non immobilisé et sans écriture ; il reste suivi avec son code.
@@ -368,7 +427,7 @@ async function imprimerEtiquettes() {
           </v-alert>
         </v-card-text>
         <v-card-actions><v-spacer /><v-btn variant="text" @click="val.ouvert = false">Annuler</v-btn>
-          <v-btn color="primary" variant="flat" :loading="val.enCours" :disabled="!val.valeurUsd || !val.dateAcquisition" @click="valoriser">Valoriser</v-btn></v-card-actions>
+          <v-btn color="primary" variant="flat" :loading="val.enCours" :disabled="!val.valeurUsd || !val.dateAcquisition || verifierFacture(val.facture) !== true" @click="valoriser">Valoriser</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
 

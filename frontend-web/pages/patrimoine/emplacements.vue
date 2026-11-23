@@ -54,6 +54,33 @@ async function charger() {
 }
 onMounted(charger)
 
+// Accordéon : un clic sur la carte déplie la liste des biens de l'emplacement (inventaire chargé à la première ouverture).
+interface BienLieu { id: number, code: string, libelle: string, statut: string, valeurUsd: number | null, emplacementId: number | null, etat: string | null }
+const STATUTS_BIEN: Record<string, { titre: string, couleur: string }> = {
+  A_VALORISER: { titre: 'À valoriser', couleur: 'warning' },
+  IMMOBILISE: { titre: 'Immobilisé', couleur: 'success' },
+  PETIT_MATERIEL: { titre: 'Petit matériel', couleur: 'info' },
+}
+const ouvert = ref<number | null>(null)
+const biens = ref<BienLieu[] | null>(null)
+const chargementBiens = ref(false)
+async function basculer(e: Emplacement) {
+  ouvert.value = ouvert.value === e.id ? null : e.id
+  if (ouvert.value !== null && biens.value === null) {
+    chargementBiens.value = true
+    try {
+      biens.value = await api<BienLieu[]>('/patrimoine/inventaire')
+    } catch (err) {
+      erreur.value = messageErreurApi(err, 'Impossible de charger les biens.')
+      ouvert.value = null
+    } finally {
+      chargementBiens.value = false
+    }
+  }
+}
+const biensDe = (id: number) => (biens.value ?? []).filter(b => b.emplacementId === id)
+const usd = (v: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD' }).format(v)
+
 const filtres = computed(() => {
   const q = recherche.value.trim().toLowerCase()
   return emplacements.value.filter(e => (!filtreType.value || e.type === filtreType.value)
@@ -146,7 +173,9 @@ async function importer() {
 
     <v-progress-linear v-if="chargement" indeterminate color="primary" class="mb-2" />
     <div v-if="filtres.length" class="grille">
-      <v-card v-for="e in filtres" :key="e.id" class="classroom-card pa-4 emplacement" :class="{ 'emplacement--inactif': !e.actif }">
+      <v-card v-for="e in filtres" :key="e.id" class="classroom-card pa-4 emplacement"
+        :class="{ 'emplacement--inactif': !e.actif, 'emplacement--ouvert': ouvert === e.id }"
+        role="button" tabindex="0" :aria-expanded="ouvert === e.id" @click="basculer(e)" @keydown.enter.self="basculer(e)">
         <div class="d-flex align-start ga-3">
           <span class="emplacement__icone"><v-icon :icon="typeDe(e.type).icone" size="22" /></span>
           <div class="flex-grow-1" style="min-width: 0">
@@ -154,7 +183,7 @@ async function importer() {
             <div class="text-caption text-medium-emphasis">{{ typeDe(e.type).title }}<template v-if="!e.actif"> · désactivé</template></div>
           </div>
           <v-menu v-if="peutEcrire" location="bottom end">
-            <template #activator="{ props }"><v-btn icon="mdi-dots-vertical" variant="text" size="small" v-bind="props" aria-label="Actions" /></template>
+            <template #activator="{ props }"><v-btn icon="mdi-dots-vertical" @click.stop variant="text" size="small" v-bind="props" aria-label="Actions" /></template>
             <v-list density="compact">
               <v-list-item prepend-icon="mdi-pencil" title="Modifier" @click="ouvrir(e)" />
               <v-list-item v-if="!e.nbBiens" prepend-icon="mdi-delete-outline" title="Supprimer" @click="supprimer(e)" />
@@ -165,7 +194,27 @@ async function importer() {
         <div v-if="e.description" class="text-body-2 text-medium-emphasis mt-1">{{ e.description }}</div>
         <div class="emplacement__pied">
           <span><b>{{ e.nbBiens }}</b> bien(s)</span>
+          <v-icon :icon="ouvert === e.id ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" class="emplacement__chevron" />
         </div>
+        <v-expand-transition>
+          <div v-if="ouvert === e.id" class="biens" @click.stop>
+            <v-progress-linear v-if="chargementBiens" indeterminate color="primary" />
+            <p v-else-if="!biensDe(e.id).length" class="biens__vide">Aucun bien affecté à cet emplacement.</p>
+            <ul v-else>
+              <li v-for="b in biensDe(e.id)" :key="b.id" class="bien">
+                <span class="bien__texte">
+                  <span class="bien__libelle">{{ b.libelle }}<small v-if="b.etat"> · {{ b.etat }}</small></span>
+                  <span class="bien__code">{{ b.code }}</span>
+                </span>
+                <span class="bien__valeur">{{ b.valeurUsd == null ? '—' : usd(b.valeurUsd) }}</span>
+                <v-chip size="x-small" variant="tonal" :color="STATUTS_BIEN[b.statut]?.couleur">{{ STATUTS_BIEN[b.statut]?.titre ?? b.statut }}</v-chip>
+              </li>
+            </ul>
+            <div class="biens__pied">
+              <v-btn size="small" variant="text" color="primary" append-icon="mdi-arrow-right" to="/patrimoine/inventaire">Ouvrir l'inventaire</v-btn>
+            </div>
+          </div>
+        </v-expand-transition>
       </v-card>
     </div>
     <v-card v-else-if="!chargement" class="classroom-card pa-8 text-center text-medium-emphasis">
@@ -209,4 +258,27 @@ async function importer() {
 .emplacement__unite { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem;
   font-weight: 600; color: #4338ca; background: rgba(67, 56, 202, 0.08); }
 .emplacement__pied { margin-top: 12px; padding-top: 10px; border-top: 1px dashed rgba(0, 0, 0, 0.12); font-size: 0.85rem; }
+/* Accordéon : la carte ouverte prend toute la largeur de la grille et liste ses biens. */
+.emplacement { cursor: pointer; transition: box-shadow 0.2s ease, transform 0.2s ease; }
+.emplacement:hover { transform: translateY(-2px); }
+.emplacement--ouvert { grid-column: 1 / -1; cursor: default; transform: none !important; }
+.emplacement--ouvert .emplacement__nom { white-space: normal; }
+.emplacement__pied { display: flex; align-items: center; justify-content: space-between; }
+.emplacement__chevron { opacity: 0.6; }
+.biens { margin-top: 12px; cursor: auto; }
+.biens ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px 14px; }
+.bien { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent); font-size: 0.85rem; }
+.bien__texte { display: flex; flex-direction: column; min-width: 0; }
+.bien__code { font-family: ui-monospace, monospace; font-size: 0.68rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bien__libelle { font-weight: 700; font-size: 0.9rem; line-height: 1.3; overflow-wrap: anywhere; }
+.bien__libelle small { font-weight: 400; color: var(--ink-soft); }
+.bien__valeur { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.biens__vide { margin: 4px 0 0; color: var(--ink-soft); font-size: 0.85rem; }
+.biens__pied { display: flex; justify-content: flex-end; margin-top: 6px; }
+@media (max-width: 599px) {
+  .biens ul { grid-template-columns: 1fr; }
+  .bien { grid-template-columns: 1fr auto; }
+  .bien__valeur { display: none; }
+}
 </style>
