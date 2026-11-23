@@ -175,9 +175,10 @@ const versNotesEnAttente = computed(() =>
 // Cartes trésorerie : le caissier opère directement la caisse/banque/mobile
 // money, tout autre rôle (DFIN, DA, DG, ADMIN, COMPTABLE) consulte plutôt le
 // grand livre du compte concerné — il ne saisit pas d'opération lui-même.
-const versCaisseOuGrandLivre = computed(() => (auth.hasRole('CAISSIER') ? '/caisse' : '/grand-livre'))
-const versBanqueOuGrandLivre = computed(() => (auth.hasRole('CAISSIER') ? '/banque' : '/grand-livre'))
-const versMobileMoneyOuGrandLivre = computed(() => (auth.hasRole('CAISSIER') ? '/mobile-money' : '/grand-livre'))
+// Chaque compartiment de la trésorerie ouvre le journal de son canal (21/11/2026), pour tous les rôles.
+const versCaisseOuGrandLivre = computed(() => '/caisse/journal')
+const versBanqueOuGrandLivre = computed(() => '/banque/journal')
+const versMobileMoneyOuGrandLivre = computed(() => '/mobile-money/journal')
 
 // Statuts sur lesquels le rôle de l'utilisateur permet d'agir MAINTENANT —
 // même logique que les `peutXxx` de pages/notes-frais/[id].vue et les
@@ -616,7 +617,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 }
 /* Halo lumineux qui traverse la carte : l'éclat du verre. */
 .treso::after { content: ''; position: absolute; width: 380px; height: 380px; right: -120px; top: -160px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(52, 211, 153, 0.45), transparent 65%); pointer-events: none; }
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-primary) 55%, transparent), transparent 65%); pointer-events: none; }
 .treso__label { font-size: 0.9rem; color: rgba(255,255,255,0.7); margin: 0; }
 .treso__total { font-size: clamp(2.4rem, 5.4vw, 4rem); font-weight: 700; letter-spacing: -0.04em; line-height: 1; margin: 0; }
 .treso__canaux { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 12px;
@@ -683,11 +684,11 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .tile--action { --accent: #fff; color: #fff; border-color: rgba(255,255,255,0.28);
   background:
     radial-gradient(120% 100% at 0% 0%, rgba(255,255,255,0.22), transparent 50%),
-    linear-gradient(135deg, var(--emeraude), #0d9488 55%, #0891b2); }
+    linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 70%, #0891b2) 55%, color-mix(in srgb, var(--color-primary) 45%, #4f46e5)); }
 .tile--action .tile__label, .tile--action .tile__hint { color: rgba(255,255,255,0.88); }
 .tile--action .tile__pastille { background: rgba(255,255,255,0.22); box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset; }
 /* Nuit : le vert de marque est éclairci ; la tuile d'action garde un fond assez sombre pour un texte blanc lisible. */
-:global(html[data-theme='dark'] .dash .tile--action) { background: linear-gradient(135deg, #047857, #0f766e 55%, #155e75); }
+:global(html[data-theme='dark'] .dash .tile--action) { background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 55%, #07110d), color-mix(in srgb, var(--color-primary) 45%, #0b3b4a) 55%, color-mix(in srgb, var(--color-primary) 35%, #1e1b4b)); }
 .tile__spark { position: relative; width: 100%; height: 38px; }
 .tile__gauge { position: relative; display: block; height: 8px; border-radius: 999px; overflow: hidden;
   background: color-mix(in srgb, var(--accent) 16%, transparent); }

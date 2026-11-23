@@ -514,8 +514,16 @@ function lignes(g: NavGroup): LigneMenu[] {
     linear-gradient(180deg, color-mix(in srgb, var(--nav-bg) 78%, transparent), color-mix(in srgb, var(--nav-bg) 88%, transparent)) !important;
   -webkit-backdrop-filter: blur(26px) saturate(170%);
   backdrop-filter: blur(26px) saturate(170%);
-  border-right: 1px solid rgba(255, 255, 255, 0.10) !important;
-  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.04) inset, 12px 0 40px -24px rgba(0, 0, 0, 0.45);
+  /* Panneau flottant aux coins arrondis (21/11/2026) : décollé de 10 px des bords, comme une carte de verre ; sa largeur
+     totale (10 + 246 px) reste celle que Vuetify réserve à gauche du contenu (256 px). */
+  top: calc(var(--mbsc-appbar-h, 60px) + 10px) !important;
+  left: 10px !important;
+  height: calc(100% - var(--mbsc-appbar-h, 60px) - 20px) !important;
+  width: 246px !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 24px 50px -22px rgba(0, 0, 0, 0.55);
   padding: 14px 10px 8px;
   color: var(--nav-ink);
 }

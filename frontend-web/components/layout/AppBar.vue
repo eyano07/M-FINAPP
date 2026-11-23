@@ -470,14 +470,17 @@ async function ouvrirNotification(n: NotificationItem) {
 
 /* ── Notifications ───────────────────────────────────────── */
 .notif-panel {
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: 14px;
+  /* Verre (21/11/2026), comme les fenêtres et menus du site. */
+  background: var(--verre-fort);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--verre-bord);
+  border-radius: 20px;
   width: min(340px, calc(100vw - 16px));
   max-height: min(420px, calc(100dvh - 80px));
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+  box-shadow: var(--verre-ombre), 0 24px 60px -24px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
 .notif-panel__head {
@@ -580,12 +583,15 @@ async function ouvrirNotification(n: NotificationItem) {
 
 /* ── User Menu ───────────────────────────────────────────── */
 .user-menu {
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: 14px;
+  /* Verre (21/11/2026), comme les fenêtres et menus du site. */
+  background: var(--verre-fort);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--verre-bord);
+  border-radius: 20px;
   padding: 6px;
   min-width: 260px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+  box-shadow: var(--verre-ombre), 0 24px 60px -24px rgba(0, 0, 0, 0.35);
 }
 
 .user-menu__header {

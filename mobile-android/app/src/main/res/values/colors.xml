@@ -4,10 +4,12 @@
     <color name="logo_fond">#0B2545</color>
     <color name="logo_vert">#10B981</color>
     <!-- Widgets de l'écran d'accueil (clair ; nuit dans values-night) -->
-    <color name="widget_fond">#F7FFFFFF</color>
+    <color name="widget_fond">#E6FFFFFF</color>
+    <color name="widget_fond_fin">#D9E0F2FB</color>
+    <color name="widget_bord">#B3FFFFFF</color>
     <color name="widget_encre">#0D1A15</color>
     <color name="widget_doux">#5B6B64</color>
-    <color name="widget_ligne">#F1F5F3</color>
+    <color name="widget_ligne">#99FFFFFF</color>
     <color name="widget_accent">#0B2545</color>
     <color name="widget_alerte">#C2410C</color>
     <color name="widget_ok">#047857</color>

@@ -5,20 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Adresse du serveur</title>
 <style>
-  :root { --vert: #0f6e56; --vert-fonce: #0b5341; --fond: #eef2f0; --carte: #fff; --encre: #12241d; --doux: #5b6b64; --trait: #d7e0dc; --rouge: #c0392b; --ok: #13804f; }
+  :root { --vert: #0f6e56; --vert-fonce: #0b5341; --fond: #eef2f0; --carte: #fff; --encre: #12241d; --doux: #5b6b64; --trait: #d7e0dc; --rouge: #c0392b; --ok: #13804f; --verre: rgba(255,255,255,.55); --verre-bord: rgba(255,255,255,.7); }
   @media (prefers-color-scheme: dark) {
-    :root { --fond: #08130f; --carte: #11201a; --encre: #e6efe9; --doux: #9fb2a9; --trait: #23382f; --vert: #3fbf7f; --rouge: #f08a7e; --ok: #5fd39a; }
+    :root { --fond: #08130f; --carte: #11201a; --encre: #e6efe9; --doux: #9fb2a9; --trait: #23382f; --vert: #3fbf7f; --rouge: #f08a7e; --ok: #5fd39a; --verre: rgba(20,30,26,.58); --verre-bord: rgba(255,255,255,.10); }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fond); color: var(--encre); display: flex; flex-direction: column; }
-  header { background: linear-gradient(140deg, #0f6e56, #0b5341 60%, #073a2d); color: #fff; padding: 40px 24px 56px; }
+  /* Verre dépoli (21/11/2026), comme le site : aurore colorée floue derrière une carte translucide. */
+  .aurore { position: fixed; inset: 0; z-index: -1; overflow: hidden; filter: blur(56px); opacity: .55; pointer-events: none; }
+  .aurore span { position: absolute; border-radius: 50%; }
+  .aurore span:nth-child(1) { width: 70vw; height: 70vw; left: -20vw; top: -10vw; background: #10b981; }
+  .aurore span:nth-child(2) { width: 60vw; height: 60vw; right: -20vw; top: 30vh; background: #38bdf8; }
+  .aurore span:nth-child(3) { width: 55vw; height: 55vw; left: 10vw; bottom: -15vw; background: #a855f7; opacity: .7; }
+  @media (prefers-color-scheme: dark) { .aurore { opacity: .3; } }
+  body { position: relative; isolation: isolate; margin: 0; min-height: 100vh; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fond); color: var(--encre); display: flex; flex-direction: column; }
+  header { background: radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,.18), transparent 45%), radial-gradient(80% 120% at 100% 100%, rgba(99,102,241,.55), transparent 60%), linear-gradient(140deg, #0f6e56, #0f766e 55%, #1e3a8a); color: #fff; padding: 40px 24px 56px; border-radius: 0 0 28px 28px; }
   header .logo { width: 52px; height: 52px; border-radius: 14px; background: rgba(255,255,255,.16); display: grid; place-items: center; }
   header h1 { margin: 18px 0 6px; font-size: 24px; }
   header p { margin: 0; opacity: .85; font-size: 15px; line-height: 1.45; }
   main { flex: 1; padding: 0 16px 24px; margin-top: -32px; }
-  .carte { background: var(--carte); border-radius: 18px; padding: 22px 18px; box-shadow: 0 8px 28px rgba(0,0,0,.12); }
+  .carte { background: var(--verre); -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%); border: 1px solid var(--verre-bord); border-radius: 24px; padding: 22px 18px; box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 16px 34px -14px rgba(0,0,0,.25); }
   label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 8px; }
-  input { width: 100%; font-size: 17px; padding: 14px; border-radius: 12px; border: 1.5px solid var(--trait); background: transparent; color: var(--encre); outline: none; }
+  input { width: 100%; font-size: 17px; padding: 14px; border-radius: 14px; border: 1.5px solid var(--trait); background: color-mix(in srgb, var(--verre) 70%, transparent); color: var(--encre); outline: none; }
   input:focus { border-color: var(--vert); }
   .aide { color: var(--doux); font-size: 13px; line-height: 1.5; margin: 10px 0 0; }
   .aide code { background: color-mix(in srgb, var(--vert) 12%, transparent); padding: 1px 6px; border-radius: 6px; }
@@ -29,12 +36,13 @@
   .boutons { display: flex; gap: 10px; margin-top: 20px; }
   button { flex: 1; font-size: 16px; font-weight: 600; padding: 14px; border-radius: 12px; border: 0; }
   .secondaire { background: transparent; color: var(--vert); border: 1.5px solid var(--vert); }
-  .principal { background: var(--vert); color: #fff; }
+  .principal { background: linear-gradient(135deg, var(--vert), #0d9488 60%, #0891b2); color: #fff; box-shadow: 0 10px 22px -10px rgba(13,148,136,.75); }
   button:disabled { opacity: .5; }
   footer { text-align: center; color: var(--doux); font-size: 12px; padding: 16px; }
 </style>
 </head>
 <body>
+<div class="aurore" aria-hidden="true"><span></span><span></span><span></span></div>
 <header>
   <div class="logo" style="color:#fff"><svg xmlns="http://www.w3.org/2000/svg" viewBox="16 18 92 86" width="30" height="30" aria-label="M-FINAPP"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M28 90 V36 L60 66" stroke-width="13"/><path d="M92 58 V90" stroke-width="13"/><path d="M60 66 L94 32" stroke-width="13"/><path d="M76 30 H96 V50" stroke-width="10"/></g></svg></div>
   <h1>Adresse du serveur</h1>

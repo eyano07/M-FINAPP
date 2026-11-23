@@ -120,9 +120,13 @@ function choisir(a: Action) {
   justify-content: space-around;
   padding: 0 6px;
   border-radius: 24px;
-  background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 22%, var(--hairline));
-  box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--color-primary) 45%, transparent),
+  /* Verre (21/11/2026), comme la barre d'onglets d'iOS : la page défile floutée dessous. */
+  background: var(--verre-fort);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--verre-bord);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset,
+              0 14px 34px -14px color-mix(in srgb, var(--color-primary) 55%, transparent),
               0 2px 6px rgba(0, 0, 0, 0.06);
   max-width: 520px;
   margin: 0 auto;
@@ -181,8 +185,8 @@ function choisir(a: Action) {
   display: grid;
   place-items: center;
   color: #fff;
-  background: var(--color-primary);
-  box-shadow: 0 8px 18px -6px color-mix(in srgb, var(--color-primary) 70%, transparent);
+  background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 70%, #0891b2) 60%, color-mix(in srgb, var(--color-primary) 50%, #0891b2));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 10px 22px -8px color-mix(in srgb, var(--color-primary) 75%, transparent);
   transition: transform 0.2s ease;
   outline: none;
   -webkit-tap-highlight-color: transparent;
@@ -198,7 +202,10 @@ function choisir(a: Action) {
 
 /* Feuille d'actions du « + » */
 .feuille-app__corps {
-  background: var(--surface);
+  background: var(--verre-fort);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-top: 1px solid var(--verre-bord);
   color: var(--ink);
   border-radius: 24px 24px 0 0;
   padding: 10px 16px calc(20px + env(safe-area-inset-bottom, 0px));

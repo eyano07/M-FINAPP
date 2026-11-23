@@ -659,7 +659,7 @@ const fmtTaux = computed(() =>
           v-if="permissions.peutVoir('RESTAURANT')"
           variant="tonal"
           color="deep-orange"
-          prepend-icon="mdi-silverware-fork-knife"
+          prepend-icon="mdi-cart-outline"
           rounded="lg"
           to="/ventes/nouvelle"
         >

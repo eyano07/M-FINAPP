@@ -238,10 +238,11 @@ $puce: '.v-chip, .chip-soft';
     margin: 0;
     padding: 14px 14px 4px 16px;
     background: var(--surface);
-    border: 1px solid #e8ecef;
+    border: 1px solid var(--verre-bord, #e8ecef);
     border-left: 4px solid var(--carte-accent, var(--color-primary));
     border-radius: 16px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 16px rgba(15, 23, 42, 0.05);
+    box-shadow: var(--verre-ombre, 0 6px 16px rgba(15, 23, 42, 0.05));
+    -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
     overflow: hidden;
   }
   /* Sauts de ligne : l'en-tête (ordres 0 à 2) est seul sur sa ligne, et les chiffres clés (ordre 7) repartent sur leur propre ligne,
@@ -268,7 +269,7 @@ $puce: '.v-chip, .chip-soft';
     padding: 7px 10px 8px !important;
     border: 0 !important;
     border-radius: 10px !important;
-    background: #f6f8fa !important;
+    background: color-mix(in srgb, var(--verre-fort, #f6f8fa) 55%, transparent) !important;
     text-align: left;
   }
   #{$carte} .v-data-table__td-title {
@@ -402,7 +403,7 @@ $puce: '.v-chip, .chip-soft';
     gap: 4px 12px;
     padding: 6px 8px;
     background: var(--surface);
-    border: 1px solid #e8ecef;
+    border: 1px solid var(--verre-bord, #e8ecef);
     border-radius: 14px;
   }
 }
@@ -432,7 +433,8 @@ $puce: '.v-chip, .chip-soft';
     border: 1px solid #e8ecef !important;
     border-left: 4px solid var(--carte-accent, var(--color-primary)) !important;
     border-radius: 16px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 16px rgba(15, 23, 42, 0.05);
+    box-shadow: var(--verre-ombre, 0 6px 16px rgba(15, 23, 42, 0.05));
+    -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
   }
   .table-cartes tbody > tr > td, .table-cartes tfoot > tr > td {
     display: block !important;
@@ -443,7 +445,7 @@ $puce: '.v-chip, .chip-soft';
     padding: 7px 10px 8px !important;
     border: 0 !important;
     border-radius: 10px;
-    background: #f6f8fa !important;
+    background: color-mix(in srgb, var(--verre-fort, #f6f8fa) 55%, transparent) !important;
     text-align: left !important;
     font-size: 0.88rem !important;
     font-weight: 600;

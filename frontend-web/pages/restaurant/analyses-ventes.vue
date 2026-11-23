@@ -293,7 +293,7 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
           <div><span class="av-kpi__val">{{ fmtUSD(analyse.totalMarge) }}</span><span class="av-kpi__lbl">Marge (dividende)</span></div>
         </div>
         <div class="av-kpi av-kpi--nb">
-          <v-icon icon="mdi-silverware-fork-knife" size="20" />
+          <v-icon icon="mdi-package-variant-closed" size="20" />
           <div><span class="av-kpi__val">{{ fmtNb(analyse.totalQuantite) }}</span><span class="av-kpi__lbl">Unités vendues</span></div>
         </div>
       </div>

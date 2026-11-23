@@ -105,9 +105,20 @@ const champActif = ref<{ i: number; champ: ChampLigne } | null>(null)
 const saisie = ref('')
 // Sur écran tactile, le clavier du système est masqué : le pavé le remplace.
 const tactile = ref(false)
+// Le pavé ne s'affiche que sur tablette (600 px de large au moins) ou en paysage (21/11/2026) : sur un téléphone tenu en
+// portrait, il prenait toute la hauteur ; c'est alors le clavier numérique du téléphone qui sert.
+const paveVisible = ref(true)
+let requetePave: MediaQueryList | null = null
+const majPave = () => { paveVisible.value = requetePave?.matches ?? true }
 onMounted(() => {
   tactile.value = window.matchMedia?.('(pointer: coarse)').matches ?? false
+  requetePave = window.matchMedia?.('(min-width: 600px), (orientation: landscape)') ?? null
+  majPave()
+  requetePave?.addEventListener('change', majPave)
 })
+onBeforeUnmount(() => requetePave?.removeEventListener('change', majPave))
+/** Clavier du système masqué seulement quand le pavé le remplace ; sinon clavier numérique du téléphone. */
+const modeSaisie = computed(() => (tactile.value && paveVisible.value ? 'none' : 'decimal'))
 
 function activerChamp(i: number, champ: ChampLigne) {
   champActif.value = { i, champ }
@@ -700,7 +711,7 @@ const contreValeur = computed(() => {
     </v-card>
 
     <!-- ── Lignes + pavé numérique ─────────────────────────── -->
-    <div class="vn-saisie">
+    <div :class="['vn-saisie', { 'vn-saisie--sans-pave': !paveVisible }]">
     <v-card class="classroom-card pa-6 mb-4 vn-saisie__lignes">
       <div class="d-flex align-center mb-3">
         <p class="vn-section mb-0">Articles vendus</p>
@@ -749,7 +760,7 @@ const contreValeur = computed(() => {
           v-model.number="ligne.quantite"
           label="Quantité"
           type="number"
-          :inputmode="tactile ? 'none' : undefined"
+          :inputmode="modeSaisie"
           @focus="activerChamp(i, 'quantite')"
           min="0.001"
           step="1"
@@ -763,7 +774,7 @@ const contreValeur = computed(() => {
           v-model.number="ligne.prixUnitaire"
           :label="form.devise === 'USD' ? 'P.U. HT (USD)' : 'P.U. HT (FC)'"
           type="number"
-          :inputmode="tactile ? 'none' : undefined"
+          :inputmode="modeSaisie"
           @focus="activerChamp(i, 'prixUnitaire')"
           min="0"
           :step="form.devise === 'USD' ? '0.01' : '1'"
@@ -882,7 +893,7 @@ const contreValeur = computed(() => {
       </div>
     </v-card>
 
-    <aside class="vn-saisie__pave">
+    <aside v-if="paveVisible" class="vn-saisie__pave">
       <VentesPaveNumerique
         :titre="libelleChamp || 'Saisie du montant'"
         :valeur="saisie"
@@ -991,6 +1002,7 @@ const contreValeur = computed(() => {
 
 .vn-saisie { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
 .vn-saisie__pave { position: sticky; top: 76px; }
+.vn-saisie--sans-pave { grid-template-columns: 1fr; }
 @media (max-width: 700px) {
   .vn-saisie { grid-template-columns: 1fr; }
   .vn-saisie__pave { position: static; }

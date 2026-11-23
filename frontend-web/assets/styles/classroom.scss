@@ -579,7 +579,7 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
 .fond-aurore { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
   filter: blur(80px); opacity: var(--aurore-opacite); }
 .fond-aurore span { position: absolute; border-radius: 50%; }
-.fond-aurore span:nth-child(1) { width: 46vw; height: 46vw; left: -10vw; top: -12vw; background: #10b981; }
+.fond-aurore span:nth-child(1) { width: 46vw; height: 46vw; left: -10vw; top: -12vw; background: var(--color-primary); }
 .fond-aurore span:nth-child(2) { width: 40vw; height: 40vw; right: -8vw; top: -10vw; background: #38bdf8; }
 .fond-aurore span:nth-child(3) { width: 34vw; height: 34vw; right: 18vw; top: 38vh; background: #a855f7; opacity: 0.7; }
 .fond-aurore span:nth-child(4) { width: 32vw; height: 32vw; left: 22vw; bottom: -12vw; background: #f59e0b; opacity: 0.6; }
@@ -684,4 +684,10 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
     border-color: var(--verre-bord) !important;
     box-shadow: var(--verre-ombre);
   }
+}
+
+/* Téléphones et application Android : flou plus léger, aurore moins coûteuse (défilement fluide sur un appareil modeste). */
+@media screen and (max-width: 959px) {
+  :root { --flou: blur(14px) saturate(160%); }
+  .fond-aurore { filter: blur(56px); }
 }

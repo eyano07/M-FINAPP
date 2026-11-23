@@ -175,7 +175,7 @@ async function submit() {
   overflow: hidden;
   background:
     radial-gradient(90% 70% at 100% 100%, rgba(99, 102, 241, 0.55), transparent 60%),
-    radial-gradient(70% 60% at 0% 0%, rgba(16, 185, 129, 0.45), transparent 60%),
+    radial-gradient(70% 60% at 0% 0%, color-mix(in srgb, var(--color-primary) 55%, transparent), transparent 60%),
     linear-gradient(150deg, var(--teinte), #0f3d4a 60%, #1e2a5e);
   color: #fff;
   margin: 14px 0 14px 14px; border-radius: 28px;
@@ -252,8 +252,8 @@ async function submit() {
 .champ__label { font-size: 0.875rem; font-weight: 600; color: var(--ink-2); }
 .acces__btn { margin-top: 4px; height: 52px !important; font-size: 1rem !important; font-weight: 600 !important; letter-spacing: 0 !important;
   border-radius: 14px !important; color: #fff !important;
-  background: linear-gradient(135deg, var(--color-primary), #0d9488 60%, #0891b2) !important;
-  box-shadow: 0 12px 24px -12px rgba(13, 148, 136, 0.7) !important; }
+  background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 70%, #0891b2) 60%, color-mix(in srgb, var(--color-primary) 50%, #0891b2)) !important;
+  box-shadow: 0 12px 24px -12px color-mix(in srgb, var(--color-primary) 75%, transparent) !important; }
 .acces__pied { margin-top: 40px; font-size: 0.8125rem; color: var(--ink-faint); }
 
 /* Bandeau photo du téléphone : même photo que le visuel du PC, fondue dans la couleur de marque. */

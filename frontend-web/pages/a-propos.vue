@@ -140,7 +140,7 @@ const chiffres = (n: string) => n.replace(/[^\d+]/g, '')
 .apropos { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 .apropos__hero {
   text-align: center; padding: 28px 16px 22px; border-radius: 22px; color: #fff;
-  background: radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,0.18), transparent 45%), radial-gradient(80% 120% at 100% 100%, rgba(99,102,241,0.55), transparent 60%), linear-gradient(135deg, var(--color-primary) 0%, #0f766e 55%, #1e3a8a 100%);
+  background: radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,0.18), transparent 45%), radial-gradient(80% 120% at 100% 100%, rgba(99,102,241,0.55), transparent 60%), linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 60%, #0f766e) 55%, color-mix(in srgb, var(--color-primary) 35%, #1e3a8a) 100%);
 }
 .apropos__logo {
   width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 18px; display: grid; place-items: center;
