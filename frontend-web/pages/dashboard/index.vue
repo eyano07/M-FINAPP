@@ -379,6 +379,8 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 
 <template>
   <div class="dash">
+    <!-- Fond coloré flou : il donne au verre dépoli des cartes ses reflets (purement décoratif). -->
+    <div class="dash__aurore" aria-hidden="true"><span /><span /><span /><span /><span /><span /></div>
 
     <!-- ── En-tête ─────────────────────────────────────────── -->
     <header class="dash__header">
@@ -429,21 +431,27 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 
       <div class="side">
         <NuxtLink :to="versNotesEnAttente" class="tile tile--action">
-          <span class="tile__label">{{ auth.hasAnyRole(['DFIN', 'DA', 'CAISSIER']) ? 'À traiter par vous' : 'Notes dans le circuit' }}</span>
+          <span class="tile__label"><span class="tile__pastille"><v-icon icon="mdi-file-document-multiple-outline" size="16" /></span>{{ auth.hasAnyRole(['DFIN', 'DA', 'CAISSIER']) ? 'À traiter par vous' : 'Notes dans le circuit' }}</span>
           <span class="tile__value">{{ notesEnAttenteCard }}</span>
           <span class="tile__hint">{{ payees }} note{{ payees !== 1 ? 's' : '' }} payée{{ payees !== 1 ? 's' : '' }} à ce jour</span>
         </NuxtLink>
 
-        <NuxtLink v-if="!estCaissier" to="/balance" class="tile">
-          <span class="tile__label">Résultat net</span>
+        <NuxtLink v-if="!estCaissier" to="/balance" :class="['tile', 'tile--resultat', { 'tile--perte': resultatNet < 0 }]">
+          <span class="tile__label"><span class="tile__pastille"><v-icon icon="mdi-chart-line-variant" size="16" /></span>Résultat net</span>
           <span :class="['tile__value', { 'tile__value--neg': resultatNet < 0 }]">{{ fmtUSD(resultatNet) }}</span>
           <svg v-if="sparkline" class="tile__spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
-            <path :d="sparkline.ligne" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke" />
+            <defs>
+              <linearGradient id="spark-trait" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stop-color="var(--spark-a)" /><stop offset="1" stop-color="var(--spark-b)" />
+              </linearGradient>
+            </defs>
+            <path :d="sparkline.ligne" fill="none" stroke="url(#spark-trait)" stroke-width="2.2" stroke-linecap="round"
+              vector-effect="non-scaling-stroke" />
           </svg>
         </NuxtLink>
 
-        <NuxtLink v-if="!estCaissier && budgetDisponible" to="/budgets" class="tile">
-          <span class="tile__label">Budget exécuté en {{ new Date().getFullYear() }}</span>
+        <NuxtLink v-if="!estCaissier && budgetDisponible" to="/budgets" class="tile tile--budget">
+          <span class="tile__label"><span class="tile__pastille"><v-icon icon="mdi-target" size="16" /></span>Budget exécuté en {{ new Date().getFullYear() }}</span>
           <span class="tile__value">{{ budgetTaux }} %</span>
           <span class="tile__gauge" role="img" :aria-label="`${budgetTaux} % du budget exécuté`"><span :style="{ width: Math.min(budgetTaux, 100) + '%' }" /></span>
         </NuxtLink>
@@ -469,7 +477,7 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
           </span>
           <span class="queue__track" role="img" :aria-label="`Étape : ${ETAPES_LIBELLES[etapeNote(n.statut)]}`">
             <span v-for="(e, i) in ETAPES_LIBELLES" :key="e"
-              :class="['queue__step', { 'queue__step--done': i < etapeNote(n.statut), 'queue__step--now': i === etapeNote(n.statut) }]">
+              :class="['queue__step', `queue__step--e${i}`, { 'queue__step--done': i < etapeNote(n.statut), 'queue__step--now': i === etapeNote(n.statut) }]">
               <span class="queue__pip" />
               <span class="queue__step-nom">{{ e }}</span>
             </span>
@@ -569,7 +577,38 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 </template>
 
 <style scoped>
-.dash { max-width: 1240px; margin: 0 auto; padding: 4px 0 56px; }
+.dash {
+  /* Palette (21/11/2026) : un accent par information, sur un fond d'aurore flou que les cartes en verre laissent voir. */
+  --emeraude: #10b981; --menthe: #34d399; --ciel: #38bdf8; --indigo: #6366f1; --violet: #a855f7; --ambre: #f59e0b;
+  --corail: #fb7185;
+  --verre: rgba(255, 255, 255, 0.58);
+  --verre-fort: rgba(255, 255, 255, 0.72);
+  --verre-bord: rgba(255, 255, 255, 0.75);
+  --verre-ombre: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 10px 30px -12px rgba(15, 40, 30, 0.22);
+  --flou: blur(22px) saturate(170%);
+  position: relative; isolation: isolate;
+  max-width: 1240px; margin: 0 auto; padding: 4px 0 56px;
+}
+:global(html[data-theme='dark'] .dash) {
+  --verre: rgba(22, 32, 28, 0.55);
+  --verre-fort: rgba(26, 38, 33, 0.68);
+  --verre-bord: rgba(255, 255, 255, 0.10);
+  --verre-ombre: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 14px 34px -14px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Aurore : taches de couleur floues derrière le contenu ─ */
+.dash__aurore { position: absolute; inset: -60px -40px 0; z-index: -1; pointer-events: none; overflow: hidden;
+  filter: blur(70px); opacity: 0.55; }
+.dash__aurore span { position: absolute; border-radius: 50%; }
+.dash__aurore span:nth-child(1) { width: 520px; height: 420px; left: -60px; top: 40px; background: var(--emeraude); }
+.dash__aurore span:nth-child(2) { width: 480px; height: 380px; right: -40px; top: -20px; background: var(--ciel); }
+.dash__aurore span:nth-child(3) { width: 420px; height: 360px; right: 22%; top: 380px; background: var(--violet); opacity: 0.7; }
+.dash__aurore span:nth-child(4) { width: 360px; height: 300px; left: 30%; top: 560px; background: var(--ambre); opacity: 0.55; }
+/* Plus bas, derrière les analyses : la couleur suit toute la page. */
+.dash__aurore span:nth-child(5) { width: 520px; height: 460px; left: -80px; top: 42%; background: var(--indigo); opacity: 0.5; }
+.dash__aurore span:nth-child(6) { width: 500px; height: 440px; right: -60px; top: 70%; background: var(--emeraude); opacity: 0.5; }
+:global(html[data-theme='dark'] .dash .dash__aurore) { opacity: 0.32; }
+@media (prefers-reduced-transparency: reduce) { .dash__aurore { display: none; } }
 
 /* ── En-tête ─────────────────────────────────────────────── */
 .dash__header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
@@ -584,16 +623,25 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 @media (max-width: 960px) { .board { grid-template-columns: 1fr; } }
 
 .treso {
-  --c1: color-mix(in srgb, var(--color-primary) 40%, #7ff0b8);
-  --c2: #8ec9e6;
-  --c3: #f3d28a;
+  --c1: #6ee7b7;
+  --c2: #7dd3fc;
+  --c3: #fcd34d;
+  position: relative; overflow: hidden;
   display: flex; flex-direction: column; gap: 14px;
   padding: 28px 30px 24px;
-  border-radius: 14px;
-  background: var(--hero-bg);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+  border-radius: 24px;
+  /* Verre teinté : vert profond vers bleu nuit, avec un reflet en haut à gauche. */
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, 0.16), transparent 45%),
+    radial-gradient(80% 70% at 100% 100%, rgba(99, 102, 241, 0.45), transparent 60%),
+    linear-gradient(135deg, color-mix(in srgb, var(--hero-bg) 88%, #0f766e) 0%, color-mix(in srgb, var(--hero-bg) 70%, #1e3a8a) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 24px 48px -20px rgba(6, 40, 30, 0.55);
   color: #fff;
 }
+/* Halo lumineux qui traverse la carte : l'éclat du verre. */
+.treso::after { content: ''; position: absolute; width: 380px; height: 380px; right: -120px; top: -160px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(52, 211, 153, 0.45), transparent 65%); pointer-events: none; }
 .treso__label { font-size: 0.9rem; color: rgba(255,255,255,0.7); margin: 0; }
 .treso__total { font-size: clamp(2.4rem, 5.4vw, 4rem); font-weight: 700; letter-spacing: -0.04em; line-height: 1; margin: 0; }
 .treso__canaux { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 12px;
@@ -602,13 +650,16 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .treso__canal {
   --c: var(--c1);
   position: relative; display: flex; flex-direction: column; gap: 10px; height: 100%;
-  padding: 14px 16px 16px; border-radius: 12px; overflow: hidden;
-  background: linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
-  border: 1px solid rgba(255,255,255,0.12);
+  padding: 14px 16px 16px; border-radius: 18px; overflow: hidden; z-index: 1;
+  background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(255,255,255,0.05));
+  -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.22) inset;
   color: inherit; text-decoration: none;
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
-.treso__canal::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--c); }
+.treso__canal::before { content: ''; position: absolute; inset: auto -30% -60% auto; width: 140px; height: 140px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 45%, transparent), transparent 70%); pointer-events: none; }
 .treso__canal--c2 { --c: var(--c2); }
 .treso__canal--c3 { --c: var(--c3); }
 .treso__canal:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 60%, transparent);
@@ -624,29 +675,48 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   overflow-wrap: anywhere; }
 .treso__canal--neg .treso__canal-montant { color: #ffb4b4; }
 .treso__jauge { display: block; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.10); overflow: hidden; margin-top: auto; }
-.treso__jauge span { display: block; height: 100%; border-radius: 999px; background: var(--c); transition: width 0.6s cubic-bezier(.2,.8,.2,1); }
+.treso__jauge span { display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c) 70%, #fff), var(--c));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--c) 70%, transparent); transition: width 0.6s cubic-bezier(.2,.8,.2,1); }
 
 .side { display: grid; gap: 12px; align-content: start; }
 .tile {
+  --accent: var(--ciel);
+  position: relative; overflow: hidden;
   display: flex; flex-direction: column; gap: 6px; padding: 18px 20px;
-  background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
-  color: var(--ink); text-decoration: none; transition: border-color 0.15s;
+  background: var(--verre);
+  -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+  border: 1px solid var(--verre-bord); border-radius: 22px; box-shadow: var(--verre-ombre);
+  color: var(--ink); text-decoration: none; transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-.tile:hover { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--hairline)); }
+/* Lueur de la couleur de la tuile, dans le coin. */
+.tile::before { content: ''; position: absolute; width: 180px; height: 180px; right: -60px; top: -70px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 38%, transparent), transparent 70%); pointer-events: none; }
+.tile:hover { transform: translateY(-2px); box-shadow: var(--verre-ombre), 0 18px 36px -18px color-mix(in srgb, var(--accent) 60%, transparent); }
+.tile__pastille { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-right: 8px;
+  border-radius: 8px; color: #fff; vertical-align: middle;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 75%, #fff), var(--accent));
+  box-shadow: 0 4px 10px -3px color-mix(in srgb, var(--accent) 70%, transparent); }
+.tile--resultat { --accent: var(--indigo); --spark-a: var(--ciel); --spark-b: var(--violet); }
+.tile--resultat.tile--perte { --accent: var(--corail); --spark-a: var(--ambre); --spark-b: var(--corail); }
+.tile--budget { --accent: var(--ambre); }
 .tile:focus-visible { outline: 3px solid var(--color-primary-mid); outline-offset: 2px; }
-.tile__label { font-size: 0.875rem; color: var(--ink-soft); }
-.tile__value { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.tile__label { position: relative; display: flex; align-items: center; font-size: 0.875rem; color: var(--ink-soft); }
+.tile__value { position: relative; font-size: 1.9rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .tile__value--neg { color: #b42318; }
 .tile__hint { font-size: 0.8125rem; color: var(--ink-soft); }
-.tile--action { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
-.tile--action .tile__label, .tile--action .tile__hint { color: rgba(255,255,255,0.82); }
-.tile--action:hover { border-color: var(--color-primary-dark); background: var(--color-primary-dark); }
+.tile--action { --accent: #fff; color: #fff; border-color: rgba(255,255,255,0.28);
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(255,255,255,0.22), transparent 50%),
+    linear-gradient(135deg, var(--emeraude), #0d9488 55%, #0891b2); }
+.tile--action .tile__label, .tile--action .tile__hint { color: rgba(255,255,255,0.88); }
+.tile--action .tile__pastille { background: rgba(255,255,255,0.22); box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset; }
 /* Nuit : le vert de marque est éclairci ; la tuile d'action garde un fond assez sombre pour un texte blanc lisible. */
-:global(html[data-theme='dark'] .dash .tile--action) { background: color-mix(in srgb, var(--color-primary) 45%, #07110d); border-color: color-mix(in srgb, var(--color-primary) 60%, #07110d); }
-:global(html[data-theme='dark'] .dash .tile--action:hover) { background: color-mix(in srgb, var(--color-primary) 55%, #07110d); }
-.tile__spark { width: 100%; height: 34px; color: var(--color-primary); }
-.tile__gauge { display: block; height: 6px; border-radius: 3px; background: var(--color-primary-light); overflow: hidden; }
-.tile__gauge > span { display: block; height: 100%; background: var(--color-primary); }
+:global(html[data-theme='dark'] .dash .tile--action) { background: linear-gradient(135deg, #047857, #0f766e 55%, #155e75); }
+.tile__spark { position: relative; width: 100%; height: 38px; }
+.tile__gauge { position: relative; display: block; height: 8px; border-radius: 999px; overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.tile__gauge > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #fcd34d, var(--ambre), #f97316); }
 
 /* ── Sections ────────────────────────────────────────────── */
 .dash__section-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -655,13 +725,15 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .dash__section-sub { font-size: 0.875rem; color: var(--ink-soft); margin: 0; }
 
 /* ── File d'attente : une ligne par note, avec son circuit ── */
-.queue { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden; }
-.queue > li + li { border-top: 1px solid var(--hairline); }
+.queue { list-style: none; margin: 0; padding: 0; overflow: hidden;
+  background: var(--verre); -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+  border: 1px solid var(--verre-bord); border-radius: 22px; box-shadow: var(--verre-ombre); }
+.queue > li + li { border-top: 1px solid color-mix(in srgb, var(--hairline) 70%, transparent); }
 .queue__row {
   display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.9fr) auto; align-items: center; gap: 20px;
   padding: 16px 22px; color: var(--ink); text-decoration: none; transition: background 0.12s;
 }
-.queue__row:hover { background: var(--color-primary-lighter); }
+.queue__row:hover { background: color-mix(in srgb, var(--verre-fort) 70%, transparent); }
 .queue__row:focus-visible { outline: 3px solid var(--color-primary-mid); outline-offset: -3px; }
 .queue__main { display: grid; gap: 1px; min-width: 0; }
 .queue__ref { font-size: 0.8125rem; color: var(--ink-soft); }
@@ -670,12 +742,18 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .queue__montant { font-weight: 700; text-align: right; white-space: nowrap; }
 
 .queue__track { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
-.queue__step { display: grid; gap: 5px; }
-.queue__pip { height: 4px; border-radius: 2px; background: var(--hairline); }
-.queue__step--done .queue__pip { background: var(--color-primary-mid); }
-.queue__step--now .queue__pip { background: var(--color-primary); height: 6px; margin-top: -1px; }
+/* Une couleur par étape du circuit, comme le widget Android : soumise, DFIN, DA, caisse, payée. */
+.queue__step { --e: var(--emeraude); display: grid; gap: 5px; }
+.queue__step--e0 { --e: var(--violet); }
+.queue__step--e1 { --e: #3b82f6; }
+.queue__step--e2 { --e: var(--emeraude); }
+.queue__step--e3 { --e: var(--ambre); }
+.queue__step--e4 { --e: #059669; }
+.queue__pip { height: 5px; border-radius: 999px; background: color-mix(in srgb, var(--hairline) 80%, transparent); }
+.queue__step--done .queue__pip { background: color-mix(in srgb, var(--e) 55%, transparent); }
+.queue__step--now .queue__pip { background: var(--e); height: 7px; margin-top: -1px; box-shadow: 0 0 10px color-mix(in srgb, var(--e) 65%, transparent); }
 .queue__step-nom { font-size: 0.72rem; line-height: 1.25; color: var(--ink-faint); }
-.queue__step--now .queue__step-nom { color: var(--ink); font-weight: 700; }
+.queue__step--now .queue__step-nom { color: color-mix(in srgb, var(--e) 70%, var(--ink)); font-weight: 700; }
 @media (max-width: 800px) {
   .queue__row { grid-template-columns: 1fr auto; gap: 10px 16px; }
   .queue__track { grid-column: 1 / -1; order: 3; }
@@ -683,7 +761,8 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   .queue__step--now .queue__step-nom { display: block; }
 }
 
-.dash__empty { padding: 36px 24px; background: var(--surface); border: 1px dashed var(--hairline); border-radius: 12px; }
+.dash__empty { padding: 36px 24px; background: var(--verre); -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+  border: 1px dashed var(--verre-bord); border-radius: 22px; box-shadow: var(--verre-ombre); }
 .dash__empty-title { font-size: 1rem; font-weight: 600; color: var(--ink); margin: 0 0 4px; }
 .dash__empty-sub { font-size: 0.9rem; color: var(--ink-soft); margin: 0; max-width: 60ch; }
 
@@ -691,7 +770,8 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 .cg-full { margin-bottom: 16px; }
 .cg-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 @media (max-width: 680px) { .cg-grid2 { grid-template-columns: 1fr; } }
-.cg-card { min-width: 0; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 20px 22px; }
+.cg-card { min-width: 0; padding: 20px 22px; background: var(--verre); -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+  border: 1px solid var(--verre-bord); border-radius: 22px; box-shadow: var(--verre-ombre); }
 .cg-title { font-size: 1rem; font-weight: 650; color: var(--ink); margin: 0 0 2px; }
 .cg-sub { font-size: 0.8125rem; color: var(--ink-soft); margin: 0 0 16px; }
 .cg-canvas { height: 260px; position: relative; }
