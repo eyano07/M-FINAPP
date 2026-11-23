@@ -714,9 +714,13 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
 
 /* ── Ascenseurs (21/11/2026) : fins, arrondis, translucides, couleur de marque au survol ──────────────────────────── */
 @media screen and (pointer: fine) {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--color-primary) 35%, rgba(120, 130, 125, 0.45)) transparent;
+  /* Firefox seulement : Chrome et Edge ignorent leurs pseudo-éléments ::-webkit-scrollbar dès que scrollbar-width
+     est posé ; ils prennent donc le style ci-dessous, qui permet de commencer le rail sous l'en-tête d'un tableau. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--color-primary) 35%, rgba(120, 130, 125, 0.45)) transparent;
+    }
   }
   *::-webkit-scrollbar { width: 10px; height: 10px; }
   *::-webkit-scrollbar-track { background: transparent; }
@@ -729,4 +733,11 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
     background-color: color-mix(in srgb, var(--color-primary) 30%, rgba(120, 130, 125, 0.45));
   }
   *::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--color-primary) 70%, transparent); }
+}
+
+/* Tableaux à en-tête fixe : le rail de l'ascenseur commence sous la ligne d'en-tête (hauteur mesurée par
+   plugins/hauteur-entete-tableaux.client.ts) et s'arrête un peu avant le coin arrondi du bas. */
+@media screen and (pointer: fine) {
+  .v-table__wrapper::-webkit-scrollbar-track,
+  div.tableau-fixe::-webkit-scrollbar-track { margin-top: var(--entete-h, 0px); margin-bottom: 8px; }
 }
