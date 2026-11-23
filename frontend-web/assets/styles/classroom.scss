@@ -596,12 +596,22 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
     -webkit-backdrop-filter: var(--flou);
     backdrop-filter: var(--flou);
   }
-  .v-main .v-card:not(.v-card--variant-tonal):not(.v-card--variant-text):not(.v-card--variant-plain),
-  .v-main .v-expansion-panels {
+  .v-main .v-card:not(.v-card--variant-tonal):not(.v-card--variant-text):not(.v-card--variant-plain) {
     border: 1px solid var(--verre-bord) !important;
     border-radius: 18px !important;
     box-shadow: var(--verre-ombre) !important;
   }
+  /* Accordéons : chaque panneau est une carte de verre ; le groupe n'a ni cadre ni ombre (il dessinait un contour
+     autour de toute la liste). Les ombres et filets de Vuetify entre panneaux sont retirés au profit d'un écart. */
+  .v-main .v-expansion-panels { border: 0 !important; box-shadow: none !important; background: transparent !important; gap: 8px; }
+  .v-main .v-expansion-panel {
+    border: 1px solid var(--verre-bord) !important;
+    border-radius: 16px !important;
+    box-shadow: var(--verre-ombre) !important;
+    margin: 0 !important;
+  }
+  .v-main .v-expansion-panel::after { display: none !important; }
+  .v-main .v-expansion-panel__shadow { display: none !important; }
   .classroom-card { border-color: var(--verre-bord) !important; border-radius: 18px !important; }
   .classroom-card:hover { box-shadow: var(--verre-ombre), 0 16px 34px -18px rgba(16, 120, 90, 0.35) !important; }
   /* Une carte en verre dans une carte : la seconde reste transparente (pas de double flou). */
