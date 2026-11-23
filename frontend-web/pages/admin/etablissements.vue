@@ -158,7 +158,7 @@ const fmtUSD = (usd: number) =>
             <v-progress-circular indeterminate color="primary" size="28" />
           </div>
           <div v-else-if="banques.length === 0" class="etab-empty">
-            <v-icon icon="mdi-bank-outline" size="28" color="#d1d5db" />
+            <v-icon icon="mdi-bank-outline" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <p>Aucune banque configurée.</p>
           </div>
           <div v-else class="etab-liste">
@@ -221,7 +221,7 @@ const fmtUSD = (usd: number) =>
             <v-progress-circular indeterminate color="primary" size="28" />
           </div>
           <div v-else-if="operateurs.length === 0" class="etab-empty">
-            <v-icon icon="mdi-cellphone-off" size="28" color="#d1d5db" />
+            <v-icon icon="mdi-cellphone-off" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <p>Aucun opérateur configuré.</p>
           </div>
           <div v-else class="etab-liste">

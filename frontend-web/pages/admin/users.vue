@@ -319,12 +319,12 @@ const roleColor: Record<string, string> = {
       </div>
 
       <div v-else-if="users.length === 0" class="usr-empty">
-        <v-icon icon="mdi-account-group-outline" size="40" color="#d1d5db" />
+        <v-icon icon="mdi-account-group-outline" size="40" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucun utilisateur trouvé.</p>
       </div>
 
       <div v-else-if="usersFiltres.length === 0" class="usr-empty">
-        <v-icon icon="mdi-account-search-outline" size="40" color="#d1d5db" />
+        <v-icon icon="mdi-account-search-outline" size="40" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucun utilisateur ne correspond à « {{ recherche }} ».</p>
       </div>
 

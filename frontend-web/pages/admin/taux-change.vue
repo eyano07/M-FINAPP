@@ -202,7 +202,7 @@ function fmtDate(d: string) {
         </div>
 
         <div v-else-if="taux.length === 0" class="tc-hist-empty">
-          <v-icon icon="mdi-database-off-outline" size="32" color="#d1d5db" />
+          <v-icon icon="mdi-database-off-outline" size="32" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
           <p>Aucun historique disponible.</p>
         </div>
 

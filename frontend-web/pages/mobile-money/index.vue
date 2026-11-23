@@ -363,7 +363,7 @@ const fmtTaux = computed(() =>
         <v-progress-circular indeterminate color="primary" size="28" />
       </div>
       <div v-else-if="notesAPayer.length === 0" class="caisse-empty">
-        <v-icon icon="mdi-check-circle-outline" size="28" color="#d1d5db" />
+        <v-icon icon="mdi-check-circle-outline" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucune note en attente de paiement.</p>
       </div>
       <div v-else class="caisse-notes">

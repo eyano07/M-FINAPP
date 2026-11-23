@@ -1054,7 +1054,7 @@ const peutGererPieces = computed(() => !surCopie.value &&
             >
           </div>
           <div v-if="note.piecesJointes.length === 0" class="nd-timeline-empty">
-            <v-icon icon="mdi-paperclip-off" size="28" color="#d1d5db" />
+            <v-icon icon="mdi-paperclip-off" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <p>Aucun justificatif (PDF ou image) joint pour l'instant.</p>
           </div>
           <div v-else class="nd-pieces">
@@ -1087,7 +1087,7 @@ const peutGererPieces = computed(() => !surCopie.value &&
         <div class="nd-card nd-noprint">
           <p class="nd-card__section-title">Historique du circuit</p>
           <div v-if="note.observations.length === 0" class="nd-timeline-empty">
-            <v-icon icon="mdi-timeline-outline" size="28" color="#d1d5db" />
+            <v-icon icon="mdi-timeline-outline" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <p>Aucune action dans le circuit pour l'instant.</p>
           </div>
           <div v-else class="nd-timeline">
@@ -1246,7 +1246,7 @@ const peutGererPieces = computed(() => !surCopie.value &&
 
               <div v-if="!peutSoumettre && !peutEncaisser && !peutVerifier && !peutValiderRejeter && !peutPrioriser && !peutTransmettre && !peutAnnuler && !peutReduire && !peutAnnulerRetour"
                 class="nd-no-action">
-                <v-icon icon="mdi-lock-outline" size="20" color="#d1d5db" />
+                <v-icon icon="mdi-lock-outline" size="20" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
                 <p>{{ messageAucuneAction }}</p>
               </div>
             </div>
@@ -1290,7 +1290,7 @@ const peutGererPieces = computed(() => !surCopie.value &&
           <img v-else-if="apercuEstImage && apercuUrl" :src="apercuUrl" class="nd-apercu-img" alt="Aperçu">
           <iframe v-else-if="apercuEstPdf && apercuPdfUrl" :src="apercuPdfUrl" class="nd-apercu-pdf" title="Aperçu du document" />
           <div v-else class="nd-apercu-non-supporte">
-            <v-icon icon="mdi-file-question-outline" size="48" color="#d1d5db" />
+            <v-icon icon="mdi-file-question-outline" size="48" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <p>Aperçu non disponible pour ce type de fichier.</p>
             <v-btn color="primary" variant="tonal" prepend-icon="mdi-download" @click="telechargerPiece(apercuPieceActuelle!)">
               Télécharger

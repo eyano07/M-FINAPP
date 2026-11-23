@@ -347,7 +347,7 @@ async function onLogoChoisi(e: Event) {
         <div class="param-logo-preview">
           <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo actuel">
           <div v-else class="param-logo-preview__empty">
-            <v-icon icon="mdi-image-off-outline" size="30" color="#d1d5db" />
+            <v-icon icon="mdi-image-off-outline" size="30" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <span>Aucun logo configuré</span>
           </div>
         </div>

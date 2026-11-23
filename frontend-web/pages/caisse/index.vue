@@ -715,7 +715,7 @@ const fmtTaux = computed(() =>
         <v-progress-circular indeterminate color="primary" size="28" />
       </div>
       <div v-else-if="notesAPayer.length === 0" class="caisse-empty">
-        <v-icon icon="mdi-check-circle-outline" size="28" color="#d1d5db" />
+        <v-icon icon="mdi-check-circle-outline" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucune note transmise à la caisse pour le moment.</p>
         <!-- Toujours expliquer un état vide qui pourrait être pris pour un
              bug : ces notes existent, mais ce n'est pas encore le tour de

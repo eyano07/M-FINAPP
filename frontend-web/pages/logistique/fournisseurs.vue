@@ -302,7 +302,7 @@ async function action(appel: () => Promise<unknown>, message: string) {
         </template>
         <template #no-data>
           <div class="frn-vide">
-            <v-icon icon="mdi-handshake-outline" size="42" color="#d1d5db" class="mb-2" />
+            <v-icon icon="mdi-handshake-outline" size="42" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" class="mb-2" />
             <p>{{ messageVide }}</p>
           </div>
         </template>

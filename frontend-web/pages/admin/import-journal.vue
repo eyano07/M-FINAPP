@@ -403,7 +403,7 @@ const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigit
               Créer {{ s.valeurProposee }}
             </v-btn>
             <template v-if="s.valeurProposee">
-              <v-icon icon="mdi-arrow-right" size="16" color="#9ca3af" />
+              <v-icon icon="mdi-arrow-right" size="16" color="color-mix(in srgb, var(--color-primary) 75%, var(--ink-soft))" />
               <span class="sugg-apres">{{ s.valeurProposee }}</span>
               <span v-if="s.libelle" class="sugg-libelle">{{ s.libelle }}</span>
             </template>

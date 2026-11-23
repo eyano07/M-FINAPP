@@ -178,7 +178,7 @@ async function enregistrer() {
         </template>
         <template #no-data>
           <div class="cl-empty">
-            <v-icon icon="mdi-account-multiple-outline" size="42" color="#d1d5db" class="mb-2" />
+            <v-icon icon="mdi-account-multiple-outline" size="42" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" class="mb-2" />
             <p>Aucun client enregistré.</p>
           </div>
         </template>

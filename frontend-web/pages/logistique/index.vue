@@ -309,7 +309,7 @@ const statutLabel: Record<string, string> = { BROUILLON: 'Brouillon', VALIDE: 'V
         </v-data-table>
       </v-card>
       <div v-else class="ldb__empty">
-        <v-icon icon="mdi-swap-horizontal-bold" size="40" color="#d1d5db" />
+        <v-icon icon="mdi-swap-horizontal-bold" size="40" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p class="ldb__empty-title">Aucun mouvement enregistré.</p>
       </div>
     </template>

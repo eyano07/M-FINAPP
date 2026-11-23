@@ -265,7 +265,7 @@ async function ouvrirNotification(n: NotificationItem) {
         </div>
 
         <div v-if="notif.notifications.length === 0" class="notif-panel__empty">
-          <v-icon icon="mdi-bell-sleep-outline" size="26" color="#d1d5db" />
+          <v-icon icon="mdi-bell-sleep-outline" size="26" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
           <p>Aucune notification pour l'instant.</p>
         </div>
 

@@ -305,7 +305,7 @@ const parentOptions = computed(() =>
     <!-- ── Filtres ────────────────────────────────────────────── -->
     <div class="pc-filters">
       <div class="pc-search">
-        <v-icon icon="mdi-magnify" size="16" color="#9ca3af" class="pc-search__icon" />
+        <v-icon icon="mdi-magnify" size="16" color="color-mix(in srgb, var(--color-primary) 75%, var(--ink-soft))" class="pc-search__icon" />
         <input v-model="search" class="pc-search__input" placeholder="Numéro ou libellé…" />
       </div>
       <div class="pc-chips">
@@ -332,7 +332,7 @@ const parentOptions = computed(() =>
         <v-progress-circular indeterminate color="primary" size="28" />
       </div>
       <div v-else-if="comptesFiltres.length === 0" class="pc-empty">
-        <v-icon icon="mdi-book-off-outline" size="40" color="#d1d5db" />
+        <v-icon icon="mdi-book-off-outline" size="40" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucun compte trouvé.</p>
       </div>
       <div v-else-if="!esMobile" class="pc-table-scroll">

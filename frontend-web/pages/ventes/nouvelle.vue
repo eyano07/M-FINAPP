@@ -722,7 +722,7 @@ const contreValeur = computed(() => {
       </div>
 
       <div v-if="articles.length === 0 && !loading" class="vn-empty">
-        <v-icon icon="mdi-package-variant" size="28" color="#d1d5db" />
+        <v-icon icon="mdi-package-variant" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucun article vendable. Renseignez un prix de vente et un compte de produit sur vos articles.</p>
       </div>
 

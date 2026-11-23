@@ -610,7 +610,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 
     <!-- ── Filter bar ──────────────────────────────────────── -->
     <div class="nf-filter">
-      <v-icon icon="mdi-filter-outline" size="18" color="#9ca3af" />
+      <v-icon icon="mdi-filter-outline" size="18" color="color-mix(in srgb, var(--color-primary) 75%, var(--ink-soft))" />
       <div class="nf-filter__chips">
         <button
           class="nf-filter__chip nf-filter__chip--tous"
@@ -642,7 +642,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 
     <!-- ── Période (date de création) ──────────────────────── -->
     <div class="nf-filter nf-filter--periode">
-      <v-icon icon="mdi-calendar-range-outline" size="18" color="#9ca3af" />
+      <v-icon icon="mdi-calendar-range-outline" size="18" color="color-mix(in srgb, var(--color-primary) 75%, var(--ink-soft))" />
       <span class="nf-periode__label">Période</span>
       <div class="nf-periode__body">
         <div class="nf-periode__range">
@@ -659,7 +659,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
 
     <!-- ── Recherche (référence, libellé, bénéficiaire, compte) ── -->
     <div class="nf-filter nf-filter--recherche">
-      <v-icon icon="mdi-magnify" size="18" color="#9ca3af" />
+      <v-icon icon="mdi-magnify" size="18" color="color-mix(in srgb, var(--color-primary) 75%, var(--ink-soft))" />
       <span class="nf-periode__label">Recherche</span>
       <div class="nf-recherche__body">
         <input
@@ -732,7 +732,7 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
     </div>
 
     <div v-else-if="!loading" class="nf-empty">
-      <v-icon :icon="activeSens === 'ENCAISSEMENT' ? 'mdi-cash-plus' : 'mdi-receipt-text-outline'" size="48" color="#d1d5db" />
+      <v-icon :icon="activeSens === 'ENCAISSEMENT' ? 'mdi-cash-plus' : 'mdi-receipt-text-outline'" size="48" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
       <p class="nf-empty__title">
         {{ activeSens === 'ENCAISSEMENT' ? "Aucune note d'encaissement" : 'Aucune note de frais' }}
       </p>

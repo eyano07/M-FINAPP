@@ -248,7 +248,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
         </template>
         <template #no-data>
           <div class="vte-empty">
-            <v-icon icon="mdi-receipt-text-outline" size="42" color="#d1d5db" class="mb-2" />
+            <v-icon icon="mdi-receipt-text-outline" size="42" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" class="mb-2" />
             <p v-if="ventes.length">Aucune vente ne correspond aux filtres.</p>
             <p v-else>Aucune vente enregistrée.</p>
           </div>
