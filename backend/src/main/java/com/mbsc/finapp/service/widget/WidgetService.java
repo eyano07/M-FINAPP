@@ -50,8 +50,10 @@ public class WidgetService {
     private static final SecureRandom HASARD = new SecureRandom();
     /** Lignes de notes montrées par le widget (les plus récentes, celles à traiter d'abord). */
     static final int LIGNES_MAX = 6;
-    /** Rôles qui ont le widget Trésorerie (mini tableau de bord) : caissier, DA, DFIN, comptable, DG. */
-    public static final Set<String> ROLES_TRESORERIE = Set.of("CAISSIER", "DA", "DFIN", "COMPTABLE", "DG");
+    /** Rôles qui ont le widget Trésorerie (mini tableau de bord) : caissier, DA, DFIN, comptable, DG, administrateur. */
+    public static final Set<String> ROLES_TRESORERIE = Set.of("CAISSIER", "DA", "DFIN", "COMPTABLE", "DG", "ADMIN");
+    /** Rôles qui voient en plus le résultat net de l'exercice sur le widget : DFIN, DA, administrateur. */
+    public static final Set<String> ROLES_RESULTAT = Set.of("DFIN", "DA", "ADMIN");
     /** Préférence du compte (ProfilService) : ACTIF pour afficher la trésorerie sur son téléphone. */
     public static final String PREFERENCE = "widget.tresorerie";
     private static final Set<StatutNote> TERMINEES = EnumSet.of(StatutNote.PAYEE, StatutNote.ANNULEE);
@@ -169,12 +171,18 @@ public class WidgetService {
         WidgetResume.Tresorerie tresorerie = null;
         String message = null;
         if (roles.stream().noneMatch(ROLES_TRESORERIE::contains)) {
-            message = "Le widget Trésorerie est réservé au caissier, au DA, au DFIN, au comptable et au DG.";
+            message = "Le widget Trésorerie est réservé au caissier, au DA, au DFIN, au comptable, au DG et à l'administrateur.";
         } else if (!preferences.findByUserIdAndCle(moi.getId(), PREFERENCE)
                 .map(p -> "ACTIF".equals(p.getValeur())).orElse(false)) {
             message = "Activez le widget Trésorerie dans l'application : Mon profil › Widget Trésorerie.";
         } else {
             tresorerie = tresorerie(caisse.soldesTresorerie(), ecritures.mouvementsTresorerieDu(java.time.LocalDate.now()));
+            if (roles.stream().anyMatch(ROLES_RESULTAT::contains)) {
+                java.time.LocalDate aujourdhui = java.time.LocalDate.now(com.mbsc.finapp.config.FuseauEntreprise.ZONE);
+                java.time.LocalDate debut = aujourdhui.withDayOfYear(1);
+                tresorerie = tresorerie.avecResultat(resultatNet(ecritures.mouvementsParCompte(debut, aujourdhui)),
+                    "Résultat net " + aujourdhui.getYear());
+            }
         }
 
         String nom = ((moi.getPrenom() == null ? "" : moi.getPrenom() + " ") + (moi.getNom() == null ? "" : moi.getNom())).trim();
@@ -216,6 +224,22 @@ public class WidgetService {
     private static WidgetResume.Ligne ligne(NoteFraisResponse n, String etat, boolean aTraiter) {
         return new WidgetResume.Ligne(n.id(), n.reference(), n.objet(), n.montant(),
             n.devise() == null ? null : n.devise().name(), etat, aTraiter, n.statut() == null ? null : n.statut().name());
+    }
+
+    /**
+     * Résultat net de la période, comme le compte de résultat du site (ComptabiliteService#compteResultat) : produits
+     * (solde créditeur des comptes PRODUIT) moins charges (solde débiteur des comptes CHARGE). Lignes
+     * [numero, libelle, type, classe, debit, credit].
+     */
+    static BigDecimal resultatNet(List<Object[]> mouvements) {
+        BigDecimal resultat = BigDecimal.ZERO;
+        for (Object[] m : mouvements) {
+            BigDecimal debit = m[4] == null ? BigDecimal.ZERO : (BigDecimal) m[4];
+            BigDecimal credit = m[5] == null ? BigDecimal.ZERO : (BigDecimal) m[5];
+            if (m[2] == com.mbsc.finapp.domain.enums.TypeCompte.PRODUIT) resultat = resultat.add(credit.subtract(debit));
+            else if (m[2] == com.mbsc.finapp.domain.enums.TypeCompte.CHARGE) resultat = resultat.subtract(debit.subtract(credit));
+        }
+        return resultat;
     }
 
     /**

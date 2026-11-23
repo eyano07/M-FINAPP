@@ -172,6 +172,36 @@
             android:textSize="14sp"
             android:textStyle="bold" />
     </LinearLayout>
+    <!-- Résultat net de l'exercice : DFIN, DA et administrateur seulement (vert si bénéfice, orange si perte). -->
+    <LinearLayout
+        android:id="@+id/resultat"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/widget_ligne"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="7dp"
+        android:paddingBottom="7dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/resultat_nom"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/widget_encre"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/resultat_solde"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_ok"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
     <TextView
         android:id="@+id/message"
         android:layout_width="match_parent"

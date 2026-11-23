@@ -39,7 +39,19 @@ public record WidgetResume(
      * caisse, les banques et le mobile money.
      */
     public record Tresorerie(String devise, BigDecimal total, List<Canal> canaux, BigDecimal entreesJour,
-                             BigDecimal sortiesJour) {}
+                             BigDecimal sortiesJour,
+                             /** Résultat net de l'exercice en cours (produits − charges) : DFIN, DA, Admin seulement, sinon null. */
+                             BigDecimal resultatNet,
+                             /** Libellé du résultat (« Résultat net 2026 ») ; null avec resultatNet. */
+                             String resultatLibelle) {
+        public Tresorerie(String devise, BigDecimal total, List<Canal> canaux, BigDecimal entreesJour, BigDecimal sortiesJour) {
+            this(devise, total, canaux, entreesJour, sortiesJour, null, null);
+        }
+
+        public Tresorerie avecResultat(BigDecimal resultat, String libelle) {
+            return new Tresorerie(devise, total, canaux, entreesJour, sortiesJour, resultat, libelle);
+        }
+    }
 
     public record Canal(String nom, BigDecimal solde) {}
 }

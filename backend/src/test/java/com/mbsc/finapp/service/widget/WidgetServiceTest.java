@@ -57,9 +57,21 @@ class WidgetServiceTest {
 
     @Test
     void le_widget_tresorerie_est_reserve_aux_roles_du_mini_tableau_de_bord() {
-        assertThat(WidgetService.ROLES_TRESORERIE).containsExactlyInAnyOrder("CAISSIER", "DA", "DFIN", "COMPTABLE", "DG");
+        assertThat(WidgetService.ROLES_TRESORERIE).containsExactlyInAnyOrder("CAISSIER", "DA", "DFIN", "COMPTABLE", "DG", "ADMIN");
+        assertThat(WidgetService.ROLES_RESULTAT).containsExactlyInAnyOrder("DFIN", "DA", "ADMIN");
         assertThat(MouvementsTresorerie.concerneLaTresorerie("5711")).isTrue();
         assertThat(MouvementsTresorerie.concerneLaTresorerie("6011")).isFalse();
+    }
+
+    @Test
+    void le_resultat_net_est_produits_moins_charges() {
+        var produit = com.mbsc.finapp.domain.enums.TypeCompte.PRODUIT;
+        var charge = com.mbsc.finapp.domain.enums.TypeCompte.CHARGE;
+        BigDecimal r = WidgetService.resultatNet(List.<Object[]>of(
+            new Object[]{"701", "Ventes", produit, 7, new BigDecimal("10"), new BigDecimal("1000")},
+            new Object[]{"601", "Achats", charge, 6, new BigDecimal("400"), new BigDecimal("50")},
+            new Object[]{"571", "Caisse", null, 5, new BigDecimal("999"), BigDecimal.ZERO}));
+        assertThat(r).isEqualByComparingTo("640");   // (1000 − 10) − (400 − 50)
     }
 
     @Test

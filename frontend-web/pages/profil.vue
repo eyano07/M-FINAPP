@@ -18,7 +18,7 @@ const form = reactive({ nom: '', prenom: '', telephone: '', emailNotification: '
 // Widget « Trésorerie » de l'écran d'accueil Android (mini tableau de bord), activé par chacun pour son téléphone ;
 // réservé aux rôles qui suivent la trésorerie (même liste que WidgetService.ROLES_TRESORERIE côté serveur).
 const preferencesStore = usePreferencesStore()
-const ROLES_WIDGET_TRESORERIE = ['CAISSIER', 'DA', 'DFIN', 'COMPTABLE', 'DG']
+const ROLES_WIDGET_TRESORERIE = ['CAISSIER', 'DA', 'DFIN', 'COMPTABLE', 'DG', 'ADMIN']
 const peutWidgetTresorerie = computed(() => auth.hasAnyRole(ROLES_WIDGET_TRESORERIE))
 const widgetTresorerie = computed(() => preferencesStore.valeur('widget.tresorerie', 'INACTIF') === 'ACTIF')
 function basculerWidgetTresorerie(actif: boolean | null) {

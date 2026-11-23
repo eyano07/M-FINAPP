@@ -209,6 +209,7 @@ final class Widgets {
         v.setViewVisibility(R.id.total, View.GONE);
         v.setViewVisibility(R.id.total_libelle, View.GONE);
         v.setViewVisibility(R.id.jour, View.GONE);
+        v.setViewVisibility(R.id.resultat, View.GONE);
         JSONObject r = resume(c);
         if (r == null) {
             montrerMessage(v, absence(c));
@@ -238,14 +239,24 @@ final class Widgets {
             v.setTextViewText(CANAL_NOM[i], k.optString("nom", ""));
             v.setTextViewText(CANAL_SOLDE[i], montant(k.opt("solde"), devise));
         }
+        // Résultat net de l'exercice : envoyé par le serveur au DFIN, au DA et à l'administrateur seulement.
+        if (!t.isNull("resultatNet")) {
+            double resultat = t.optDouble("resultatNet", 0);
+            v.setViewVisibility(R.id.resultat, View.VISIBLE);
+            v.setTextViewText(R.id.resultat_nom, t.optString("resultatLibelle", "Résultat net"));
+            v.setTextViewText(R.id.resultat_solde, (resultat > 0 ? "+" : "") + montant(t.opt("resultatNet"), devise));
+            v.setTextColor(R.id.resultat_solde, c.getColor(resultat < 0 ? R.color.widget_alerte : R.color.widget_ok));
+        }
         v.setViewVisibility(R.id.message, View.GONE);
         v.setTextViewText(R.id.maj, horodatage(c, r));
         return v;
     }
 
     /**
-     * Couleurs des 4 étapes d'une note (DFIN · DA · Caisse · Payée) : bleu = vérifiée par le DFIN, vert = validée par le
-     * DA puis transmise à la caisse, vert foncé = payée, rouge = rejetée, orange = étape en attente, gris = à venir.
+     * Couleurs des 4 étapes d'une note (DFIN · DA · Caisse · Payée), d'après son état réel : bleu = vérifiée par le DFIN,
+     * vert = validée par le DA, orange = étape en cours (la note y attend), vert foncé = payée, rouge = rejetée, gris = pas
+     * encore atteinte. « Payée » ne se colore qu'une fois la note payée : transmise à la caisse, c'est la case Caisse qui
+     * est en cours (comme la barre du tableau de bord du site).
      */
     static int[] pipeline(String statut) {
         int g = R.color.etape_avenir, o = R.color.etape_attente, b = R.color.etape_dfin, v = R.color.etape_validee;
@@ -254,8 +265,8 @@ final class Widgets {
             case "SOUMISE": return new int[]{o, g, g, g};
             case "VERIFIEE_DFIN": return new int[]{b, o, g, g};
             case "REJETEE_DA": return new int[]{b, r, g, g};
-            case "VALIDEE_DA": return new int[]{b, v, o, g};
-            case "TRANSMISE_CAISSE": return new int[]{b, v, v, o};
+            case "VALIDEE_DA": return new int[]{b, v, g, g};      // validée, pas encore transmise à la caisse
+            case "TRANSMISE_CAISSE": return new int[]{b, v, o, g};  // à la caisse, pas encore payée
             case "PAYEE": return new int[]{b, v, v, p};
             case "ANNULEE": return new int[]{r, r, r, r};
             default: return new int[]{g, g, g, g};   // brouillon : pas encore soumise
