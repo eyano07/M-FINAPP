@@ -796,3 +796,14 @@ html.application-mobile {
   -webkit-backdrop-filter: blur(8px) saturate(140%);
   backdrop-filter: blur(8px) saturate(140%);
 }
+
+/* Tableaux-cartes sur téléphone : les montants vont par paires (Débit | Crédit, Solde débiteur | Solde créditeur). */
+@media screen and (max-width: 599px) {
+  html body .table-cartes tbody > tr > td.num, html body .table-cartes tfoot > tr > td.num,
+  html body .table-cartes tbody > tr > td.cellule-montant, html body .table-cartes tfoot > tr > td.cellule-montant {
+    flex: 1 1 calc(50% - 8px) !important;
+    max-width: 100%;
+    min-width: 0 !important;
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent) !important;
+  }
+}
