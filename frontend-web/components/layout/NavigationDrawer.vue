@@ -508,8 +508,14 @@ function lignes(g: NavGroup): LigneMenu[] {
   --nav-ink-strong: #ffffff;
   --nav-line: rgba(255, 255, 255, 0.09);
   --nav-bright: color-mix(in srgb, var(--color-primary) 55%, #7ff0b8);
-  background: var(--nav-bg) !important;
-  border-right: 0 !important;
+  /* Verre teinté (21/11/2026) : le fond d'aurore de la page transparaît, flouté, sous le vert sombre de marque. */
+  background:
+    radial-gradient(120% 50% at 0% 0%, rgba(255, 255, 255, 0.10), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--nav-bg) 78%, transparent), color-mix(in srgb, var(--nav-bg) 88%, transparent)) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+  border-right: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.04) inset, 12px 0 40px -24px rgba(0, 0, 0, 0.45);
   padding: 14px 10px 8px;
   color: var(--nav-ink);
 }
@@ -568,7 +574,8 @@ function lignes(g: NavGroup): LigneMenu[] {
   transition: background 0.15s, color 0.15s;
 }
 .modern-drawer__item:hover { background: rgba(255,255,255,0.06); color: var(--nav-ink-strong); }
-.modern-drawer__item--active { background: rgba(255,255,255,0.10) !important; color: var(--nav-ink-strong) !important; font-weight: 600; }
+.modern-drawer__item--active { background: linear-gradient(90deg, rgba(255,255,255,0.16), rgba(255,255,255,0.06)) !important;
+  color: var(--nav-ink-strong) !important; font-weight: 600; box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset; }
 .modern-drawer__item--active::before {
   content: ''; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 4px;
   border-radius: 0 4px 4px 0; background: var(--nav-bright);

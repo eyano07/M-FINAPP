@@ -31,11 +31,13 @@ const avecBarreBas = computed(() => estApplicationMobile() && auth.hasAnyRole(['
 </script>
 
 <template>
-  <v-app>
+  <v-app class="app-verre">
+    <!-- Fond coloré flou, fixe derrière toutes les pages : le verre dépoli des cartes et du menu en prend les reflets. -->
+    <div class="fond-aurore" aria-hidden="true"><span /><span /><span /><span /><span /></div>
     <LayoutAppBar :drawer-open="drawer" @toggle-drawer="drawer = !drawer" />
     <LayoutNavigationDrawer v-model="drawer" />
 
-    <v-main style="background: var(--canvas);" :class="{ 'avec-barre-bas': avecBarreBas }">
+    <v-main style="background: transparent;" :class="{ 'avec-barre-bas': avecBarreBas }">
       <!-- Marges de page : 12 px (téléphone), 16 px (tablette), 24 px (PC). -->
       <v-container fluid class="pa-3 pa-sm-4 pa-md-6">
         <LayoutBandeauInstance />

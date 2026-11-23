@@ -550,3 +550,91 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
 .apropos__logo {
   color: #ffffff;
 }
+
+
+/* ============================================================
+   Verre dépoli (21/11/2026) : fond d'aurore coloré et surfaces translucides floutées, à la manière d'iOS.
+   Le fond est posé une fois par la mise en page (layouts/default.vue, .fond-aurore) ; cartes, tableaux, fenêtres,
+   menus, barre latérale et barre du haut le laissent transparaître.
+   ============================================================ */
+:root {
+  --verre: rgba(255, 255, 255, 0.58);
+  --verre-fort: rgba(255, 255, 255, 0.80);
+  --verre-bord: rgba(255, 255, 255, 0.72);
+  --verre-ombre: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 10px 30px -14px rgba(15, 40, 30, 0.22);
+  --flou: blur(22px) saturate(170%);
+  --aurore-opacite: 0.5;
+}
+@media screen {
+  html[data-theme='dark'] {
+    --verre: rgba(20, 30, 26, 0.58);
+    --verre-fort: rgba(22, 33, 28, 0.86);
+    --verre-bord: rgba(255, 255, 255, 0.09);
+    --verre-ombre: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 14px 34px -16px rgba(0, 0, 0, 0.65);
+    --aurore-opacite: 0.28;
+  }
+}
+
+.app-verre { isolation: isolate; }
+.fond-aurore { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+  filter: blur(80px); opacity: var(--aurore-opacite); }
+.fond-aurore span { position: absolute; border-radius: 50%; }
+.fond-aurore span:nth-child(1) { width: 46vw; height: 46vw; left: -10vw; top: -12vw; background: #10b981; }
+.fond-aurore span:nth-child(2) { width: 40vw; height: 40vw; right: -8vw; top: -10vw; background: #38bdf8; }
+.fond-aurore span:nth-child(3) { width: 34vw; height: 34vw; right: 18vw; top: 38vh; background: #a855f7; opacity: 0.7; }
+.fond-aurore span:nth-child(4) { width: 32vw; height: 32vw; left: 22vw; bottom: -12vw; background: #f59e0b; opacity: 0.6; }
+.fond-aurore span:nth-child(5) { width: 30vw; height: 30vw; right: -6vw; bottom: -10vw; background: #6366f1; opacity: 0.6; }
+@media (prefers-reduced-transparency: reduce) { .fond-aurore { display: none; } }
+
+@media screen {
+  /* Cartes, tableaux et panneaux des pages. */
+  .v-main .v-card:not(.v-card--variant-tonal):not(.v-card--variant-text):not(.v-card--variant-plain),
+  .v-main .v-table,
+  .v-main .v-expansion-panel,
+  .v-main .v-list:not(.v-list--nav) {
+    background: var(--verre) !important;
+    -webkit-backdrop-filter: var(--flou);
+    backdrop-filter: var(--flou);
+  }
+  .v-main .v-card:not(.v-card--variant-tonal):not(.v-card--variant-text):not(.v-card--variant-plain),
+  .v-main .v-expansion-panels {
+    border: 1px solid var(--verre-bord) !important;
+    border-radius: 18px !important;
+    box-shadow: var(--verre-ombre) !important;
+  }
+  .classroom-card { border-color: var(--verre-bord) !important; border-radius: 18px !important; }
+  .classroom-card:hover { box-shadow: var(--verre-ombre), 0 16px 34px -18px rgba(16, 120, 90, 0.35) !important; }
+  /* Une carte en verre dans une carte : la seconde reste transparente (pas de double flou). */
+  .v-main .v-card .v-card,
+  .v-main .v-card .v-table,
+  .v-main .v-card .v-list { background: transparent !important; -webkit-backdrop-filter: none; backdrop-filter: none;
+    box-shadow: none !important; }
+  .v-main .v-card .v-card { border-color: color-mix(in srgb, var(--hairline) 70%, transparent) !important; }
+  .v-data-table .v-data-table__th { background: color-mix(in srgb, var(--surface-2) 55%, transparent) !important; }
+  .v-data-table tbody tr:hover > td { background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
+
+  /* Fenêtres, menus déroulants, listes de choix et bulles : verre plus opaque, lisible au-dessus de la page. */
+  .v-overlay__content > .v-card,
+  .v-overlay__content > .v-sheet,
+  .v-overlay__content > .v-list,
+  .v-menu > .v-overlay__content > .v-list,
+  .v-autocomplete__content .v-list,
+  .v-select__content .v-list {
+    background: var(--verre-fort) !important;
+    -webkit-backdrop-filter: var(--flou);
+    backdrop-filter: var(--flou);
+    border: 1px solid var(--verre-bord);
+    border-radius: 18px !important;
+    box-shadow: var(--verre-ombre), 0 24px 60px -24px rgba(0, 0, 0, 0.35) !important;
+  }
+  .v-overlay__scrim { -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+
+  /* Champs de saisie pleins : translucides eux aussi. */
+  .v-main .v-field--variant-solo,
+  .v-main .v-field--variant-solo-filled,
+  .v-main .v-field--variant-filled { background: color-mix(in srgb, var(--verre-fort) 80%, transparent) !important; }
+  .v-main .v-field--variant-outlined { background: color-mix(in srgb, var(--verre) 60%, transparent); }
+
+  /* Étiquettes pastel : un peu plus vives sur le verre. */
+  .chip-soft { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+}

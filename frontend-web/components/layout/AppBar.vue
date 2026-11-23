@@ -335,8 +335,11 @@ async function ouvrirNotification(n: NotificationItem) {
 <style scoped>
 /* ── App Bar ─────────────────────────────────────────────── */
 .modern-appbar {
-  background: var(--canvas) !important;
-  border-bottom: 0 !important;
+  /* Verre (21/11/2026) : la page défile floutée sous la barre. */
+  background: color-mix(in srgb, var(--canvas) 55%, transparent) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  backdrop-filter: blur(22px) saturate(170%);
+  border-bottom: 1px solid var(--verre-bord) !important;
 }
 
 .modern-appbar__nav-icon {

@@ -379,8 +379,6 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
 
 <template>
   <div class="dash">
-    <!-- Fond coloré flou : il donne au verre dépoli des cartes ses reflets (purement décoratif). -->
-    <div class="dash__aurore" aria-hidden="true"><span /><span /><span /><span /><span /><span /></div>
 
     <!-- ── En-tête ─────────────────────────────────────────── -->
     <header class="dash__header">
@@ -581,34 +579,11 @@ const bubbleOpts: any = { ...cb, scales: { x: { title: { display: true, text: 'I
   /* Palette (21/11/2026) : un accent par information, sur un fond d'aurore flou que les cartes en verre laissent voir. */
   --emeraude: #10b981; --menthe: #34d399; --ciel: #38bdf8; --indigo: #6366f1; --violet: #a855f7; --ambre: #f59e0b;
   --corail: #fb7185;
-  --verre: rgba(255, 255, 255, 0.58);
-  --verre-fort: rgba(255, 255, 255, 0.72);
-  --verre-bord: rgba(255, 255, 255, 0.75);
-  --verre-ombre: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 10px 30px -12px rgba(15, 40, 30, 0.22);
-  --flou: blur(22px) saturate(170%);
   position: relative; isolation: isolate;
   max-width: 1240px; margin: 0 auto; padding: 4px 0 56px;
 }
-:global(html[data-theme='dark'] .dash) {
-  --verre: rgba(22, 32, 28, 0.55);
-  --verre-fort: rgba(26, 38, 33, 0.68);
-  --verre-bord: rgba(255, 255, 255, 0.10);
-  --verre-ombre: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 14px 34px -14px rgba(0, 0, 0, 0.6);
-}
 
-/* ── Aurore : taches de couleur floues derrière le contenu ─ */
-.dash__aurore { position: absolute; inset: -60px -40px 0; z-index: -1; pointer-events: none; overflow: hidden;
-  filter: blur(70px); opacity: 0.55; }
-.dash__aurore span { position: absolute; border-radius: 50%; }
-.dash__aurore span:nth-child(1) { width: 520px; height: 420px; left: -60px; top: 40px; background: var(--emeraude); }
-.dash__aurore span:nth-child(2) { width: 480px; height: 380px; right: -40px; top: -20px; background: var(--ciel); }
-.dash__aurore span:nth-child(3) { width: 420px; height: 360px; right: 22%; top: 380px; background: var(--violet); opacity: 0.7; }
-.dash__aurore span:nth-child(4) { width: 360px; height: 300px; left: 30%; top: 560px; background: var(--ambre); opacity: 0.55; }
-/* Plus bas, derrière les analyses : la couleur suit toute la page. */
-.dash__aurore span:nth-child(5) { width: 520px; height: 460px; left: -80px; top: 42%; background: var(--indigo); opacity: 0.5; }
-.dash__aurore span:nth-child(6) { width: 500px; height: 440px; right: -60px; top: 70%; background: var(--emeraude); opacity: 0.5; }
-:global(html[data-theme='dark'] .dash .dash__aurore) { opacity: 0.32; }
-@media (prefers-reduced-transparency: reduce) { .dash__aurore { display: none; } }
+
 
 /* ── En-tête ─────────────────────────────────────────────── */
 .dash__header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
