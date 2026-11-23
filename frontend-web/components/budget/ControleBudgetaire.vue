@@ -126,10 +126,12 @@ const lignesAffichees = computed(() => (resultat.value?.lignes || []).filter((l:
 </template>
 
 <style scoped>
-.cb { border: 1px solid var(--hairline); border-left: 4px solid #9ca3af; border-radius: 10px; padding: 10px 12px; background: var(--surface-2); margin: 10px 0; }
-.cb--conforme { border-left-color: #16a34a; background: #f0fdf4; }
-.cb--depassement { border-left-color: #f59e0b; background: #fffbeb; }
-.cb--hors_budget, .cb--sans_budget { border-left-color: #dc2626; background: #fef2f2; }
+.cb { border: 1px solid var(--verre-bord, var(--hairline)); border-left: 4px solid #9ca3af; border-radius: 16px; padding: 12px 14px;
+  background: var(--surface-2); margin: 10px 0; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+/* Teinte translucide (verre) au lieu d'un aplat pastel opaque. */
+.cb--conforme { border-left-color: #16a34a; background: color-mix(in srgb, #22c55e 12%, transparent); }
+.cb--depassement { border-left-color: #f59e0b; background: color-mix(in srgb, #f59e0b 14%, transparent); }
+.cb--hors_budget, .cb--sans_budget { border-left-color: #dc2626; background: color-mix(in srgb, #ef4444 12%, transparent); }
 .cb-tete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cb-titre { font-weight: 700; font-size: 0.86rem; }
 .cb-budget { font-size: 0.76rem; color: var(--ink-soft); }

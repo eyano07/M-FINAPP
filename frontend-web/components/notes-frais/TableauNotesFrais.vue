@@ -142,16 +142,25 @@ function imprimer(id: number) {
 /* Ligne : teinte très légère de la couleur du statut, un peu plus soutenue au survol ; liseré de 4 px à gauche. */
 .nft :deep(.nft__ligne) {
   cursor: pointer;
-  background: color-mix(in srgb, var(--statut) 3.5%, #fff);
-  transition: background 0.12s;
+  /* Verre (21/11/2026) : teinte translucide du statut, le fond coloré de la page transparaît. */
+  background: color-mix(in srgb, var(--statut) 5%, transparent);
+  transition: background 0.15s, box-shadow 0.15s;
 }
-.nft :deep(.nft__ligne:hover) { background: color-mix(in srgb, var(--statut) 8%, #fff); }
-.nft :deep(.nft__ligne > td:first-child) { box-shadow: inset 4px 0 0 var(--statut); }
+.nft :deep(.nft__ligne:hover) {
+  background: color-mix(in srgb, var(--statut) 13%, rgba(255, 255, 255, 0.35));
+}
+/* Liseré du statut : une pastille arrondie détachée du bord, lumineuse au survol. */
+.nft :deep(.nft__ligne > td:first-child) { position: relative; padding-left: 22px !important; }
+.nft :deep(.nft__ligne > td:first-child)::before {
+  content: ''; position: absolute; left: 8px; top: 12px; bottom: 12px; width: 4px; border-radius: 999px;
+  background: var(--statut);
+}
+.nft :deep(.nft__ligne:hover > td:first-child)::before { box-shadow: 0 0 10px color-mix(in srgb, var(--statut) 70%, transparent); }
 
 /* Pas de lignes verticales ; un simple filet entre les lignes ; lignes de 60 px. */
 .nft :deep(.v-data-table__td) {
   height: 60px;
-  border-bottom: 1px solid var(--hairline) !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--mbsc-border) 55%, transparent) !important;
   vertical-align: middle;
 }
 .nft :deep(.v-data-table__th) { height: 44px; }
@@ -171,6 +180,7 @@ function imprimer(id: number) {
 .nft__statut {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 11px 4px 9px; border-radius: 100px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55) inset;
   font-size: 0.75rem; font-weight: 700; white-space: nowrap;
 }
 .nft__point { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
@@ -187,5 +197,5 @@ function imprimer(id: number) {
 .nft__devise { margin-left: 4px; font-size: 0.72rem; font-weight: 600; color: var(--ink-faint); }
 
 .nft__actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
-.nft__ouvrir { color: var(--ink-faint); }
+.nft__ouvrir { color: var(--ink-soft); }
 </style>

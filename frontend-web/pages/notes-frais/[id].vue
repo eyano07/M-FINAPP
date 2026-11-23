@@ -1169,6 +1169,9 @@ const peutGererPieces = computed(() => !surCopie.value &&
                 v-model="observation"
                 rows="3"
                 placeholder="Obligatoire pour un rejet ou une remarque"
+                variant="outlined"
+                rounded="lg"
+                class="nd-observation"
                 hide-details
               />
             </div>
@@ -1348,12 +1351,26 @@ const peutGererPieces = computed(() => !surCopie.value &&
 .nd-hero {
   position: relative;
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 24px 48px -24px rgba(0, 0, 0, 0.45);
   padding: 28px 28px 24px;
   margin-bottom: 16px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+.nd-observation :deep(.v-field) { background: color-mix(in srgb, var(--verre-fort) 70%, transparent); }
+.nd-observation :deep(.v-field__outline) { --v-field-border-opacity: 0.35; color: color-mix(in srgb, var(--color-primary) 55%, var(--ink-soft)); }
+.nd-hero::after {
+  /* Reflet du verre sur le bandeau (21/11/2026). */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(90% 130% at 0% 0%, rgba(255, 255, 255, 0.26), transparent 50%),
+    radial-gradient(70% 120% at 100% 100%, rgba(99, 102, 241, 0.30), transparent 60%);
 }
 .nd-hero__blob {
   position: absolute;

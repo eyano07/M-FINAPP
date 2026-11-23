@@ -108,9 +108,13 @@ const montantFmt = computed(() =>
 
 <style scoped>
 .nfc {
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: 20px;
+  /* Carte en verre (21/11/2026) : corps translucide flouté, bandeau de couleur flottant et brillant. */
+  background: var(--verre);
+  -webkit-backdrop-filter: var(--flou);
+  backdrop-filter: var(--flou);
+  border: 1px solid var(--verre-bord);
+  box-shadow: var(--verre-ombre);
+  border-radius: 24px;
   overflow: hidden;
   height: 100%;
   display: flex;
@@ -119,7 +123,7 @@ const montantFmt = computed(() =>
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 .nfc:hover {
-  box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+  box-shadow: var(--verre-ombre), 0 22px 44px -22px rgba(15, 40, 30, 0.45);
   transform: translateY(-3px);
 }
 
@@ -127,11 +131,24 @@ const montantFmt = computed(() =>
 .nfc__banner {
   position: relative;
   overflow: hidden;
-  height: 88px;
+  height: 84px;
+  margin: 8px 8px 0;
+  border-radius: 18px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 10px 22px -14px rgba(0, 0, 0, 0.45);
   padding: 16px 18px 14px;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+}
+.nfc__banner::after {
+  /* Reflet du verre : éclat en haut à gauche, voile clair en bas. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.32), transparent 48%),
+    linear-gradient(180deg, transparent 55%, rgba(255, 255, 255, 0.14));
 }
 .nfc__banner-blob {
   position: absolute;
