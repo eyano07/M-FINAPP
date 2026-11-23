@@ -734,8 +734,8 @@ async function confirmerSuppression() {
   border-radius: 12px;
   font-size: 0.875rem;
 }
-.rst-stat--plats    { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
-.rst-stat--boissons { background: linear-gradient(135deg,#eef2ff,#e0e7ff); color: #4338ca; }
+.rst-stat--plats    { background: linear-gradient(135deg, color-mix(in srgb, #fff7ed 62%, transparent), color-mix(in srgb, #ffedd5 55%, transparent)); color: #c2410c; }
+.rst-stat--boissons { background: linear-gradient(135deg, color-mix(in srgb, #eef2ff 62%, transparent), color-mix(in srgb, #e0e7ff 55%, transparent)); color: #4338ca; }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
 .carte-consigne__titre {

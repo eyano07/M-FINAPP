@@ -368,11 +368,11 @@ const stockOpts: any = {
 
 .rdb-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .rdb-kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); }
-.rdb-kpi--stock  { background: linear-gradient(135deg,#faf5ff,#f3e8ff); color: #7e22ce; }
+.rdb-kpi--stock  { background: linear-gradient(135deg, color-mix(in srgb, #faf5ff 62%, transparent), color-mix(in srgb, #f3e8ff 55%, transparent)); color: #7e22ce; }
 .rdb-kpi--achats { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
-.rdb-kpi--conso  { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
-.rdb-kpi--nb     { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
-.rdb-kpi--alerte { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
+.rdb-kpi--conso  { background: linear-gradient(135deg, color-mix(in srgb, #fff7ed 62%, transparent), color-mix(in srgb, #ffedd5 55%, transparent)); color: #c2410c; }
+.rdb-kpi--nb     { background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 62%, transparent), color-mix(in srgb, #dbeafe 55%, transparent)); color: #1d4ed8; }
+.rdb-kpi--alerte { background: linear-gradient(135deg, color-mix(in srgb, #fef2f2 62%, transparent), color-mix(in srgb, #fee2e2 55%, transparent)); color: #b91c1c; }
 /* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
 :global(html[data-theme='dark'] .rdb-kpi--stock) { background: color-mix(in srgb, #c7a3ee 10%, var(--surface)); color: #c7a3ee; box-shadow: inset 0 0 0 1px color-mix(in srgb, #c7a3ee 22%, transparent); }
 :global(html[data-theme='dark'] .rdb-kpi--conso) { background: color-mix(in srgb, #f0a77a 10%, var(--surface)); color: #f0a77a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f0a77a 22%, transparent); }

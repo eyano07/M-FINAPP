@@ -58,6 +58,8 @@ async function submit() {
 
 <template>
   <div class="cx">
+    <!-- Fond coloré flou (même aurore que l'application) : le formulaire en verre le laisse transparaître. -->
+    <div class="fond-aurore" aria-hidden="true"><span /><span /><span /><span /><span /></div>
 
     <!-- ── Visuel : photo de bureau comptable, teintée aux couleurs de la marque ── -->
     <aside class="visuel" aria-label="Présentation">
@@ -158,7 +160,12 @@ async function submit() {
 </template>
 
 <style scoped>
-.cx { display: flex; min-height: 100dvh; background: var(--surface); color: var(--ink); }
+.cx {
+  /* Teinte du visuel : vert de marque vers turquoise et bleu nuit (21/11/2026). */
+  --teinte: color-mix(in srgb, var(--color-primary) 55%, #062a2a);
+  position: relative; isolation: isolate;
+  display: flex; min-height: 100dvh; background: var(--canvas); color: var(--ink);
+}
 
 /* ── Visuel ──────────────────────────────────────────────── */
 .visuel {
@@ -166,8 +173,13 @@ async function submit() {
   flex: 0 0 56%;
   display: none;
   overflow: hidden;
-  background: var(--hero-bg);
+  background:
+    radial-gradient(90% 70% at 100% 100%, rgba(99, 102, 241, 0.55), transparent 60%),
+    radial-gradient(70% 60% at 0% 0%, rgba(16, 185, 129, 0.45), transparent 60%),
+    linear-gradient(150deg, var(--teinte), #0f3d4a 60%, #1e2a5e);
   color: #fff;
+  margin: 14px 0 14px 14px; border-radius: 28px;
+  box-shadow: 0 30px 60px -30px rgba(6, 30, 40, 0.6);
 }
 @media (min-width: 960px) { .visuel { display: block; } }
 
@@ -182,8 +194,8 @@ async function submit() {
 .visuel::after {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--hero-bg) 70%, transparent) 0%, transparent 22%),
-    linear-gradient(0deg, var(--hero-bg) 4%, color-mix(in srgb, var(--hero-bg) 82%, transparent) 30%, transparent 62%);
+    linear-gradient(180deg, color-mix(in srgb, #0f3d4a 70%, transparent) 0%, transparent 22%),
+    linear-gradient(0deg, #13234f 4%, color-mix(in srgb, #13234f 75%, transparent) 30%, transparent 62%);
 }
 
 .visuel__marque { position: absolute; z-index: 1; top: 40px; left: 48px; display: flex; align-items: center; gap: 12px; }
@@ -202,8 +214,10 @@ async function submit() {
 .bordereau {
   position: absolute; z-index: 1; top: 112px; right: 48px; width: min(330px, 42%);
   margin: 0; padding: 16px 18px 12px;
-  background: #fbfcfa; color: #14211a; border-radius: 8px;
-  box-shadow: 0 18px 40px -12px rgba(0,0,0,0.55);
+  background: rgba(255, 255, 255, 0.72); color: #14211a; border-radius: 18px;
+  -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.8) inset, 0 24px 50px -16px rgba(0,0,0,0.55);
 }
 .bordereau__titre { font-size: 0.8rem; font-weight: 600; color: #3f4d45; margin-bottom: 8px; }
 .bordereau__table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
@@ -215,8 +229,13 @@ async function submit() {
 .bordereau__table tfoot td { font-weight: 700; border-bottom: 0; border-top: 2px solid #14211a; padding-top: 7px; }
 
 /* ── Formulaire ──────────────────────────────────────────── */
-.acces { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 24px; background: var(--surface); }
-.acces__inner { width: 100%; max-width: 380px; }
+.acces { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 24px; background: transparent; }
+/* Formulaire dans une carte de verre posée sur l'aurore. */
+.acces__inner {
+  width: 100%; max-width: 440px; padding: 40px 36px 32px;
+  background: var(--verre); -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+  border: 1px solid var(--verre-bord); border-radius: 28px; box-shadow: var(--verre-ombre), 0 30px 60px -30px rgba(15, 40, 30, 0.35);
+}
 .acces__mode {
   position: absolute; top: 20px; right: 20px;
   display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
@@ -231,20 +250,25 @@ async function submit() {
 .acces__form { display: flex; flex-direction: column; gap: 20px; }
 .champ { display: flex; flex-direction: column; gap: 6px; }
 .champ__label { font-size: 0.875rem; font-weight: 600; color: var(--ink-2); }
-.acces__btn { margin-top: 4px; height: 52px !important; font-size: 1rem !important; font-weight: 600 !important; letter-spacing: 0 !important; border-radius: 10px !important; }
+.acces__btn { margin-top: 4px; height: 52px !important; font-size: 1rem !important; font-weight: 600 !important; letter-spacing: 0 !important;
+  border-radius: 14px !important; color: #fff !important;
+  background: linear-gradient(135deg, var(--color-primary), #0d9488 60%, #0891b2) !important;
+  box-shadow: 0 12px 24px -12px rgba(13, 148, 136, 0.7) !important; }
 .acces__pied { margin-top: 40px; font-size: 0.8125rem; color: var(--ink-faint); }
 
 /* Bandeau photo du téléphone : même photo que le visuel du PC, fondue dans la couleur de marque. */
 .acces__banniere { display: none; }
 @media (max-width: 959px) {
   .acces { flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 0 0 32px; }
-  .acces__inner { align-self: center; padding: 28px 24px 0; }
+  .acces__inner { align-self: center; width: calc(100% - 32px); margin-top: -28px; position: relative; z-index: 1; padding: 28px 22px 24px; }
   .acces__marque { display: none; }
   .acces__mode { z-index: 2; color: #fff; border-color: rgba(255, 255, 255, 0.4); background: rgba(0, 0, 0, 0.12); }
   .acces__banniere {
     display: block; position: relative; overflow: hidden; color: #fff;
     height: clamp(190px, 32vh, 280px);
-    background: var(--hero-bg);
+    background:
+      radial-gradient(90% 90% at 100% 100%, rgba(99, 102, 241, 0.55), transparent 60%),
+      linear-gradient(150deg, var(--teinte), #0f3d4a 60%, #1e2a5e);
     border-radius: 0 0 28px 28px;
   }
   .acces__banniere-photo {
@@ -256,7 +280,7 @@ async function submit() {
   }
   .acces__banniere::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(0deg, var(--hero-bg) 6%, color-mix(in srgb, var(--hero-bg) 55%, transparent) 55%, transparent 100%);
+    background: linear-gradient(0deg, #13234f 6%, color-mix(in srgb, #13234f 55%, transparent) 55%, transparent 100%);
   }
   .acces__banniere-marque {
     position: absolute; z-index: 1; left: 24px; bottom: 44px;

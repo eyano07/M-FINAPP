@@ -331,7 +331,7 @@ function fmtDate(d: string) {
   flex-wrap: wrap;
   gap: 16px;
   padding: 24px 28px;
-  background: linear-gradient(140deg, var(--color-primary) 0%, var(--color-primary-dark) 50%, var(--color-primary-darker) 100%);
+  background: radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,0.18), transparent 45%), radial-gradient(80% 120% at 100% 100%, rgba(99,102,241,0.55), transparent 60%), linear-gradient(135deg, var(--color-primary) 0%, #0f766e 55%, #1e3a8a 100%);
   border-radius: 20px;
   margin-bottom: 24px;
 }

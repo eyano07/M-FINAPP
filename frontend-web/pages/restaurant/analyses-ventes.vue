@@ -383,10 +383,10 @@ const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.
 .av-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .av-kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); }
 .av-kpi--ca    { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
-.av-kpi--cout  { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
-.av-kpi--marge { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
-.av-kpi--alerte{ background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
-.av-kpi--nb    { background: linear-gradient(135deg,#faf5ff,#f3e8ff); color: #7e22ce; }
+.av-kpi--cout  { background: linear-gradient(135deg, color-mix(in srgb, #fff7ed 62%, transparent), color-mix(in srgb, #ffedd5 55%, transparent)); color: #c2410c; }
+.av-kpi--marge { background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 62%, transparent), color-mix(in srgb, #dbeafe 55%, transparent)); color: #1d4ed8; }
+.av-kpi--alerte{ background: linear-gradient(135deg, color-mix(in srgb, #fef2f2 62%, transparent), color-mix(in srgb, #fee2e2 55%, transparent)); color: #b91c1c; }
+.av-kpi--nb    { background: linear-gradient(135deg, color-mix(in srgb, #faf5ff 62%, transparent), color-mix(in srgb, #f3e8ff 55%, transparent)); color: #7e22ce; }
 /* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
 :global(html[data-theme='dark'] .av-kpi--cout) { background: color-mix(in srgb, #f0a77a 10%, var(--surface)); color: #f0a77a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f0a77a 22%, transparent); }
 :global(html[data-theme='dark'] .av-kpi--marge) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }

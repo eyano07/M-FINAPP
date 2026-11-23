@@ -558,7 +558,7 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
    menus, barre latérale et barre du haut le laissent transparaître.
    ============================================================ */
 :root {
-  --verre: rgba(255, 255, 255, 0.58);
+  --verre: rgba(255, 255, 255, 0.50);
   --verre-fort: rgba(255, 255, 255, 0.80);
   --verre-bord: rgba(255, 255, 255, 0.72);
   --verre-ombre: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 10px 30px -14px rgba(15, 40, 30, 0.22);
@@ -637,4 +637,51 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
 
   /* Étiquettes pastel : un peu plus vives sur le verre. */
   .chip-soft { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+}
+
+
+/* ── Pages à cartes maison (logistique, restaurant, ventes, administration, aide, à propos…) ───────────────────────
+   Leurs cartes prennent var(--surface) : dans la zone des pages, cette surface devient du verre translucide, les
+   filets s'éclaircissent ; les blocs ci-dessous reçoivent en plus le flou, le liseré et l'ombre du verre. */
+@media screen {
+  .v-main {
+    --surface: var(--verre);
+    --surface-2: color-mix(in srgb, var(--verre) 55%, transparent);
+    --hairline: color-mix(in srgb, var(--mbsc-border) 60%, transparent);
+  }
+  .v-main .aide__fiche,
+  .v-main .analyse-ia__card,
+  .v-main .apropos__carte,
+  .v-main .av-kpi,
+  .v-main .bp-info-card,
+  .v-main .bs-kpi,
+  .v-main .caisse-stat,
+  .v-main .cmp-carte,
+  .v-main .ldb-card,
+  .v-main .ldb__empty,
+  .v-main .lel__carte,
+  .v-main .nd-action-card,
+  .v-main .nd-card,
+  .v-main .nf-empty,
+  .v-main .notif-panel,
+  .v-main .param-card,
+  .v-main .pc-card,
+  .v-main .pc-fiche,
+  .v-main .pc-inherit-card,
+  .v-main .rb-carte,
+  .v-main .rdb-ia__card,
+  .v-main .rdb-kpi,
+  .v-main .recu-card,
+  .v-main .stat-card,
+  .v-main .tc-card,
+  .v-main .tva-card,
+  .v-main .usr-card,
+  .v-main .vte-stat,
+  .v-main .rdb-card,
+  .v-main .av-card {
+    -webkit-backdrop-filter: var(--flou);
+    backdrop-filter: var(--flou);
+    border-color: var(--verre-bord) !important;
+    box-shadow: var(--verre-ombre);
+  }
 }

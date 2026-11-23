@@ -1007,8 +1007,8 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
   font-size: 0.875rem;
 }
 .nf-stat--total   { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
-.nf-stat--pending { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
-.nf-stat--paid    { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
+.nf-stat--pending { background: linear-gradient(135deg, color-mix(in srgb, #fff7ed 62%, transparent), color-mix(in srgb, #ffedd5 55%, transparent)); color: #c2410c; }
+.nf-stat--paid    { background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 62%, transparent), color-mix(in srgb, #dbeafe 55%, transparent)); color: #1d4ed8; }
 .nf-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .nf-stat__lbl { font-weight: 500; opacity: 0.75; }
 

@@ -497,7 +497,7 @@ const fmtQte = (q: number) => parametres.fmtQuantite(q)
   border-radius: 12px;
   font-size: 0.875rem;
 }
-.rst-stat--valeur { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
+.rst-stat--valeur { background: linear-gradient(135deg, color-mix(in srgb, #fef2f2 62%, transparent), color-mix(in srgb, #fee2e2 55%, transparent)); color: #b91c1c; }
 .rst-stat--nombre { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }

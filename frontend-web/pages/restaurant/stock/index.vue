@@ -192,7 +192,7 @@ watch(recherche, () => { page.value = 1 })
   border-radius: 12px;
   font-size: 0.875rem;
 }
-.rst-stat--valeur { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
+.rst-stat--valeur { background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 62%, transparent), color-mix(in srgb, #dbeafe 55%, transparent)); color: #1d4ed8; }
 /* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
 :global(html[data-theme='dark'] .rst-stat--valeur) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }
 .rst-stat--lignes { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
