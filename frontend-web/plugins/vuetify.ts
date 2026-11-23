@@ -77,15 +77,23 @@ export default defineNuxtPlugin((nuxtApp) => {
         rounded: 'lg',
         style: 'text-transform: none; letter-spacing: 0.25px;',
       },
+      // Champs arrondis partout (21/11/2026), comme les cartes et les boutons du design en verre : une page qui pose
+      // son propre `rounded` garde le sien.
       VTextField: {
         variant: 'outlined',
         density: 'comfortable',
         color: 'primary',
+        rounded: 'lg',
       },
       VSelect: {
         variant: 'outlined',
         density: 'comfortable',
+        rounded: 'lg',
       },
+      VTextarea: { rounded: 'lg' },
+      VAutocomplete: { rounded: 'lg' },
+      VCombobox: { rounded: 'lg' },
+      VFileInput: { rounded: 'lg' },
       VAppBar: {
         flat: true,
       },

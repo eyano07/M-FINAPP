@@ -747,3 +747,11 @@ html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay
   .fond-aurore { display: none !important; }
   .v-main .v-card, .v-main .v-table, .classroom-card { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 }
+
+/* Champs arrondis à 12 px (21/11/2026), plus doux que le « lg » de Vuetify (8 px), comme le reste du design en verre. */
+/* Tous les champs (même sans `rounded`), sauf ceux voulus en pilule ou carrés. */
+.v-field:not(.rounded-pill):not(.rounded-0) { border-radius: 12px !important; }
+.v-field:not(.rounded-pill):not(.rounded-0) .v-field__outline__start { border-radius: 12px 0 0 12px !important; }
+.v-field:not(.rounded-pill):not(.rounded-0) .v-field__outline__end { border-radius: 0 12px 12px 0 !important; }
+/* Variante « souligné » (underlined) : pas de coins à arrondir. */
+.v-field.v-field--variant-underlined, .v-field.v-field--variant-plain { border-radius: 0 !important; }

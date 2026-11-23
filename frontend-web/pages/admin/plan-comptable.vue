@@ -715,11 +715,11 @@ const parentOptions = computed(() =>
 }
 
 .pc-row--commente { cursor: pointer; }
-.pc-row--commente:hover { background: #f5f3ff; }
+.pc-row--commente:hover { background: color-mix(in srgb, #7c3aed 9%, transparent); }
 .pc-fiche-badge {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
-  color: #6d28d9; background: #ede9fe; border: 1px solid #ddd6fe;
+  color: #6d28d9; background: color-mix(in srgb, #8b5cf6 14%, transparent); border: 1px solid color-mix(in srgb, #8b5cf6 30%, transparent);
   border-radius: 5px; padding: 1px 6px; margin-left: 8px; vertical-align: middle;
 }
 
@@ -778,11 +778,13 @@ const parentOptions = computed(() =>
   letter-spacing: 0.4px; text-transform: uppercase; color: var(--ink-faint); text-align: left;
 }
 .pc-th-action { width: 48px; }
-.pc-table tbody tr { border-bottom: 1px solid #f9fafb; transition: background 0.12s; }
+.pc-table tbody tr { border-bottom: 1px solid color-mix(in srgb, var(--mbsc-border) 55%, transparent); transition: background 0.12s; }
 .pc-table tbody tr:last-child { border-bottom: none; }
 .pc-table tbody tr:hover { background: var(--surface-2); }
-.pc-row--manuel { background: var(--color-primary-lighter); }
-.pc-row--manuel:hover { background: var(--color-primary-light) !important; }
+.pc-row--manuel { background: color-mix(in srgb, var(--color-primary) 7%, transparent); }
+.pc-row--manuel:hover { background: color-mix(in srgb, var(--color-primary) 13%, transparent) !important; }
+/* Compte manuel : pastille de marque à gauche de la ligne (verre, 21/11/2026). */
+.pc-row--manuel > td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--color-primary) 70%, transparent); }
 .pc-table td { padding: 10px 16px; vertical-align: middle; }
 
 .pc-num-cell { display: flex; align-items: center; gap: 6px; }
@@ -810,21 +812,21 @@ const parentOptions = computed(() =>
 .pc-del-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border-radius: 8px;
-  background: #fef2f2; color: #ef4444; border: 1px solid #fecaca;
+  background: color-mix(in srgb, #ef4444 10%, transparent); color: #ef4444; border: 1px solid color-mix(in srgb, #ef4444 28%, transparent);
   cursor: pointer; transition: background 0.15s;
   flex-shrink: 0;
 }
-.pc-del-btn:hover:not(:disabled) { background: #fee2e2; }
+.pc-del-btn:hover:not(:disabled) { background: color-mix(in srgb, #ef4444 18%, transparent); }
 .pc-del-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .pc-edit-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border-radius: 8px;
-  background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+  background: color-mix(in srgb, #2563eb 10%, transparent); color: #2563eb; border: 1px solid color-mix(in srgb, #2563eb 28%, transparent);
   cursor: pointer; transition: background 0.15s;
   flex-shrink: 0;
 }
-.pc-edit-btn:hover { background: #dbeafe; }
+.pc-edit-btn:hover { background: color-mix(in srgb, #2563eb 18%, transparent); }
 
 /* ── Cartes (mobile) ─────────────────────────────────────────────────────── */
 .pc-cards { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
@@ -837,7 +839,7 @@ const parentOptions = computed(() =>
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: box-shadow 0.15s, transform 0.15s;
 }
-.pc-card-item--manuel { background: #f7fdf9; border-color: var(--color-primary-light); border-left-color: var(--color-primary); }
+.pc-card-item--manuel { background: color-mix(in srgb, var(--color-primary) 7%, transparent); border-color: var(--color-primary-light); border-left-color: var(--color-primary); }
 .pc-card-item--commente { cursor: pointer; }
 .pc-card-item--commente:active { transform: scale(0.99); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
 
