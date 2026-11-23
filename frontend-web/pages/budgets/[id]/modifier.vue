@@ -6,7 +6,7 @@ const id = computed(() => Number(route.params.id))
 
 <template>
   <div>
-    <div class="page-head">
+    <div class="page-head no-print">
       <div>
         <h1 class="page-title">Modifier le budget</h1>
         <p class="page-sub">Seul un budget en brouillon se modifie ; une fois approuvé, il se révise</p>

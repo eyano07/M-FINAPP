@@ -28,6 +28,12 @@ interface LigneEdition {
 }
 
 const props = defineProps<{ budgetId?: number | null }>()
+
+// Impression : version papier du budget saisi (consolidée, sans champs de saisie).
+const parametresStore = useParametresStore()
+onMounted(() => parametresStore.charger())
+const dateImpression = new Date().toLocaleDateString('fr-FR')
+const imprimer = () => window.print()
 const emit = defineEmits<{ (e: 'enregistre', id: number): void, (e: 'annule'): void }>()
 
 const api = useApi()
@@ -555,6 +561,7 @@ async function enregistrer() {
           <v-btn color="purple" variant="tonal" prepend-icon="mdi-robot-outline" height="48" @click="dialogueIa = true">
             Proposer avec l’IA
           </v-btn>
+          <v-btn variant="tonal" prepend-icon="mdi-printer-outline" height="48" @click="imprimer">Imprimer</v-btn>
         </div>
         <p class="eb-periode">
           <v-icon icon="mdi-calendar-range" size="16" />
@@ -783,11 +790,73 @@ async function enregistrer() {
         </div>
         <div class="eb-resultat__actions">
           <v-btn variant="text" @click="emit('annule')">Annuler</v-btn>
+          <v-btn variant="tonal" prepend-icon="mdi-printer-outline" @click="imprimer">Imprimer</v-btn>
           <v-btn color="primary" :loading="enregistrement" prepend-icon="mdi-content-save-outline" @click="enregistrer">Enregistrer le brouillon</v-btn>
         </div>
       </v-card>
     </template>
 
+
+    <!-- Version imprimée : visible seulement à l'impression -->
+    <div v-if="!chargement" class="eb-impression">
+      <div class="etat-print-header">
+        <div class="etat-print-header__brand">
+          <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+            <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
+            <v-icon v-else icon="mdi-finance" size="16" color="white" />
+          </div>
+          <div>
+            <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+            <span class="etat-print-header__doc">Budget prévisionnel — {{ libelle }}</span>
+          </div>
+        </div>
+        <div class="etat-print-header__meta">
+          <span>Budget : <strong>{{ entete.intitule || 'Sans intitulé' }}</strong></span>
+          <span>Statut : <strong>Brouillon</strong></span>
+          <span>Montants : <strong>USD</strong></span>
+          <span>Imprimé le : {{ dateImpression }}</span>
+        </div>
+      </div>
+      <p v-if="entete.observation" class="eb-imp-obs"><strong>Observation :</strong> {{ entete.observation }}</p>
+
+      <section v-for="s in ORDRE" :key="`p-${s}`" class="eb-imp-section">
+        <h3 :style="{ borderLeftColor: SECTIONS[s].color }">
+          <span>{{ SECTIONS[s].label }}</span>
+          <span>{{ fmtMontant(totalConsolide(s)) }} USD</span>
+        </h3>
+        <table class="eb-imp-table">
+          <thead>
+            <tr>
+              <th>Compte SYSCOHADA</th>
+              <th v-if="avecServices">Services</th>
+              <th v-for="c in colonnes" :key="c" class="num">{{ c }}</th>
+              <th class="num">Total {{ motPeriode(entete.duree) }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in consolideDe(s)" :key="c.compteNumero">
+              <td><span class="mono">{{ c.compteNumero }}</span> — {{ c.compteLibelle }}</td>
+              <td v-if="avecServices">{{ c.services.join(', ') }}</td>
+              <td v-for="(v, i) in valeursColonnes(c.mensuel)" :key="i" class="num">{{ fmtMontant(v) }}</td>
+              <td class="num"><strong>{{ fmtMontant(total(c.mensuel)) }}</strong></td>
+            </tr>
+            <tr v-if="!consolideDe(s).length"><td :colspan="(avecServices ? 3 : 2) + colonnes.length" class="eb-imp-vide">Aucune ligne.</td></tr>
+          </tbody>
+          <tfoot v-if="consolideDe(s).length">
+            <tr>
+              <td :colspan="avecServices ? 2 : 1">Total {{ SECTIONS[s].label.toLowerCase() }}</td>
+              <td v-for="(v, i) in valeursColonnes(Array.from({ length: 12 }, (_, m) => consolideDe(s).reduce((t, c) => t + (Number(c.mensuel[m]) || 0), 0)))" :key="i" class="num">{{ fmtMontant(v) }}</td>
+              <td class="num">{{ fmtMontant(totalConsolide(s)) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <div class="eb-imp-resultat">
+        <div><span>Résultat prévisionnel (produits − charges)</span><strong>{{ fmtMontant(resultat) }} USD</strong></div>
+        <div><span>Investissements prévus</span><strong>{{ fmtMontant(totalConsolide('INVESTISSEMENTS')) }} USD</strong></div>
+      </div>
+    </div>
 
     <!-- Dialogue IA -->
     <v-dialog v-model="dialogueIa" max-width="860" scrollable>
@@ -899,5 +968,30 @@ async function enregistrer() {
   .eb-col-compte { min-width: 190px; }
   .eb-table th:first-child, .eb-table td:first-child { position: sticky; left: 0; z-index: 2; background: var(--surface); box-shadow: 1px 0 0 #eef0f2; }
   .eb-table thead th:first-child, .eb-table tfoot td:first-child, .eb-detail td:first-child { background: var(--surface-2); }
+}
+</style>
+
+<style scoped>
+.eb-impression { display: none; }
+@media print {
+  .eb > :not(.eb-impression) { display: none !important; }
+  .eb-impression { display: block; color: #111; font-size: 10pt; }
+  .eb-impression .etat-print-header { display: flex; }
+  .eb-imp-obs { margin: 0 0 10px; font-size: 9pt; color: #333; }
+  .eb-imp-section { margin-bottom: 14px; break-inside: avoid; }
+  .eb-imp-section h3 {
+    display: flex; justify-content: space-between; margin: 0 0 4px; padding: 4px 8px;
+    font-size: 10.5pt; border-left: 4px solid; background: #f3f5f4;
+  }
+  .eb-imp-table { width: 100%; border-collapse: collapse; }
+  .eb-imp-table th { text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: .4px; color: #555; border-bottom: 1px solid #999; padding: 4px 6px; }
+  .eb-imp-table td { padding: 4px 6px; border-bottom: 1px solid #e2e2e2; }
+  .eb-imp-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .eb-imp-table tfoot td { font-weight: 700; border-top: 1px solid #999; border-bottom: 0; background: #f7f7f7; }
+  .eb-imp-vide { text-align: center; color: #888; font-style: italic; }
+  .eb-imp-resultat { display: flex; gap: 24px; justify-content: flex-end; margin-top: 8px; padding-top: 8px; border-top: 2px solid #333; }
+  .eb-imp-resultat div { display: flex; flex-direction: column; align-items: flex-end; }
+  .eb-imp-resultat span { font-size: 8pt; color: #555; }
+  .eb-imp-resultat strong { font-size: 11pt; }
 }
 </style>
