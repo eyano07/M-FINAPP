@@ -82,7 +82,9 @@ import java.util.stream.Collectors;
 public class RetourFondsService {
 
     /** Ceux qui peuvent emettre une note (memes roles que {@code NoteFraisService.creer}) ; seul l'emetteur reduit la sienne. */
-    static final String EMETTEURS = "hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')";
+    // Mêmes émetteurs que la création d'une note, plus la logistique et le patrimoine, qui achètent les consommables
+    // (note créée depuis Patrimoine › Consommables) et doivent pouvoir annuler tout ou partie de leur achat.
+    static final String EMETTEURS = "hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN', 'LOGISTIQUE', 'GEST_PATRIMOINE')";
     /** Suivi des retours de fonds (file d'attente de la caisse et historique). */
     static final String LECTURE = "hasAnyRole('CAISSIER', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN')";
     /** Recevoir l'argent : le caissier seul. */

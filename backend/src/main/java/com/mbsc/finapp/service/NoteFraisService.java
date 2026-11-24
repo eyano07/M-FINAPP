@@ -309,6 +309,37 @@ public class NoteFraisService {
         return soumettre(note.getId(), new ActionWorkflowRequest("Demande d'achat de la maintenance (hôtellerie)"));
     }
 
+    /**
+     * Achat interne (consommables...) : note de décaissement créée ET soumise au DFIN au nom de l'utilisateur connecté,
+     * dont la garde de rôle est portée par l'appelant. Elle suit ensuite le circuit ordinaire (DFIN, DA, DFIN, caisse) ;
+     * au paiement, ses lignes d'achat entrent en stock, et un retour de fonds en ressort la quantité rendue.
+     */
+    @Transactional
+    public NoteFraisDetailResponse creerEtSoumettreAchatInterne(NoteFraisRequest req, String origine, String commentaireSoumission) {
+        User auteur = currentUser.requireUser();
+        NoteFrais note = NoteFrais.builder()
+            .reference(referenceGenerator.pourNoteFrais())
+            .objet(req.objet())
+            .beneficiaire(req.beneficiaire())
+            .description(req.description())
+            .montant(BigDecimal.ZERO)
+            .devise(req.devise() == null ? ConversionDeviseService.DEVISE_BASE : req.devise())
+            .statut(StatutNote.BROUILLON)
+            .sens(SensTransaction.DECAISSEMENT)
+            .createur(auteur)
+            .justificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null)
+            .service(resoudreService(req.serviceId(), null))
+            .build();
+        construireLignes(note, req.lignes());
+        note.recalculerMontant();
+        rattacherServiceDeduit(note);
+        note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Création : " + origine));
+        note = noteRepository.save(note);
+        log.info("Note d'achat interne créée [ref={}, montant={}, origine={}, par={}]", note.getReference(), note.getMontant(),
+            origine, auteur.getEmail());
+        return soumettre(note.getId(), new ActionWorkflowRequest(commentaireSoumission));
+    }
+
     /** Statut d'une note (lecture pour l'hôtellerie, qui en suit l'avancement sur son ticket). */
     @Transactional(readOnly = true)
     public NoteFraisDetailResponse lireInterne(Long id) {

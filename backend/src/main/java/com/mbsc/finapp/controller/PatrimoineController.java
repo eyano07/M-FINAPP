@@ -22,6 +22,7 @@ public class PatrimoineController {
     private final PatrimoineService service;
     private final com.mbsc.finapp.service.patrimoine.InventairePatrimoineService inventaire;
     private final com.mbsc.finapp.service.patrimoine.EmplacementPatrimoineService emplacements;
+    private final com.mbsc.finapp.service.patrimoine.ConsommableService consommables;
 
     // ── Emplacements (affectations) et photos des biens (V154) ─────────────────
 
@@ -111,6 +112,49 @@ public class PatrimoineController {
     @DeleteMapping("/inventaire/{id}/facture")
     public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien retirerFacture(@PathVariable Long id) {
         return inventaire.retirerFacture(id);
+    }
+
+    /** Consommables simplifiés (V157) : création avec comptes automatiques, proforma, achat groupé en note de frais. */
+    @GetMapping("/consommables")
+    public List<com.mbsc.finapp.service.patrimoine.ConsommableService.Consommable> consommables() {
+        return consommables.lister();
+    }
+
+    @PostMapping("/consommables")
+    @ResponseStatus(HttpStatus.CREATED)
+    public com.mbsc.finapp.service.patrimoine.ConsommableService.Consommable creerConsommable(
+            @jakarta.validation.Valid @RequestBody com.mbsc.finapp.service.patrimoine.ConsommableService.ConsommableRequest req) {
+        return consommables.creer(req);
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/consommables/{id}")
+    public com.mbsc.finapp.service.patrimoine.ConsommableService.Consommable modifierConsommable(@PathVariable Long id,
+            @jakarta.validation.Valid @RequestBody com.mbsc.finapp.service.patrimoine.ConsommableService.ConsommableRequest req) {
+        return consommables.modifier(id, req);
+    }
+
+    @PostMapping(value = "/consommables/{id}/proforma", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public com.mbsc.finapp.service.patrimoine.ConsommableService.Consommable joindreProforma(@PathVariable Long id,
+            @RequestPart("fichier") org.springframework.web.multipart.MultipartFile fichier) {
+        return consommables.joindreProforma(id, fichier);
+    }
+
+    @GetMapping("/consommables/{id}/proforma")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> proforma(@PathVariable Long id) {
+        var f = consommables.proforma(id);
+        if (f == null) return org.springframework.http.ResponseEntity.notFound().build();
+        return org.springframework.http.ResponseEntity.ok()
+            .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
+            .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline")
+            .contentType(org.springframework.http.MediaType.parseMediaType(f.typeContenu()))
+            .body(f.ressource());
+    }
+
+    @PostMapping("/consommables/achats")
+    @ResponseStatus(HttpStatus.CREATED)
+    public com.mbsc.finapp.service.patrimoine.ConsommableService.AchatResponse acheterConsommables(
+            @jakarta.validation.Valid @RequestBody com.mbsc.finapp.service.patrimoine.ConsommableService.AchatRequest req) {
+        return consommables.acheter(req);
     }
 
     /** Modification de la fiche d'amortissement par le responsable logistique (19/11/2026). */

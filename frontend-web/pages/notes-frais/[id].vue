@@ -270,9 +270,12 @@ const retourEnAttente = computed(() => (note.value?.retoursFonds || []).find(r =
 const retoursValides = computed(() => (note.value?.retoursFonds || []).filter(r => r.statut === 'VALIDE'))
 /** Total déjà rendu à la caisse : le montant payé à l'origine est le montant actuel de la note plus ce total. */
 const montantRendu = computed(() => retoursValides.value.reduce((s, r) => s + Number(r.montant || 0), 0))
-const peutReduire = computed(() => !surCopie.value && estEmetteur.value && isCreateurOuAdmin.value && !estEncaissement.value
+// Retour de fonds : émetteurs d'une note, plus la logistique et le patrimoine pour leurs achats de consommables
+// (RetourFondsService.EMETTEURS).
+const peutRendre = computed(() => isCreateurOuAdmin.value || auth.hasAnyRole(['LOGISTIQUE', 'GEST_PATRIMOINE']))
+const peutReduire = computed(() => !surCopie.value && estEmetteur.value && peutRendre.value && !estEncaissement.value
   && statut.value === 'PAYEE' && !categorieDrh.value && !retourEnAttente.value)
-const peutAnnulerRetour = computed(() => !surCopie.value && estEmetteur.value && isCreateurOuAdmin.value && !!retourEnAttente.value)
+const peutAnnulerRetour = computed(() => !surCopie.value && estEmetteur.value && peutRendre.value && !!retourEnAttente.value)
 const reductionOuverte = ref(false)
 const succes = ref('')
 

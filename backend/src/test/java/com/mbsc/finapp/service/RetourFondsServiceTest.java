@@ -500,7 +500,10 @@ class RetourFondsServiceTest {
         String creer = Arrays.stream(NoteFraisService.class.getDeclaredMethods())
             .filter(m -> m.getName().equals("creer") && m.isAnnotationPresent(PreAuthorize.class))
             .map(m -> m.getAnnotation(PreAuthorize.class).value()).findFirst().orElseThrow();
+        // ... plus la logistique et le patrimoine, émetteurs des achats de consommables
+        Set<String> attendus = new java.util.HashSet<>(Set.of(creer.replaceAll("[^A-Z_,]", "").split(",")));
+        attendus.addAll(Set.of("LOGISTIQUE", "GEST_PATRIMOINE"));
         assertThat(Set.of(RetourFondsService.EMETTEURS.replaceAll("[^A-Z_,]", "").split(",")))
-            .isEqualTo(Set.of(creer.replaceAll("[^A-Z_,]", "").split(",")));
+            .isEqualTo(attendus);
     }
 }
