@@ -16,7 +16,7 @@ interface Ligne {
 const api = useApi()
 const auth = useAuthStore()
 const route = useRoute()
-const canWrite = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'DFIN']))
+const canWrite = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'DFIN', 'ADMIN']))
 
 const biens = ref<Immo[]>([])
 const bienId = ref<number | null>(null)

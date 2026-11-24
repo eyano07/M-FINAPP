@@ -26,7 +26,7 @@ const exportEnCours = ref(false)
 const erreur = ref('')
 const niveaux = ref<Niveau[]>([])
 
-const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE']))
+const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'ADMIN']))
 
 async function charger() {
   loading.value = true

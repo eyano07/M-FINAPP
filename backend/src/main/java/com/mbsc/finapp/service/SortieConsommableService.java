@@ -3,9 +3,6 @@ package com.mbsc.finapp.service;
 import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.LigneMouvementStock;
 import com.mbsc.finapp.domain.enums.TypeArticle;
-import com.mbsc.finapp.domain.enums.TypeMouvementStock;
-import com.mbsc.finapp.dto.logistique.LigneMouvementRequest;
-import com.mbsc.finapp.dto.logistique.MouvementRequest;
 import com.mbsc.finapp.dto.logistique.MouvementResponse;
 import com.mbsc.finapp.dto.logistique.SortieConsommableRequest;
 import com.mbsc.finapp.dto.logistique.SortieConsommableResponse;
@@ -33,6 +30,7 @@ public class SortieConsommableService {
     private final StockService stock;
     private final ArticleRepository articles;
     private final MouvementStockRepository mouvements;
+    private final com.mbsc.finapp.security.CurrentUserProvider currentUser;
 
     @PreAuthorize("hasAnyRole('LOGISTIQUE', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
@@ -40,9 +38,15 @@ public class SortieConsommableService {
         return mouvements.lignesSortiesConsommables().stream().map(SortieConsommableService::ligne).toList();
     }
 
-    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'ADMIN')")
+    /**
+     * Remise de consommables à un service. Ouverte à l'Appro (GEST_PATRIMOINE), qui achète les consommables, en plus de
+     * la logistique : le mouvement est créé et validé en interne (une passe par entrepôt), sans passer par les droits
+     * généraux des mouvements de stock, réservés à la logistique.
+     */
+    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'GEST_PATRIMOINE', 'ADMIN')")
     @Transactional
     public MouvementResponse sortir(SortieConsommableRequest req) {
+        java.util.Map<Long, java.util.List<StockService.SortieVente>> parEntrepot = new java.util.LinkedHashMap<>();
         for (SortieConsommableRequest.Ligne l : req.lignes()) {
             Article a = articles.findById(l.articleId())
                 .orElseThrow(() -> RessourceIntrouvableException.of("Article", l.articleId()));
@@ -50,16 +54,18 @@ public class SortieConsommableService {
                 throw new IllegalArgumentException("« " + a.getLibelle() + " » n'est pas un consommable : sa sortie se "
                     + "fait depuis Logistique › Mouvements.");
             }
+            parEntrepot.computeIfAbsent(l.entrepotId(), k -> new java.util.ArrayList<>()).add(new StockService.SortieVente(a, l.quantite()));
         }
         String libelle = "Sortie de consommables — " + req.beneficiaire().trim()
             + (req.motif() == null || req.motif().isBlank() ? "" : " : " + req.motif().trim());
         if (libelle.length() > LIBELLE_MAX) libelle = libelle.substring(0, LIBELLE_MAX);
-        List<LigneMouvementRequest> lignes = req.lignes().stream()
-            .map(l -> new LigneMouvementRequest(l.articleId(), l.entrepotId(), null, l.quantite(), null))
-            .toList();
-        MouvementResponse brouillon = stock.creerMouvement(
-            new MouvementRequest(TypeMouvementStock.SORTIE, req.dateSortie(), libelle, null, lignes));
-        return stock.valider(brouillon.id());
+        var auteur = currentUser.requireUser();
+        com.mbsc.finapp.domain.MouvementStock dernier = null;
+        for (var e : parEntrepot.entrySet()) {
+            dernier = stock.enregistrerSortieVenteInterne(req.dateSortie(), libelle, stock.entrepotParIdInterne(e.getKey()),
+                e.getValue(), auteur);
+        }
+        return MouvementResponse.from(dernier, true);
     }
 
     static SortieConsommableResponse ligne(LigneMouvementStock l) {

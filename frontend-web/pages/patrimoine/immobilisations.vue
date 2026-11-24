@@ -50,7 +50,7 @@ const auth = useAuthStore()
 // sortir() dans PatrimoineService).
 // Mêmes rôles que PatrimoineService.creer (administrateur compris).
 const canCreer = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'LOGISTIQUE', 'ADMIN']))
-const canSortir = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE']))
+const canSortir = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'ADMIN']))
 
 // Le grand livre est tenu en dollars (devise de base) : la saisie et l'affichage se font en USD, sans conversion.
 // (19/11/2026 : la page multipliait la saisie par le taux du jour, comme si le grand livre était en francs.)

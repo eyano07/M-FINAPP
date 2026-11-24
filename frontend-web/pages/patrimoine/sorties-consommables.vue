@@ -43,7 +43,7 @@ const api = useApi()
 const auth = useAuthStore()
 const exercice = useExerciceStore()
 const parametresStore = useParametresStore()
-const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'ADMIN']) && !exercice.lectureSeule)
+const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'GEST_PATRIMOINE', 'ADMIN']) && !exercice.lectureSeule)
 
 const loading = ref(false)
 const erreur = ref('')

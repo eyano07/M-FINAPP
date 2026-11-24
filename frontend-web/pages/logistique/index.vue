@@ -184,7 +184,7 @@ const statutLabel: Record<string, string> = { BROUILLON: 'Brouillon', VALIDE: 'V
         <h1 class="ldb__title">{{ auth.user?.prenom || auth.user?.email }}</h1>
         <p class="ldb__sub">Voici l'état de votre logistique en temps réel.</p>
       </div>
-      <v-btn v-if="auth.hasRole('LOGISTIQUE')" color="primary" prepend-icon="mdi-plus" rounded="lg" elevation="0" to="/logistique/mouvements/nouvelle" class="ldb__cta">
+      <v-btn v-if="auth.hasAnyRole(['LOGISTIQUE', 'ADMIN'])" color="primary" prepend-icon="mdi-plus" rounded="lg" elevation="0" to="/logistique/mouvements/nouvelle" class="ldb__cta">
         Nouveau mouvement
       </v-btn>
     </header>

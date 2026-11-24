@@ -276,7 +276,7 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number, devi
       </v-col>
       <v-col cols="6" md="4">
         <v-card class="classroom-card pa-4">
-          <div class="kpi-label">Valeur du stock</div>
+          <div class="kpi-label">Valeur de suivi (hors bilan)</div>
           <div class="kpi-value">{{ usd(valeurTotale) }}</div>
         </v-card>
       </v-col>

@@ -20,7 +20,7 @@ const entrepots = ref<Entrepot[]>([])
 const dialog = ref(false)
 const editId = ref<number | null>(null)
 
-const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE']))
+const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'ADMIN']))
 
 const form = reactive({ code: '', nom: '', localisation: '', actif: true })
 

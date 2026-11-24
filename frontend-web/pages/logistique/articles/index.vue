@@ -21,7 +21,7 @@ const articles = ref<Article[]>([])
 const tauxChange = ref(1)
 const formulaire = ref<{ ouvrir: (a?: ArticleCatalogue) => void } | null>(null)
 
-const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'DFIN']))
+const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'DFIN', 'ADMIN']))
 
 // ── Filtres (écran + impression, qui n'imprime que le résultat filtré) ────
 const filtreRecherche = ref('')
