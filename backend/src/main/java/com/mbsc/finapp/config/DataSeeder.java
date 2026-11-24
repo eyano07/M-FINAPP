@@ -360,7 +360,9 @@ public class DataSeeder implements CommandLineRunner {
               AND NOT EXISTS (SELECT 1 FROM grand_livre g WHERE g.transaction_id = tx.id AND g.compte_id = c.id)
         """);
 
-        // Budgets
+        // Budgets de démonstration : seulement sur une base neuve (séquence des budgets
+        // jamais avancée). Sinon, des budgets supprimés par l'utilisateur reviendraient à
+        // chaque redémarrage et pourraient heurter un budget réel en exécution sur le même mois.
         jdbc.update("""
             INSERT INTO budgets (reference, intitule, exercice, statut, elabore_par_id, approuve_par_id,
                 observation, date_creation)
@@ -371,6 +373,7 @@ public class DataSeeder implements CommandLineRunner {
             FROM users dfin, users da
             WHERE dfin.email = 'dfin@mbsc.cd' AND da.email = 'da@mbsc.cd'
               AND NOT EXISTS (SELECT 1 FROM budgets WHERE intitule = 'Budget Exploitation Q2 2026')
+              AND (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM seq_budget) < 1
         """);
 
         jdbc.update("""
@@ -408,6 +411,7 @@ public class DataSeeder implements CommandLineRunner {
             FROM users dfin, users da
             WHERE dfin.email = 'dfin@mbsc.cd' AND da.email = 'da@mbsc.cd'
               AND NOT EXISTS (SELECT 1 FROM budgets WHERE intitule = 'Budget Formation & Developpement 2026')
+              AND (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM seq_budget) < 2
         """);
 
         // Ventilation mensuelle (V100) : montant annuel a parts egales, centimes restants sur decembre.
