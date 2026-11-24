@@ -75,6 +75,30 @@ async function exporterExcel() {
   }
 }
 
+// Immobilisations (comptes 21 à 24) et leurs amortissements (28) : la valeur nette s'affiche juste après les
+// amortissements, comme la carte « Valeur nette comptable » de la page Immobilisations.
+const estImmo = (n: string) => /^2[1-4]/.test(n)
+const estAmort = (n: string) => n.startsWith('28')
+const immos = computed(() => {
+  const a = bilan.value?.actifs ?? []
+  const brut = a.filter(l => estImmo(l.numero)).reduce((t, l) => t + l.montant, 0)
+  const amort = -a.filter(l => estAmort(l.numero)).reduce((t, l) => t + l.montant, 0)
+  return { brut, amort, net: brut - amort, present: a.some(l => estImmo(l.numero)) }
+})
+const lignesActif = computed(() => {
+  const a = bilan.value?.actifs ?? []
+  const simple = (l: LigneEtat) => ({ ...l, net: false })
+  if (!immos.value.present) return a.map(simple)
+  // Brut, puis amortissements, puis valeur nette ; les autres postes (prêts, dépôts, trésorerie...) ensuite.
+  return [
+    ...a.filter(l => estImmo(l.numero)).map(simple),
+    ...a.filter(l => estAmort(l.numero)).map(simple),
+    { numero: 'net-immo', libelle: '', classe: 2, montant: immos.value.net, net: true },
+    ...a.filter(l => !estImmo(l.numero) && !estAmort(l.numero)).map(simple),
+  ]
+})
+const fmt2 = (v: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0)
+
 const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v || 0)
 const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '')
 </script>
@@ -168,11 +192,20 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
                 <tr v-if="bilan.actifs.length === 0">
                   <td colspan="3" class="text-center text-medium-emphasis py-4">Aucun poste d'actif</td>
                 </tr>
-                <tr v-for="l in bilan.actifs" :key="l.numero">
-                  <td class="font-weight-medium">{{ l.numero }}</td>
-                  <td>{{ l.libelle }}</td>
-                  <td class="text-right">{{ fmt(l.montant) }}</td>
-                </tr>
+                <template v-for="l in lignesActif" :key="l.numero">
+                  <tr v-if="l.net" class="ligne-net">
+                    <td colspan="2">
+                      Immobilisations — valeur nette
+                      <div class="text-caption text-medium-emphasis">brut {{ fmt2(immos.brut) }} − amortissements {{ fmt2(immos.amort) }}</div>
+                    </td>
+                    <td class="text-right">{{ fmt2(l.montant) }}</td>
+                  </tr>
+                  <tr v-else>
+                    <td class="font-weight-medium">{{ l.numero }}</td>
+                    <td>{{ l.libelle }}</td>
+                    <td class="text-right">{{ fmt(l.montant) }}</td>
+                  </tr>
+                </template>
               </tbody>
               <tfoot>
                 <tr class="font-weight-bold">
@@ -229,4 +262,5 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 </template>
 
 <style scoped>
+.ligne-net td { font-weight: 700; background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
 </style>
