@@ -11,6 +11,8 @@ import com.mbsc.finapp.dto.notes.NoteFraisRequest;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.repository.ArticleRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
+import com.mbsc.finapp.repository.EntrepotRepository;
+import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import com.mbsc.finapp.audit.AuditService;
 import com.mbsc.finapp.service.ConversionDeviseService;
@@ -59,6 +61,7 @@ public class ConsommableService {
     static final String LECTURE = "hasAnyRole('LOGISTIQUE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER', 'ADMIN')";
     private static final Set<String> TYPES_PROFORMA = Set.of("image/jpeg", "image/png", "image/webp", "application/pdf");
     private static final String COMPTE_VARIATION = "6033";
+    private static final String CODE_MAGASIN = "MAG-CONS";
 
     /** Type d'un consommable : il fixe les comptes de rattachement (stock 33x, achat 604x). */
     public enum TypeConsommable {
@@ -105,6 +108,7 @@ public class ConsommableService {
     private final CurrentUserProvider currentUser;
     private final StorageService stockage;
     private final NoteFraisService notesFrais;
+    private final EntrepotRepository entrepotRepository;
 
     @PreAuthorize(LECTURE)
     @Transactional(readOnly = true)
@@ -219,6 +223,7 @@ public class ConsommableService {
                 throw new IllegalArgumentException("Un même consommable figure deux fois dans l'achat : regroupez les quantités.");
             }
         }
+        Long entrepotId = entrepotDesConsommables().getId();
         List<LigneNoteFraisRequest> lignes = new ArrayList<>();
         List<String> noms = new ArrayList<>();
         for (LigneAchat l : parConsommable.values()) {
@@ -227,12 +232,13 @@ public class ConsommableService {
             if (a.getPrixAchat() == null || a.getPrixAchat().signum() <= 0) {
                 throw new IllegalArgumentException("Le consommable « " + a.getLibelle() + " » n'a pas de prix d'achat.");
             }
-            BigDecimal montant = a.getPrixAchat().multiply(l.quantite()).setScale(2, RoundingMode.HALF_UP);
+            // Ligne d'achat : le montant est le PRIX UNITAIRE, la note le multiplie par la quantité (LigneNoteFrais#montantHtTotal).
+            BigDecimal montant = a.getPrixAchat().setScale(2, RoundingMode.HALF_UP);
             String unite = a.getUniteMesure() == null ? "" : " " + a.getUniteMesure();
             String description = a.getLibelle() + " — " + l.quantite().stripTrailingZeros().toPlainString() + unite
                 + (StringUtils.hasText(l.observation()) ? " (" + l.observation().trim() + ")" : "");
             lignes.add(new LigneNoteFraisRequest(montant, null, description.length() > 500 ? description.substring(0, 500) : description,
-                true, l.quantite(), a.getId(), null, null, false, null, false, false));
+                true, l.quantite(), a.getId(), null, entrepotId, false, null, false, false));
             noms.add(a.getLibelle());
         }
         String objet = StringUtils.hasText(r.objet()) ? r.objet().trim()
@@ -247,6 +253,24 @@ public class ConsommableService {
         AuditService.detailler("Achat de consommables : note " + note.reference() + " (" + note.montant().toPlainString()
             + " " + note.devise() + ") soumise au DFIN.");
         return new AchatResponse(note.id(), note.reference(), note.statut().name(), note.montant());
+    }
+
+    /**
+     * Entrepôt où entrent les consommables achetés : le magasin des consommables s'il existe, sinon le premier entrepôt
+     * actif ; aucun entrepôt du tout : le magasin des consommables est créé.
+     */
+    private Entrepot entrepotDesConsommables() {
+        return entrepotRepository.findByCode(CODE_MAGASIN).filter(Entrepot::isActif)
+            .or(entrepotRepository::findFirstByActifTrueOrderByIdAsc)
+            .orElseGet(() -> {
+                Entrepot e = new Entrepot();
+                e.setCode(CODE_MAGASIN);
+                e.setNom("Magasin des consommables");
+                e.setActif(true);
+                Entrepot cree = entrepotRepository.save(e);
+                AuditService.detailler("Entrepôt « Magasin des consommables » créé pour recevoir les achats de consommables.");
+                return cree;
+            });
     }
 
     private Consommable un(Long id) {
