@@ -849,7 +849,9 @@ public class NoteFraisService {
                     throw new IllegalArgumentException(
                         "L'article \"" + article.getLibelle() + "\" est un service : il n'a pas de stock.");
                 }
-                if (article.getCompteStock() == null || article.getCompteCharge() == null) {
+                // Consommable non stockable (605x) : quantités suivies sans compte de stock ni de variation.
+                if (!StockService.suiviHorsComptabilite(article)
+                    && (article.getCompteStock() == null || article.getCompteCharge() == null)) {
                     throw new IllegalArgumentException(
                         "Le compte de stock et le compte de variation de stock doivent être définis pour l'article \""
                         + article.getLibelle() + "\".");

@@ -29,13 +29,14 @@ interface Consommable {
   sousSeuil: boolean
 }
 
+// Fournitures NON STOCKABLES (605x) : l'achat passe en charge au règlement, sans compte de stock ni variation.
 const TYPES = [
-  { value: 'FOURNITURES_BUREAU', title: 'Fournitures de bureau', comptes: '334 · 6047' },
-  { value: 'PRODUITS_ENTRETIEN', title: "Produits d'entretien", comptes: '338 · 6043' },
-  { value: 'CARBURANT', title: 'Carburant et combustibles', comptes: '338 · 6042' },
-  { value: 'FOURNITURES_ATELIER', title: "Fournitures d'atelier", comptes: '331 · 6044' },
-  { value: 'FOURNITURES_MAGASIN', title: 'Fournitures de magasin', comptes: '333 · 6046' },
-  { value: 'MATIERES_CONSOMMABLES', title: 'Matières consommables', comptes: '331 · 6041' },
+  { value: 'FOURNITURES_BUREAU', title: 'Fournitures de bureau', comptes: '6055' },
+  { value: 'PRODUITS_ENTRETIEN', title: "Fournitures d'entretien", comptes: '6054' },
+  { value: 'CARBURANT', title: 'Carburant et autres énergies', comptes: '6053' },
+  { value: 'EAU', title: 'Eau', comptes: '6051' },
+  { value: 'ELECTRICITE', title: 'Électricité', comptes: '6052' },
+  { value: 'PETIT_MATERIEL', title: 'Petit matériel et outillage', comptes: '6056' },
 ]
 const TYPES_PROFORMA = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
 
@@ -138,7 +139,7 @@ async function enregistrer() {
     if (form.proforma) await envoyerProforma(c.id, form.proforma)
     succes.value = form.id
       ? `${c.code} modifié.`
-      : `${c.code} « ${c.libelle} » créé, avec ses comptes ${c.compteStock} (stock) et ${c.compteAchat} (achat).`
+      : `${c.code} « ${c.libelle} » créé, avec son compte de charge ${c.compteAchat}.`
     form.ouvert = false
     await charger()
   } catch (e: any) {
@@ -328,7 +329,7 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number, devi
         <template #[`item.code`]="{ item }"><code>{{ item.code }}</code></template>
         <template #[`item.libelle`]="{ item }">
           <div class="font-weight-medium">{{ item.libelle }}</div>
-          <div class="text-caption text-medium-emphasis">Comptes {{ item.compteStock || '—' }} · {{ item.compteAchat || '—' }}</div>
+          <div class="text-caption text-medium-emphasis">Compte {{ item.compteAchat || '—' }}</div>
         </template>
         <template #[`item.typeLibelle`]="{ item }">{{ item.typeLibelle || '—' }}</template>
         <template #[`item.prixAchat`]="{ item }">
@@ -362,7 +363,7 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number, devi
           <v-alert v-if="form.erreur" type="error" variant="tonal" class="mb-3">{{ form.erreur }}</v-alert>
           <v-text-field v-model="form.libelle" label="Nom *" variant="outlined" density="comfortable" autofocus />
           <v-select v-model="form.type" :items="TYPES" label="Type *" variant="outlined" density="comfortable"
-            :disabled="!!form.id" :hint="form.id ? 'Le type fixe les comptes : il ne change plus après la création.' : `Comptes de rattachement : ${TYPES.find(t => t.value === form.type)?.comptes}`"
+            :disabled="!!form.id" :hint="form.id ? 'Le type fixe les comptes : il ne change plus après la création.' : `Compte de charge : sous-compte de ${TYPES.find(t => t.value === form.type)?.comptes} (fournitures non stockables)`"
             persistent-hint class="mb-3" />
           <v-row dense>
             <v-col cols="12" sm="6">
@@ -387,8 +388,8 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number, devi
             :error-messages="proformaInvalide ? 'Image (JPEG, PNG, WebP) ou PDF de 15 Mo au plus.' : []"
             :hint="form.id ? 'Remplace la proforma actuelle si vous en choisissez une.' : 'Facultative.'" persistent-hint />
           <v-alert v-if="!form.id" type="info" variant="tonal" density="compact" class="mt-4">
-            Le code et les comptes (stock et achat) sont créés automatiquement. La quantité entre en stock à l'achat, quand la
-            caisse paie la note de frais.
+            Le code et le compte de charge (605x, fournitures non stockables) sont créés automatiquement : l'achat passe
+            directement en charge, sans stock comptable ni variation. Les quantités sont suivies ici dès que la caisse paie la note.
           </v-alert>
         </v-card-text>
         <v-card-actions>

@@ -749,13 +749,15 @@ public class StockService {
             lotStock.enregistrerEntree(ligne.getArticle(), ligne.getEntrepotCible(), date, e.fournisseur(),
                 ligne.getQuantite(), prixAchatUnite, prixTransportUnite, ligne, e.ligneNote());
         }
-        PieceComptable piece = comptabilite.creerPieceInterne(
-            JournalComptable.STOCK, libelle, date, ecritures, auteur);
-        saved.setPiece(piece);
+        if (!ecritures.isEmpty()) {   // consommables non stockables seulement : quantités sans écriture
+            PieceComptable piece = comptabilite.creerPieceInterne(
+                JournalComptable.STOCK, libelle, date, ecritures, auteur);
+            saved.setPiece(piece);
+        }
         saved.setStatut(StatutMouvement.VALIDE);
 
         log.info("Entrée de stock pour note de frais [pieceReglement={}, pieceStock={}, lignes={}]",
-            pieceReglement.getReference(), piece.getReference(), entrees.size());
+            pieceReglement.getReference(), saved.getPiece() == null ? "-" : saved.getPiece().getReference(), entrees.size());
     }
 
     public record AchatMarchandise(Article article, Entrepot entrepot, BigDecimal quantite,
@@ -923,8 +925,11 @@ public class StockService {
                 ligne.setMontantAchat(montant);
                 ecrireStockGrandLivre(article, cible, mouvement, qte, BigDecimal.ZERO, niveau);
                 // Comptable : Débit compte stock / Crédit contrepartie
-                ajouterEcriture(ecrituresCompta, compteStock(article), montant, BigDecimal.ZERO, mouvement);
-                ajouterEcriture(ecrituresCompta, compteContrepartie(mouvement), BigDecimal.ZERO, montant, mouvement);
+                // (aucune écriture pour un consommable non stockable : quantités seulement)
+                if (!suiviHorsComptabilite(article)) {
+                    ajouterEcriture(ecrituresCompta, compteStock(article), montant, BigDecimal.ZERO, mouvement);
+                    ajouterEcriture(ecrituresCompta, compteContrepartie(mouvement), BigDecimal.ZERO, montant, mouvement);
+                }
                 // Suivi de gestion (traçabilité) : sans fournisseur ni frais connus ici,
                 // à la différence d'un achat par note de frais — voir LotStockService.
                 lotStock.enregistrerEntree(article, cible, mouvement.getDateMouvement(), null,
@@ -946,9 +951,12 @@ public class StockService {
                 ecrireStockGrandLivre(article, source, mouvement, BigDecimal.ZERO, qte, niveau);
                 // Comptable : Débit compte charge (celui de l'article, ou le compte imposé d'une boisson offerte ou
                 // périmée) / Crédit compte stock
-                ajouterEcriture(ecrituresCompta, compteChargeImpose != null ? compteChargeImpose : compteCharge(article),
-                    montant, BigDecimal.ZERO, mouvement);
-                ajouterEcriture(ecrituresCompta, compteStock(article), BigDecimal.ZERO, montant, mouvement);
+                // (aucune écriture pour un consommable non stockable : déjà en charge à l'achat)
+                if (!suiviHorsComptabilite(article)) {
+                    ajouterEcriture(ecrituresCompta, compteChargeImpose != null ? compteChargeImpose : compteCharge(article),
+                        montant, BigDecimal.ZERO, mouvement);
+                    ajouterEcriture(ecrituresCompta, compteStock(article), BigDecimal.ZERO, montant, mouvement);
+                }
                 // Suivi de gestion : déplète les lots en FIFO ou au prorata (résultat sans emploi ici, pas de transfert derrière) ;
                 // un retour d'achat vide d'abord le lot de la livraison rendue.
                 lotStock.consommer(article, source, qte, ligne, ligneNoteOrigineId);
@@ -1299,7 +1307,18 @@ public class StockService {
         return entrepot;
     }
 
+    /**
+     * Consommable non stockable (sans compte de stock : acheté en 605x, passé en charge au règlement de la note) : ses
+     * quantités se suivent au stock, mais aucun mouvement n'écrit en comptabilité — ni stock, ni variation de stock.
+     */
+    public static boolean suiviHorsComptabilite(Article article) {
+        return article.getType() == TypeArticle.CONSOMMABLE && article.getCompteStock() == null;
+    }
+
     private CompteOHADA compteStock(Article article) {
+        if (suiviHorsComptabilite(article)) {
+            return null;
+        }
         if (article.getCompteStock() == null) {
             throw new IllegalStateException(
                 "Aucun compte de stock défini pour l'article " + article.getCode());
@@ -1308,6 +1327,9 @@ public class StockService {
     }
 
     private CompteOHADA compteCharge(Article article) {
+        if (suiviHorsComptabilite(article)) {
+            return null;
+        }
         if (article.getCompteCharge() == null) {
             throw new IllegalStateException(
                 "Aucun compte de charge défini pour l'article " + article.getCode());
@@ -1325,6 +1347,9 @@ public class StockService {
 
     private void ajouterEcriture(List<EcritureGrandLivre> liste, CompteOHADA compte,
                                  BigDecimal debit, BigDecimal credit, MouvementStock mouvement) {
+        if (compte == null) {
+            return;   // consommable suivi hors comptabilité (voir suiviHorsComptabilite)
+        }
         liste.add(EcritureGrandLivre.builder()
             .compte(compte)
             .debit(debit)

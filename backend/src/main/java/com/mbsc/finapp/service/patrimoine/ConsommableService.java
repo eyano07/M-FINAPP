@@ -47,11 +47,11 @@ import java.util.Set;
  *
  * <ul>
  *   <li><b>Création</b> : nom, prix d'achat, unité, seuil et type suffisent. Le système attribue le code (CONS-000001)
- *       et crée les sous-comptes propres au consommable : stock (sous le compte 33x du type) et achat (sous le 604x du
- *       type) ; la variation de stock passe en 6033. Une facture proforma (image ou PDF) peut y être jointe.</li>
+ *       et crée le compte propre du consommable sous le compte de fournitures non stockables (605x) de son type : l'achat
+ *       passe en charge au règlement, sans compte de stock ni variation. Une facture proforma peut y être jointe.</li>
  *   <li><b>Achat</b> : plusieurs consommables et leurs quantités en une fois ; une note de frais est créée et soumise
- *       au DFIN (circuit DFIN, DA, DFIN, caisse). Au paiement, les quantités entrent en stock (règle commune des achats
- *       de marchandise) ; un retour de fonds sur la note ressort du stock la quantité rendue.</li>
+ *       au DFIN (circuit DFIN, DA, DFIN, caisse). Au paiement, les quantités entrent au suivi (sans écriture de stock) ;
+ *       un retour de fonds sur la note en ressort la quantité rendue.</li>
  * </ul>
  */
 @Service
@@ -61,25 +61,26 @@ public class ConsommableService {
     static final String ECRITURE = "hasAnyRole('LOGISTIQUE', 'GEST_PATRIMOINE', 'DFIN', 'ADMIN')";
     static final String LECTURE = "hasAnyRole('LOGISTIQUE', 'GEST_PATRIMOINE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER', 'ADMIN')";
     private static final Set<String> TYPES_PROFORMA = Set.of("image/jpeg", "image/png", "image/webp", "application/pdf");
-    private static final String COMPTE_VARIATION = "6033";
     private static final String CODE_MAGASIN = "MAG-CONS";
 
-    /** Type d'un consommable : il fixe les comptes de rattachement (stock 33x, achat 604x). */
+    /**
+     * Type d'un consommable : il fixe le compte de fournitures NON STOCKABLES (605x) sous lequel est créé le compte
+     * propre du consommable. L'achat passe directement en charge au règlement de la note : ni compte de stock, ni
+     * variation de stock ; les quantités se suivent seulement en gestion (entrées, sorties, seuil).
+     */
     public enum TypeConsommable {
-        FOURNITURES_BUREAU("Fournitures de bureau", "334", "6047"),
-        PRODUITS_ENTRETIEN("Produits d'entretien", "338", "6043"),
-        CARBURANT("Carburant et combustibles", "338", "6042"),
-        FOURNITURES_ATELIER("Fournitures d'atelier", "331", "6044"),
-        FOURNITURES_MAGASIN("Fournitures de magasin", "333", "6046"),
-        MATIERES_CONSOMMABLES("Matières consommables", "331", "6041");
+        FOURNITURES_BUREAU("Fournitures de bureau", "6055"),
+        PRODUITS_ENTRETIEN("Fournitures d'entretien", "6054"),
+        CARBURANT("Carburant et autres énergies", "6053"),
+        EAU("Eau", "6051"),
+        ELECTRICITE("Électricité", "6052"),
+        PETIT_MATERIEL("Petit matériel et outillage", "6056");
 
         public final String libelle;
-        public final String compteStock;
         public final String compteAchat;
 
-        TypeConsommable(String libelle, String compteStock, String compteAchat) {
+        TypeConsommable(String libelle, String compteAchat) {
             this.libelle = libelle;
-            this.compteStock = compteStock;
             this.compteAchat = compteAchat;
         }
     }
@@ -147,10 +148,7 @@ public class ConsommableService {
         while (articleRepository.existsByCode(code)) {
             code = "CONS-%06d".formatted(jdbc.queryForObject("select nextval('seq_consommable')", Number.class).longValue());
         }
-        CompteOHADA stock = sousCompte(r.type().compteStock, libelle);
-        CompteOHADA achat = sousCompte(r.type().compteAchat, "Achat " + libelle);
-        CompteOHADA variation = compteRepository.findByNumero(COMPTE_VARIATION)
-            .orElseThrow(() -> new IllegalStateException("Compte " + COMPTE_VARIATION + " absent du plan comptable"));
+        CompteOHADA achat = sousCompte(r.type().compteAchat, libelle);
 
         Article a = new Article();
         a.setCode(code);
@@ -161,15 +159,16 @@ public class ConsommableService {
         a.setStockMin(r.stockMin() == null ? BigDecimal.ZERO : r.stockMin());
         a.setSoumisTva(false);
         a.setActif(true);
-        a.setCompteStock(stock);
+        // Non stockable : pas de compte de stock ni de variation (StockService.suiviHorsComptabilite).
+        a.setCompteStock(null);
+        a.setCompteCharge(null);
         a.setCompteAchat(achat);
-        a.setCompteCharge(variation);
         Article saved = articleRepository.save(a);
         articleRepository.flush();
         jdbc.update("update articles set type_consommable = ?, devise_prix = ? where id = ?", r.type().name(), devise(r).name(),
             saved.getId());
         AuditService.detailler("Consommable " + code + " « " + libelle + " » créé (" + r.type().libelle + ") : comptes "
-            + stock.getNumero() + " (stock) et " + achat.getNumero() + " (achat).");
+            + achat.getNumero() + " (fournitures non stockables).");
         return un(saved.getId());
     }
 
