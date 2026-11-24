@@ -48,7 +48,8 @@ const auth = useAuthStore()
 // materiel au quotidien) mais ne cede/ne met pas au rebut : cette decision
 // reste a GEST_PATRIMOINE — voir les memes roles cote serveur (creer() vs
 // sortir() dans PatrimoineService).
-const canCreer = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'LOGISTIQUE']))
+// Mêmes rôles que PatrimoineService.creer (administrateur compris).
+const canCreer = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'LOGISTIQUE', 'ADMIN']))
 const canSortir = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE']))
 
 // Le grand livre est tenu en dollars (devise de base) : la saisie et l'affichage se font en USD, sans conversion.
@@ -114,7 +115,12 @@ async function charger() {
     loading.value = false
   }
 }
-onMounted(charger)
+// « Ajouter un bien » depuis l'inventaire : /patrimoine/immobilisations?ajout=1 ouvre directement la saisie.
+const route = useRoute()
+onMounted(async () => {
+  await charger()
+  if (route.query.ajout && canCreer.value) ouvrirAjout()
+})
 
 function ouvrirAjout() {
   Object.assign(form, {

@@ -294,6 +294,9 @@ async function imprimerEtiquettes() {
           Affecter la sélection ({{ selection.length }})
         </v-btn>
         <v-btn variant="text" prepend-icon="mdi-map-marker-multiple-outline" to="/patrimoine/emplacements">Emplacements</v-btn>
+        <v-btn v-if="peutEcrire" color="success" variant="flat" prepend-icon="mdi-plus" to="/patrimoine/immobilisations?ajout=1">
+          Ajouter un bien
+        </v-btn>
         <v-btn v-if="lotAValoriser.length > 1" color="primary" variant="flat" prepend-icon="mdi-cash-plus" @click="ouvrirValorisationLot">
           Valoriser la sélection ({{ lotAValoriser.length }})
         </v-btn>
