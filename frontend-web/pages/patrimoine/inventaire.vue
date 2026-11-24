@@ -38,7 +38,8 @@ const CATEGORIES: { value: Categorie, title: string, duree: number }[] = [
 const STATUTS = {
   A_VALORISER: { titre: 'À valoriser', couleur: 'warning' },
   IMMOBILISE: { titre: 'Immobilisé', couleur: 'success' },
-  PETIT_MATERIEL: { titre: 'Petit matériel', couleur: 'info' },
+  // Sous le seuil : passé en charge l'année d'achat, jamais amorti ; le bien reste à l'inventaire, déclassé.
+  PETIT_MATERIEL: { titre: 'Petit matériel — déclassé', couleur: 'info' },
 } as const
 const SEUIL = 100
 
@@ -346,8 +347,11 @@ async function imprimerEtiquettes() {
           <span v-if="item.emplacementNom" class="lieu"><v-icon :icon="ICONES_EMPLACEMENT[item.emplacementType ?? ''] ?? 'mdi-map-marker-outline'" size="16" />{{ item.emplacementNom }}</span>
           <span v-else class="text-medium-emphasis font-italic">{{ item.localisation ? `${item.localisation} (non affecté)` : 'Non affecté' }}</span>
         </template>
-        <template #[`item.categorie`]="{ item }">{{ libCategorie(item.categorie) }}</template>
-        <template #[`item.dureeMois`]="{ item }">{{ duree(item.dureeMois) }}</template>
+        <template #[`item.categorie`]="{ item }">
+          <span v-if="item.statut === 'PETIT_MATERIEL'" class="text-medium-emphasis">Hors immobilisations</span>
+          <template v-else>{{ libCategorie(item.categorie) }}</template>
+        </template>
+        <template #[`item.dureeMois`]="{ item }">{{ item.statut === 'PETIT_MATERIEL' ? '—' : duree(item.dureeMois) }}</template>
         <template #[`item.valeurUsd`]="{ item }">{{ item.valeurUsd == null ? '—' : usd(item.valeurUsd) }}</template>
         <template #[`item.statut`]="{ item }">
           <v-chip size="small" variant="tonal" :color="STATUTS[item.statut].couleur">{{ STATUTS[item.statut].titre }}</v-chip>

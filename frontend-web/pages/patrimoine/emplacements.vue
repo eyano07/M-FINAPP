@@ -59,7 +59,7 @@ interface BienLieu { id: number, code: string, libelle: string, statut: string, 
 const STATUTS_BIEN: Record<string, { titre: string, couleur: string }> = {
   A_VALORISER: { titre: 'À valoriser', couleur: 'warning' },
   IMMOBILISE: { titre: 'Immobilisé', couleur: 'success' },
-  PETIT_MATERIEL: { titre: 'Petit matériel', couleur: 'info' },
+  PETIT_MATERIEL: { titre: 'Petit matériel — déclassé', couleur: 'info' },
 }
 const ouvert = ref<number | null>(null)
 const biens = ref<BienLieu[] | null>(null)
