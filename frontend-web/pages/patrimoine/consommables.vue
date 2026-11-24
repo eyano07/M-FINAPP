@@ -17,6 +17,7 @@ interface Consommable {
   typeLibelle: string | null
   uniteMesure: string | null
   prixAchat: number | null
+  devise: 'USD' | 'CDF'
   stockMin: number
   actif: boolean
   compteStock: string | null
@@ -51,7 +52,12 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    consommables.value = await api<Consommable[]>('/patrimoine/consommables')
+    const [liste, t] = await Promise.all([
+      api<Consommable[]>('/patrimoine/consommables'),
+      api<{ taux: number }>('/admin/taux-change').catch(() => ({ taux: 0 })),
+    ])
+    consommables.value = liste
+    taux.value = Number(t.taux) || 0
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les consommables.')
   } finally {
@@ -67,6 +73,11 @@ onMounted(() => {
 
 const usd = (v: number | null | undefined) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(v || 0))
+const fc = (v: number | null | undefined) =>
+  `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(Number(v || 0))} FC`
+/** Montant dans sa devise : USD ($) ou CDF (FC). */
+const prix = (v: number | null | undefined, devise?: string | null) => (devise === 'CDF' ? fc(v) : usd(v))
+const taux = ref(0)
 const fmtQte = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 3 }).format(Number(v || 0))
 
 // ── Filtres ───────────────────────────────────────────────────────────────
@@ -95,7 +106,7 @@ function imprimer() {
 // ── Création / modification ────────────────────────────────────────────────
 const form = reactive({
   ouvert: false, id: null as number | null, libelle: '', type: 'FOURNITURES_BUREAU', uniteMesure: '',
-  prixAchat: null as number | null, stockMin: 0 as number | null, proforma: null as File | null, enCours: false, erreur: '',
+  prixAchat: null as number | null, devise: 'USD' as 'USD' | 'CDF', stockMin: 0 as number | null, proforma: null as File | null, enCours: false, erreur: '',
 })
 const proformaInvalide = computed(() => !!form.proforma
   && (!TYPES_PROFORMA.includes(form.proforma.type) || form.proforma.size > 15 * 1024 * 1024))
@@ -103,11 +114,11 @@ const formValide = computed(() => form.libelle.trim() && form.type && Number(for
 
 function ouvrirCreation() {
   Object.assign(form, { ouvert: true, id: null, libelle: '', type: 'FOURNITURES_BUREAU', uniteMesure: '', prixAchat: null,
-    stockMin: 0, proforma: null, enCours: false, erreur: '' })
+    devise: 'USD', stockMin: 0, proforma: null, enCours: false, erreur: '' })
 }
 function ouvrirModification(c: Consommable) {
   Object.assign(form, { ouvert: true, id: c.id, libelle: c.libelle, type: c.type ?? 'FOURNITURES_BUREAU',
-    uniteMesure: c.uniteMesure ?? '', prixAchat: c.prixAchat, stockMin: c.stockMin, proforma: null, enCours: false, erreur: '' })
+    uniteMesure: c.uniteMesure ?? '', prixAchat: c.prixAchat, devise: c.devise ?? 'USD', stockMin: c.stockMin, proforma: null, enCours: false, erreur: '' })
 }
 async function envoyerProforma(id: number, f: File) {
   const fd = new FormData()
@@ -119,7 +130,7 @@ async function enregistrer() {
   form.enCours = true
   form.erreur = ''
   const body = { libelle: form.libelle.trim(), type: form.type, uniteMesure: form.uniteMesure.trim() || null,
-    prixAchat: form.prixAchat, stockMin: form.stockMin || 0 }
+    prixAchat: form.prixAchat, devise: form.devise, stockMin: form.stockMin || 0 }
   try {
     const c = form.id
       ? await api<Consommable>(`/patrimoine/consommables/${form.id}`, { method: 'PUT', body })
@@ -159,11 +170,21 @@ function ouvrirAchat(pre?: Consommable) {
 }
 function ajouterLigne() { achat.lignes.push({ consommableId: null, quantite: null, observation: '' }) }
 function retirerLigne(i: number) { achat.lignes.splice(i, 1) }
+const consoDe = (l: LigneAchat) => (l.consommableId ? parId.value.get(l.consommableId) : undefined)
 const montantLigne = (l: LigneAchat) => {
-  const c = l.consommableId ? parId.value.get(l.consommableId) : null
+  const c = consoDe(l)
   return c && l.quantite ? Number(c.prixAchat) * Number(l.quantite) : 0
 }
-const totalAchat = computed(() => achat.lignes.reduce((s, l) => s + montantLigne(l), 0))
+// Devise de la note : celle des prix si elle est commune, sinon USD (prix en francs convertis au taux du jour).
+const deviseAchat = computed(() => {
+  const d = new Set(achat.lignes.map(l => consoDe(l)?.devise).filter(Boolean))
+  return d.size === 1 ? [...d][0] as 'USD' | 'CDF' : 'USD'
+})
+const deviseMixte = computed(() => new Set(achat.lignes.map(l => consoDe(l)?.devise).filter(Boolean)).size > 1)
+const totalAchat = computed(() => achat.lignes.reduce((s, l) => {
+  const m = montantLigne(l)
+  return s + (deviseAchat.value === 'USD' && consoDe(l)?.devise === 'CDF' ? (taux.value > 0 ? m / taux.value : 0) : m)
+}, 0))
 const dejaChoisis = (i: number) => new Set(achat.lignes.filter((_, j) => j !== i).map(l => l.consommableId))
 const achatValide = computed(() => achat.lignes.length > 0
   && achat.lignes.every(l => l.consommableId && Number(l.quantite) > 0)
@@ -182,14 +203,14 @@ async function validerAchat() {
       },
     })
     achat.ouvert = false
-    noteCreee.value = r
+    noteCreee.value = { ...r, devise: deviseAchat.value }
   } catch (e: any) {
     achat.erreur = messageErreurApi(e, "L'achat n'a pas été enregistré.")
   } finally {
     achat.enCours = false
   }
 }
-const noteCreee = ref<{ noteId: number, reference: string, montant: number } | null>(null)
+const noteCreee = ref<{ noteId: number, reference: string, montant: number, devise: string } | null>(null)
 </script>
 
 <template>
@@ -236,7 +257,7 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number } | n
     <v-alert v-if="succes" type="success" variant="tonal" class="mb-4 no-print" closable @click:close="succes = ''">{{ succes }}</v-alert>
     <v-alert v-if="noteCreee" type="success" variant="tonal" class="mb-4 no-print" closable @click:close="noteCreee = null">
       Note de frais <NuxtLink :to="`/notes-frais/${noteCreee.noteId}`" class="font-weight-bold">{{ noteCreee.reference }}</NuxtLink>
-      créée ({{ usd(noteCreee.montant) }}) et soumise au DFIN. Les quantités entreront en stock au paiement par la caisse ;
+      créée ({{ prix(noteCreee.montant, noteCreee.devise) }}) et soumise au DFIN. Les quantités entreront en stock au paiement par la caisse ;
       pour annuler tout ou partie de l'achat, faites un retour de fonds depuis la note.
     </v-alert>
 
@@ -311,7 +332,7 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number } | n
         </template>
         <template #[`item.typeLibelle`]="{ item }">{{ item.typeLibelle || '—' }}</template>
         <template #[`item.prixAchat`]="{ item }">
-          {{ item.prixAchat == null ? '—' : usd(item.prixAchat) }}<span v-if="item.uniteMesure" class="text-medium-emphasis"> / {{ item.uniteMesure }}</span>
+          {{ item.prixAchat == null ? '—' : prix(item.prixAchat, item.devise) }}<span v-if="item.uniteMesure" class="text-medium-emphasis"> / {{ item.uniteMesure }}</span>
         </template>
         <template #[`item.quantite`]="{ item }">
           <span :class="item.sousSeuil ? 'text-error font-weight-bold' : ''">{{ fmtQte(item.quantite) }} {{ item.uniteMesure || '' }}</span>
@@ -345,8 +366,15 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number } | n
             persistent-hint class="mb-3" />
           <v-row dense>
             <v-col cols="12" sm="6">
-              <v-text-field v-model.number="form.prixAchat" type="number" min="0" step="0.01" label="Prix d'achat (USD) *"
-                prepend-inner-icon="mdi-currency-usd" variant="outlined" density="comfortable" />
+              <v-text-field v-model.number="form.prixAchat" type="number" min="0" :step="form.devise === 'CDF' ? 1 : 0.01"
+                :label="`Prix d'achat (${form.devise === 'CDF' ? 'FC' : '$'}) *`" variant="outlined" density="comfortable">
+                <template #append-inner>
+                  <v-btn-toggle v-model="form.devise" mandatory density="compact" rounded="lg" color="primary" variant="outlined" class="devise-toggle">
+                    <v-btn value="USD" size="small">$</v-btn>
+                    <v-btn value="CDF" size="small">FC</v-btn>
+                  </v-btn-toggle>
+                </template>
+              </v-text-field>
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model="form.uniteMesure" label="Unité (rame, litre, pièce…)" variant="outlined" density="comfortable" />
@@ -379,12 +407,12 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number } | n
           <v-alert v-if="achat.erreur" type="error" variant="tonal" class="mb-3">{{ achat.erreur }}</v-alert>
           <div v-for="(l, i) in achat.lignes" :key="i" class="ligne-achat">
             <v-autocomplete v-model="l.consommableId" :items="achetables.filter(c => !dejaChoisis(i).has(c.id))"
-              item-value="id" :item-title="(c: Consommable) => `${c.libelle} — ${usd(c.prixAchat)}${c.uniteMesure ? ' / ' + c.uniteMesure : ''}`"
+              item-value="id" :item-title="(c: Consommable) => `${c.libelle} — ${prix(c.prixAchat, c.devise)}${c.uniteMesure ? ' / ' + c.uniteMesure : ''}`"
               label="Consommable *" variant="outlined" density="comfortable" hide-details class="ligne-achat__conso" />
             <v-text-field v-model.number="l.quantite" type="number" min="0" step="any" label="Quantité *" variant="outlined"
               density="comfortable" hide-details class="ligne-achat__qte"
               :suffix="l.consommableId ? (parId.get(l.consommableId)?.uniteMesure || '') : ''" />
-            <div class="ligne-achat__montant">{{ usd(montantLigne(l)) }}</div>
+            <div class="ligne-achat__montant">{{ prix(montantLigne(l), consoDe(l)?.devise) }}</div>
             <v-btn icon="mdi-close" size="small" variant="text" :disabled="achat.lignes.length === 1" title="Retirer" @click="retirerLigne(i)" />
             <v-text-field v-model="l.observation" label="Observation (facultative)" variant="outlined" density="compact" hide-details class="ligne-achat__obs" />
           </div>
@@ -393,8 +421,12 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number } | n
           <v-textarea v-model="achat.justification" label="Justification si l'achat dépasse le budget (facultative)" rows="2" auto-grow variant="outlined" density="comfortable" />
           <div class="d-flex justify-space-between align-center mt-2">
             <span class="text-medium-emphasis text-body-2">Une note de frais est créée et soumise au DFIN, puis DA, DFIN et caisse.</span>
-            <span class="text-h6 font-weight-bold">{{ usd(totalAchat) }}</span>
+            <span class="text-h6 font-weight-bold">{{ prix(totalAchat, deviseAchat) }}</span>
           </div>
+          <v-alert v-if="deviseMixte" type="info" variant="tonal" density="compact" class="mt-2">
+            Prix en dollars et en francs : la note sera en dollars, les prix en francs convertis au taux du jour
+            <template v-if="taux">({{ new Intl.NumberFormat('fr-FR').format(taux) }} FC pour 1 $)</template>.
+          </v-alert>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -416,6 +448,8 @@ const noteCreee = ref<{ noteId: number, reference: string, montant: number } | n
   padding: 12px; margin-bottom: 10px; border-radius: 14px; background: color-mix(in srgb, var(--color-primary) 5%, transparent);
 }
 .ligne-achat__obs { grid-column: 1 / -1; }
+.devise-toggle { height: 30px; }
+.devise-toggle .v-btn { min-width: 36px; padding: 0 8px; }
 .ligne-achat__montant { text-align: right; font-weight: 700; }
 @media (max-width: 599px) {
   .ligne-achat { grid-template-columns: 1fr 1fr 40px; }

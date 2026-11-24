@@ -3,6 +3,7 @@ package com.mbsc.finapp.service.patrimoine;
 import com.mbsc.finapp.domain.Article;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.User;
+import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.SensTransaction;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.dto.notes.LigneNoteFraisRequest;
@@ -83,12 +84,13 @@ public class ConsommableService {
         }
     }
 
+    /** {@code devise} : devise du prix d'achat, USD par défaut. */
     public record ConsommableRequest(@NotBlank @Size(max = 150) String libelle, @NotNull TypeConsommable type,
                                      @Size(max = 20) String uniteMesure, @NotNull @Positive BigDecimal prixAchat,
-                                     @PositiveOrZero BigDecimal stockMin) { }
+                                     Devise devise, @PositiveOrZero BigDecimal stockMin) { }
 
     public record Consommable(Long id, String code, String libelle, String type, String typeLibelle, String uniteMesure,
-                              BigDecimal prixAchat, BigDecimal stockMin, boolean actif, String compteStock,
+                              BigDecimal prixAchat, String devise, BigDecimal stockMin, boolean actif, String compteStock,
                               String compteAchat, String proformaNom, String proformaType, BigDecimal quantite,
                               BigDecimal valeur, boolean sousSeuil) { }
 
@@ -109,12 +111,13 @@ public class ConsommableService {
     private final StorageService stockage;
     private final NoteFraisService notesFrais;
     private final EntrepotRepository entrepotRepository;
+    private final ConversionDeviseService conversion;
 
     @PreAuthorize(LECTURE)
     @Transactional(readOnly = true)
     public List<Consommable> lister() {
         return jdbc.query("""
-            select a.id, a.code, a.libelle, a.type_consommable, a.unite_mesure, a.prix_achat, a.stock_min, a.actif,
+            select a.id, a.code, a.libelle, a.type_consommable, a.unite_mesure, a.prix_achat, a.devise_prix, a.stock_min, a.actif,
                    cs.numero cs, ca.numero ca, a.proforma_nom, a.proforma_type,
                    coalesce((select sum(n.quantite) from stock_niveaux n where n.article_id = a.id), 0) qte,
                    coalesce((select sum(n.valeur_totale) from stock_niveaux n where n.article_id = a.id), 0) val
@@ -129,7 +132,7 @@ public class ConsommableService {
             BigDecimal min = rs.getBigDecimal("stock_min");
             return new Consommable(rs.getLong("id"), rs.getString("code"), rs.getString("libelle"), type,
                 type == null ? null : TypeConsommable.valueOf(type).libelle, rs.getString("unite_mesure"),
-                rs.getBigDecimal("prix_achat"), min, rs.getBoolean("actif"), rs.getString("cs"), rs.getString("ca"),
+                rs.getBigDecimal("prix_achat"), rs.getString("devise_prix"), min, rs.getBoolean("actif"), rs.getString("cs"), rs.getString("ca"),
                 rs.getString("proforma_nom"), rs.getString("proforma_type"), qte,
                 rs.getBigDecimal("val").setScale(2, RoundingMode.HALF_UP), min != null && min.signum() > 0 && qte.compareTo(min) <= 0);
         });
@@ -163,7 +166,8 @@ public class ConsommableService {
         a.setCompteCharge(variation);
         Article saved = articleRepository.save(a);
         articleRepository.flush();
-        jdbc.update("update articles set type_consommable = ? where id = ?", r.type().name(), saved.getId());
+        jdbc.update("update articles set type_consommable = ?, devise_prix = ? where id = ?", r.type().name(), devise(r).name(),
+            saved.getId());
         AuditService.detailler("Consommable " + code + " « " + libelle + " » créé (" + r.type().libelle + ") : comptes "
             + stock.getNumero() + " (stock) et " + achat.getNumero() + " (achat).");
         return un(saved.getId());
@@ -179,6 +183,8 @@ public class ConsommableService {
         a.setPrixAchat(r.prixAchat());
         a.setStockMin(r.stockMin() == null ? BigDecimal.ZERO : r.stockMin());
         articleRepository.save(a);
+        articleRepository.flush();
+        jdbc.update("update articles set devise_prix = ? where id = ?", devise(r).name(), id);
         AuditService.detailler("Consommable " + a.getCode() + " modifié.");
         return un(id);
     }
@@ -224,6 +230,14 @@ public class ConsommableService {
             }
         }
         Long entrepotId = entrepotDesConsommables().getId();
+        // Devise de la note : celle des prix si tous les consommables achetés ont la même ; sinon USD, les prix en
+        // francs étant convertis au taux du jour (une note n'a qu'une devise).
+        Map<Long, Devise> devises = new LinkedHashMap<>();
+        for (Long id : parConsommable.keySet()) {
+            devises.put(id, Devise.valueOf(jdbc.queryForObject("select devise_prix from articles where id = ?", String.class, id)));
+        }
+        Devise deviseNote = devises.values().stream().distinct().count() == 1 ? devises.values().iterator().next() : Devise.USD;
+        BigDecimal taux = conversion.tauxCourant();
         List<LigneNoteFraisRequest> lignes = new ArrayList<>();
         List<String> noms = new ArrayList<>();
         for (LigneAchat l : parConsommable.values()) {
@@ -234,6 +248,10 @@ public class ConsommableService {
             }
             // Ligne d'achat : le montant est le PRIX UNITAIRE, la note le multiplie par la quantité (LigneNoteFrais#montantHtTotal).
             BigDecimal montant = a.getPrixAchat().setScale(2, RoundingMode.HALF_UP);
+            if (devises.get(a.getId()) != deviseNote) {   // prix en francs dans une note en dollars
+                montant = conversion.enDeviseBase(a.getPrixAchat(), devises.get(a.getId()), taux).montantBase()
+                    .setScale(2, RoundingMode.HALF_UP);
+            }
             String unite = a.getUniteMesure() == null ? "" : " " + a.getUniteMesure();
             String description = a.getLibelle() + " — " + l.quantite().stripTrailingZeros().toPlainString() + unite
                 + (StringUtils.hasText(l.observation()) ? " (" + l.observation().trim() + ")" : "");
@@ -246,7 +264,7 @@ public class ConsommableService {
         if (objet.length() > 200) objet = objet.substring(0, 197) + "...";
         String beneficiaire = ((auteur.getPrenom() == null ? "" : auteur.getPrenom() + " ") + (auteur.getNom() == null ? "" : auteur.getNom())).trim();
         NoteFraisDetailResponse note = notesFrais.creerEtSoumettreAchatInterne(new NoteFraisRequest(objet,
-            beneficiaire.isEmpty() ? auteur.getEmail() : beneficiaire, null, ConversionDeviseService.DEVISE_BASE,
+            beneficiaire.isEmpty() ? auteur.getEmail() : beneficiaire, null, deviseNote,
             SensTransaction.DECAISSEMENT, lignes,
             StringUtils.hasText(r.justificationBudget()) ? r.justificationBudget().trim() : null, null),
             "Achat de consommables", "Demande d'achat de consommables");
@@ -271,6 +289,10 @@ public class ConsommableService {
                 AuditService.detailler("Entrepôt « Magasin des consommables » créé pour recevoir les achats de consommables.");
                 return cree;
             });
+    }
+
+    private static Devise devise(ConsommableRequest r) {
+        return r.devise() == null ? Devise.USD : r.devise();
     }
 
     private Consommable un(Long id) {
