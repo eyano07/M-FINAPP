@@ -265,6 +265,7 @@ public class NoteFraisService {
         construireLignes(note, req.lignes());
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
+        rattacherServiceDeduit(note);
 
         note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Creation de la note"));
         note = noteRepository.save(note);
@@ -299,6 +300,7 @@ public class NoteFraisService {
             .build();
         construireLignes(note, req.lignes());
         note.recalculerMontant();
+        rattacherServiceDeduit(note);
         note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Création depuis l'hôtellerie (maintenance)"));
         note = noteRepository.save(note);
         log.info("Note de maintenance (hôtellerie) créée [ref={}, montant={}, par={}]", note.getReference(), note.getMontant(),
@@ -332,6 +334,7 @@ public class NoteFraisService {
         note.remplacerLignes(nouvelles);
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
+        rattacherServiceDeduit(note);
 
         log.info("Note de frais modifiee [ref={}, montant={}]", note.getReference(), note.getMontant());
         return NoteFraisDetailResponse.from(note);
@@ -1467,6 +1470,20 @@ public class NoteFraisService {
             throw new TransitionInvalideException(
                 "Seul le createur de la note peut effectuer cette action");
         }
+    }
+
+    /**
+     * Note de depense sans service choisi : rattachee au service qui budgete ses comptes dans le budget en execution
+     * (voir {@link ControleBudgetaireService#serviceDeduit}), pour que la depense se suive sur l'enveloppe de ce service.
+     * Un service choisi par le demandeur n'est jamais remplace.
+     */
+    private void rattacherServiceDeduit(NoteFrais note) {
+        if (note.getSens() != SensTransaction.DECAISSEMENT || note.getService() != null) {
+            return;
+        }
+        LocalDate date = note.getDateCreation() == null ? LocalDate.now()
+            : LocalDate.ofInstant(note.getDateCreation(), java.time.ZoneId.systemDefault());
+        controleBudgetaire.serviceDeduit(note, date).ifPresent(note::setService);
     }
 
     /**

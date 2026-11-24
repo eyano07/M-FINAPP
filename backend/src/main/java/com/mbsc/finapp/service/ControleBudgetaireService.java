@@ -147,6 +147,48 @@ public class ControleBudgetaireService {
         return b.getReference() + " (" + b.libellePeriode() + ")";
     }
 
+    /**
+     * Service d'une note de depense deduit du budget en execution de ce mois : le service qui budgete les comptes des
+     * lignes de la note. Un seul service possible : c'est lui. Plusieurs (un meme compte budgete par plusieurs
+     * services) : celui dont le responsable est le beneficiaire de la note, sinon aucun (le choix reste manuel).
+     * Seuls les services actifs comptent.
+     */
+    @Transactional(readOnly = true)
+    public Optional<ServiceBudgetaire> serviceDeduit(NoteFrais note, LocalDate date) {
+        if (note.getSens() == SensTransaction.ENCAISSEMENT || !modules.estActif(ModuleMetier.BUDGET)) {
+            return Optional.empty();
+        }
+        java.util.Set<Long> comptes = note.getLignes().stream()
+            .map(LigneNoteFrais::getCompteImputation)
+            .filter(java.util.Objects::nonNull)
+            .map(CompteOHADA::getId)
+            .collect(Collectors.toSet());
+        if (comptes.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<Budget> budget = budgetEnExecution(date.getYear(), date.getMonthValue());
+        if (budget.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<Long, ServiceBudgetaire> candidats = new java.util.LinkedHashMap<>();
+        for (LigneBudget l : budget.get().getLignes()) {
+            if (l.getService() != null && l.getService().isActif() && comptes.contains(l.getCompte().getId())) {
+                candidats.putIfAbsent(l.getService().getId(), l.getService());
+            }
+        }
+        if (candidats.size() == 1) {
+            return candidats.values().stream().findFirst();
+        }
+        String beneficiaire = note.getBeneficiaire() == null ? "" : note.getBeneficiaire().trim();
+        if (beneficiaire.isEmpty()) {
+            return Optional.empty();
+        }
+        List<ServiceBudgetaire> duBeneficiaire = candidats.values().stream()
+            .filter(sv -> sv.getResponsable() != null && sv.getResponsable().trim().equalsIgnoreCase(beneficiaire))
+            .toList();
+        return duBeneficiaire.size() == 1 ? Optional.of(duBeneficiaire.get(0)) : Optional.empty();
+    }
+
     /** Budget en execution couvrant ce mois de cet exercice (au plus un : regle du service et contrainte V122). */
     Optional<Budget> budgetEnExecution(int exercice, int mois) {
         return budgetRepository.findByExerciceAndStatut(exercice, StatutBudget.EN_EXECUTION).stream()
