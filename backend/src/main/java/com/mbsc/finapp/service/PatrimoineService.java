@@ -162,6 +162,12 @@ public class PatrimoineService {
         Immobilisation saved = immobilisationRepository.save(immo);
         log.info("Immobilisation creee [ref={}, valeur={}, duree={} mois]",
             saved.getReference(), saved.getValeurAcquisition(), saved.getDureeMois());
+        // Bien mis en service avant le mois en cours : ses dotations des mois déjà écoulés se passent tout de suite,
+        // sans attendre la tâche quotidienne (amortissements cumulés et valeur nette à jour dès la création).
+        LocalDate echu = finDuMoisEcoule(LocalDate.now());
+        if (!saved.getDateMiseService().isAfter(echu)) {
+            comptabiliserDotationsInterne(echu, auteur, saved.getId());
+        }
         return ImmobilisationResponse.from(saved);
     }
 
@@ -384,8 +390,23 @@ public class PatrimoineService {
     @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'DFIN', 'ADMIN')")
     @Transactional
     public DotationsResponse comptabiliserDotations(LocalDate jusqua) {
-        User auteur = currentUser.requireUser();
-        List<LigneAmortissement> aPasser = ligneRepository.aComptabiliser(jusqua);
+        return comptabiliserDotationsInterne(jusqua, currentUser.requireUser(), null);
+    }
+
+    /** Dernier jour du mois précédent : les dotations d'un mois se passent une fois ce mois écoulé. */
+    public static LocalDate finDuMoisEcoule(LocalDate aujourdhui) {
+        return aujourdhui.withDayOfMonth(1).minusDays(1);
+    }
+
+    /**
+     * Passage automatique (voir {@code DotationsPlanificateur} et {@link #creer}) : dotations échues jusqu'à
+     * {@code jusqua}, au nom de {@code auteur} ; {@code immobilisationId} non null : ce bien seulement.
+     */
+    @Transactional
+    public DotationsResponse comptabiliserDotationsInterne(LocalDate jusqua, User auteur, Long immobilisationId) {
+        List<LigneAmortissement> aPasser = ligneRepository.aComptabiliser(jusqua).stream()
+            .filter(l -> immobilisationId == null || immobilisationId.equals(l.getImmobilisation().getId()))
+            .toList();
 
         Map<Immobilisation, List<LigneAmortissement>> parBien = new LinkedHashMap<>();
         for (LigneAmortissement l : aPasser) {
