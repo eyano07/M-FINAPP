@@ -509,23 +509,23 @@ async function imprimerEtiquettes() {
 </style>
 
 <style>
-/* Impression des étiquettes seules : planche A4 de 3 colonnes, 6,4 × 3,4 cm. */
+/* Impression des étiquettes seules : planche A4 de 4 colonnes, 46 × 22 mm. */
 @media print {
   html.impression-etiquettes body * { visibility: hidden; }
   html.impression-etiquettes .etiquettes, html.impression-etiquettes .etiquettes * { visibility: visible; }
   html.impression-etiquettes .etiquettes {
     display: grid !important; position: absolute; left: 0; top: 0; width: 100%;
-    grid-template-columns: repeat(3, 64mm); gap: 3mm; padding: 6mm;
+    grid-template-columns: repeat(4, 46mm); gap: 2mm; padding: 5mm;
   }
   .etiquette {
-    display: flex; gap: 2.5mm; align-items: center; width: 64mm; height: 34mm; padding: 2.5mm; box-sizing: border-box;
-    border: 0.3mm dashed #999; break-inside: avoid; color: #000; font-family: Arial, sans-serif;
+    display: flex; gap: 1.5mm; align-items: center; width: 46mm; height: 22mm; padding: 1.5mm; box-sizing: border-box;
+    border: 0.2mm dashed #999; break-inside: avoid; color: #000; font-family: Arial, sans-serif; overflow: hidden;
   }
-  .etiquette img { width: 26mm; height: 26mm; }
-  .etiquette__texte { min-width: 0; }
-  .etiquette__societe { font-size: 7pt; font-weight: 700; text-transform: uppercase; }
-  .etiquette__code { font-size: 7.5pt; font-weight: 700; word-break: break-all; margin: 1mm 0; }
-  .etiquette__libelle { font-size: 7.5pt; }
-  .etiquette__lieu { font-size: 6.5pt; color: #444; }
+  .etiquette img { width: 18mm; height: 18mm; flex: none; }
+  .etiquette__texte { min-width: 0; line-height: 1.15; }
+  .etiquette__societe { font-size: 5pt; font-weight: 700; text-transform: uppercase; }
+  .etiquette__code { font-size: 5.5pt; font-weight: 700; word-break: break-all; margin: 0.5mm 0; }
+  .etiquette__libelle { font-size: 5.5pt; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .etiquette__lieu { font-size: 5pt; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 </style>
