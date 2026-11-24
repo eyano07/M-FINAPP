@@ -95,9 +95,10 @@ const sortiesFiltrees = computed(() => {
   })
 })
 
-const toUSD = (fc: number) => (tauxChange.value > 0 ? (Number(fc) || 0) / tauxChange.value : 0)
-const fmt = (fc: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(toUSD(fc))
+// Le stock est valorisé dans la devise de base (USD) : les montants s'affichent tels quels, sans conversion
+// (les diviser par le taux du jour les ramenait à 0,00 $).
+const fmt = (v: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(v) || 0)
 const fmtQte = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 3 }).format(Number(v) || 0)
 const fmtDate = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('fr-FR')
 const totalSorti = computed(() => sortiesFiltrees.value

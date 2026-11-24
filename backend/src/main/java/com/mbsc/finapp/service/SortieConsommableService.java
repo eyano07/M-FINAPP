@@ -71,7 +71,9 @@ public class SortieConsommableService {
         return new SortieConsommableResponse(m.getId(), m.getReference(), m.getDateMouvement(), m.getLibelle(),
             m.getStatut() == null ? null : m.getStatut().name(), a.getId(), a.getCode(), a.getLibelle(), a.getUniteMesure(),
             l.getEntrepotSource() == null ? null : l.getEntrepotSource().getNom(), l.getQuantite(), l.getCoutUnitaire(),
-            l.getMontant(), a.getCompteCharge() == null ? null : a.getCompteCharge().getNumero(),
+            // Compte de la charge : variation (consommable stocké) ou compte 605x où l'achat a été passé (non stockable).
+            l.getMontant(), a.getCompteCharge() != null ? a.getCompteCharge().getNumero()
+                : a.getCompteAchat() == null ? null : a.getCompteAchat().getNumero(),
             m.getPiece() == null ? null : m.getPiece().getReference(),
             nom == null || nom.isBlank() ? (auteur == null ? null : auteur.getEmail()) : nom);
     }
