@@ -2,7 +2,7 @@
 import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'PATRIMOINE' })
 
-interface Immo { id: number; reference: string; libelle: string; statut: string; valeurNetteComptable: number }
+interface Immo { id: number; reference: string; libelle: string; statut: string; valeurNetteComptable: number; codeInventaire?: string | null }
 interface Ligne {
   id: number
   periode: string
@@ -141,10 +141,17 @@ const restant = computed(() => plan.value.filter(l => !l.comptabilise).length)
     <v-card class="classroom-card pa-5 mb-4">
       <v-row align="center">
         <v-col cols="12" md="8">
-          <v-select
+          <!-- Recherche au clavier : référence, désignation ou code d'inventaire. -->
+          <v-autocomplete
             v-model="bienId"
-            :items="biens.map(b => ({ value: b.id, title: `${b.reference} — ${b.libelle}` }))"
-            label="Bien" variant="outlined" density="comfortable" hide-details />
+            :items="biens.map(b => ({ value: b.id, title: `${b.reference} — ${b.libelle}`, code: b.codeInventaire }))"
+            :custom-filter="(_v: string, q: string, item: any) => { const t = (q || '').toLowerCase(); return !t || `${item.raw.title} ${item.raw.code ?? ''}`.toLowerCase().includes(t) }"
+            label="Bien" placeholder="Tapez une référence, un nom ou un code" prepend-inner-icon="mdi-magnify"
+            variant="outlined" density="comfortable" hide-details auto-select-first no-data-text="Aucun bien trouvé">
+            <template #item="{ props: p, item }">
+              <v-list-item v-bind="p" :subtitle="item.raw.code || undefined" />
+            </template>
+          </v-autocomplete>
         </v-col>
         <v-col cols="12" md="4">
           <div class="text-caption text-medium-emphasis">
