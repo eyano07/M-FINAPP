@@ -7,10 +7,10 @@ definePageMeta({ module: 'PATRIMOINE' })
   <div>
     <div class="page-head no-print">
       <div>
-        <h1 class="page-title">Inventaires des immobilisations</h1>
+        <h1 class="page-title">Inventaire du patrimoine</h1>
         <p class="page-sub">
-          Chaque bien en service est constaté présent ou absent, avec son état ; le procès-verbal validé par la
-          comptabilité est exigé à la clôture de l'exercice.
+          Tous les biens de l'entreprise (immobilisés et petit matériel), rangés par emplacement : chacun est constaté
+          présent ou absent, avec son état. Le procès-verbal validé par la comptabilité est exigé à la clôture de l'exercice.
         </p>
       </div>
     </div>

@@ -207,7 +207,8 @@ public class InventaireService {
                     throw new TransitionInvalideException("Excédent de " + article.getCode() + " sans coût connu : "
                         + "saisissez son coût unitaire sur la ligne.");
                 }
-                if (article.getCompteCharge() == null) {
+                // Consommable non stockable (605x) : l'excédent entre au suivi des quantités, sans écriture.
+                if (article.getCompteCharge() == null && !StockService.suiviHorsComptabilite(article)) {
                     throw new TransitionInvalideException("L'article " + article.getCode()
                         + " n'a pas de compte de variation de stock : complétez sa fiche.");
                 }
@@ -253,11 +254,22 @@ public class InventaireService {
     public Inventaire consulterImmobilisations(Long id) {
         Inventaire i = listerImmobilisations().stream().filter(x -> x.id().equals(id)).findFirst()
             .orElseThrow(() -> RessourceIntrouvableException.of("InventaireImmobilisations", id));
+        // Tous les biens de l'entreprise : bien d'inventaire (code collé) et/ou fiche d'immobilisation.
         List<Ligne> lignes = jdbc.query("""
-            select l.id, b.id, b.reference, b.libelle, l.present, l.etat, b.localisation, l.localisation_constatee,
-                   l.commentaire
-            from inventaires_immobilisations_lignes l join immobilisations b on b.id = l.immobilisation_id
-            where l.inventaire_id = ? order by b.reference
+            select l.id, coalesce(ib.id, b.id),
+                   coalesce(ib.code, b.reference),
+                   coalesce(ib.libelle, b.libelle)
+                     || case when ib.statut = 'PETIT_MATERIEL' then ' · petit matériel'
+                             when ib.statut = 'A_VALORISER' then ' · à valoriser'
+                             when b.id is not null and ib.id is null then ' · ' || b.reference
+                             else '' end,
+                   l.present, l.etat,
+                   coalesce(e.nom, ib.localisation, b.localisation), l.localisation_constatee, l.commentaire
+            from inventaires_immobilisations_lignes l
+            left join inventaire_biens ib on ib.id = l.bien_id
+            left join emplacements e on e.id = ib.emplacement_id
+            left join immobilisations b on b.id = l.immobilisation_id
+            where l.inventaire_id = ? order by coalesce(e.nom, ib.localisation, b.localisation), coalesce(ib.code, b.reference)
             """, (rs, n) -> new Ligne(rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getString(4), null, null,
             null, null, (Boolean) rs.getObject(5), rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9),
             null), id);
@@ -272,16 +284,24 @@ public class InventaireService {
         Long enCours = jdbc.queryForObject(
             "select count(*) from inventaires_immobilisations where statut = 'EN_COURS'", Long.class);
         if (enCours != null && enCours > 0) {
-            throw new TransitionInvalideException("Un inventaire des immobilisations est déjà en cours.");
+            throw new TransitionInvalideException("Un inventaire du patrimoine est déjà en cours.");
         }
         Long id = jdbc.queryForObject("""
             insert into inventaires_immobilisations (reference, date_inventaire, observations, created_by_id)
             values (?, ?, ?, ?) returning id
             """, Long.class, reference("INVI", req.dateInventaire()), req.dateInventaire(), req.observations(),
             auteur.getId());
+        // Biens relevés à l'inventaire (immobilisés, petit matériel, à valoriser), puis immobilisations en service
+        // saisies sans code d'inventaire (achats directs).
+        jdbc.update("""
+            insert into inventaires_immobilisations_lignes (inventaire_id, bien_id, immobilisation_id)
+            select ?, ib.id, ib.immobilisation_id from inventaire_biens ib
+            where ib.statut in ('IMMOBILISE', 'PETIT_MATERIEL', 'A_VALORISER')
+            """, id);
         jdbc.update("""
             insert into inventaires_immobilisations_lignes (inventaire_id, immobilisation_id)
-            select ?, id from immobilisations where statut = 'EN_SERVICE'
+            select ?, b.id from immobilisations b
+            where b.statut = 'EN_SERVICE' and not exists (select 1 from inventaire_biens ib where ib.immobilisation_id = b.id)
             """, id);
         return consulterImmobilisations(id);
     }

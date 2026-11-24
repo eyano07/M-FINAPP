@@ -8,7 +8,7 @@ import QRCode from 'qrcode'
  * petit matériel. Les étiquettes (code + QR) s'impriment par lot.
  */
 definePageMeta({ module: 'PATRIMOINE' })
-useHead({ title: 'Inventaire du patrimoine' })
+useHead({ title: 'Biens et étiquettes' })
 
 type Categorie = 'MOBILIER' | 'MATERIEL_BUREAU' | 'MATERIEL_INFORMATIQUE' | 'MATERIEL_INDUSTRIEL' | 'MATERIEL_TRANSPORT' | 'LOGICIEL' | 'BATIMENT' | 'AUTRE'
 interface Bien {
@@ -286,7 +286,7 @@ async function imprimerEtiquettes() {
   <div>
     <div class="page-head no-print">
       <div>
-        <h1 class="page-title">Inventaire du patrimoine</h1>
+        <h1 class="page-title">Biens et étiquettes</h1>
         <p class="page-sub">Biens relevés, codes collés et entrée en immobilisation (SYSCOHADA révisé)</p>
       </div>
       <div class="d-flex ga-2 flex-wrap">

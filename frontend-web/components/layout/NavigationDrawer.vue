@@ -161,18 +161,18 @@ const logistiqueItems: NavItem[] = [
   // prix de vente (voir pages/logistique/minerais.vue).
   { title: 'Camions de minerais', icon: 'mdi-dump-truck', to: '/logistique/minerais', module: 'MINE', roles: LOGISTIQUE_HORS_CAISSIER },
   { title: 'Grand livre stock', icon: 'mdi-book-open-page-variant-outline', to: '/logistique/stock/grand-livre', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
-  { title: 'Inventaires physiques', icon: 'mdi-clipboard-check-multiple-outline', to: '/logistique/inventaires', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
+  { title: 'Inventaire des entrepôts', icon: 'mdi-clipboard-check-multiple-outline', to: '/logistique/inventaires', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
 ]
 const patrimoineItems: NavItem[] = [
   { title: 'Immobilisations', icon: 'mdi-office-building-cog-outline', to: '/patrimoine/immobilisations', module: 'PATRIMOINE' },
   // Inventaire (19/11/2026) : biens relevés, codes à coller (étiquettes QR), valorisation par la logistique.
-  { title: 'Inventaire et étiquettes', icon: 'mdi-qrcode-scan', to: '/patrimoine/inventaire', module: 'PATRIMOINE' },
+  { title: 'Biens et étiquettes', icon: 'mdi-qrcode-scan', to: '/patrimoine/inventaire', module: 'PATRIMOINE' },
   { title: 'Emplacements', icon: 'mdi-map-marker-multiple-outline', to: '/patrimoine/emplacements', module: 'PATRIMOINE' },
   { title: 'Amortissements', icon: 'mdi-chart-timeline-variant-shimmer', to: '/patrimoine/amortissements', module: 'PATRIMOINE' },
   { title: 'Consommables', icon: 'mdi-package-variant', to: '/patrimoine/consommables', module: 'PATRIMOINE' },
   // Sorties de consommables (19/11/2026) : remises aux services, passées en charge automatiquement.
   { title: 'Sorties de consommables', icon: 'mdi-package-variant-remove', to: '/patrimoine/sorties-consommables', module: 'PATRIMOINE' },
-  { title: 'Inventaires', icon: 'mdi-clipboard-check-outline', to: '/patrimoine/inventaires', module: 'PATRIMOINE' },
+  { title: 'Inventaire du patrimoine', icon: 'mdi-clipboard-check-outline', to: '/patrimoine/inventaires', module: 'PATRIMOINE' },
 ]
 const transportItems: NavItem[] = [
   { title: 'Véhicules', icon: 'mdi-truck-outline', to: '/transport/vehicules', module: 'TRANSPORT' },

@@ -221,7 +221,7 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR
       <div class="d-flex flex-wrap justify-space-between align-center mb-3">
         <div>
           <div class="text-h6 font-weight-bold">
-            Procès-verbal d'inventaire {{ type === 'STOCK' ? 'des stocks' : 'des immobilisations' }} — {{ courant.reference }}
+            Procès-verbal d'inventaire {{ type === 'STOCK' ? 'des stocks' : 'du patrimoine' }} — {{ courant.reference }}
           </div>
           <div class="text-body-2">
             <span v-if="courant.entrepot">Entrepôt {{ courant.entrepot }} — </span>
