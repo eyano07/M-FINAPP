@@ -115,12 +115,9 @@ async function charger() {
     loading.value = false
   }
 }
-// « Ajouter un bien » depuis l'inventaire : /patrimoine/immobilisations?ajout=1 ouvre directement la saisie.
-const route = useRoute()
-onMounted(async () => {
-  await charger()
-  if (route.query.ajout && canCreer.value) ouvrirAjout()
-})
+// Pas de saisie directe d'un bien (25/11/2026) : toute acquisition passe par une note de frais (DFIN, DA, caisse) ;
+// les biens existants entrent par l'inventaire (Biens et étiquettes › Valoriser).
+onMounted(charger)
 
 function ouvrirAjout() {
   Object.assign(form, {
@@ -243,10 +240,6 @@ async function enregistrerFiche() {
         <h1 class="page-title">Immobilisations</h1>
         <p class="page-sub">Registre des biens, valeur nette et plan d’amortissement</p>
       </div>
-      <v-btn v-if="canCreer" color="success" variant="flat" rounded="lg"
-        prepend-icon="mdi-plus" @click="ouvrirAjout">
-        Ajouter un bien
-      </v-btn>
     </div>
 
     <v-alert v-if="aValoriser" type="info" variant="tonal" class="mb-4" icon="mdi-tag-text-outline">
