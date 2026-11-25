@@ -8,7 +8,12 @@ export interface LigneNoteFraisForm {
   articleId: number | null
   articleNom: string | null
   soumisTva: boolean
+  /** Compte d'immobilisation (21 à 24) : le bien s'amortit-il ? Oui par défaut ; null hors immobilisation. */
+  amortissable?: boolean | null
 }
+
+/** Compte d'immobilisation corporelle ou incorporelle (21 à 24) : le paiement crée la fiche du bien. */
+export const estCompteImmobilisation = (numero?: string | null) => !!numero && /^2[1-4]/.test(numero)
 </script>
 
 <script setup lang="ts">
@@ -200,6 +205,10 @@ async function suggererCompte(index: number) {
 
 function onCompteChange(index: number, val: string | null) {
   majChamp(index, 'compteImputation', val)
+  // Compte d'immobilisation : amortissable par défaut ; autre compte : la question ne se pose pas.
+  const immo = estCompteImmobilisation(val)
+  if (immo && lignes.value[index]?.amortissable == null) majChamp(index, 'amortissable', true)
+  if (!immo) majChamp(index, 'amortissable', null)
   const appliquee = iaAppliquee.value[index]
   if (appliquee && val !== appliquee.compteNumero) {
     delete iaAppliquee.value[index]
@@ -303,6 +312,22 @@ function fmt(v: number) {
       />
 
       <div class="lignes-note__options">
+        <div v-if="!ligne.achatMarchandise && estCompteImmobilisation(ligne.compteImputation)" class="lignes-note__toggle-row">
+          <v-switch
+            :model-value="ligne.amortissable !== false"
+            label="Bien amortissable"
+            color="primary"
+            density="compact"
+            hide-details
+            @update:model-value="majChamp(index, 'amortissable', !!$event)"
+          />
+          <span class="lignes-note__compte-auto">
+            <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
+            {{ ligne.amortissable !== false
+              ? 'Au paiement, la fiche du bien et son plan d\'amortissement sont créés automatiquement.'
+              : 'Bien non amortissable (terrain, œuvre d\'art…) : inscrit au bilan sans dotation.' }}
+          </span>
+        </div>
         <div class="lignes-note__toggle-row">
           <v-switch
             :model-value="ligne.achatMarchandise"

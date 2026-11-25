@@ -27,11 +27,11 @@ import java.util.List;
  * Inventaire du patrimoine (V153) : biens relevés sur une fiche d'inventaire, un par unité, chacun avec le code collé
  * dessus. Le relevé n'a ni valeur ni date ; le responsable logistique les saisit (« valoriser ») :
  * <ul>
- *   <li>valeur ≥ {@value #SEUIL_USD} USD : le bien entre en immobilisation — fiche d'amortissement SYSCOHADA (compte,
- *       durée d'usage de sa catégorie), pièce d'acquisition D 2xxx / C 1013 (apport et régularisation de biens
- *       jamais inscrits) ;</li>
- *   <li>valeur inférieure : petit matériel de faible valeur, suivi à l'inventaire, sans immobilisation ni écriture
- *       (déjà passé en charges à l'achat, ou à passer en 6056 par une note de frais).</li>
+ *   <li>bien durable, utilisé au-delà d'un exercice (principe SYSCOHADA, quelle que soit sa valeur) : il entre en
+ *       immobilisation — fiche d'amortissement (compte, durée d'usage de sa catégorie), pièce d'acquisition
+ *       D 2xxx / C 1013 (apport et régularisation de biens jamais inscrits) ;</li>
+ *   <li>bien consommé dans l'exercice : non amortissable, suivi à l'inventaire sans immobilisation ni écriture (déjà
+ *       passé en charges à l'achat). Un tel bien peut être immobilisé ensuite s'il s'avère durable.</li>
  * </ul>
  * Les dotations se comptabilisent ensuite, pour tous les biens, par « Comptabiliser les dotations » (Amortissements).
  */
@@ -39,8 +39,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class InventairePatrimoineService {
 
-    /** Seuil d'immobilisation (USD) décidé le 19/11/2026 : en dessous, petit matériel de faible valeur. */
-    public static final int SEUIL_USD = 100;
     /** Contrepartie de l'entrée au bilan des biens inventoriés : apport / régularisation (capital, 1013). */
     public static final String CONTREPARTIE = "1013";
     static final String ECRITURE = "hasAnyRole('LOGISTIQUE', 'GEST_PATRIMOINE', 'ADMIN')";
@@ -239,7 +237,9 @@ public class InventairePatrimoineService {
     public record ValorisationRequest(@NotNull @Positive BigDecimal valeurUsd, @NotNull LocalDate dateAcquisition,
                                       LocalDate dateMiseService, CategorieImmobilisation categorie, @Positive Integer dureeMois,
                                       ModeAmortissement modeAmortissement, @Size(max = 200) String fournisseur,
-                                      @Size(max = 100) String numeroSerie) { }
+                                      @Size(max = 100) String numeroSerie,
+                                      /** Bien durable, utilisé au-delà d'un exercice : amortissable (oui si absent). */
+                                      Boolean amortissable) { }
 
     /**
      * Valeur et date d'un bien : immobilisation (fiche d'amortissement + pièce d'acquisition D 2xxx / C 1013) au-dessus
@@ -249,7 +249,11 @@ public class InventairePatrimoineService {
     @Transactional
     public Bien valoriser(Long id, ValorisationRequest r) {
         Bien b = bien(id);
-        if (!"A_VALORISER".equals(b.statut())) {
+        boolean amortissable = !Boolean.FALSE.equals(r.amortissable());
+        // Un bien classé non amortissable peut être immobilisé ensuite (il s'avère durable) ; un bien immobilisé ne
+        // repasse pas en charge (sa fiche se sort par cession ou mise au rebut).
+        boolean reclassement = "PETIT_MATERIEL".equals(b.statut()) && amortissable;
+        if (!"A_VALORISER".equals(b.statut()) && !reclassement) {
             throw new TransitionInvalideException("Le bien " + b.code() + " est déjà valorisé.");
         }
         LocalDate miseService = r.dateMiseService() == null ? r.dateAcquisition() : r.dateMiseService();
@@ -260,13 +264,13 @@ public class InventairePatrimoineService {
         int duree = r.dureeMois() != null ? r.dureeMois() : (r.categorie() != null && r.categorie() != b.categorie()
             ? categorie.dureeMoisParDefaut() : b.dureeMois());
         String auteur = currentUser.requireUser().getEmail();
-        if (r.valeurUsd().compareTo(BigDecimal.valueOf(SEUIL_USD)) < 0) {
+        if (!amortissable) {
             jdbc.update("""
                 update inventaire_biens set statut = 'PETIT_MATERIEL', valeur_usd = ?, date_acquisition = ?, date_mise_service = ?,
                 categorie = ?, duree_mois = ?, maj_le = now(), maj_par = ? where id = ?
                 """, r.valeurUsd(), r.dateAcquisition(), miseService, categorie.name(), duree, auteur, id);
             AuditService.detailler("Inventaire " + b.code() + " (" + b.libelle() + ") : " + r.valeurUsd()
-                + " USD, sous le seuil de " + SEUIL_USD + " USD — petit matériel, non immobilisé.");
+                + " USD, consommé dans l'exercice — non amortissable, non immobilisé.");
             return bien(id);
         }
         String description = "Inventaire " + (b.source() == null ? "" : b.source() + " ")

@@ -80,6 +80,7 @@ public class CaisseService {
     /** Constate l'ecart de change realise entre engagement et reglement. */
     private final EcartChangeService ecartChange;
     private final PaieNoteService paieNoteService;
+    private final com.mbsc.finapp.service.patrimoine.AcquisitionNoteService acquisitionNote;
     /**
      * Regles de tresorerie partagees avec la banque et le mobile money.
      * Ces regles etaient auparavant dupliquees ici : une correction apportee
@@ -477,6 +478,8 @@ public class CaisseService {
         // Note de paie (module DRH) : écrit la constatation de la paie du mois dans la même transaction
         // que son règlement — sans effet sur toute autre note (voir PaieNoteService).
         paieNoteService.apresPaiementInterne(note, caissier);
+        // Acquisition d'immobilisation : la fiche du bien amortissable est créée au paiement.
+        acquisitionNote.apresPaiementInterne(note, caissier, tauxOperation);
         note.setStatut(StatutNote.PAYEE);
         note.addObservation(com.mbsc.finapp.domain.ObservationNote.builder()
             .noteFrais(note)

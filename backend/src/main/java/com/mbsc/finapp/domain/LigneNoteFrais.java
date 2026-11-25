@@ -122,6 +122,10 @@ public class LigneNoteFrais {
      * quantite receptionnee. Pour une depense ordinaire (pas de quantite), le
      * montant saisi EST deja le total.
      */
+    /** Compte d'immobilisation : bien amortissable (fiche créée au paiement) ; null hors immobilisation (V160). */
+    @Column(name = "amortissable")
+    private Boolean amortissable;
+
     public BigDecimal montantHtTotal() {
         if (achatMarchandise && quantiteMarchandise != null) {
             return montant.multiply(quantiteMarchandise).setScale(2, java.math.RoundingMode.HALF_UP);

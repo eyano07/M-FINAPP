@@ -259,7 +259,7 @@ public class InventaireService {
             select l.id, coalesce(ib.id, b.id),
                    coalesce(ib.code, b.reference),
                    coalesce(ib.libelle, b.libelle)
-                     || case when ib.statut = 'PETIT_MATERIEL' then ' · petit matériel'
+                     || case when ib.statut = 'PETIT_MATERIEL' then ' · non amortissable'
                              when ib.statut = 'A_VALORISER' then ' · à valoriser'
                              when b.id is not null and ib.id is null then ' · ' || b.reference
                              else '' end,

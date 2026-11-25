@@ -409,6 +409,7 @@ function corpsNote() {
       articleId: l.achatMarchandise ? l.articleId : null,
       articleNom: l.achatMarchandise ? l.articleNom : null,
       soumisTva: l.soumisTva,
+      amortissable: !l.achatMarchandise && /^2[1-4]/.test(l.compteImputation || '') ? l.amortissable !== false : null,
     })),
   }
 }
@@ -466,6 +467,7 @@ async function creerNote(executerEnsuite: boolean) {
           articleId: l.achatMarchandise ? l.articleId : null,
           articleNom: l.achatMarchandise ? l.articleNom : null,
           soumisTva: l.soumisTva,
+          amortissable: !l.achatMarchandise && /^2[1-4]/.test(l.compteImputation || '') ? l.amortissable !== false : null,
         })),
       },
     })

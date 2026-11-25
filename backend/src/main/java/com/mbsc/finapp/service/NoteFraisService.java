@@ -897,6 +897,8 @@ public class NoteFraisService {
                 .entrepot(entrepot)
                 .echangeConsigne(achatMarchandise && Boolean.TRUE.equals(l.echangeConsigne()))
                 .fraisApproche(fraisApproche)
+                .amortissable(!achatMarchandise && compteImputation != null && compteImputation.getNumero().matches("2[1-4].*")
+                    ? !Boolean.FALSE.equals(l.amortissable()) : null)
                 .soumisTva(soumisTva)
                 // Le compte de TVA n'est pas choisi par l'utilisateur : il
                 // découle du sens de la note (récupérable ou collectée).

@@ -39,9 +39,8 @@ const STATUTS = {
   A_VALORISER: { titre: 'À valoriser', couleur: 'warning' },
   IMMOBILISE: { titre: 'Immobilisé', couleur: 'success' },
   // Sous le seuil : passé en charge l'année d'achat, jamais amorti ; le bien reste à l'inventaire, déclassé.
-  PETIT_MATERIEL: { titre: 'Petit matériel — déclassé', couleur: 'info' },
+  PETIT_MATERIEL: { titre: 'Non amortissable', couleur: 'info' },
 } as const
-const SEUIL = 100
 
 const api = useApi()
 const auth = useAuthStore()
@@ -201,13 +200,24 @@ async function factureChoisie(ev: Event) {
 // ── Valorisation ────────────────────────────────────────────────────────
 const val = reactive({ ouvert: false, bien: null as Bien | null, valeurUsd: null as number | null, dateAcquisition: '', dateMiseService: '',
   categorie: 'MOBILIER' as Categorie, dureeMois: 120, fournisseur: '', numeroSerie: '', enCours: false, erreur: '', lot: [] as Bien[], fait: 0,
-  facture: null as File | null })
+  facture: null as File | null, durable: true, reclassement: false })
+// Principe SYSCOHADA : un bien utilisé au-delà d'un exercice est amortissable, quelle que soit sa valeur ; un bien
+// consommé dans l'exercice passe en charge. Un bien classé non amortissable peut être immobilisé ensuite (reclassement).
 function ouvrirValorisation(b: Bien, lot: Bien[] = []) {
-  Object.assign(val, { ouvert: true, bien: b, valeurUsd: null, dateAcquisition: '', dateMiseService: '', categorie: b.categorie,
-    dureeMois: b.dureeMois, fournisseur: '', numeroSerie: '', enCours: false, erreur: '', lot, fait: 0, facture: null })
+  const reclassement = b.statut === 'PETIT_MATERIEL'
+  Object.assign(val, { ouvert: true, bien: b, valeurUsd: reclassement ? b.valeurUsd : null,
+    dateAcquisition: reclassement ? (b.dateAcquisition ?? '') : '', dateMiseService: reclassement ? (b.dateMiseService ?? '') : '',
+    categorie: b.categorie, dureeMois: b.dureeMois, fournisseur: '', numeroSerie: '', enCours: false, erreur: '', lot, fait: 0,
+    facture: null, durable: true, reclassement })
 }
 /** Biens cochés encore à valoriser : même valeur unitaire, même date et même fiche pour chacun (ex. 103 chaises identiques). */
 const lotAValoriser = computed(() => biens.value.filter(b => selection.value.includes(b.id) && b.statut === 'A_VALORISER'))
+/** Biens cochés classés non amortissables, à immobiliser : chacun garde sa propre valeur et ses dates. */
+const lotAImmobiliser = computed(() => biens.value.filter(b => selection.value.includes(b.id) && b.statut === 'PETIT_MATERIEL'))
+function ouvrirImmobilisationLot() {
+  const lot = lotAImmobiliser.value
+  if (lot.length) ouvrirValorisation(lot[0], lot)
+}
 function ouvrirValorisationLot() {
   const lot = lotAValoriser.value
   if (lot.length) ouvrirValorisation(lot[0], lot)
@@ -215,7 +225,7 @@ function ouvrirValorisationLot() {
 watch(() => val.categorie, (c, avant) => {
   if (avant && c !== avant) val.dureeMois = CATEGORIES.find(x => x.value === c)?.duree ?? val.dureeMois
 })
-const sousSeuil = computed(() => val.valeurUsd != null && val.valeurUsd < SEUIL)
+const sousSeuil = computed(() => !val.durable)
 async function valoriser() {
   if (!val.bien) return
   val.erreur = ''
@@ -226,8 +236,13 @@ async function valoriser() {
   val.fait = 0
   try {
     for (const b of cibles) {
+      // Reclassement d'un lot : chaque bien garde la valeur et les dates saisies à sa valorisation.
+      const propre = val.reclassement && val.lot.length > 1
       await api(`/patrimoine/inventaire/${b.id}/valorisation`, { method: 'POST', body: {
-        valeurUsd: val.valeurUsd, dateAcquisition: val.dateAcquisition, dateMiseService: val.dateMiseService || null,
+        valeurUsd: propre ? b.valeurUsd : val.valeurUsd,
+        dateAcquisition: propre ? b.dateAcquisition : val.dateAcquisition,
+        dateMiseService: propre ? b.dateMiseService : (val.dateMiseService || null),
+        amortissable: val.durable,
         categorie: val.categorie, dureeMois: val.dureeMois, fournisseur: val.fournisseur || null,
         numeroSerie: cibles.length > 1 ? null : (val.numeroSerie || null),
       } })
@@ -237,7 +252,7 @@ async function valoriser() {
     }
     const quoi = cibles.length > 1 ? `${cibles.length} biens` : val.bien.code
     succes.value = sousSeuil.value
-      ? `${quoi} : petit matériel (sous ${SEUIL} USD), suivi à l'inventaire sans écriture.`
+      ? `${quoi} : bien consommé dans l'exercice, non amortissable, suivi à l'inventaire sans écriture.`
       : `${quoi} : fiche d'amortissement créée et acquisition comptabilisée (contrepartie 1013)${cibles.length > 1 ? ', une pièce par bien' : ''}.`
     val.ouvert = false
     selection.value = []
@@ -294,6 +309,9 @@ async function imprimerEtiquettes() {
           Affecter la sélection ({{ selection.length }})
         </v-btn>
         <v-btn variant="text" prepend-icon="mdi-map-marker-multiple-outline" to="/patrimoine/emplacements">Emplacements</v-btn>
+        <v-btn v-if="peutEcrire && lotAImmobiliser.length" color="primary" variant="tonal" prepend-icon="mdi-chart-timeline-variant" @click="ouvrirImmobilisationLot">
+          Immobiliser la sélection ({{ lotAImmobiliser.length }})
+        </v-btn>
         <v-btn v-if="lotAValoriser.length > 1" color="primary" variant="flat" prepend-icon="mdi-cash-plus" @click="ouvrirValorisationLot">
           Valoriser la sélection ({{ lotAValoriser.length }})
         </v-btn>
@@ -306,9 +324,9 @@ async function imprimerEtiquettes() {
     <v-alert v-if="erreur" type="error" variant="tonal" closable class="mb-4 no-print" @click:close="erreur = ''">{{ erreur }}</v-alert>
     <v-alert v-if="succes" type="success" variant="tonal" closable class="mb-4 no-print" @click:close="succes = ''">{{ succes }}</v-alert>
     <v-alert v-if="compte('A_VALORISER')" type="info" variant="tonal" density="compact" class="mb-4 no-print">
-      {{ compte('A_VALORISER') }} bien(s) attendent leur valeur et leur date. À partir de {{ SEUIL }} USD, « Valoriser » crée la fiche
-      d'amortissement et comptabilise l'entrée au bilan (débit du compte d'immobilisation, crédit 1013 « apport ») ; en dessous, le bien reste du
-      petit matériel suivi à l'inventaire. Les dotations se passent ensuite dans Patrimoine › Amortissements.
+      {{ compte('A_VALORISER') }} bien(s) attendent leur valeur et leur date. Un bien durable (utilisé au-delà d'un exercice) est
+      amortissable, quelle que soit sa valeur : « Valoriser » crée sa fiche d'amortissement et comptabilise l'entrée au bilan (débit du
+      compte d'immobilisation, crédit 1013 « apport »). Un bien consommé dans l'exercice reste suivi à l'inventaire, sans écriture.
     </v-alert>
 
     <v-row class="mb-2 no-print">
@@ -372,6 +390,8 @@ async function imprimerEtiquettes() {
             <v-btn size="small" variant="text" icon="mdi-pencil" aria-label="Corriger" @click="ouvrirCorrection(item)" />
             <v-btn size="small" color="primary" variant="tonal" @click="ouvrirValorisation(item)">Valoriser</v-btn>
           </template>
+          <v-btn v-if="peutEcrire && item.statut === 'PETIT_MATERIEL'" size="small" color="primary" variant="text"
+            title="Bien durable : l'immobiliser et l'amortir" @click="ouvrirValorisation(item)">Immobiliser</v-btn>
           </div>
         </template>
       </v-data-table>
@@ -418,8 +438,15 @@ async function imprimerEtiquettes() {
                 :hint="val.lot.length > 1 ? 'Jointe à chacun des biens du lot.' : 'Facultative ; elle peut aussi se joindre plus tard.'" persistent-hint />
             </v-col>
           </v-row>
+          <v-switch v-if="!val.reclassement" v-model="val.durable" color="primary" density="compact" hide-details class="mb-2"
+            label="Bien durable, utilisé au-delà d'un exercice (amortissable)" />
           <v-alert v-if="sousSeuil" type="info" variant="tonal" density="compact">
-            Sous {{ SEUIL }} USD : petit matériel de faible valeur, non immobilisé et sans écriture ; il reste suivi avec son code.
+            Bien consommé dans l'exercice : non amortissable, sans fiche ni écriture (passé en charge à l'achat) ; il reste
+            suivi avec son code et pourra être immobilisé plus tard.
+          </v-alert>
+          <v-alert v-if="val.reclassement && val.lot.length > 1" type="info" variant="tonal" density="compact" class="mb-2">
+            Chaque bien garde la valeur et les dates saisies à sa valorisation ; seuls la catégorie, la durée et le fournisseur
+            s'appliquent à tous.
           </v-alert>
           <v-alert v-else-if="val.valeurUsd && val.lot.length > 1" type="success" variant="tonal" density="compact">
             {{ val.lot.length }} fiches d'amortissement sur {{ duree(val.dureeMois) }} et {{ val.lot.length }} pièces d'acquisition :

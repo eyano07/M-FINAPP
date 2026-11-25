@@ -111,7 +111,12 @@ public class PatrimoineService {
     @PreAuthorize("hasAnyRole('GEST_PATRIMOINE', 'LOGISTIQUE', 'ADMIN')")
     @Transactional
     public ImmobilisationResponse creer(ImmobilisationRequest req) {
-        User auteur = currentUser.requireUser();
+        return creerInterne(req, currentUser.requireUser());
+    }
+
+    /** Création au nom de {@code auteur}, sans garde de rôle : paiement d'une note d'acquisition (caisse, banque...). */
+    @Transactional
+    public ImmobilisationResponse creerInterne(ImmobilisationRequest req, User auteur) {
         valider(req);
         Immobilisation parent = null;
         if (req.parentId() != null) {

@@ -62,6 +62,7 @@ public class BanqueService {
     /** Constate l'ecart de change realise entre engagement et reglement. */
     private final EcartChangeService ecartChange;
     private final PaieNoteService paieNoteService;
+    private final com.mbsc.finapp.service.patrimoine.AcquisitionNoteService acquisitionNote;
 
     // ---------------------------------------------------------------------
     // Saisie directe
@@ -212,6 +213,8 @@ public class BanqueService {
         // Note de paie (module DRH) : écrit la constatation de la paie du mois dans la même transaction
         // que son règlement — sans effet sur toute autre note (voir PaieNoteService).
         paieNoteService.apresPaiementInterne(note, operateur);
+        // Acquisition d'immobilisation : la fiche du bien amortissable est créée au paiement.
+        acquisitionNote.apresPaiementInterne(note, operateur, tauxOperation);
         note.setStatut(StatutNote.PAYEE);
         note.addObservation(com.mbsc.finapp.domain.ObservationNote.builder()
             .noteFrais(note)
