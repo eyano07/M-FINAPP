@@ -318,7 +318,7 @@ async function enregistrerFiche() {
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
-            {{ aValoriser ? 'Aucun bien valorisé pour l’instant : commencez par l’inventaire (bouton « Valoriser » ci-dessus).' : 'Aucun bien enregistré. Utilisez « Ajouter un bien » pour créer le premier.' }}
+            {{ aValoriser ? 'Aucun bien valorisé pour l’instant : commencez par l’inventaire (bouton « Valoriser » ci-dessus).' : 'Aucun bien enregistré. Les biens entrent par une note de frais d’acquisition ou par l’inventaire.' }}
           </div>
         </template>
       </v-data-table>
