@@ -738,6 +738,9 @@ public class NoteFraisService {
                 .findFirst()
                 .orElseThrow(() -> RessourceIntrouvableException.of("LigneNoteFrais", ligneReq.ligneId()));
             CompteOHADA nouveauCompte = resoudreCompte(ligneReq.compteImputation());
+            if (!ligne.isAchatMarchandise() && !ligne.isFraisApproche()) {
+                exigerContrepartieDecaissement(note.getSens(), nouveauCompte);
+            }
             if (ligne.isAchatMarchandise() || ligne.isFraisApproche()) {
                 // Le compte d'une ligne d'achat de marchandise découle de
                 // l'article (son compte d'achat 601x/602x) : au paiement, la
@@ -895,6 +898,7 @@ public class NoteFraisService {
                 compteImputation = null;
             } else {
                 compteImputation = resoudreCompte(l.compteImputation());
+                exigerContrepartieDecaissement(sens, compteImputation);
             }
 
             lignes.add(LigneNoteFrais.builder()
@@ -1455,6 +1459,13 @@ public class NoteFraisService {
     private NoteFrais charger(Long id) {
         return noteRepository.findWithDetailsById(id)
             .orElseThrow(() -> RessourceIntrouvableException.of("NoteFrais", id));
+    }
+
+    /** Décaissement : le compte choisi doit pouvoir être débité en contrepartie de la trésorerie. */
+    private static void exigerContrepartieDecaissement(SensTransaction sens, CompteOHADA compte) {
+        if (sens == SensTransaction.DECAISSEMENT && compte != null && !ContrepartieTresorerie.decaissementAdmis(compte.getNumero())) {
+            throw new IllegalArgumentException(ContrepartieTresorerie.messageRefus(compte.getNumero()));
+        }
     }
 
     private CompteOHADA resoudreCompte(String numero) {
