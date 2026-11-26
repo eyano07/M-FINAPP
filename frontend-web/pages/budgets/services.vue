@@ -7,7 +7,7 @@
  */
 import { fmtMontant, statutBudget } from '~/composables/useBudget'
 
-definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
+definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] })
 
 interface ServiceBudgetaire {
   id: number
