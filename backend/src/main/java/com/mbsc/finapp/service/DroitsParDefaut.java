@@ -56,10 +56,11 @@ public final class DroitsParDefaut {
             modules(CAISSE, BANQUE, MOBILE_MONEY, COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT, VENTES,
                 ModuleMetier.LOGISTIQUE, ModuleMetier.MINE,
                 TRANSPORT, PATRIMOINE, RESTAURANT, ModuleMetier.HOTELLERIE));
-        // Le comptable saisit les pièces, le DFIN les valide (C-06) : la comptabilité en écriture (V138).
+        // Le comptable saisit les pièces, le DFIN les valide (C-06) : la comptabilité en écriture (V138). Il élabore
+        // aussi les budgets, que le DA approuve et que le DFIN met en exécution (V164).
         definir(RoleType.COMPTABLE,
-            modules(COMPTABILITE, ModuleMetier.RAPPROCHEMENT),
-            modules(CAISSE, ModuleMetier.BUDGET, VENTES, ModuleMetier.LOGISTIQUE, ModuleMetier.MINE, PATRIMOINE, RESTAURANT,
+            modules(COMPTABILITE, ModuleMetier.BUDGET, ModuleMetier.RAPPROCHEMENT),
+            modules(CAISSE, VENTES, ModuleMetier.LOGISTIQUE, ModuleMetier.MINE, PATRIMOINE, RESTAURANT,
                 ModuleMetier.HOTELLERIE));
         // Le responsable logistique tient aussi l'inventaire et les fiches d'amortissement du patrimoine (V153).
         definir(RoleType.LOGISTIQUE,

@@ -66,8 +66,13 @@ public class BudgetService {
     private static final Logger log = LoggerFactory.getLogger(BudgetService.class);
 
     static final String LECTURE = "hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')";
-    static final String ECRITURE = "hasAnyRole('DFIN', 'ADMIN')";
-    static final String APPROBATION = "hasAnyRole('DA', 'ADMIN')";
+    /**
+     * Élaboration (26/11/2026) : le comptable ou le DFIN crée, modifie, soumet, reprend ou révise un budget ; le DA
+     * l'approuve ou le rejette ; seul le DFIN le met en exécution et le clôture. L'administrateur n'y a aucune action.
+     */
+    static final String ECRITURE = "hasAnyRole('COMPTABLE', 'DFIN')";
+    static final String APPROBATION = "hasRole('DA')";
+    static final String EXECUTION = "hasRole('DFIN')";
 
     /** Revisions encore en cours : une seule a la fois pour un meme budget. */
     private static final EnumSet<StatutBudget> REVISION_EN_COURS =
@@ -351,7 +356,7 @@ public class BudgetService {
      * execution sur un meme mois : un budget de decembre peut suivre un budget du 3e trimestre, pas chevaucher un budget
      * annuel. Une revision approuvee remplace le budget qu'elle revise (qui passe REMPLACE).
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(EXECUTION)
     @Transactional
     public BudgetResponse demarrerExecution(Long id) {
         Budget budget = charger(id);
@@ -435,7 +440,7 @@ public class BudgetService {
     }
 
     /** Cloture d'un budget en execution, une fois sa periode terminee : il reste consultable. */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(EXECUTION)
     @Transactional
     public BudgetResponse cloturer(Long id) {
         Budget budget = charger(id);

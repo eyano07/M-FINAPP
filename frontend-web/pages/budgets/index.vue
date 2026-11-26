@@ -45,7 +45,8 @@ const budgets = ref<BudgetResume[]>([])
 const filtreExercice = ref<number | null>(null)
 
 // L'administrateur dispose des droits du DFIN et du DA (le serveur l'accepte aussi).
-const peutElaborer = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
+// Élaboration : le comptable ou le DFIN (le DA approuve, le DFIN met en exécution).
+const peutElaborer = computed(() => auth.hasAnyRole(['COMPTABLE', 'DFIN']))
 
 async function charger() {
   loading.value = true

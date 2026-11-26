@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN'] })
+definePageMeta({ module: 'BUDGET', roles: ['COMPTABLE', 'DFIN'] })
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 </script>
