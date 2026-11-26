@@ -125,7 +125,17 @@ public class BudgetService {
     @PreAuthorize(LECTURE)
     @Transactional(readOnly = true)
     public BudgetResponse consulter(Long id) {
-        return BudgetResponse.from(charger(id));
+        Budget budget = charger(id);
+        BudgetResponse reponse = BudgetResponse.from(budget);
+        if (budget.getStatut() != StatutBudget.REMPLACE) {
+            return reponse;
+        }
+        // Budget remplacé : la révision mise en exécution à sa place (la plus récente qui l'a été).
+        Budget remplacant = budgetRepository.findByRevisionDe_Id(id).stream()
+            .filter(r -> EnumSet.of(StatutBudget.EN_EXECUTION, StatutBudget.REMPLACE, StatutBudget.CLOTURE).contains(r.getStatut()))
+            .max(java.util.Comparator.comparing(Budget::getNumeroRevision))
+            .orElse(null);
+        return reponse.avecRemplacant(remplacant);
     }
 
     @PreAuthorize(LECTURE)

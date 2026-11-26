@@ -28,6 +28,9 @@ useHead({ title: computed(() => (budget.value ? `Budget ${budget.value.reference
 const estDfin = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
 const estDa = computed(() => auth.hasAnyRole(['DA', 'ADMIN']))
 
+// Révision (26/11/2026) : le budget qu'elle révise, pour montrer au DA ce qui a changé (comptes ajoutés, retirés, montants).
+const budgetRevise = ref<any | null>(null)
+
 async function charger() {
   loading.value = true
   erreur.value = ''
@@ -35,12 +38,43 @@ async function charger() {
     const [b, s] = await Promise.all([api<any>(`/budgets/${id.value}`), api<any>(`/budgets/${id.value}/suivi`)])
     budget.value = b
     suivi.value = s
+    budgetRevise.value = b.revisionDeId ? await api<any>(`/budgets/${b.revisionDeId}`).catch(() => null) : null
   } catch (e) {
     erreur.value = messageErreurApi(e, 'Budget introuvable.')
   } finally {
     loading.value = false
   }
 }
+/**
+ * Écart entre la révision et le budget révisé, ligne par ligne (compte + service) : ajoutée, retirée, montant modifié,
+ * ou même montant réparti autrement sur les mois.
+ */
+interface Modification { cle: string, type: 'AJOUTEE' | 'RETIREE' | 'MODIFIEE' | 'VENTILATION', compteNumero: string,
+  compteLibelle: string, serviceNom: string | null, avant: number, apres: number }
+const modifications = computed<Modification[]>(() => {
+  if (!budget.value || !budgetRevise.value) return []
+  const cle = (l: any) => `${l.compteNumero}|${l.serviceId ?? ''}`
+  const avant = new Map<string, any>((budgetRevise.value.lignes || []).map((l: any) => [cle(l), l]))
+  const apres = new Map<string, any>((budget.value.lignes || []).map((l: any) => [cle(l), l]))
+  const res: Modification[] = []
+  const base = (l: any) => ({ compteNumero: l.compteNumero, compteLibelle: l.compteLibelle, serviceNom: l.serviceNom ?? null })
+  for (const [k, l] of apres) {
+    const a = avant.get(k)
+    if (!a) res.push({ cle: k, type: 'AJOUTEE', ...base(l), avant: 0, apres: Number(l.montantPrevu) })
+    else if (Number(a.montantPrevu) !== Number(l.montantPrevu)) res.push({ cle: k, type: 'MODIFIEE', ...base(l), avant: Number(a.montantPrevu), apres: Number(l.montantPrevu) })
+    else if ((a.mensuel || []).some((v: any, i: number) => Number(v) !== Number(l.mensuel?.[i]))) res.push({ cle: k, type: 'VENTILATION', ...base(l), avant: Number(a.montantPrevu), apres: Number(l.montantPrevu) })
+  }
+  for (const [k, a] of avant) if (!apres.has(k)) res.push({ cle: k, type: 'RETIREE', ...base(a), avant: Number(a.montantPrevu), apres: 0 })
+  return res.sort((x, y) => x.compteNumero.localeCompare(y.compteNumero))
+})
+const TYPES_MODIFICATION = {
+  AJOUTEE: { libelle: 'Ajoutée', couleur: 'success', icone: 'mdi-plus-circle-outline' },
+  RETIREE: { libelle: 'Retirée', couleur: 'error', icone: 'mdi-minus-circle-outline' },
+  MODIFIEE: { libelle: 'Montant modifié', couleur: 'warning', icone: 'mdi-pencil-circle-outline' },
+  VENTILATION: { libelle: 'Répartition mensuelle modifiée', couleur: 'info', icone: 'mdi-calendar-edit' },
+} as const
+const ecartTotal = computed(() => modifications.value.reduce((t, m) => t + m.apres - m.avant, 0))
+
 // Chart.js ne se redimensionne pas de lui-même pour le papier : avant l'impression, chaque graphique est ramené
 // à une demi-largeur de page A4 paysage (deux graphiques par rangée), puis rendu à sa taille d'écran après.
 function graphiquesPourImpression() {
@@ -340,6 +374,8 @@ const classeEcart = (section: string, v: number) => {
             <template v-if="budget.parService"> · budget par service</template>
             <span v-if="budget.numeroRevision"> · révision n° {{ budget.numeroRevision }} de
               <NuxtLink :to="`/budgets/${budget.revisionDeId}`">{{ budget.revisionDeReference }}</NuxtLink></span>
+            <span v-if="budget.remplaceParId"> · remplacé par
+              <NuxtLink :to="`/budgets/${budget.remplaceParId}`">{{ budget.remplaceParReference }}</NuxtLink></span>
           </p>
         </div>
         <div class="d-flex flex-wrap ga-2 justify-end">
@@ -378,6 +414,48 @@ const classeEcart = (section: string, v: number) => {
           Motif du dernier rejet : {{ budget.motifRejet }}
         </v-alert>
         <v-alert v-for="(a, i) in suivi.avertissements" :key="i" type="warning" variant="tonal" density="compact" class="mt-2">{{ a }}</v-alert>
+      </v-card>
+
+      <!-- Budget remplacé : accès direct à la révision en vigueur -->
+      <v-alert v-if="budget.statut === 'REMPLACE' && budget.remplaceParId" type="info" variant="tonal" class="mb-4 no-print"
+        icon="mdi-swap-horizontal" border="start">
+        Ce budget a été remplacé par sa révision <strong>{{ budget.remplaceParReference }}</strong>, qui contrôle désormais les dépenses.
+        <template #append>
+          <v-btn color="primary" variant="flat" size="small" append-icon="mdi-arrow-right" :to="`/budgets/${budget.remplaceParId}`">
+            Voir {{ budget.remplaceParReference }}
+          </v-btn>
+        </template>
+      </v-alert>
+
+      <!-- Révision : ce qui a changé par rapport au budget révisé -->
+      <v-card v-if="budget.revisionDeId && budgetRevise" class="classroom-card mb-4 bs-modifs"
+        :class="{ 'bs-modifs--a-valider': budget.statut === 'SOUMIS' }">
+        <div class="pa-4 pb-2 d-flex align-center flex-wrap ga-2">
+          <v-icon icon="mdi-file-compare" color="warning" />
+          <span class="bs-titre">Modifications par rapport à
+            <NuxtLink :to="`/budgets/${budget.revisionDeId}`">{{ budget.revisionDeReference }}</NuxtLink></span>
+          <v-spacer />
+          <span v-if="modifications.length" class="text-body-2">
+            Écart total : <strong :class="ecartTotal > 0 ? 'text-error' : ecartTotal < 0 ? 'text-success' : ''">{{ ecartTotal > 0 ? '+' : '' }}{{ fmtMontant(ecartTotal) }} USD</strong>
+          </span>
+        </div>
+        <p v-if="!modifications.length" class="px-4 pb-4 mb-0 text-medium-emphasis">Aucune ligne modifiée : mêmes comptes, mêmes montants.</p>
+        <v-table v-else density="compact">
+          <thead><tr><th>Changement</th><th>Compte</th><th>Libellé</th><th>Service</th><th class="text-end">Avant (USD)</th><th class="text-end">Après (USD)</th><th class="text-end">Écart</th></tr></thead>
+          <tbody>
+            <tr v-for="m in modifications" :key="m.cle" :class="`bs-modif bs-modif--${m.type.toLowerCase()}`">
+              <td><v-chip size="x-small" :color="TYPES_MODIFICATION[m.type].couleur" variant="flat" :prepend-icon="TYPES_MODIFICATION[m.type].icone">{{ TYPES_MODIFICATION[m.type].libelle }}</v-chip></td>
+              <td class="mono text-no-wrap">{{ m.compteNumero }}</td>
+              <td>{{ m.compteLibelle }}</td>
+              <td class="text-caption">{{ m.serviceNom || 'Ligne générale' }}</td>
+              <td class="text-end text-no-wrap" :class="{ 'bs-barre': m.type === 'RETIREE' || m.type === 'MODIFIEE' }">{{ m.type === 'AJOUTEE' ? '—' : fmtMontant(m.avant) }}</td>
+              <td class="text-end text-no-wrap font-weight-bold">{{ m.type === 'RETIREE' ? '—' : fmtMontant(m.apres) }}</td>
+              <td class="text-end text-no-wrap" :class="m.apres - m.avant > 0 ? 'text-error' : m.apres - m.avant < 0 ? 'text-success' : ''">
+                {{ m.apres - m.avant > 0 ? '+' : '' }}{{ m.apres === m.avant ? '—' : fmtMontant(m.apres - m.avant) }}
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
       </v-card>
 
       <v-alert v-if="suivi.depassements?.length" type="error" variant="tonal" class="mb-4" icon="mdi-alert-octagon-outline" border="start">
@@ -844,6 +922,12 @@ const classeEcart = (section: string, v: number) => {
 .bs-infos strong { display: block; font-size: 0.92rem; }
 .bs-infos small { color: var(--ink-soft); }
 .bs-observation { margin: 12px 0 0; font-size: 0.86rem; color: var(--ink-2); }
+.bs-modifs--a-valider { border: 2px solid rgb(var(--v-theme-warning)); }
+.bs-modif--ajoutee td { background: rgba(var(--v-theme-success), .08); }
+.bs-modif--retiree td { background: rgba(var(--v-theme-error), .08); }
+.bs-modif--retiree td:nth-child(2), .bs-modif--retiree td:nth-child(3) { text-decoration: line-through; opacity: .75; }
+.bs-modif--modifiee td { background: rgba(var(--v-theme-warning), .08); }
+.bs-barre { text-decoration: line-through; opacity: .7; }
 .bs-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
 .bs-kpi { background: var(--surface); border: 1px solid #eef0f3; border-top: 4px solid; border-radius: 12px; padding: 12px 14px; }
 .bs-kpi__tete { font-weight: 700; font-size: 0.9rem; margin-bottom: 6px; display: flex; gap: 6px; align-items: center; }

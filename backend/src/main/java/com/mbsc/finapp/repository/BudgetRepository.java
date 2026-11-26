@@ -12,6 +12,9 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
 
     List<Budget> findByStatut(StatutBudget statut);
 
+    /** Révisions d'un budget (budgets dont il est la version précédente). */
+    List<Budget> findByRevisionDe_Id(Long revisionDeId);
+
     List<Budget> findByExercice(Integer exercice);
 
     @EntityGraph(attributePaths = {"lignes", "lignes.compte", "lignes.service", "elaborePar", "approuvePar"})

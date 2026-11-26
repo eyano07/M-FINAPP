@@ -48,8 +48,20 @@ public record BudgetResponse(
     /** true si au moins une ligne est rattachee a un service. */
     boolean parService,
     /** PRINCIPAL ou SECONDAIRE (V162). */
-    com.mbsc.finapp.domain.enums.TypeBudget typeBudget
+    com.mbsc.finapp.domain.enums.TypeBudget typeBudget,
+    /** Révision qui a remplacé ce budget (budget REMPLACE) ; null sinon. */
+    Long remplaceParId,
+    String remplaceParReference
 ) {
+    /** Même budget, avec la révision qui l'a remplacé. */
+    public BudgetResponse avecRemplacant(Budget r) {
+        return new BudgetResponse(id, reference, intitule, exercice, statut, numeroRevision, revisionDeId, revisionDeReference,
+            elaboreParNom, approuveParNom, observation, motifRejet, dateCreation, dateSoumission, dateApprobation,
+            dateExecution, dateCloture, totalProduits, totalCharges, totalInvestissements, resultatPrevisionnel, lignes,
+            duree, periode, libellePeriode, moisDebut, moisFin, parService, typeBudget,
+            r == null ? null : r.getId(), r == null ? null : r.getReference());
+    }
+
     public static BudgetResponse from(Budget b) {
         List<LigneBudgetResponse> lignes = b.getLignes().stream()
             .map(LigneBudgetResponse::from)
@@ -70,7 +82,7 @@ public record BudgetResponse(
             produits, charges, totalSection(lignes, "INVESTISSEMENTS"), produits.subtract(charges),
             lignes,
             b.getDuree(), b.getPeriode(), b.libellePeriode(), b.moisDebut(), b.moisFin(), b.parService(),
-            b.getTypeBudget()
+            b.getTypeBudget(), null, null
         );
     }
 
