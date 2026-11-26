@@ -32,6 +32,8 @@ const estDa = computed(() => auth.hasRole('DA'))
 
 // Révision (26/11/2026) : le budget qu'elle révise, pour montrer au DA ce qui a changé (comptes ajoutés, retirés, montants).
 const budgetRevise = ref<any | null>(null)
+/** Budget remplacé par sa révision : il ne contrôle plus rien, pas de suivi d'exécution (seulement ses lignes prévues). */
+const remplace = computed(() => budget.value?.statut === 'REMPLACE')
 /** Copies du budget à chaque soumission au DA (V165), de la première à la dernière. */
 const soumissionsBudget = ref<any[]>([])
 
@@ -429,14 +431,14 @@ const classeEcart = (section: string, v: number) => {
           <div><span>Soumis</span><strong>{{ fmtDate(budget.dateSoumission) }}</strong></div>
           <div><span>Approuvé par</span><strong>{{ budget.approuveParNom || '—' }}</strong><small v-if="budget.dateApprobation">le {{ fmtDate(budget.dateApprobation) }}</small></div>
           <div><span>En exécution depuis</span><strong>{{ fmtDate(budget.dateExecution) }}</strong></div>
-          <div><span>Réalisé calculé au</span><strong>{{ fmtDate(suivi.calculeLe) }}</strong><small>{{ moisEcoules }} mois écoulé(s) de l’exercice</small></div>
+          <div v-if="!remplace"><span>Réalisé calculé au</span><strong>{{ fmtDate(suivi.calculeLe) }}</strong><small>{{ moisEcoules }} mois écoulé(s) de l’exercice</small></div>
           <div><span>Période couverte</span><strong>{{ libellePeriodeBudget }}</strong><small>{{ MOIS_LONGS[moisDebut - 1] }}<template v-if="moisFin !== moisDebut"> à {{ MOIS_LONGS[moisFin - 1].toLowerCase() }}</template> {{ budget.exercice }}</small></div>
         </div>
         <p v-if="budget.observation" class="bs-observation"><v-icon icon="mdi-text" size="16" /> {{ budget.observation }}</p>
         <v-alert v-if="budget.motifRejet" type="error" variant="tonal" density="compact" class="mt-3" icon="mdi-close-octagon-outline">
           Motif du dernier rejet : {{ budget.motifRejet }}
         </v-alert>
-        <v-alert v-for="(a, i) in suivi.avertissements" :key="i" type="warning" variant="tonal" density="compact" class="mt-2">{{ a }}</v-alert>
+        <v-alert v-for="(a, i) in (remplace ? [] : suivi.avertissements)" :key="i" type="warning" variant="tonal" density="compact" class="mt-2">{{ a }}</v-alert>
       </v-card>
 
       <!-- Budget remplacé : accès direct à la révision en vigueur -->
@@ -515,6 +517,32 @@ const classeEcart = (section: string, v: number) => {
         </v-table>
       </v-card>
 
+      <!-- Budget remplacé : ses lignes prévues seulement ; l'exécution se suit sur la révision. -->
+      <v-card v-if="remplace" class="classroom-card mb-4">
+        <div class="pa-4 pb-2 bs-titre">Lignes prévues</div>
+        <p class="px-4 text-caption text-medium-emphasis mb-2">
+          Budget remplacé : il ne contrôle plus les dépenses et n'a pas de suivi d'exécution. Le réalisé et l'engagé de la
+          période se suivent sur sa révision<template v-if="budget.remplaceParReference">
+          <NuxtLink :to="`/budgets/${budget.remplaceParId}`">{{ budget.remplaceParReference }}</NuxtLink></template>.
+        </p>
+        <v-table density="compact">
+          <thead><tr><th>Compte</th><th>Libellé</th><th>Service</th><th class="text-end">Prévu (USD)</th></tr></thead>
+          <tbody>
+            <tr v-for="l in budget.lignes" :key="l.id">
+              <td class="mono text-no-wrap">{{ l.compteNumero }}</td>
+              <td>{{ l.compteLibelle }}</td>
+              <td class="text-caption">{{ l.serviceNom || 'Ligne générale' }}</td>
+              <td class="text-end text-no-wrap">{{ fmtMontant(l.montantPrevu) }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="font-weight-bold"><td colspan="3">Total prévu</td>
+              <td class="text-end">{{ fmtMontant(budget.lignes.reduce((t: number, l: any) => t + Number(l.montantPrevu || 0), 0)) }}</td></tr>
+          </tfoot>
+        </v-table>
+      </v-card>
+
+      <template v-if="!remplace">
       <v-alert v-if="suivi.depassements?.length" type="error" variant="tonal" class="mb-4" icon="mdi-alert-octagon-outline" border="start">
         <div class="font-weight-bold mb-1">Dépassement budgétaire</div>
         <div v-if="montantDepassementConsolide > 0">
@@ -899,6 +927,8 @@ const classeEcart = (section: string, v: number) => {
           </tbody>
         </v-table>
       </v-card>
+
+      </template>
 
       <!-- Signatures (impression) -->
       <div class="bs-signatures">
