@@ -46,6 +46,8 @@ const api = useApi()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
 const peutEcrire = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'GEST_PATRIMOINE', 'ADMIN']))
+// Immobilisé ou non amortissable : décision comptable (InventairePatrimoineService.CLASSEMENT) ; le logisticien voit le statut.
+const peutClasser = computed(() => auth.hasAnyRole(['COMPTABLE', 'DFIN']))
 const biens = ref<Bien[]>([])
 const chargement = ref(false)
 const erreur = ref('')
@@ -338,7 +340,7 @@ async function imprimerEtiquettes() {
           Affecter la sélection ({{ selection.length }})
         </v-btn>
         <v-btn variant="text" prepend-icon="mdi-map-marker-multiple-outline" to="/patrimoine/emplacements">Emplacements</v-btn>
-        <v-btn v-if="peutEcrire && lotAImmobiliser.length" color="primary" variant="tonal" prepend-icon="mdi-chart-timeline-variant" @click="ouvrirImmobilisationLot">
+        <v-btn v-if="peutClasser && lotAImmobiliser.length" color="primary" variant="tonal" prepend-icon="mdi-chart-timeline-variant" @click="ouvrirImmobilisationLot">
           Immobiliser la sélection ({{ lotAImmobiliser.length }})
         </v-btn>
         <v-btn v-if="lotAValoriser.length > 1" color="primary" variant="flat" prepend-icon="mdi-cash-plus" @click="ouvrirValorisationLot">
@@ -402,7 +404,7 @@ async function imprimerEtiquettes() {
         <template #[`item.valeurUsd`]="{ item }">{{ item.valeurUsd == null ? '—' : usd(item.valeurUsd) }}</template>
         <template #[`item.statut`]="{ item }">
           <!-- Le logisticien choisit lui-même : immobilisé (fiche, acquisition, dotations) ou non amortissable (extourne). -->
-          <div v-if="peutEcrire && item.statut !== 'A_VALORISER'" class="bascule-statut">
+          <div v-if="peutClasser && item.statut !== 'A_VALORISER'" class="bascule-statut">
             <v-switch :model-value="item.statut === 'IMMOBILISE'" color="success" density="compact" hide-details inset
               :loading="bascule === item.id" :disabled="bascule !== null" :aria-label="`Statut de ${item.code}`"
               @update:model-value="demanderBascule(item, !!$event)" />

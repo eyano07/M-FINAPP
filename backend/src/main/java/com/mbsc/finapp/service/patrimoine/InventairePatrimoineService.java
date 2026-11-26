@@ -43,6 +43,9 @@ public class InventairePatrimoineService {
     public static final String CONTREPARTIE = "1013";
     static final String ECRITURE = "hasAnyRole('LOGISTIQUE', 'GEST_PATRIMOINE', 'ADMIN')";
     static final String LECTURE = "hasAnyRole('LOGISTIQUE', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')";
+    /** Choix immobilisé / non amortissable d'un bien déjà valorisé : décision comptable (comptable, DFIN). */
+    static final String CLASSEMENT = "hasAnyRole('COMPTABLE', 'DFIN')";
+    private static final java.util.Set<String> AUTORITES_CLASSEMENT = java.util.Set.of("ROLE_COMPTABLE", "ROLE_DFIN");
 
     private final JdbcTemplate jdbc;
     private final PatrimoineService patrimoine;
@@ -258,6 +261,11 @@ public class InventairePatrimoineService {
         if (!"A_VALORISER".equals(b.statut()) && !reclassement) {
             throw new TransitionInvalideException("Le bien " + b.code() + " est déjà valorisé.");
         }
+        if (reclassement && currentUser.requirePrincipal().getAuthorities().stream()
+                .noneMatch(a -> AUTORITES_CLASSEMENT.contains(a.getAuthority()))) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                "Immobiliser un bien déjà classé non amortissable est une décision du comptable ou du DFIN.");
+        }
         LocalDate miseService = r.dateMiseService() == null ? r.dateAcquisition() : r.dateMiseService();
         if (miseService.isBefore(r.dateAcquisition())) {
             throw new IllegalArgumentException("La mise en service ne peut pas précéder l'acquisition.");
@@ -297,7 +305,7 @@ public class InventairePatrimoineService {
      * d'opérations diverses extourne l'acquisition (D contrepartie / C compte d'immobilisation) et les dotations déjà
      * passées (D amortissements / C dotations) ; la fiche et son plan sont supprimés, le bien reste à l'inventaire.
      */
-    @PreAuthorize(ECRITURE)
+    @PreAuthorize(CLASSEMENT)
     @Transactional
     public Bien declasser(Long id) {
         Bien b = bien(id);
