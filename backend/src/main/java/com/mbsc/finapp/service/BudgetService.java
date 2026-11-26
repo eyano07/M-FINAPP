@@ -89,6 +89,8 @@ public class BudgetService {
     private final ServiceBudgetaireRepository serviceRepository;
     /** Circuit du budget : le DA est prevenu d'une soumission, le DFIN d'une approbation ou d'un rejet, etc. */
     private final NotificationService notifications;
+    /** Copie des lignes à chaque soumission (V165). */
+    private final BudgetSoumissions soumissions;
 
     // ---------------------------------------------------------------------
     // Lecture
@@ -130,7 +132,25 @@ public class BudgetService {
     @PreAuthorize(LECTURE)
     @Transactional(readOnly = true)
     public BudgetResponse consulter(Long id) {
-        return BudgetResponse.from(charger(id));
+        Budget budget = charger(id);
+        BudgetResponse reponse = BudgetResponse.from(budget);
+        if (budget.getStatut() != StatutBudget.REMPLACE) {
+            return reponse;
+        }
+        // Budget remplacé : la révision mise en exécution à sa place (la plus récente qui l'a été).
+        Budget remplacant = budgetRepository.findByRevisionDe_Id(id).stream()
+            .filter(r -> EnumSet.of(StatutBudget.EN_EXECUTION, StatutBudget.REMPLACE, StatutBudget.CLOTURE).contains(r.getStatut()))
+            .max(java.util.Comparator.comparing(Budget::getNumeroRevision))
+            .orElse(null);
+        return reponse.avecRemplacant(remplacant);
+    }
+
+    /** Copies du budget à chacune de ses soumissions au DA, de la première à la dernière. */
+    @PreAuthorize(LECTURE)
+    @Transactional(readOnly = true)
+    public List<BudgetSoumissions.Soumission> soumissions(Long id) {
+        charger(id);
+        return soumissions.lister(id);
     }
 
     @PreAuthorize(LECTURE)
@@ -291,6 +311,7 @@ public class BudgetService {
         log.info("Budget {} soumis pour approbation", budget.getReference());
         BudgetResponse reponse = BudgetResponse.from(budget);
         User auteur = currentUser.requireUser();
+        soumissions.enregistrer(budget.getId(), nom(auteur), reponse.lignes());
         notifications.notifierBudget(List.of(RoleType.DA), null, auteur, TypeNotification.BUDGET_SOUMIS, "Budget à approuver",
             designation(budget) + revision(budget) + " : " + montant(reponse.totalCharges().add(reponse.totalInvestissements()))
                 + " USD de dépenses prévues" + (reponse.totalProduits().signum() > 0 ? ", " + montant(reponse.totalProduits()) + " USD de recettes" : "")
