@@ -25,8 +25,10 @@ const succes = ref('')
 const { xs, smAndDown } = useDisplay()
 useHead({ title: computed(() => (budget.value ? `Budget ${budget.value.reference} — ${budget.value.intitule}` : 'Budget')) })
 
-const estDfin = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
-const estDa = computed(() => auth.hasAnyRole(['DA', 'ADMIN']))
+// Circuit (26/11/2026) : le comptable ou le DFIN élabore et soumet, le DA approuve, le DFIN met en exécution et clôture.
+const peutElaborer = computed(() => auth.hasAnyRole(['COMPTABLE', 'DFIN']))
+const estDfin = computed(() => auth.hasRole('DFIN'))
+const estDa = computed(() => auth.hasRole('DA'))
 
 // Révision (26/11/2026) : le budget qu'elle révise, pour montrer au DA ce qui a changé (comptes ajoutés, retirés, montants).
 const budgetRevise = ref<any | null>(null)
@@ -385,15 +387,15 @@ const classeEcart = (section: string, v: number) => {
       </div>
 
       <v-card class="classroom-card pa-3 mb-4 no-print bs-actions">
-        <v-btn v-if="estDfin && budget.statut === 'BROUILLON'" color="primary" variant="tonal" prepend-icon="mdi-pencil" :to="`/budgets/${id}/modifier`">Modifier</v-btn>
-        <v-btn v-if="estDfin && budget.statut === 'BROUILLON'" color="blue" prepend-icon="mdi-send" :loading="action === 'soumettre'" @click="actionAConfirmer = 'soumettre'">Soumettre au {{ lDA }}</v-btn>
+        <v-btn v-if="peutElaborer && budget.statut === 'BROUILLON'" color="primary" variant="tonal" prepend-icon="mdi-pencil" :to="`/budgets/${id}/modifier`">Modifier</v-btn>
+        <v-btn v-if="peutElaborer && budget.statut === 'BROUILLON'" color="blue" prepend-icon="mdi-send" :loading="action === 'soumettre'" @click="actionAConfirmer = 'soumettre'">Soumettre au {{ lDA }}</v-btn>
         <v-btn v-if="estDa && budget.statut === 'SOUMIS'" color="success" prepend-icon="mdi-check-decagram" @click="dialogueMotif = 'approuver'">Approuver</v-btn>
         <v-btn v-if="estDa && budget.statut === 'SOUMIS'" color="error" variant="tonal" prepend-icon="mdi-close-octagon" @click="dialogueMotif = 'rejeter'">Rejeter</v-btn>
-        <v-btn v-if="estDfin && budget.statut === 'REJETE'" color="primary" variant="tonal" prepend-icon="mdi-undo" :loading="action === 'reprendre'" @click="transition('reprendre')">Reprendre en brouillon</v-btn>
+        <v-btn v-if="peutElaborer && budget.statut === 'REJETE'" color="primary" variant="tonal" prepend-icon="mdi-undo" :loading="action === 'reprendre'" @click="transition('reprendre')">Reprendre en brouillon</v-btn>
         <v-btn v-if="estDfin && budget.statut === 'APPROUVE'" color="teal" prepend-icon="mdi-play" :loading="action === 'demarrer'" @click="actionAConfirmer = 'demarrer'">Mettre en exécution</v-btn>
-        <v-btn v-if="estDfin && budget.statut === 'EN_EXECUTION'" color="indigo" variant="tonal" prepend-icon="mdi-file-replace-outline" :loading="action === 'reviser'" @click="transition('reviser')">Réviser</v-btn>
+        <v-btn v-if="peutElaborer && budget.statut === 'EN_EXECUTION'" color="indigo" variant="tonal" prepend-icon="mdi-file-replace-outline" :loading="action === 'reviser'" @click="transition('reviser')">Réviser</v-btn>
         <v-btn v-if="estDfin && budget.statut === 'EN_EXECUTION' && periodeTerminee" color="brown" variant="tonal" prepend-icon="mdi-archive" :loading="action === 'cloturer'" @click="actionAConfirmer = 'cloturer'">Clôturer</v-btn>
-        <v-btn v-if="estDfin && (budget.statut === 'BROUILLON' || budget.statut === 'REJETE')" color="error" variant="text" prepend-icon="mdi-delete-outline" @click="confirmationSuppression = true">Supprimer</v-btn>
+        <v-btn v-if="peutElaborer && (budget.statut === 'BROUILLON' || budget.statut === 'REJETE')" color="error" variant="text" prepend-icon="mdi-delete-outline" @click="confirmationSuppression = true">Supprimer</v-btn>
         <v-spacer />
         <v-btn variant="tonal" prepend-icon="mdi-printer" @click="imprimer">Imprimer</v-btn>
         <v-btn variant="tonal" color="red-darken-2" prepend-icon="mdi-file-pdf-box" :loading="pdfEnCours" @click="telechargerPdf">Enregistrer en PDF</v-btn>
