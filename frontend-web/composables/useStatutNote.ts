@@ -54,10 +54,10 @@ const PALETTE: Record<string, StatutNoteMeta> = {
   },
   TRANSMISE_CAISSE: {
     label: 'À payer',
-    color: '#16a34a',
-    bg: '#dcfce7',
-    text: '#15803d',
-    gradient: 'linear-gradient(140deg, #4ade80 0%, #16a34a 50%, #14532d 100%)',
+    color: 'var(--color-primary)',
+    bg: 'var(--color-primary-light)',
+    text: 'var(--color-primary-dark)',
+    gradient: 'linear-gradient(140deg, var(--color-primary-mid) 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%)',
   },
   PAYEE: {
     label: 'Payée',
@@ -88,10 +88,19 @@ const DEFAUT: StatutNoteMeta = {
  * note d'encaissement, l'état terminal PAYEE est relabellisé « Encaissée »
  * (même couleur/palette, seul le libellé change à l'affichage).
  */
+/** Les libelles d'etapes citent des roles : ils suivent les noms choisis par l'ADMIN. */
+function withRoles(meta: StatutNoteMeta | undefined, statut: string): StatutNoteMeta | undefined {
+  if (!meta) return meta
+  const roles = useRolesStore()
+  if (statut === 'VERIFIEE_DFIN') return { ...meta, label: `Vérifiée ${roles.libelle('DFIN')}` }
+  if (statut === 'VALIDEE_DA') return { ...meta, label: `Validée ${roles.libelle('DA')}` }
+  return meta
+}
+
 export function statutNoteMeta(statut?: string | null, sens?: string | null): StatutNoteMeta {
   if (!statut) return DEFAUT
-  const meta = PALETTE[statut]
-  if (!meta) return { ...DEFAUT, label: statut.replace(/_/g, ' ') }
+  const meta = withRoles(PALETTE[statut], statut)
+  if (!PALETTE[statut]) return { ...DEFAUT, label: statut.replace(/_/g, ' ') }
   if (statut === 'PAYEE' && sens === 'ENCAISSEMENT') {
     return { ...meta, label: 'Encaissée' }
   }
@@ -100,4 +109,15 @@ export function statutNoteMeta(statut?: string | null, sens?: string | null): St
 
 export function useStatutNote() {
   return { statutNoteMeta, PALETTE }
+}
+
+/**
+ * Libellé des notes générées par le module DRH (catégorie PAIE ou IMPOT_PAIE) : « Paie 09/2026 »,
+ * « IPR 09/2026 »… ; null pour une note ordinaire. Ces notes ont des comptes imposés par le système.
+ */
+export function libelleCategorieNote(n?: { categorie?: string | null, paieMois?: number | null,
+  paieAnnee?: number | null, organismePaie?: string | null } | null): string | null {
+  if (!n?.categorie || n.categorie === 'STANDARD') return null
+  const periode = n.paieMois && n.paieAnnee ? ` ${String(n.paieMois).padStart(2, '0')}/${n.paieAnnee}` : ''
+  return (n.categorie === 'PAIE' ? 'Paie' : (n.organismePaie || 'Impôt')) + periode
 }

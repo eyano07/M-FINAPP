@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'PATRIMOINE' })
 
-interface Immo { id: number; reference: string; libelle: string; statut: string; valeurNetteComptable: number }
+interface Immo { id: number; reference: string; libelle: string; statut: string; valeurNetteComptable: number; codeInventaire?: string | null }
 interface Ligne {
   id: number
   periode: string
@@ -15,7 +16,7 @@ interface Ligne {
 const api = useApi()
 const auth = useAuthStore()
 const route = useRoute()
-const canWrite = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'DFIN']))
+const canWrite = computed(() => auth.hasAnyRole(['GEST_PATRIMOINE', 'DFIN', 'ADMIN']))
 
 const biens = ref<Immo[]>([])
 const bienId = ref<number | null>(null)
@@ -26,7 +27,8 @@ const traitement = ref(false)
 const erreur = ref('')
 const succes = ref('')
 const rapport = ref<{ lignesComptabilisees: number; totalDotations: number; piecesCreees: string[]; ignorees: string[] } | null>(null)
-const jusqua = ref(new Date().toISOString().slice(0, 10))
+// Jusqu'à la fin de l'exercice choisi dans la barre du haut (aujourd'hui pour l'exercice en cours).
+const jusqua = ref(useExerciceStore().fin)
 
 async function chargerBiens() {
   try {
@@ -82,7 +84,8 @@ async function comptabiliser() {
   }
 }
 
-const toUSD = (fc: number) => (tauxChange.value > 0 ? (fc || 0) / tauxChange.value : 0)
+// Le grand livre est tenu en dollars (ConversionDeviseService.DEVISE_BASE) : les montants s'affichent tels quels.
+const toUSD = (usd: number) => Number(usd) || 0
 const fmt = (fc: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
     .format(toUSD(fc))
@@ -138,10 +141,17 @@ const restant = computed(() => plan.value.filter(l => !l.comptabilise).length)
     <v-card class="classroom-card pa-5 mb-4">
       <v-row align="center">
         <v-col cols="12" md="8">
-          <v-select
+          <!-- Recherche au clavier : référence, désignation ou code d'inventaire. -->
+          <v-autocomplete
             v-model="bienId"
-            :items="biens.map(b => ({ value: b.id, title: `${b.reference} — ${b.libelle}` }))"
-            label="Bien" variant="outlined" density="comfortable" hide-details />
+            :items="biens.map(b => ({ value: b.id, title: `${b.reference} — ${b.libelle}`, code: b.codeInventaire }))"
+            :custom-filter="(_v: string, q: string, item: any) => { const t = (q || '').toLowerCase(); return !t || `${item.raw.title} ${item.raw.code ?? ''}`.toLowerCase().includes(t) }"
+            label="Bien" placeholder="Tapez une référence, un nom ou un code" prepend-inner-icon="mdi-magnify"
+            variant="outlined" density="comfortable" hide-details auto-select-first no-data-text="Aucun bien trouvé">
+            <template #item="{ props: p, item }">
+              <v-list-item v-bind="p" :subtitle="item.raw.code || undefined" />
+            </template>
+          </v-autocomplete>
         </v-col>
         <v-col cols="12" md="4">
           <div class="text-caption text-medium-emphasis">
@@ -172,7 +182,7 @@ const restant = computed(() => plan.value.filter(l => !l.comptabilise).length)
         <template #item.valeurNette="{ item }">{{ fmt(item.valeurNette) }}</template>
         <template #item.comptabilise="{ item }">
           <span class="chip-soft" :style="item.comptabilise
-            ? { background: '#dcfce7', color: '#15803d' } : { background: '#f3f4f6', color: '#6b7280' }">
+            ? { background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)' } : { background: '#f3f4f6', color: '#6b7280' }">
             {{ item.comptabilise ? 'Comptabilisée' : 'À venir' }}
           </span>
         </template>
@@ -188,7 +198,4 @@ const restant = computed(() => plan.value.filter(l => !l.comptabilise).length)
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 </style>

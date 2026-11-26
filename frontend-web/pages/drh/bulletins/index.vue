@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'DRH_PAIE' })
 
 interface Employe {
   id: number
   matricule: string
   nomComplet: string
+  poste?: string | null
+  affectation?: string | null
   salaireBaseUsd: number
   nombreEnfants: number
 }
@@ -18,9 +21,12 @@ interface Bulletin {
   annee: number
   salaireNet: number
   netFc: number
+  dateImpression: string | null
   statut: 'BROUILLON' | 'VALIDE' | 'ANNULE'
   pieceReference: string | null
   pieceStatut: string | null
+  /** Vrai dès la clôture de la période, avec ou sans pièce comptable (voir Paramètres de paie). */
+  cloture: boolean
 }
 
 /** Écarts au droit congolais — consultatif, n'influence aucun montant. */
@@ -48,6 +54,23 @@ interface Resultat {
   tauxChangeApplique: number
   netFc: number
   conformite: Conformite | null
+  // Législation congolaise (16/11/2026) : bases, CNSS par branche, INPP selon l'effectif, personnes à charge.
+  appointements?: number
+  baseImposableInss?: number
+  baseImposableIpr?: number
+  allocationExoneree?: number
+  cnssPatronalePension?: number
+  cnssPatronalePf?: number
+  cnssPatronaleRp?: number
+  tauxInppApplique?: number
+  effectif?: number | null
+  personnesACharge?: number
+}
+
+/** Avance ouverte de l'agent (audit DRH du 15/11/2026, D-06) : solde de son compte d'avances non encore retenu. */
+interface AvanceOuverte {
+  compte: string | null
+  solde: number
 }
 
 const MOIS = [
@@ -56,16 +79,20 @@ const MOIS = [
 ]
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const canWrite = computed(() => auth.hasAnyRole(['RESP_DRH']))
 
 const aujourdhui = new Date()
-const mois = ref(aujourdhui.getMonth() + 1)
-const annee = ref(aujourdhui.getFullYear())
+// Ancien exercice choisi dans la barre du haut : son mois de décembre ; sinon le mois en cours.
+const exerciceConsulte = useExerciceStore()
+const mois = ref(exerciceConsulte.enConsultation ? 12 : aujourdhui.getMonth() + 1)
+const annee = ref(exerciceConsulte.enConsultation ? exerciceConsulte.anneeChoisie : aujourdhui.getFullYear())
 
 const loading = ref(false)
 const saving = ref(false)
 const clôturant = ref(false)
+const comptabilisant = ref(false)
 const exportEnCours = ref(false)
 const erreur = ref('')
 const succes = ref('')
@@ -90,8 +117,12 @@ const formVide = () => ({
   primeDiplome: 0, primeAnciennete: 0, primeRendement: 0,
   avanceSalaire: 0, pret: 0,
   datePaiement: new Date().toISOString().slice(0, 10),
+  dateImpression: '' as string,
 })
 const form = reactive(formVide())
+// Poste/affectation viennent du dossier employe : simple rappel a la
+// selection, pas un champ du bulletin (rien a saisir ni a enregistrer ici).
+const employeSelectionne = computed(() => employes.value.find(e => e.id === form.employeId) ?? null)
 
 async function charger() {
   loading.value = true
@@ -120,14 +151,37 @@ async function charger() {
 onMounted(charger)
 watch([mois, annee], charger)
 
+const avanceOuverte = ref<AvanceOuverte | null>(null)
+
 function onEmployeChange() {
   const emp = employes.value.find(e => e.id === form.employeId)
   if (emp) form.salaireBaseUsd = emp.salaireBaseUsd
   resultat.value = null
+  chargerAvanceOuverte()
 }
+
+// Préremplit l'avance à retenir avec l'avance ouverte de l'agent (modifiable, à la baisse seulement : le serveur
+// refuse une retenue supérieure).
+async function chargerAvanceOuverte() {
+  avanceOuverte.value = null
+  const id = form.employeId
+  if (!id) return
+  try {
+    const a = await api<AvanceOuverte>(`/drh/employes/${id}/avance-ouverte`)
+    if (form.employeId !== id) return
+    avanceOuverte.value = a
+    form.avanceSalaire = Number(a.solde) || 0
+  } catch {
+    avanceOuverte.value = null
+  }
+}
+
+const avanceDepassee = computed(() => avanceOuverte.value !== null
+  && Number(form.avanceSalaire || 0) > Number(avanceOuverte.value.solde || 0))
 
 function ouvrirAjout() {
   Object.assign(form, formVide())
+  avanceOuverte.value = null
   resultat.value = null
   erreur.value = ''
   dialog.value = true
@@ -145,6 +199,7 @@ function corpsRequete() {
     primeAnciennete: form.primeAnciennete, primeRendement: form.primeRendement,
     avanceSalaire: form.avanceSalaire, pret: form.pret,
     datePaiement: form.datePaiement,
+    dateImpression: form.dateImpression || null,
   }
 }
 
@@ -167,6 +222,10 @@ async function simuler() {
 async function enregistrer() {
   if (!form.employeId || form.salaireBaseUsd === null) {
     erreur.value = 'Sélectionnez un employé.'
+    return
+  }
+  if (avanceDepassee.value) {
+    erreur.value = `L'avance à retenir dépasse l'avance ouverte de l'agent (${fmtUsd(avanceOuverte.value?.solde ?? 0)}).`
     return
   }
   if (!(tauxChange.value > 0)) {
@@ -201,17 +260,74 @@ async function action(b: Bulletin, verbe: 'valider' | 'devalider' | 'annuler') {
   }
 }
 
+async function supprimer(b: Bulletin) {
+  const confirme = await dialogues.confirmer({
+    titre: `Supprimer le bulletin de ${b.employeNomComplet} ?`,
+    message: [`Bulletin de ${MOIS[b.mois - 1]} ${b.annee}.`, 'Cette action est irréversible.'],
+    bouton: 'Supprimer définitivement',
+    nature: 'danger',
+    icone: 'mdi-trash-can-outline',
+  })
+  if (!confirme) return
+  saving.value = true
+  erreur.value = ''
+  try {
+    await api(`/drh/bulletins/${b.id}`, { method: 'DELETE' })
+    succes.value = 'Bulletin supprimé définitivement.'
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Échec de la suppression.')
+  } finally {
+    saving.value = false
+  }
+}
+
 async function cloturer() {
   clôturant.value = true
   erreur.value = ''
   try {
     const res = await api<Bulletin[]>('/drh/bulletins/cloturer', { method: 'POST', params: { mois: mois.value, annee: annee.value } })
-    succes.value = `${res.length} bulletin(s) clôturé(s) — pièces BROUILLON générées, à comptabiliser dans Pièces comptables.`
+    // Mode de comptabilisation (Paramètres de paie) : la réponse dit si la pièce de paie a été écrite.
+    succes.value = res.some(b => b.pieceReference)
+      ? `${res.length} bulletin(s) clôturé(s) et paie constatée en comptabilité (journal de paie). La DRH peut créer la note de paie du mois.`
+      : `${res.length} bulletin(s) clôturé(s), sans écriture (comptabilisation manuelle) : comptabilisez la paie du mois par le bouton « Comptabiliser la paie ». La DRH peut créer la note de paie du mois.`
     await charger()
+    await reglement.value?.charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Échec de la clôture.')
   } finally {
     clôturant.value = false
+  }
+}
+
+/**
+ * Mode de comptabilisation manuel (audit DRH du 15/11/2026, D-01) : le DFIN écrit la pièce de paie d'un mois
+ * clôturé au journal PAIE.
+ */
+async function comptabiliser() {
+  const confirme = await dialogues.confirmer({
+    titre: `Comptabiliser la paie de ${MOIS[mois.value - 1]} ${annee.value} ?`,
+    message: [
+      `${aComptabiliser.value} bulletin(s) clôturé(s) seront constatés au journal PAIE, au dernier jour du mois :`
+        + ' charges de personnel, IPR, CNSS, INPP, ONEM et net à payer au compte de chaque agent.',
+      "La pièce ne s'annule ensuite qu'en rouvrant le mois.",
+    ],
+    bouton: 'Comptabiliser',
+    nature: 'attention',
+    icone: 'mdi-book-check-outline',
+  })
+  if (!confirme) return
+  comptabilisant.value = true
+  erreur.value = ''
+  try {
+    const res = await api<Bulletin[]>('/drh/bulletins/comptabiliser', { method: 'POST', params: { mois: mois.value, annee: annee.value } })
+    succes.value = `Paie de ${MOIS[mois.value - 1]} ${annee.value} comptabilisée : ${res.length} bulletin(s), pièce ${res[0]?.pieceReference ?? ''}.`
+    await charger()
+    await reglement.value?.charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Échec de la comptabilisation de la paie.')
+  } finally {
+    comptabilisant.value = false
   }
 }
 
@@ -237,7 +353,15 @@ const statutMeta: Record<string, { label: string; bg: string; color: string }> =
 const fmtUsd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v || 0)
 const fmtFc = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v || 0) + ' FC'
 
-const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALIDE').length)
+const reglement = ref<{ charger: () => Promise<void> } | null>(null)
+
+const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALIDE' && !b.cloture).length)
+// Mois clôturé (tous les bulletins validés) dont des bulletins n'ont pas encore de pièce : mode manuel.
+const aComptabiliser = computed(() => {
+  const valides = bulletins.value.filter(b => b.statut === 'VALIDE')
+  if (!valides.length || valides.some(b => !b.cloture)) return 0
+  return valides.filter(b => !b.pieceReference).length
+})
 </script>
 
 <template>
@@ -245,16 +369,22 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
     <div class="page-head">
       <div>
         <h1 class="page-title">Bulletins de paie</h1>
-        <p class="page-sub">Calcul du salaire net, cotisations et IPR — clôture génère une pièce comptable par employé</p>
+        <p class="page-sub">Calcul du salaire net, cotisations et IPR — la clôture verrouille le mois, puis la note de paie et les notes fiscales règlent la paie et la comptabilisent (SYSCOHADA)</p>
       </div>
       <div class="d-flex ga-2">
         <v-btn color="success" variant="tonal" rounded="lg" prepend-icon="mdi-file-excel-outline"
           :loading="exportEnCours" :disabled="!bulletins.length" @click="exporterExcel">
           DEBOURS MBSC
         </v-btn>
-        <v-btn v-if="canWrite" color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-lock-check-outline"
+        <!-- La DRH saisit et valide les bulletins ; le DFIN clôture le mois, ce qui constate la paie en comptabilité
+             (audit SYSCOHADA du 10/11/2026, C-14). -->
+        <v-btn v-if="auth.hasRole('DFIN')" color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-lock-check-outline"
           :loading="clôturant" :disabled="validables === 0" @click="cloturer">
           Clôturer la période ({{ validables }})
+        </v-btn>
+        <v-btn v-if="auth.hasRole('DFIN') && aComptabiliser > 0" color="primary" variant="flat" rounded="lg"
+          prepend-icon="mdi-book-check-outline" :loading="comptabilisant" @click="comptabiliser">
+          Comptabiliser la paie
         </v-btn>
         <v-btn v-if="canWrite" color="success" variant="flat" rounded="lg" prepend-icon="mdi-plus" @click="ouvrirAjout">
           Nouveau bulletin
@@ -275,6 +405,8 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
       <v-text-field v-model.number="annee" type="number" label="Année" variant="outlined" density="comfortable"
         rounded="lg" hide-details style="max-width: 140px" />
     </div>
+
+    <DrhReglementPaie ref="reglement" :mois="mois" :annee="annee" :can-write="canWrite" @change="charger" />
 
     <v-card class="classroom-card">
       <v-data-table
@@ -298,10 +430,14 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
             {{ statutMeta[item.statut]?.label ?? item.statut }}
           </span>
         </template>
-        <template #item.pieceReference="{ item }">{{ item.pieceReference ?? '—' }}</template>
+        <template #item.pieceReference="{ item }">
+          <span v-if="item.pieceReference">{{ item.pieceReference }}</span>
+          <span v-else-if="item.cloture" class="text-medium-emphasis font-italic">Non comptabilisé</span>
+          <span v-else>—</span>
+        </template>
         <template #item.actions="{ item }">
           <v-btn size="small" variant="text" icon="mdi-eye-outline" title="Détail" :to="`/drh/bulletins/${item.id}`" />
-          <template v-if="canWrite && !item.pieceReference">
+          <template v-if="canWrite && !item.cloture">
             <v-btn v-if="item.statut === 'BROUILLON'" size="small" variant="text" color="success"
               icon="mdi-check-circle-outline" title="Valider" @click="action(item, 'valider')" />
             <v-btn v-if="item.statut === 'VALIDE'" size="small" variant="text" icon="mdi-undo"
@@ -309,6 +445,8 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
             <v-btn v-if="item.statut !== 'ANNULE'" size="small" variant="text" color="error"
               icon="mdi-close-circle-outline" title="Annuler" @click="action(item, 'annuler')" />
           </template>
+          <v-btn v-if="canWrite && item.statut === 'ANNULE'" size="small" variant="text" color="error"
+            icon="mdi-delete-forever-outline" title="Supprimer définitivement" @click="supprimer(item)" />
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">Aucun bulletin pour cette période.</div>
@@ -324,11 +462,20 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
           <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
           <v-row>
             <v-col cols="12" md="6">
-              <v-select v-model="form.employeId" :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
-                label="Employé *" variant="outlined" density="comfortable" @update:model-value="onEmployeChange" />
+              <v-autocomplete v-model="form.employeId" :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
+                label="Employé *" variant="outlined" density="comfortable" clearable @update:model-value="onEmployeChange" />
+              <p v-if="employeSelectionne && (employeSelectionne.poste || employeSelectionne.affectation)" class="text-caption text-medium-emphasis mt-1 mb-0">
+                <template v-if="employeSelectionne.poste">{{ employeSelectionne.poste }}</template>
+                <template v-if="employeSelectionne.poste && employeSelectionne.affectation"> · </template>
+                <template v-if="employeSelectionne.affectation">{{ employeSelectionne.affectation }}</template>
+              </p>
             </v-col>
-            <v-col cols="12" md="3"><v-text-field v-model="form.datePaiement" type="date" label="Date de paiement" variant="outlined" density="comfortable" /></v-col>
-            <v-col cols="12" md="3"><v-text-field v-model.number="form.presencePct" type="number" suffix="%" label="Présence *" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="4"><v-text-field v-model="form.datePaiement" type="date" label="Date de paiement" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="4">
+              <v-text-field v-model="form.dateImpression" type="date" label="Date d'impression" variant="outlined" density="comfortable"
+                hint="Laisser vide = date réelle du jour d'impression. À renseigner pour un bulletin reconstitué a posteriori." persistent-hint />
+            </v-col>
+            <v-col cols="12" md="4"><v-text-field v-model.number="form.presencePct" type="number" suffix="%" label="Présence *" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.salaireBaseUsd" type="number" label="Salaire de base (USD) *" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.conge" type="number" label="Congé" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.heuresSupplementaires" type="number" label="Heures supplémentaires" variant="outlined" density="comfortable" /></v-col>
@@ -343,7 +490,20 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
             <v-col cols="12" md="4"><v-text-field v-model.number="form.primeDiplome" type="number" label="Prime diplôme" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.primeAnciennete" type="number" label="Prime ancienneté" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model.number="form.primeRendement" type="number" label="Prime rendement" variant="outlined" density="comfortable" /></v-col>
-            <v-col cols="12" md="6"><v-text-field v-model.number="form.avanceSalaire" type="number" label="Avance sur salaire à déduire" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="12" md="6">
+              <v-text-field v-model.number="form.avanceSalaire" type="number" label="Avance sur salaire à déduire"
+                variant="outlined" density="comfortable" min="0"
+                :error-messages="avanceDepassee ? 'Supérieure à l\'avance ouverte de l\'agent' : undefined" />
+              <p v-if="avanceOuverte" class="text-caption text-medium-emphasis mt-1 mb-0">
+                <template v-if="avanceOuverte.compte">
+                  Avance ouverte : <strong>{{ fmtUsd(avanceOuverte.solde) }}</strong> (compte {{ avanceOuverte.compte }}).
+                  Seule une avance versée par une note de frais imputée à ce compte peut être retenue.
+                </template>
+                <template v-else>
+                  Cet agent n'a pas encore de compte d'avances : enregistrez sa fiche pour en ouvrir un.
+                </template>
+              </p>
+            </v-col>
             <v-col cols="12" md="6"><v-text-field v-model.number="form.pret" type="number" label="Prêt à déduire" variant="outlined" density="comfortable" /></v-col>
           </v-row>
 
@@ -356,11 +516,30 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
               <v-col cols="6" md="4"><span class="calc-label">Salaire brut</span><br><strong>{{ fmtUsd(resultat.salaireBrut) }}</strong></v-col>
               <v-col cols="6" md="4"><span class="calc-label">Indemnité logement</span><br><strong>{{ fmtUsd(resultat.indemniteLogement) }}</strong></v-col>
               <v-col cols="6" md="4"><span class="calc-label">Indemnité transport</span><br><strong>{{ fmtUsd(resultat.indemniteTransport) }}</strong></v-col>
-              <v-col cols="6" md="4"><span class="calc-label">CNSS ouvrière</span><br><strong>{{ fmtUsd(resultat.cnssOuvriere) }}</strong></v-col>
-              <v-col cols="6" md="4"><span class="calc-label">CNSS patronale</span><br><strong>{{ fmtUsd(resultat.cnssPatronale) }}</strong></v-col>
+              <v-col v-if="resultat.appointements != null" cols="6" md="4"><span class="calc-label">Appointements</span><br><strong>{{ fmtUsd(resultat.appointements) }}</strong></v-col>
+              <v-col v-if="resultat.baseImposableInss != null" cols="6" md="4"><span class="calc-label">Base cotisable (CNSS, ONEM, INPP)</span><br><strong>{{ fmtUsd(resultat.baseImposableInss) }}</strong></v-col>
+              <v-col v-if="resultat.baseImposableIpr != null" cols="6" md="4"><span class="calc-label">Base IPR</span><br><strong>{{ fmtUsd(resultat.baseImposableIpr) }}</strong></v-col>
+              <v-col cols="6" md="4"><span class="calc-label">CNSS salariale</span><br><strong>{{ fmtUsd(resultat.cnssOuvriere) }}</strong></v-col>
+              <v-col cols="6" md="4">
+                <span class="calc-label">CNSS patronale</span><br><strong>{{ fmtUsd(resultat.cnssPatronale) }}</strong>
+                <span v-if="resultat.cnssPatronalePension != null" class="calc-label d-block">
+                  pensions {{ fmtUsd(resultat.cnssPatronalePension) }} · PF {{ fmtUsd(resultat.cnssPatronalePf ?? 0) }}
+                  · RP {{ fmtUsd(resultat.cnssPatronaleRp ?? 0) }}
+                </span>
+              </v-col>
               <v-col cols="6" md="4"><span class="calc-label">ONEM</span><br><strong>{{ fmtUsd(resultat.onem) }}</strong></v-col>
-              <v-col cols="6" md="4"><span class="calc-label">INPP</span><br><strong>{{ fmtUsd(resultat.inpp) }}</strong></v-col>
-              <v-col cols="6" md="4"><span class="calc-label">IPR</span><br><strong>{{ fmtUsd(resultat.ipr) }}</strong></v-col>
+              <v-col cols="6" md="4">
+                <span class="calc-label">INPP</span><br><strong>{{ fmtUsd(resultat.inpp) }}</strong>
+                <span v-if="resultat.tauxInppApplique != null" class="calc-label d-block">
+                  taux {{ (Number(resultat.tauxInppApplique) * 100).toLocaleString('fr-FR') }} %<template v-if="resultat.effectif"> · {{ resultat.effectif }} employé(s)</template>
+                </span>
+              </v-col>
+              <v-col cols="6" md="4">
+                <span class="calc-label">IPR</span><br><strong>{{ fmtUsd(resultat.ipr) }}</strong>
+                <span v-if="resultat.personnesACharge != null" class="calc-label d-block">
+                  {{ resultat.personnesACharge }} personne(s) à charge
+                </span>
+              </v-col>
               <v-col cols="6" md="4"><span class="calc-label">Taux de change appliqué</span><br><strong>{{ resultat.tauxChangeApplique }}</strong></v-col>
               <v-col cols="12" md="6"><span class="calc-label">Salaire net (USD)</span><br><strong class="text-h6">{{ fmtUsd(resultat.salaireNet) }}</strong></v-col>
               <v-col cols="12" md="6"><span class="calc-label">Salaire net (FC)</span><br><strong class="text-h6">{{ fmtFc(resultat.netFc) }}</strong></v-col>
@@ -410,7 +589,7 @@ const validables = computed(() => bulletins.value.filter(b => b.statut === 'VALI
 </template>
 
 <style scoped>
-.calc-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
+.calc-label { font-size: 0.7rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.4px; }
 .conformite-liste { margin: 0; padding-left: 18px; font-size: 0.82rem; }
 .conformite-liste li + li { margin-top: 4px; }
 </style>

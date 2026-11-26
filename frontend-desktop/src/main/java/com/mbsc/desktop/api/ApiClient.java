@@ -1,10 +1,12 @@
 package com.mbsc.desktop.api;
 
+import com.mbsc.desktop.config.RoleLabels;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.mbsc.desktop.config.AppConfig;
+import com.mbsc.desktop.config.RoleLabels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,9 +60,32 @@ public class ApiClient {
         }
     }
 
+    /** Code renvoye par le serveur quand le compte est en double authentification et qu'il faut saisir le code. */
+    public static final String DOUBLE_AUTH_REQUISE = "DOUBLE_AUTH_REQUISE";
+    public static final String CODE_DOUBLE_AUTH_INCORRECT = "CODE_DOUBLE_AUTH_INCORRECT";
+
+    /** Connexion refusee faute de code de double authentification valide : l'ecran demande le code. */
+    public static class DoubleAuthRequiseException extends ApiException {
+        private final boolean codeIncorrect;
+
+        public DoubleAuthRequiseException(String message, boolean codeIncorrect) {
+            super(message);
+            this.codeIncorrect = codeIncorrect;
+        }
+
+        public boolean codeIncorrect() {
+            return codeIncorrect;
+        }
+    }
+
     /** Authentifie le caissier et stocke le jeton d'acces. */
     public AuthDtos.AuthResponse login(String email, String motDePasse) throws Exception {
-        var body = mapper.writeValueAsString(new AuthDtos.LoginRequest(email, motDePasse));
+        return login(email, motDePasse, null);
+    }
+
+    /** Authentifie le caissier, avec le code de double authentification s'il est demande (audit SYSCOHADA, C-23). */
+    public AuthDtos.AuthResponse login(String email, String motDePasse, String codeDoubleAuth) throws Exception {
+        var body = mapper.writeValueAsString(new AuthDtos.LoginRequest(email, motDePasse, codeDoubleAuth));
         HttpRequest req = HttpRequest.newBuilder()
             .uri(URI.create(AppConfig.API_BASE_URL + "/auth/login"))
             .header("Content-Type", "application/json")
@@ -68,6 +93,12 @@ public class ApiClient {
             .build();
 
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() == 401 && resp.body() != null
+                && (resp.body().contains(DOUBLE_AUTH_REQUISE) || resp.body().contains(CODE_DOUBLE_AUTH_INCORRECT))) {
+            throw new DoubleAuthRequiseException(resp.body().contains(CODE_DOUBLE_AUTH_INCORRECT)
+                ? "Code incorrect ou deja utilise." : "Saisissez le code de votre application d'authentification.",
+                resp.body().contains(CODE_DOUBLE_AUTH_INCORRECT));
+        }
         if (resp.statusCode() != 200) {
             log.warn("Echec d'authentification pour {} (HTTP {})", email, resp.statusCode());
             throw new ApiException("Echec d'authentification (" + resp.statusCode() + ")");
@@ -77,6 +108,26 @@ public class ApiClient {
         setAccessToken(auth.accessToken());
         log.info("Caissier authentifie : {}", email);
         return auth;
+    }
+
+    /** Recupere le nom d'affichage du role caissier (best-effort : l'ancien nom reste utilise en cas d'echec). */
+    public void chargerLibellesRoles() {
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(AppConfig.API_BASE_URL + "/roles/libelles"))
+                .header("Authorization", "Bearer " + accessToken)
+                .GET()
+                .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                var libelles = mapper.readTree(resp.body());
+                if (libelles.hasNonNull("CAISSIER")) {
+                    RoleLabels.definirCaissier(libelles.get("CAISSIER").asText());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Libelles de roles indisponibles : {}", e.getMessage());
+        }
     }
 
     /** Pousse un lot de transactions de maniere idempotente. */

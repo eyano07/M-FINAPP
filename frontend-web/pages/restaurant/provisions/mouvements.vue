@@ -1,21 +1,20 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
- * Entrées (réception) et sorties (utilisation en cuisine, casse, péremption)
- * des provisions. Sortie de stock au coût moyen, avec pièce comptable — même
- * mécanique que pour une vente, sans la notion de casier/consigne qui ne
- * s'applique pas à ces articles.
+ * Entrées et sorties des provisions.
  *
- * Le coût d'achat se saisit dans la devise réellement quotée (USD ou FC) et
- * n'est jamais converti côté client : si FC, le serveur résout le taux du
- * jour une seule fois, au moment de cette réception (immédiate, sans délai
- * d'approbation), pour figer la valeur en USD — un taux qui change ensuite
- * n'affecte jamais une réception déjà enregistrée.
+ * Les ENTRÉES ne se saisissent pas ici : une provision n'entre en stock que par l'achat (page Achat de
+ * provisions), qui suit le circuit des notes de frais — DFIN, DA, puis la caisse — et fait entrer la
+ * marchandise au paiement. Cette page en montre seulement le résultat dans l'historique.
+ *
+ * Les SORTIES (utilisation en cuisine, casse, péremption...) se saisissent ici : un type choisi dans une liste
+ * et une observation libre. Sortie de stock au coût moyen, avec pièce comptable — même mécanique que pour une
+ * vente, sans la notion de casier/consigne qui ne s'applique pas à ces articles.
  */
 interface Provision { id: number; code: string; libelle: string; uniteMesure?: string }
 interface Entrepot { id: number; code: string; nom: string }
-/** Forme exacte de StockGrandLivreResponse (backend) : un solde couranu, pas un journal à motif libre. */
+/** Forme exacte de MouvementProvisionResponse (backend) : un solde courant, pas un journal à motif libre. */
 interface LigneGrandLivre {
   id: number
   dateEcriture: string
@@ -27,47 +26,49 @@ interface LigneGrandLivre {
   qteApres: number
   valeurUnitaire: number
   valeurApres: number
+  mouvementId?: number
+  mouvementStatut?: 'BROUILLON' | 'VALIDE' | 'ANNULE'
+  /** Calculé par le serveur : réception directe ou sortie saisie ici, pas une production ni un achat par note. */
+  annulable: boolean
+  /** Type de la sortie saisie ici (nom de TypeSortieProvision) ; absent pour une entrée ou une sortie plus ancienne. */
+  typeSortie?: string | null
+  observation?: string | null
 }
 
+/** Types de sortie : miroir de TypeSortieProvision côté serveur. « Autre » exige une observation. */
+const TYPES_SORTIE = [
+  { value: 'UTILISATION_CUISINE', title: 'Utilisation en cuisine', couleur: 'primary' },
+  { value: 'CASSE', title: 'Casse / renversé', couleur: 'error' },
+  { value: 'PEREMPTION', title: 'Périmé', couleur: 'warning' },
+  { value: 'AVARIE', title: 'Moisi / avarié', couleur: 'deep-orange' },
+  { value: 'PERTE', title: 'Perte / manquant', couleur: 'grey' },
+  { value: 'REPAS_PERSONNEL', title: 'Repas du personnel', couleur: 'teal' },
+  { value: 'DON', title: 'Don / offert', couleur: 'purple' },
+  { value: 'AUTRE', title: 'Autre', couleur: 'grey' },
+]
+const typeSortie = (code?: string | null) => TYPES_SORTIE.find(t => t.value === code)
+
 const api = useApi()
+/** Devise d'affichage et formatage des montants et quantités (store du restaurant). */
+const parametresRestaurant = useRestaurantParametresStore()
+onMounted(() => { parametresRestaurant.charger() })
 const auth = useAuthStore()
 const loading = ref(false)
-const savingEntree = ref(false)
 const savingSortie = ref(false)
 const erreur = ref('')
 const succes = ref('')
 const provisions = ref<Provision[]>([])
 const entrepots = ref<Entrepot[]>([])
 const historique = ref<LigneGrandLivre[]>([])
-const tauxChange = ref(0)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
-
-const COMPTE_FOURNISSEUR = '4011'
-
-const formEntree = reactive({
-  articleId: null as number | null,
-  quantite: null as number | null,
-  deviseCout: 'USD' as 'USD' | 'CDF',
-  coutUnitaire: null as number | null,
-  entrepotId: null as number | null,
-  compteContrepartieNumero: COMPTE_FOURNISSEUR as string | null,
-  dateReception: new Date().toISOString().slice(0, 10),
-})
-
-/** Équivalent indicatif dans l'autre devise, au taux du jour — n'influence ni la saisie ni l'enregistrement. */
-const coutEquivalent = computed(() => {
-  if (!formEntree.coutUnitaire || tauxChange.value <= 0) return null
-  return formEntree.deviseCout === 'USD'
-    ? `≈ ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(formEntree.coutUnitaire * tauxChange.value)} FC`
-    : `≈ ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD' }).format(formEntree.coutUnitaire / tauxChange.value)}`
-})
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
 const formSortie = reactive({
   articleId: null as number | null,
   quantite: null as number | null,
   entrepotId: null as number | null,
-  motif: '',
+  typeSortie: null as string | null,
+  observation: '',
   dateMouvement: new Date().toISOString().slice(0, 10),
 })
 
@@ -75,18 +76,15 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [provs, ents, hist, tauxData] = await Promise.all([
+    const [provs, ents, hist] = await Promise.all([
       api<Provision[]>('/restaurant/provisions'),
       api<Entrepot[]>('/restaurant/entrepots').catch(() => []),
       api<LigneGrandLivre[]>('/restaurant/provisions/mouvements').catch(() => []),
-      api<{ taux: number }>('/admin/taux-change').catch(() => ({ taux: 0 })),
     ])
     provisions.value = provs
     entrepots.value = ents
     historique.value = hist
-    tauxChange.value = tauxData.taux || 0
     if (ents.length === 1) {
-      formEntree.entrepotId = ents[0].id
       formSortie.entrepotId = ents[0].id
     }
   } catch (e: any) {
@@ -97,45 +95,17 @@ async function charger() {
 }
 onMounted(charger)
 
-async function enregistrerEntree() {
-  if (!formEntree.articleId || !formEntree.quantite || !formEntree.entrepotId) {
-    erreur.value = 'Provision, quantité et entrepôt sont obligatoires.'
-    return
-  }
-  if (!formEntree.coutUnitaire || formEntree.coutUnitaire <= 0) {
-    erreur.value = "Le coût d'achat est obligatoire : sans lui, le coût de revient resterait nul."
-    return
-  }
-  savingEntree.value = true
-  erreur.value = ''
-  succes.value = ''
-  try {
-    await api('/restaurant/provisions/entrees', {
-      method: 'POST',
-      body: {
-        articleId: formEntree.articleId,
-        quantite: formEntree.quantite,
-        coutUnitaire: formEntree.coutUnitaire,
-        devise: formEntree.deviseCout,
-        entrepotId: formEntree.entrepotId,
-        compteContrepartieNumero: formEntree.compteContrepartieNumero,
-        dateReception: formEntree.dateReception,
-      },
-    })
-    succes.value = 'Entrée enregistrée.'
-    formEntree.quantite = null
-    formEntree.coutUnitaire = null
-    await charger()
-  } catch (e: any) {
-    erreur.value = messageErreurApi(e, "Échec de l'enregistrement de l'entrée.")
-  } finally {
-    savingEntree.value = false
-  }
-}
-
 async function enregistrerSortie() {
   if (!formSortie.articleId || !formSortie.quantite || !formSortie.entrepotId) {
     erreur.value = 'Provision, quantité et entrepôt sont obligatoires.'
+    return
+  }
+  if (!formSortie.typeSortie) {
+    erreur.value = 'Choisissez le type de sortie.'
+    return
+  }
+  if (formSortie.typeSortie === 'AUTRE' && !formSortie.observation.trim()) {
+    erreur.value = "Précisez la raison de la sortie dans l'observation : le type « Autre » ne l'explique pas."
     return
   }
   savingSortie.value = true
@@ -148,13 +118,15 @@ async function enregistrerSortie() {
         articleId: formSortie.articleId,
         quantite: formSortie.quantite,
         entrepotId: formSortie.entrepotId,
-        motif: formSortie.motif || null,
+        typeSortie: formSortie.typeSortie,
+        observation: formSortie.observation.trim() || null,
         dateMouvement: formSortie.dateMouvement,
       },
     })
     succes.value = 'Sortie enregistrée.'
     formSortie.quantite = null
-    formSortie.motif = ''
+    formSortie.typeSortie = null
+    formSortie.observation = ''
     await charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, "Échec de l'enregistrement de la sortie.")
@@ -163,11 +135,53 @@ async function enregistrerSortie() {
   }
 }
 
+// ── Annulation d'un mouvement saisi par erreur ─────────────────────────────
+// Le bouton n'apparaît que sur la première ligne du mouvement : une ligne du
+// grand livre de stock est un solde, et un mouvement annulé en ajoute une
+// seconde (la contre-passation) sous la même référence.
+const premiereLigneDuMouvement = computed(() => {
+  const vues = new Set<number>()
+  const premieres = new Set<number>()
+  for (const l of historique.value) {
+    if (l.mouvementId == null || vues.has(l.mouvementId)) continue
+    vues.add(l.mouvementId)
+    premieres.add(l.id)
+  }
+  return premieres
+})
+const peutAnnuler = (l: LigneGrandLivre) => canWrite.value && l.annulable && premiereLigneDuMouvement.value.has(l.id)
+
+const aAnnuler = ref<LigneGrandLivre | null>(null)
+const annulation = ref(false)
+
+async function confirmerAnnulation() {
+  const ligne = aAnnuler.value
+  if (!ligne?.mouvementId) return
+  annulation.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    await api(`/restaurant/provisions/mouvements/${ligne.mouvementId}/annuler`, { method: 'POST' })
+    succes.value = `Mouvement ${ligne.mouvementReference} annulé : le stock est rétabli et ses écritures sont extournées.`
+    aAnnuler.value = null
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Échec de l'annulation du mouvement.")
+    aAnnuler.value = null
+  } finally {
+    annulation.value = false
+  }
+}
+
 const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—')
-const fmtQte = (q: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(q || 0)
-/** valeurUnitaire/valeurApres (StockGrandLivreResponse) sont déjà en USD — devise de base du grand livre, aucune conversion à faire. */
+const fmtQte = (q: number) => parametresRestaurant.fmtQuantite(q)
+/**
+ * valeurUnitaire/valeurApres (StockGrandLivreResponse) sont en USD, devise de
+ * base du grand livre : affichés dans la devise du restaurant (FC par défaut),
+ * au taux du jour, comme sur les autres écrans du module.
+ */
 const fmtUSD = (montant?: number | null) =>
-  montant == null ? '—' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD' }).format(montant)
+  parametresRestaurant.fmtMontant(montant)
 </script>
 
 <template>
@@ -175,11 +189,16 @@ const fmtUSD = (montant?: number | null) =>
     <div class="page-head">
       <div>
         <h1 class="page-title">Entrées / sorties de provisions</h1>
-        <p class="page-sub">Réceptions, utilisation en cuisine, casse et péremption</p>
+        <p class="page-sub">Les entrées viennent des achats ; utilisation en cuisine, casse et péremption se saisissent ici</p>
       </div>
-      <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-sack" to="/restaurant/provisions">
-        Les provisions
-      </v-btn>
+      <div class="d-flex ga-2">
+        <v-btn v-if="canWrite" variant="tonal" color="success" rounded="lg" prepend-icon="mdi-truck-delivery-outline" to="/restaurant/provisions/receptions">
+          Achat de provisions
+        </v-btn>
+        <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-sack" to="/restaurant/provisions">
+          Les provisions
+        </v-btn>
+      </div>
     </div>
 
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
@@ -194,44 +213,28 @@ const fmtUSD = (montant?: number | null) =>
 
     <div v-if="canWrite" class="rst-forms mb-5">
       <v-card class="classroom-card pa-5">
-        <p class="rst-form-title"><v-icon icon="mdi-truck-delivery-outline" size="16" class="mr-1" />Entrée (réception)</p>
-        <v-select v-model="formEntree.articleId" :items="provisions.map(p => ({ title: p.libelle, value: p.id }))"
-          label="Provision *" variant="outlined" density="comfortable" class="mb-3" />
-        <v-text-field v-model.number="formEntree.quantite" type="number" label="Quantité *" variant="outlined" density="comfortable" class="mb-3" />
-        <div class="d-flex ga-2 mb-1 align-start">
-          <v-text-field
-            v-model.number="formEntree.coutUnitaire"
-            type="number"
-            :label="`Coût unitaire (${formEntree.deviseCout}) *`"
-            hint="Sans coût, le coût de revient resterait nul"
-            persistent-hint
-            variant="outlined"
-            density="comfortable"
-            class="flex-grow-1"
-          />
-          <v-btn-toggle v-model="formEntree.deviseCout" mandatory density="comfortable" variant="outlined" rounded="lg" style="margin-top: 4px">
-            <v-btn value="USD" size="small">$US</v-btn>
-            <v-btn value="CDF" size="small">FC</v-btn>
-          </v-btn-toggle>
-        </div>
-        <p class="text-caption text-medium-emphasis mb-3" style="min-height: 1.2em">{{ coutEquivalent }}</p>
-        <v-select v-model="formEntree.entrepotId" :items="entrepots.map(e => ({ title: `${e.code} — ${e.nom}`, value: e.id }))"
-          label="Entrepôt *" variant="outlined" density="comfortable" class="mb-3" />
-        <ComptabiliteSelecteurCompte v-model="formEntree.compteContrepartieNumero" label="Contrepartie (fournisseur, caisse...)" class="mb-3" />
-        <v-text-field v-model="formEntree.dateReception" type="date" label="Date" variant="outlined" density="comfortable" class="mb-4" />
-        <v-btn color="success" variant="flat" rounded="lg" block :loading="savingEntree" :disabled="!provisions.length" @click="enregistrerEntree">
-          Enregistrer l'entrée
+        <p class="rst-form-title"><v-icon icon="mdi-truck-delivery-outline" size="16" class="mr-1" />Entrée en stock</p>
+        <p class="text-body-2 mb-4">
+          Une provision n'entre en stock que par l'achat : la demande suit le circuit des notes de frais
+          (DFIN, DA, puis la caisse) et le stock augmente au paiement, avec son écriture comptable.
+        </p>
+        <v-btn color="success" variant="flat" rounded="lg" block prepend-icon="mdi-cart-plus" to="/restaurant/provisions/receptions">
+          Acheter des provisions
         </v-btn>
       </v-card>
 
       <v-card class="classroom-card pa-5">
-        <p class="rst-form-title"><v-icon icon="mdi-arrow-up-bold-outline" size="16" class="mr-1" />Sortie (cuisine, casse, péremption)</p>
+        <p class="rst-form-title"><v-icon icon="mdi-arrow-up-bold-outline" size="16" class="mr-1" />Sortie (cuisine, casse, péremption...)</p>
         <v-select v-model="formSortie.articleId" :items="provisions.map(p => ({ title: p.libelle, value: p.id }))"
           label="Provision *" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model.number="formSortie.quantite" type="number" label="Quantité *" variant="outlined" density="comfortable" class="mb-3" />
         <v-select v-model="formSortie.entrepotId" :items="entrepots.map(e => ({ title: `${e.code} — ${e.nom}`, value: e.id }))"
           label="Entrepôt *" variant="outlined" density="comfortable" class="mb-3" />
-        <v-textarea v-model="formSortie.motif" label="Motif" rows="2" placeholder="Utilisation cuisine, casse, périmé..." variant="outlined" density="comfortable" class="mb-3" />
+        <v-select v-model="formSortie.typeSortie" :items="TYPES_SORTIE" item-title="title" item-value="value"
+          label="Type de sortie *" variant="outlined" density="comfortable" class="mb-3" />
+        <v-textarea v-model="formSortie.observation" :label="formSortie.typeSortie === 'AUTRE' ? 'Observation *' : 'Observation'" rows="2"
+          :placeholder="formSortie.typeSortie === 'AUTRE' ? 'Précisez la raison de la sortie' : 'Précision utile : lot, circonstances, bénéficiaire...'"
+          variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model="formSortie.dateMouvement" type="date" label="Date" variant="outlined" density="comfortable" class="mb-4" />
         <v-btn color="error" variant="tonal" rounded="lg" block :loading="savingSortie" :disabled="!provisions.length" @click="enregistrerSortie">
           Enregistrer la sortie
@@ -250,11 +253,13 @@ const fmtUSD = (montant?: number | null) =>
           { title: 'Provision', key: 'articleCode' },
           { title: 'Entrepôt', key: 'entrepotCode' },
           { title: 'Mouvement', key: 'mouvementReference' },
+          { title: 'Type de sortie', key: 'typeSortie', sortable: false },
           { title: 'Entrée', key: 'qteEntree', align: 'end' },
           { title: 'Sortie', key: 'qteSortie', align: 'end' },
           { title: 'Solde qté', key: 'qteApres', align: 'end' },
           { title: 'CMP', key: 'valeurUnitaire', align: 'end' },
           { title: 'Valeur stock', key: 'valeurApres', align: 'end' },
+          { title: '', key: 'actions', align: 'end', sortable: false },
         ]"
         :items="historique"
         :loading="loading"
@@ -263,6 +268,15 @@ const fmtUSD = (montant?: number | null) =>
         <template #item.dateEcriture="{ item }">{{ fmtDate(item.dateEcriture) }}</template>
         <template #item.articleCode="{ item }">
           {{ provisions.find(p => p.code === item.articleCode)?.libelle || item.articleCode }}
+        </template>
+        <template #item.typeSortie="{ item }">
+          <template v-if="item.typeSortie">
+            <v-chip :color="typeSortie(item.typeSortie)?.couleur || 'grey'" size="x-small" variant="tonal">
+              {{ typeSortie(item.typeSortie)?.title || item.typeSortie }}
+            </v-chip>
+            <div v-if="item.observation" class="rst-observation">{{ item.observation }}</div>
+          </template>
+          <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #item.qteEntree="{ item }">
           <span v-if="item.qteEntree" class="text-success font-weight-medium">+{{ fmtQte(item.qteEntree) }}</span>
@@ -275,18 +289,56 @@ const fmtUSD = (montant?: number | null) =>
         <template #item.qteApres="{ item }">{{ fmtQte(item.qteApres) }}</template>
         <template #item.valeurUnitaire="{ item }">{{ fmtUSD(item.valeurUnitaire) }}</template>
         <template #item.valeurApres="{ item }">{{ fmtUSD(item.valeurApres) }}</template>
+        <template #item.mouvementReference="{ item }">
+          {{ item.mouvementReference || '—' }}
+          <v-chip v-if="item.mouvementStatut === 'ANNULE'" size="x-small" variant="tonal" color="grey" class="ml-1">Annulé</v-chip>
+        </template>
+        <template #item.actions="{ item }">
+          <v-btn
+            v-if="peutAnnuler(item)"
+            icon="mdi-undo-variant"
+            size="small"
+            variant="text"
+            color="error"
+            :title="`Annuler le mouvement ${item.mouvementReference}`"
+            :aria-label="`Annuler le mouvement ${item.mouvementReference}`"
+            @click="aAnnuler = item"
+          />
+        </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">Aucun mouvement enregistré.</div>
         </template>
       </v-data-table>
     </v-card>
+
+    <v-dialog :model-value="!!aAnnuler" max-width="480" @update:model-value="v => { if (!v && !annulation) aAnnuler = null }">
+      <v-card v-if="aAnnuler" rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold">Annuler le mouvement {{ aAnnuler.mouvementReference }} ?</v-card-title>
+        <v-card-text>
+          <p v-if="aAnnuler.qteEntree" class="mb-2">
+            La réception de {{ fmtQte(aAnnuler.qteEntree) }} sort du stock, et ses deux écritures sont extournées :
+            l'entrée en stock et l'achat au fournisseur.
+          </p>
+          <p v-else class="mb-2">
+            Les {{ fmtQte(aAnnuler.qteSortie) }} sorties reviennent en stock, et l'écriture de consommation est extournée.
+          </p>
+          <p class="text-medium-emphasis mb-0">Vous pourrez ensuite saisir le bon mouvement.</p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="annulation" @click="aAnnuler = null">Garder</v-btn>
+          <v-btn color="error" variant="flat" :loading="annulation" @click="confirmerAnnulation">Annuler le mouvement</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <style scoped>
-.rst-forms { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.rst-forms { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 900px) { .rst-forms { grid-template-columns: 1fr; } }
-.rst-form-title { font-size: 0.85rem; font-weight: 700; color: #374151; margin: 0 0 16px; display: flex; align-items: center; }
+.rst-form-title { font-size: 0.85rem; font-weight: 700; color: var(--ink-2); margin: 0 0 16px; display: flex; align-items: center; }
+.rst-observation { margin-top: 2px; font-size: 0.72rem; line-height: 1.3; color: var(--ink-soft); max-width: 260px; white-space: normal; }
 .rst-card-head {
   display: flex;
   align-items: center;
@@ -294,7 +346,7 @@ const fmtUSD = (montant?: number | null) =>
   font-weight: 700;
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--ink-soft);
   padding: 16px 20px 12px;
 }
 </style>

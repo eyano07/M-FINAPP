@@ -1,0 +1,12 @@
+-- Révocation des jetons JWT (audit sécurité du 05/10/2026, constat S-02).
+--
+-- Chaque jeton (accès et rafraîchissement) porte la version de jetons de son
+-- utilisateur au moment de son émission (claim « tv »). Le filtre et le
+-- rafraîchissement refusent un jeton dont la version n'est plus la version
+-- courante. La version augmente à la désactivation du compte, à chaque
+-- changement de mot de passe et à la déconnexion (POST /auth/logout) : tous
+-- les jetons déjà émis cessent alors de fonctionner, sur tous les appareils.
+--
+-- Les jetons émis avant cette migration n'ont pas de claim « tv » : lus comme
+-- version 0, ils restent valides jusqu'à leur expiration normale.
+ALTER TABLE users ADD COLUMN version_jetons INTEGER NOT NULL DEFAULT 0;

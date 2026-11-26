@@ -1,29 +1,55 @@
 <script setup lang="ts">
+import { useInstanceStore } from '~/stores/instance'
 definePageMeta({ roles: ['ADMIN'] })
-
-import { useDisplay } from 'vuetify'
-
-const { width } = useDisplay()
-const esMobile = computed(() => width.value < 600)
 
 interface UserRow {
   id: number
   nom: string
   prenom: string
   email: string
+  telephone: string | null
+  emailNotification?: string | null
+  fonction: string | null
+  affectation: string | null
   roles: string[]
   actif: boolean
+  /** Mot de passe choisi par l'administrateur, pas encore remplacé par l'utilisateur (V131). */
+  motDePasseProvisoire?: boolean
   nomComplet?: string
+  /** Rôles qui n'avaient aucun droit et ont reçu ceux d'origine à cette occasion. */
+  droitsParDefaut?: string[]
 }
 
-const ALL_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT']
+const rolesStore = useRolesStore()
+const ALL_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'RECEPTIONNISTE', 'GOUVERNANTE', 'TECHNICIEN', 'DIR_HEBERGEMENT']
+
+/**
+ * Rôles qu'on peut attribuer aujourd'hui : ceux dont le module n'est pas désactivé (le serveur en décide, voir
+ * ModulesDesRoles). Un rôle dont le module est coupé disparaît du sélecteur ; les comptes qui n'ont plus que de
+ * tels rôles sont masqués de la liste, et reviennent avec le module.
+ */
+const rolesDisponibles = ref<string[]>([...ALL_ROLES])
+const rolesMasques = computed(() => ALL_ROLES.filter((r) => !rolesDisponibles.value.includes(r)))
 
 const api = useApi()
+const dialogues = useDialogues()
+// Copie en ligne d'un serveur local (V133) : seule l'activation / désactivation d'un compte y est possible (immédiate
+// ici, appliquée ensuite au serveur principal) ; création et modification se font sur le serveur principal.
+const instance = useInstanceStore()
+const surCopie = computed(() => instance.estCopie)
 const loading = ref(false)
 const saving = ref(false)
 const erreur = ref('')
 const succes = ref('')
 const users = ref<UserRow[]>([])
+
+// ── Recherche : nom, prénom, identifiant, téléphone, fonction, affectation, adresse de notification et rôles ─────────
+const recherche = ref('')
+const usersFiltres = computed(() => users.value.filter(u => correspondRecherche(
+  [u.nomComplet, u.prenom, u.nom, u.email, u.telephone, u.emailNotification, u.fonction, u.affectation,
+    ...u.roles, ...u.roles.map(r => rolesStore.libelle(r)), u.actif ? 'actif' : 'inactif',
+    u.motDePasseProvisoire ? 'mot de passe provisoire' : ''],
+  recherche.value)))
 
 // ── Dialog ─────────────────────────────────────────────────────────────────
 const dialog = ref(false)
@@ -35,6 +61,10 @@ const form = reactive({
   prenom: '',
   email: '',
   motDePasse: '',
+  telephone: '',
+  emailNotification: '',
+  fonction: '',
+  affectation: '',
   roles: [] as string[],
 })
 
@@ -45,6 +75,10 @@ function ouvrirAjouter() {
   form.prenom = ''
   form.email = ''
   form.motDePasse = ''
+  form.telephone = ''
+  form.emailNotification = ''
+  form.fonction = ''
+  form.affectation = ''
   form.roles = []
   erreur.value = ''
   dialog.value = true
@@ -57,6 +91,10 @@ function ouvrirModifier(u: UserRow) {
   form.prenom = u.prenom
   form.email = u.email
   form.motDePasse = ''
+  form.telephone = u.telephone ?? ''
+  form.emailNotification = u.emailNotification ?? ''
+  form.fonction = u.fonction ?? ''
+  form.affectation = u.affectation ?? ''
   form.roles = [...u.roles]
   erreur.value = ''
   dialog.value = true
@@ -67,10 +105,15 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const data = await api<UserRow[]>('/admin/users')
+    const [data, disponibles] = await Promise.all([
+      api<UserRow[]>('/admin/users'),
+      // Sans cette liste (erreur réseau), on propose tous les rôles : le serveur refusera un rôle indisponible.
+      api<string[]>('/admin/roles/disponibles').catch(() => null),
+    ])
     users.value = data.map((u) => ({ ...u, nomComplet: `${u.prenom ?? ''} ${u.nom ?? ''}`.trim() }))
+    if (disponibles) rolesDisponibles.value = ALL_ROLES.filter((r) => disponibles.includes(r))
   } catch (e: any) {
-    erreur.value = e?.data?.message || 'Impossible de charger les utilisateurs.'
+    erreur.value = messageErreurApi(e, 'Impossible de charger les utilisateurs.')
   } finally {
     loading.value = false
   }
@@ -79,8 +122,16 @@ async function charger() {
 onMounted(charger)
 
 // ── Enregistrement ─────────────────────────────────────────────────────────
+// Les droits sont rattachés au rôle : un rôle sans aucun droit n'ouvrirait aucun module à son
+// utilisateur. Le serveur pose alors les droits d'origine ; on le dit à l'administrateur.
+function noteDroitsParDefaut(roles?: string[]): string {
+  if (!roles?.length) return ''
+  return ` Aucun droit n'était défini pour ${roles.length > 1 ? 'les rôles' : 'le rôle'} ${roles.join(', ')} : `
+    + "les droits d'origine ont été appliqués (modifiables dans Administration → Permissions)."
+}
+
 async function enregistrer() {
-  if (!form.nom || !form.prenom || !form.email || form.roles.length === 0) {
+  if (!form.nom || !form.prenom || !form.email.trim() || form.roles.length === 0) {
     erreur.value = 'Renseignez tous les champs obligatoires et au moins un rôle.'
     return
   }
@@ -92,22 +143,34 @@ async function enregistrer() {
   erreur.value = ''
   try {
     if (editMode.value) {
-      await api(`/admin/users/${editId.value}`, {
+      const modifie = await api<UserRow>(`/admin/users/${editId.value}`, {
         method: 'PUT',
-        body: { nom: form.nom, prenom: form.prenom, motDePasse: form.motDePasse || null, roles: form.roles },
+        body: {
+          nom: form.nom, prenom: form.prenom, motDePasse: form.motDePasse || null,
+          telephone: form.telephone.trim() || null,
+          emailNotification: form.emailNotification.trim() || null,
+          fonction: form.fonction.trim() || null, affectation: form.affectation.trim() || null,
+          roles: form.roles,
+        },
       })
-      succes.value = 'Utilisateur modifié avec succès.'
+      succes.value = 'Utilisateur modifié avec succès.' + noteDroitsParDefaut(modifie.droitsParDefaut)
     } else {
-      await api('/admin/users', {
+      const cree = await api<UserRow>('/admin/users', {
         method: 'POST',
-        body: { nom: form.nom, prenom: form.prenom, email: form.email, motDePasse: form.motDePasse, roles: form.roles },
+        body: {
+          nom: form.nom, prenom: form.prenom, email: form.email.trim(), motDePasse: form.motDePasse,
+          telephone: form.telephone.trim() || null,
+          emailNotification: form.emailNotification.trim() || null,
+          fonction: form.fonction.trim() || null, affectation: form.affectation.trim() || null,
+          roles: form.roles,
+        },
       })
-      succes.value = 'Utilisateur créé avec succès.'
+      succes.value = 'Utilisateur créé avec succès.' + noteDroitsParDefaut(cree.droitsParDefaut)
     }
     dialog.value = false
     await charger()
   } catch (e: any) {
-    erreur.value = e?.data?.message || "Échec de l'enregistrement."
+    erreur.value = messageErreurApi(e, "Échec de l'enregistrement.")
   } finally {
     saving.value = false
   }
@@ -122,17 +185,73 @@ async function toggleActif(u: UserRow) {
     const idx = users.value.findIndex((x) => x.id === u.id)
     if (idx !== -1) users.value[idx].actif = updated.actif
     succes.value = updated.actif ? `${u.nomComplet} activé.` : `${u.nomComplet} désactivé.`
+    if (surCopie.value) {
+      succes.value += ' Effet immédiat sur ce serveur ; appliqué au serveur principal à la prochaine synchronisation.'
+    }
   } catch (e: any) {
-    erreur.value = e?.data?.message || 'Échec du changement de statut.'
+    erreur.value = messageErreurApi(e, 'Échec du changement de statut.')
   } finally {
     togglingId.value = null
   }
 }
 
+// ── Double authentification (audit SYSCOHADA du 10/11/2026, C-23) ───────
+const doubleAuthObligatoire = ref(false)
+async function chargerDoubleAuth() {
+  try {
+    doubleAuthObligatoire.value = (await api<{ obligatoire: boolean }>('/admin/securite/double-auth')).obligatoire
+  } catch {
+    // réglage non lisible : on n'affiche que l'état par défaut
+  }
+}
+async function basculerDoubleAuthObligatoire() {
+  const cible = !doubleAuthObligatoire.value
+  if (cible && !(await dialogues.confirmer({
+    titre: 'Rendre la double authentification obligatoire ?',
+    message: [
+      'Elle sera exigée de DFIN, DA, DG, ADMIN et CAISSIER.',
+      'Ceux qui ne l’ont pas encore activée devront le faire à leur prochaine action, avec une application '
+      + 'd’authentification sur leur téléphone.',
+    ],
+    bouton: 'Rendre obligatoire',
+    nature: 'attention',
+    icone: 'mdi-shield-lock-outline',
+  }))) return
+  try {
+    doubleAuthObligatoire.value = (await api<{ obligatoire: boolean }>('/admin/securite/double-auth', {
+      method: 'PUT', query: { obligatoire: cible },
+    })).obligatoire
+    succes.value = cible ? 'Double authentification obligatoire pour les rôles sensibles.' : 'Double authentification facultative.'
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Modification impossible.')
+  }
+}
+async function reinitialiserDoubleAuth(u: UserRow) {
+  const confirme = await dialogues.confirmer({
+    titre: `Réinitialiser la double authentification de ${u.nomComplet} ?`,
+    message: 'À faire quand son téléphone est perdu ou changé : elle sera réactivée à sa prochaine connexion.',
+    bouton: 'Réinitialiser',
+    nature: 'attention',
+    icone: 'mdi-shield-refresh-outline',
+  })
+  if (!confirme) return
+  try {
+    await api(`/admin/utilisateurs/${u.id}/double-auth/reinitialiser`, { method: 'POST' })
+    succes.value = `Double authentification de ${u.nomComplet} réinitialisée : elle sera réactivée à sa prochaine connexion.`
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Réinitialisation impossible.')
+  }
+}
+onMounted(chargerDoubleAuth)
+
 const roleColor: Record<string, string> = {
   ADMIN: '#7c3aed', DG: '#0ea5e9', DA: '#f59e0b',
-  DFIN: '#16a34a', DIRECTEUR: '#2563eb', CAISSIER: '#ea580c', COMPTABLE: '#be185d', LOGISTIQUE: '#0d9488',
+  DFIN: 'var(--color-primary)', DIRECTEUR: '#2563eb', CAISSIER: '#ea580c', COMPTABLE: '#be185d', LOGISTIQUE: '#0d9488',
   GEST_PATRIMOINE: '#9333ea', RESP_DRH: '#c026d3', RESP_RESTAURANT: '#e11d48',
+  // Cuisine : orange (comme les plats dans l'analyse des ventes) ; bar : indigo (comme les boissons).
+  RESP_CUISINE: '#ea580c', RESP_BAR: '#4f46e5',
+  // Hôtellerie (V152) : teintes sarcelle.
+  RECEPTIONNISTE: '#0f766e', GOUVERNANTE: '#0891b2', TECHNICIEN: '#475569', DIR_HEBERGEMENT: '#115e59',
 }
 </script>
 
@@ -148,7 +267,7 @@ const roleColor: Record<string, string> = {
         <button class="usr-refresh-btn" :disabled="loading" @click="charger">
           <v-icon icon="mdi-refresh" size="16" />
         </button>
-        <button class="usr-new-btn" @click="ouvrirAjouter">
+        <button v-if="!surCopie" class="usr-new-btn" @click="ouvrirAjouter">
           <v-icon icon="mdi-plus" size="18" class="mr-1" />
           Ajouter
         </button>
@@ -161,34 +280,71 @@ const roleColor: Record<string, string> = {
     <v-alert v-if="erreur && !dialog" type="error" variant="tonal" rounded="lg" density="compact" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
     </v-alert>
+    <v-alert type="info" variant="tonal" rounded="lg" density="compact" class="mb-4">
+      <div class="d-flex flex-wrap align-center ga-3">
+        <span>
+          Double authentification
+          <strong>{{ doubleAuthObligatoire ? 'obligatoire' : 'facultative' }}</strong>
+          pour DFIN, DA, DG, ADMIN et CAISSIER.
+        </span>
+        <v-btn v-if="!surCopie" size="small" variant="outlined" @click="basculerDoubleAuthObligatoire">
+          {{ doubleAuthObligatoire ? 'Rendre facultative' : 'Rendre obligatoire' }}
+        </v-btn>
+      </div>
+    </v-alert>
+    <v-alert v-if="rolesMasques.length" type="info" variant="tonal" rounded="lg" density="compact" class="mb-4">
+      Rôles masqués, leur module étant désactivé :
+      <strong>{{ rolesMasques.map((r) => rolesStore.libelle(r)).join(', ') }}</strong>.
+      Les comptes qui n'ont que ces rôles sont désactivés et masqués ; ils reviennent avec le module (Administration › Modules).
+    </v-alert>
 
-    <!-- ── Tableau ───────────────────────────────────────────────────── -->
+    <!-- ── Recherche ─────────────────────────────────────────────────── -->
+    <div class="usr-recherche">
+      <v-text-field
+        v-model="recherche"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="Nom, identifiant, rôle, fonction…"
+        aria-label="Rechercher un utilisateur"
+        clearable hide-details
+        variant="outlined" density="comfortable" rounded="lg"
+        class="usr-recherche__champ"
+      />
+      <span v-if="users.length" class="usr-recherche__compteur">{{ usersFiltres.length }} sur {{ users.length }}</span>
+    </div>
+
+    <!-- ── Tableau (PC) et cartes (téléphone, tablette) ──────────────── -->
     <div class="usr-card">
       <div v-if="loading" class="usr-loading">
         <v-progress-circular indeterminate color="primary" size="28" />
       </div>
 
       <div v-else-if="users.length === 0" class="usr-empty">
-        <v-icon icon="mdi-account-group-outline" size="40" color="#d1d5db" />
+        <v-icon icon="mdi-account-group-outline" size="40" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucun utilisateur trouvé.</p>
       </div>
 
-      <div v-else-if="!esMobile" class="usr-table-scroll">
+      <div v-else-if="usersFiltres.length === 0" class="usr-empty">
+        <v-icon icon="mdi-account-search-outline" size="40" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
+        <p>Aucun utilisateur ne correspond à « {{ recherche }} ».</p>
+      </div>
+
+      <template v-else>
+      <div class="usr-table-scroll tableau-fixe">
       <table class="usr-table">
         <thead>
           <tr>
             <th>Utilisateur</th>
-            <th>E-mail</th>
+            <th>Identifiant</th>
             <th>Rôles</th>
             <th>Statut</th>
             <th class="usr-th-actions">Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="u in users" :key="u.id" :class="{ 'usr-row--inactive': !u.actif }">
+          <tr v-for="u in usersFiltres" :key="u.id" :class="{ 'usr-row--inactive': !u.actif }">
             <td>
               <div class="usr-name-cell">
-                <div class="usr-avatar" :style="{ background: u.actif ? '#dcfce7' : '#f3f4f6', color: u.actif ? '#16a34a' : '#9ca3af' }">
+                <div class="usr-avatar" :style="{ background: u.actif ? 'var(--color-primary-light)' : '#f3f4f6', color: u.actif ? 'var(--color-primary)' : '#9ca3af' }">
                   {{ (u.prenom?.[0] ?? '') + (u.nom?.[0] ?? '') }}
                 </div>
                 <span>{{ u.nomComplet }}</span>
@@ -198,7 +354,7 @@ const roleColor: Record<string, string> = {
             <td>
               <div class="usr-roles">
                 <span v-for="r in u.roles" :key="r" class="usr-role-chip" :style="{ background: roleColor[r] + '1a', color: roleColor[r] }">
-                  {{ r }}
+                  {{ rolesStore.libelle(r) }}
                 </span>
               </div>
             </td>
@@ -207,11 +363,18 @@ const roleColor: Record<string, string> = {
                 <span class="usr-status-dot" />
                 {{ u.actif ? 'Actif' : 'Inactif' }}
               </span>
+              <span v-if="u.motDePasseProvisoire" class="usr-provisoire-chip" title="L'utilisateur doit encore choisir son propre mot de passe (à sa prochaine connexion)">
+                <v-icon icon="mdi-lock-clock" size="13" /> Mot de passe provisoire
+              </span>
             </td>
             <td>
               <div class="usr-actions">
-                <button class="usr-action-btn usr-action-btn--edit" title="Modifier" @click="ouvrirModifier(u)">
+                <button v-if="!surCopie" class="usr-action-btn usr-action-btn--edit" title="Modifier" @click="ouvrirModifier(u)">
                   <v-icon icon="mdi-pencil-outline" size="16" />
+                </button>
+                <button class="usr-action-btn usr-action-btn--edit" title="Réinitialiser la double authentification"
+                        @click="reinitialiserDoubleAuth(u)">
+                  <v-icon icon="mdi-shield-refresh-outline" size="16" />
                 </button>
                 <button
                   class="usr-action-btn"
@@ -230,11 +393,11 @@ const roleColor: Record<string, string> = {
       </table>
       </div>
 
-      <!-- ── Cartes (mobile) ──────────────────────────────────── -->
-      <div v-else class="usr-cards">
-        <div v-for="u in users" :key="u.id" class="usr-card-item" :class="{ 'usr-card-item--inactive': !u.actif }">
+      <!-- ── Cartes (téléphone, tablette) ─────────────────────── -->
+      <div class="usr-cards">
+        <div v-for="u in usersFiltres" :key="u.id" class="usr-card-item" :class="{ 'usr-card-item--inactive': !u.actif }">
           <div class="usr-card-item__top">
-            <div class="usr-avatar" :style="{ background: u.actif ? '#dcfce7' : '#f3f4f6', color: u.actif ? '#16a34a' : '#9ca3af' }">
+            <div class="usr-avatar" :style="{ background: u.actif ? 'var(--color-primary-light)' : '#f3f4f6', color: u.actif ? 'var(--color-primary)' : '#9ca3af' }">
               {{ (u.prenom?.[0] ?? '') + (u.nom?.[0] ?? '') }}
             </div>
             <div class="usr-card-item__id">
@@ -246,15 +409,18 @@ const roleColor: Record<string, string> = {
               {{ u.actif ? 'Actif' : 'Inactif' }}
             </span>
           </div>
+          <span v-if="u.motDePasseProvisoire" class="usr-provisoire-chip usr-provisoire-chip--carte">
+            <v-icon icon="mdi-lock-clock" size="13" /> Mot de passe provisoire : à changer à la prochaine connexion
+          </span>
 
           <div class="usr-roles usr-card-item__roles">
             <span v-for="r in u.roles" :key="r" class="usr-role-chip" :style="{ background: roleColor[r] + '1a', color: roleColor[r] }">
-              {{ r }}
+              {{ rolesStore.libelle(r) }}
             </span>
           </div>
 
           <div class="usr-card-item__footer">
-            <button class="usr-card-item__btn usr-card-item__btn--edit" @click="ouvrirModifier(u)">
+            <button v-if="!surCopie" class="usr-card-item__btn usr-card-item__btn--edit" @click="ouvrirModifier(u)">
               <v-icon icon="mdi-pencil-outline" size="15" class="mr-1" />
               Modifier
             </button>
@@ -271,6 +437,7 @@ const roleColor: Record<string, string> = {
           </div>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- ── Dialog ────────────────────────────────────────────────────── -->
@@ -310,15 +477,53 @@ const roleColor: Record<string, string> = {
           </div>
 
           <div class="usr-field">
-            <label class="usr-label">E-mail *</label>
+            <label class="usr-label">Identifiant de connexion *</label>
             <v-text-field
               v-model="form.email"
-              placeholder="utilisateur@mbsc.cd"
-              prepend-inner-icon="mdi-email-outline"
-              hide-details="auto"
+              placeholder="Ex: dfin_bruno ou utilisateur@mbsc.cd"
+              prepend-inner-icon="mdi-account-outline"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+              :hint="editMode ? 'L\'identifiant de connexion n\'est pas modifiable.' : 'Nom d\'utilisateur ou adresse e-mail (3 à 150 caractères : lettres, chiffres et . _ - @ +, sans espace). Non modifiable après la création.'"
+              persistent-hint
               :disabled="editMode"
             />
           </div>
+
+          <div class="usr-field">
+            <label class="usr-label">Téléphone</label>
+            <v-text-field
+              v-model="form.telephone"
+              placeholder="Ex: +243 999 123 456"
+              prepend-inner-icon="mdi-phone-outline"
+              hide-details="auto"
+            />
+          </div>
+
+          <div class="usr-field">
+            <label class="usr-label">Mail de notification</label>
+            <v-text-field
+              v-model="form.emailNotification"
+              type="email"
+              placeholder="Ex: prenom.nom@exemple.cd"
+              prepend-inner-icon="mdi-email-fast-outline"
+              hint="Les notifications de cet utilisateur lui seront aussi envoyées à cette adresse."
+              persistent-hint
+            />
+          </div>
+
+          <div class="usr-form-row">
+            <div class="usr-field">
+              <label class="usr-label">Fonction</label>
+              <v-text-field v-model="form.fonction" placeholder="Ex: Comptable" hide-details="auto" />
+            </div>
+            <div class="usr-field">
+              <label class="usr-label">Affectation</label>
+              <v-text-field v-model="form.affectation" placeholder="Ex: Siège Lubumbashi" hide-details="auto" />
+            </div>
+          </div>
+          <p class="usr-hint">Utilisées sur le papier à en-tête individuel de cet utilisateur.</p>
 
           <div class="usr-field">
             <label class="usr-label">{{ editMode ? 'Nouveau mot de passe (laisser vide = inchangé)' : 'Mot de passe *' }}</label>
@@ -329,13 +534,19 @@ const roleColor: Record<string, string> = {
               type="password"
               hide-details="auto"
             />
+            <p class="usr-hint usr-hint--mdp">
+              <v-icon icon="mdi-information-outline" size="14" />
+              {{ editMode
+                ? 'Si vous le renseignez, ce mot de passe sera provisoire : l\'utilisateur devra le changer à sa prochaine connexion.'
+                : 'Mot de passe provisoire : l\'utilisateur devra le changer à sa première connexion.' }}
+            </p>
           </div>
 
           <div class="usr-field">
             <label class="usr-label">Rôles *</label>
             <div class="usr-roles-grid">
               <button
-                v-for="r in ALL_ROLES"
+                v-for="r in rolesDisponibles"
                 :key="r"
                 class="usr-role-toggle"
                 :class="{ 'usr-role-toggle--on': form.roles.includes(r) }"
@@ -343,7 +554,7 @@ const roleColor: Record<string, string> = {
                 @click="form.roles.includes(r) ? form.roles.splice(form.roles.indexOf(r), 1) : form.roles.push(r)"
                 type="button"
               >
-                {{ r }}
+                {{ rolesStore.libelle(r) }}
               </button>
             </div>
           </div>
@@ -370,7 +581,7 @@ const roleColor: Record<string, string> = {
 .usr-refresh-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; border-radius: 11px;
-  background: #f3f4f6; border: 1px solid #e5e7eb; color: #6b7280;
+  background: var(--surface-2); border: 1px solid var(--hairline); color: var(--ink-soft);
   cursor: pointer; transition: background 0.15s;
 }
 .usr-refresh-btn:hover:not(:disabled) { background: #e5e7eb; }
@@ -379,35 +590,41 @@ const roleColor: Record<string, string> = {
 .usr-new-btn {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 0 20px; height: 40px; border-radius: 11px;
-  background: #16a34a; color: #fff; font-size: 0.875rem; font-weight: 600;
+  background: var(--color-primary); color: #fff; font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer;
   transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.25);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
-.usr-new-btn:hover { background: #15803d; }
+.usr-new-btn:hover { background: var(--color-primary-dark); }
+
+/* ── Recherche ───────────────────────────────────────────────────────────── */
+.usr-recherche { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.usr-recherche__champ { flex: 1 1 320px; max-width: 520px; }
+.usr-recherche__compteur { flex: 0 0 auto; font-size: 0.8125rem; color: var(--ink-soft); white-space: nowrap; }
 
 /* ── Table card ──────────────────────────────────────────────────────────── */
 .usr-card {
-  background: #fff; border: 1px solid #f0f0f0; border-radius: 18px;
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: 18px;
   overflow: hidden;
 }
 .usr-loading, .usr-empty {
   display: flex; flex-direction: column; align-items: center;
-  gap: 10px; padding: 48px 16px; color: #9ca3af;
+  gap: 10px; padding: 48px 16px; color: var(--ink-faint);
   font-size: 0.85rem;
 }
 .usr-empty p { margin: 0; }
 
 /* ── Table ───────────────────────────────────────────────────────────────── */
 .usr-table-scroll { overflow-x: auto; }
+.usr-cards { display: none; }
 .usr-table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 0.875rem; }
 .usr-table thead tr {
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
 }
 .usr-table th {
   padding: 12px 16px;
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.4px;
-  text-transform: uppercase; color: #9ca3af; text-align: left;
+  text-transform: uppercase; color: var(--ink-faint); text-align: left;
 }
 .usr-th-actions { text-align: right; }
 
@@ -416,7 +633,7 @@ const roleColor: Record<string, string> = {
   transition: background 0.12s;
 }
 .usr-table tbody tr:last-child { border-bottom: none; }
-.usr-table tbody tr:hover { background: #f9fafb; }
+.usr-table tbody tr:hover { background: var(--surface-2); }
 .usr-row--inactive { opacity: 0.65; }
 
 .usr-table td { padding: 12px 16px; vertical-align: middle; }
@@ -427,7 +644,7 @@ const roleColor: Record<string, string> = {
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
 }
-.usr-email { color: #6b7280; font-size: 0.8125rem; }
+.usr-email { color: var(--ink-soft); font-size: 0.8125rem; }
 
 /* roles */
 .usr-roles { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -445,10 +662,23 @@ const roleColor: Record<string, string> = {
 .usr-status-dot {
   width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
 }
-.usr-status-chip--on  { background: #dcfce7; color: #16a34a; }
-.usr-status-chip--on  .usr-status-dot  { background: #16a34a; }
-.usr-status-chip--off { background: #f3f4f6; color: #9ca3af; }
+.usr-status-chip--on  { background: var(--color-primary-light); color: var(--color-primary); }
+.usr-status-chip--on  .usr-status-dot  { background: var(--color-primary); }
+.usr-status-chip--off { background: var(--surface-2); color: var(--ink-faint); }
 .usr-status-chip--off .usr-status-dot { background: #9ca3af; }
+
+/* mot de passe provisoire (V131) */
+.usr-provisoire-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 6px;
+  font-size: 0.72rem; font-weight: 600; padding: 3px 9px;
+  border-radius: 100px;
+  background: #fff7ed; color: #c2410c;
+  white-space: nowrap;
+}
+.usr-provisoire-chip--carte { margin: 8px 0 0; white-space: normal; }
+/* spécificité > .usr-hint (déclarée plus bas, marge négative) */
+.usr-hint.usr-hint--mdp { display: flex; align-items: flex-start; gap: 6px; margin: 6px 0 0; color: #b45309; }
 
 /* actions */
 .usr-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
@@ -461,15 +691,33 @@ const roleColor: Record<string, string> = {
 .usr-action-btn--edit:hover  { background: #dbeafe; }
 .usr-action-btn--deact { background: #fff7ed; color: #ea580c; border-color: #fed7aa; }
 .usr-action-btn--deact:hover { background: #ffedd5; }
-.usr-action-btn--act   { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; }
-.usr-action-btn--act:hover   { background: #dcfce7; }
+.usr-action-btn--act   { background: var(--color-primary-lighter); color: var(--color-primary); border-color: var(--color-primary-mid); }
+.usr-action-btn--act:hover   { background: var(--color-primary-light); }
 .usr-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Cartes (mobile) ─────────────────────────────────────────────────────── */
-.usr-cards { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+/* Sous 960 px : les cartes remplacent le tableau, posées sur le fond de la page (1 colonne, 2 sur tablette). */
+@media screen and (max-width: 959px) {
+  .usr-card { background: transparent; border: 0; border-radius: 0; overflow: visible; }
+  .usr-table-scroll { display: none; }
+  .usr-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  /* Plus spécifiques que les règles de base écrites plus bas dans la feuille (même poids : l'ordre déciderait). */
+  .usr-head-actions .usr-new-btn, .usr-head-actions .usr-refresh-btn { height: 44px; }
+  .usr-head-actions .usr-refresh-btn { width: 44px; }
+  .usr-cards .usr-card-item__btn { height: 44px; }
+  .usr-loading, .usr-empty { background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; }
+}
+@media screen and (min-width: 600px) and (max-width: 959px) {
+  .usr-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media screen and (max-width: 599px) {
+  .usr-recherche { flex-wrap: wrap; gap: 6px; }
+  .usr-recherche__champ { flex: 1 1 100%; max-width: none; }
+  .usr-form-row { grid-template-columns: 1fr; }
+}
 
 .usr-card-item {
-  background: #fff; border: 1px solid #eef0f2; border-left: 3px solid #16a34a; border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--hairline); border-left: 4px solid var(--color-primary); border-radius: 16px;
   padding: 14px 16px; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: box-shadow 0.15s;
 }
@@ -481,11 +729,11 @@ const roleColor: Record<string, string> = {
   padding-top: 2px;
 }
 .usr-card-item__name {
-  font-size: 0.9rem; font-weight: 700; color: #111827;
+  font-size: 0.9rem; font-weight: 700; color: var(--ink);
   overflow-wrap: anywhere;
 }
 .usr-card-item__email {
-  font-size: 0.78rem; color: #9ca3af; overflow-wrap: anywhere;
+  font-size: 0.78rem; color: var(--ink-faint); overflow-wrap: anywhere;
 }
 
 .usr-card-item__roles {
@@ -505,17 +753,17 @@ const roleColor: Record<string, string> = {
 .usr-card-item__btn--edit:active  { background: #dbeafe; }
 .usr-card-item__btn--deact { background: #fff7ed; color: #ea580c; border-color: #fed7aa; }
 .usr-card-item__btn--deact:active { background: #ffedd5; }
-.usr-card-item__btn--act   { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; }
-.usr-card-item__btn--act:active   { background: #dcfce7; }
+.usr-card-item__btn--act   { background: var(--color-primary-lighter); color: var(--color-primary); border-color: var(--color-primary-mid); }
+.usr-card-item__btn--act:active   { background: var(--color-primary-light); }
 .usr-card-item__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Dialog ──────────────────────────────────────────────────────────────── */
-.usr-dialog { background: #fff; border-radius: 20px; overflow: hidden; }
+.usr-dialog { background: var(--surface); border-radius: 20px; overflow: hidden; }
 
 .usr-dialog__head {
   position: relative; overflow: hidden;
   display: flex; align-items: center; gap: 14px; padding: 22px;
-  background: linear-gradient(140deg, #2563eb 0%, #1d4ed8 50%, #1e3a8a 100%);
+  background: radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,0.18), transparent 45%), radial-gradient(80% 120% at 100% 100%, rgba(99,102,241,0.55), transparent 60%), linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 60%, #0f766e) 55%, color-mix(in srgb, var(--color-primary) 35%, #1e3a8a) 100%);
 }
 .usr-dialog__blob {
   position: absolute; border-radius: 50%;
@@ -546,27 +794,35 @@ const roleColor: Record<string, string> = {
   padding: 22px; display: flex; flex-direction: column; gap: 14px;
   max-height: 65vh; overflow-y: auto;
 }
+/* Sans ça, la v-alert (grid en interne) voit sa hauteur ecrasee a quelques
+   pixels par l'algorithme de retrecissement flex du parent — le message
+   d'erreur devient invisible (boite coloree vide) sans qu'aucune ligne ne
+   soit en cause dans son propre contenu. */
+.usr-dialog__body .v-alert {
+  flex-shrink: 0;
+}
 .usr-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .usr-field { display: flex; flex-direction: column; gap: 6px; }
-.usr-label { font-size: 0.8125rem; font-weight: 600; color: #374151; }
+.usr-label { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
+.usr-hint { font-size: 0.72rem; color: var(--ink-faint); margin: -8px 0 0; }
 
 /* rôles toggles */
 .usr-roles-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .usr-role-toggle {
   padding: 5px 14px; border-radius: 100px; font-size: 0.78rem; font-weight: 600;
-  border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280;
+  border: 1px solid var(--hairline); background: var(--surface-2); color: var(--ink-soft);
   cursor: pointer; transition: all 0.15s;
 }
-.usr-role-toggle:hover { border-color: #d1d5db; background: #f3f4f6; }
+.usr-role-toggle:hover { border-color: #d1d5db; background: var(--surface-2); }
 .usr-role-toggle--on { font-weight: 700; }
 
 .usr-dialog__footer {
   display: flex; align-items: center; justify-content: flex-end; gap: 10px;
-  padding: 16px 22px; border-top: 1px solid #f3f4f6;
+  padding: 16px 22px; border-top: 1px solid var(--hairline);
 }
 .usr-cancel-btn {
   padding: 0 18px; height: 40px; border-radius: 10px;
-  background: #f3f4f6; color: #374151; font-size: 0.875rem; font-weight: 600;
+  background: var(--surface-2); color: var(--ink-2); font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer; transition: background 0.15s;
 }
 .usr-cancel-btn:hover:not(:disabled) { background: #e5e7eb; }
@@ -582,4 +838,17 @@ const roleColor: Record<string, string> = {
 }
 .usr-submit-btn:hover:not(:disabled) { background: #1d4ed8; }
 .usr-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .usr-provisoire-chip { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; }
+html[data-theme='dark'] .usr-action-btn--edit { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .usr-action-btn--edit:hover { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; }
+html[data-theme='dark'] .usr-action-btn--deact { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; border-color: color-mix(in srgb, #f0a77a 28%, transparent) !important; }
+html[data-theme='dark'] .usr-action-btn--deact:hover { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; }
+html[data-theme='dark'] .usr-card-item__btn--edit { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .usr-card-item__btn--edit:active { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; }
+html[data-theme='dark'] .usr-card-item__btn--deact { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; border-color: color-mix(in srgb, #f0a77a 28%, transparent) !important; }
+html[data-theme='dark'] .usr-card-item__btn--deact:active { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; }
 </style>

@@ -23,6 +23,11 @@ import java.util.Locale;
  * découplage permet de tester le moteur directement, sans contexte Spring,
  * contre les cas connus du classeur DEBOURS MBSC 2026 et de l'ancien outil.</p>
  *
+ * <p>Mise en conformité du 16/11/2026 (législation congolaise ; voir {@code docs/audit-drh-2026-11-15.md}, § 6) :
+ * base cotisable (CNSS, ONEM, INPP) et base IPR = appointements + gains imposables (congé, heures supplémentaires,
+ * primes, excédent d'allocation familiale sur le minimum légal) ; CNSS patronale par branche ; INPP selon
+ * l'effectif ; conjoint compté dans la réduction familiale ; CNSS salariale déductible de la base IPR.</p>
+ *
  * <p>Arrondi : {@link RoundingMode#HALF_UP} à 2 décimales sur chaque montant
  * intermédiaire stocké, convention déjà en place dans
  * {@link ConversionDeviseService} pour toute conversion de devise dans cette
@@ -58,35 +63,58 @@ public class PayrollCalculationService {
 
         BigDecimal rBrut = arrondiMontant(nz(entrees.salaireBaseUsd()).multiply(presenceFraction));
 
+        // Logement (30 %, limite légale de l'exonération) et transport (exonéré dans la limite du quota, que le
+        // contrôle de conformité signale) : hors des bases sociales et fiscales.
         BigDecimal indLogement = arrondiMontant(rBrut.multiply(nz(params.getTauxLogement())));
         BigDecimal indTransport = arrondiMontant(rBrut.multiply(nz(params.getTauxTransport())));
 
-        // H = base reelle des cotisations = R - I - J (= R*0.60 avec les taux par defaut)
+        // H = appointements = R - I - J (= R*0.60 avec les taux par defaut)
         BigDecimal h = arrondiMontant(rBrut.subtract(indLogement).subtract(indTransport));
 
-        BigDecimal gains = nz(entrees.conge())
+        int nombreEnfants = entrees.nombreEnfants() != null ? entrees.nombreEnfants() : 0;
+        BigDecimal allocation = nz(entrees.allocationFamiliale());
+        BigDecimal retenues = nz(entrees.avanceSalaire()).add(nz(entrees.pret()));
+        ControleConformite conformite = controler(
+            rBrut, indTransport, allocation, retenues, nombreEnfants, params, tauxFC);
+
+        // Allocations familiales : seule la part légale (minimum du décret n° 25/22) est exonérée ; l'excédent est
+        // imposable et cotisable. Minimum non calculable (aucun enfant, aucun taux) : toute l'allocation est exonérée.
+        BigDecimal minimumLegal = nz(conformite.allocationFamilialeMinimumUsd());
+        BigDecimal allocationExoneree = minimumLegal.signum() > 0 ? allocation.min(minimumLegal) : allocation;
+        BigDecimal excedentAllocation = allocation.subtract(allocationExoneree);
+
+        BigDecimal gainsImposables = arrondiMontant(nz(entrees.conge())
             .add(nz(entrees.heuresSupplementaires()))
-            .add(nz(entrees.allocationFamiliale()))
             .add(nz(entrees.primeDiplome()))
             .add(nz(entrees.primeAnciennete()))
-            .add(nz(entrees.primeRendement()));
+            .add(nz(entrees.primeRendement()))
+            .add(excedentAllocation));
+        BigDecimal gains = gainsImposables.add(allocationExoneree);
 
-        BigDecimal q = arrondiMontant(h.add(gains));
+        // Base cotisable (CNSS, ONEM, INPP) = appointements + gains imposables.
+        BigDecimal baseCotisable = arrondiMontant(h.add(gainsImposables));
 
-        BigDecimal cnssOuvriere = arrondiMontant(h.multiply(nz(params.getTauxCnssOuvriere())));
-        BigDecimal cnssPatronale = arrondiMontant(h.multiply(nz(params.getTauxCnssPatronale())));
-        BigDecimal onem = arrondiMontant(h.multiply(nz(params.getTauxOnem())));
+        // CNSS (décret n° 18/041 du 24/11/2018) : salariale 5 % (pensions) ; patronale par branche.
+        BigDecimal cnssOuvriere = arrondiMontant(baseCotisable.multiply(nz(params.getTauxCnssOuvriere())));
+        BigDecimal cnssPension = arrondiMontant(baseCotisable.multiply(nz(params.getTauxCnssPensionPatronale())));
+        BigDecimal cnssPf = arrondiMontant(baseCotisable.multiply(nz(params.getTauxCnssPf())));
+        BigDecimal cnssRp = arrondiMontant(baseCotisable.multiply(nz(params.getTauxCnssRp())));
+        BigDecimal cnssPatronale = cnssPension.add(cnssPf).add(cnssRp);
         BigDecimal totalInss = cnssOuvriere.add(cnssPatronale);
-        BigDecimal inpp = arrondiMontant(q.multiply(nz(params.getTauxInpp())));
 
-        int nombreEnfants = entrees.nombreEnfants() != null ? entrees.nombreEnfants() : 0;
+        BigDecimal onem = arrondiMontant(baseCotisable.multiply(nz(params.getTauxOnem())));
+        BigDecimal tauxInpp = tauxInpp(entrees.effectif(), params);
+        BigDecimal inpp = arrondiMontant(baseCotisable.multiply(tauxInpp));
 
-        // Base imposable IPR : H, éventuellement diminuée de la CNSS ouvrière
-        // selon le paramétrage (voir ParametresPaie.cnssDeductibleIpr — les
-        // sources fiscales RDC se contredisent, d'où le choix laissé ouvert ;
-        // false = comportement historique du classeur DEBOURS MBSC).
-        BigDecimal baseIpr = params.isCnssDeductibleIpr() ? arrondiMontant(h.subtract(cnssOuvriere)) : h;
-        BigDecimal ipr = calculerIpr(baseIpr, tauxFC, nombreEnfants, params);
+        // Personnes à charge : enfants + conjoint d'un agent marié (si paramétré), ou le nombre figé sur le bulletin.
+        int personnes = entrees.personnesACharge() != null
+            ? entrees.personnesACharge()
+            : nombreEnfants + (entrees.marie() && params.isConjointACharge() ? 1 : 0);
+
+        // Base IPR = base cotisable, moins la CNSS salariale si elle est déductible (PwC : seule la part salariale).
+        BigDecimal baseIpr = params.isCnssDeductibleIpr()
+            ? arrondiMontant(baseCotisable.subtract(cnssOuvriere)) : baseCotisable;
+        BigDecimal ipr = calculerIpr(baseIpr, tauxFC, personnes, params);
 
         BigDecimal net = arrondiMontant(
             rBrut.subtract(cnssOuvriere).subtract(ipr)
@@ -98,14 +126,26 @@ public class PayrollCalculationService {
             ? net.multiply(tauxFC).setScale(2, RoundingMode.HALF_UP)
             : BigDecimal.ZERO;
 
-        BigDecimal retenues = nz(entrees.avanceSalaire()).add(nz(entrees.pret()));
-        ControleConformite conformite = controler(
-            rBrut, indTransport, nz(entrees.allocationFamiliale()), retenues, nombreEnfants, params, tauxFC);
-
         return new ResultatCalculPaie(
-            rBrut, indLogement, indTransport, q, h, baseIpr,
+            rBrut, indLogement, indTransport, baseCotisable, baseCotisable, baseIpr,
             cnssOuvriere, cnssPatronale, onem, totalInss, inpp, ipr,
-            net, tauxFC, netFc, conformite);
+            net, tauxFC, netFc, conformite,
+            h, gainsImposables, allocationExoneree, cnssPension, cnssPf, cnssRp, tauxInpp,
+            entrees.effectif(), personnes);
+    }
+
+    /**
+     * Taux INPP selon l'effectif : 1 à 50 employés {@code tauxInpp} (3 %), 51 à 300 {@code tauxInpp51A300} (2 %),
+     * plus de 300 {@code tauxInppPlus300} (1 %). Effectif inconnu : première tranche.
+     */
+    public static BigDecimal tauxInpp(Integer effectif, ParametresPaie params) {
+        if (effectif != null && effectif > 300) {
+            return nz(params.getTauxInppPlus300());
+        }
+        if (effectif != null && effectif > 50) {
+            return nz(params.getTauxInpp51A300());
+        }
+        return nz(params.getTauxInpp());
     }
 
     /**
@@ -213,7 +253,9 @@ public class PayrollCalculationService {
      * (LF 2020), formule complète du classeur DEBOURS MBSC 2026 : plafond à
      * 30 % du revenu imposable, réduction 2 %/enfant (max configurable, 9 par
      * défaut) appliquée sur le montant plafonné, puis plancher appliqué
-     * <b>après</b> la réduction familiale.
+     * <b>après</b> la réduction familiale. Réduction entièrement désactivable
+     * par le DRH ({@link ParametresPaie#isCalculEnfantsActif}), auquel cas
+     * l'IPR est calculé comme pour un employé sans enfant.
      *
      * <p>Diverge délibérément de la version simplifiée qui tournait dans
      * l'ancien outil PayMBSC (bases cumulées 245 700/785 700, sans plafond ni
@@ -222,6 +264,7 @@ public class PayrollCalculationService {
      * référence métier, qui fait foi.</p>
      */
     public BigDecimal calculerIpr(BigDecimal baseUsd, BigDecimal tauxFC, int nombreEnfants, ParametresPaie params) {
+        // nombreEnfants : personnes à charge (enfants + conjoint compté, depuis le 16/11/2026), plafonnées ci-dessous.
         if (baseUsd == null || tauxFC == null || tauxFC.signum() <= 0 || baseUsd.signum() <= 0) {
             return BigDecimal.ZERO;
         }
@@ -241,7 +284,7 @@ public class PayrollCalculationService {
         BigDecimal plafond = baseFc.multiply(PLAFOND_FRACTION_REVENU);
         BigDecimal plafonne = bracketRaw.min(plafond);
 
-        int enfantsRetenus = Math.min(nombreEnfants, params.getPlafondEnfantsIpr());
+        int enfantsRetenus = params.isCalculEnfantsActif() ? Math.min(nombreEnfants, params.getPlafondEnfantsIpr()) : 0;
         BigDecimal reduction = nz(params.getReductionIprParEnfant()).multiply(new BigDecimal(enfantsRetenus));
         BigDecimal reduit = plafonne.multiply(BigDecimal.ONE.subtract(reduction));
 

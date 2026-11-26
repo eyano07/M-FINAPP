@@ -21,6 +21,16 @@ public interface NoteFraisRepository extends JpaRepository<NoteFrais, Long> {
 
     Optional<NoteFrais> findByReference(String reference);
 
+    /** Notes de paie et notes fiscales d'un mois (module DRH), toutes catégories et statuts confondus. */
+    @Query("""
+        select n from NoteFrais n
+        where n.categorie in (com.mbsc.finapp.domain.enums.CategorieNote.PAIE,
+                              com.mbsc.finapp.domain.enums.CategorieNote.IMPOT_PAIE)
+          and n.paieMois = :mois and n.paieAnnee = :annee
+        order by n.dateCreation
+        """)
+    List<NoteFrais> findNotesPaie(@Param("mois") Integer mois, @Param("annee") Integer annee);
+
     /**
      * Charge la note avec ses observations et auteurs pour la vue detaillee.
      * Les lignes et pieces jointes (autres collections @OneToMany) sont
@@ -49,18 +59,51 @@ public interface NoteFraisRepository extends JpaRepository<NoteFrais, Long> {
     long countPendingByPriority(@Param("priorite") PrioriteNote priorite,
                                 @Param("excludeId") Long excludeId);
 
+    /** Une seule ligne de note de frais citant cet article suffit a interdire sa suppression definitive. */
+    @Query("select count(l) > 0 from LigneNoteFrais l where l.article.id = :articleId")
+    boolean existsLigneAvecArticle(@Param("articleId") Long articleId);
+
     /**
-     * Somme des montants des notes TRANSMISE_CAISSE ayant une priorité
-     * strictement supérieure à {@code priorite} (pour le calcul de la réserve).
-     * Ordre de priorité : HAUTE > MOYENNE > BASSE.
+     * Notes de decaissement d'une periode dans les statuts donnes, avec leurs lignes et comptes : engagements
+     * budgetaires (notes approuvees, pas encore payees) du suivi et du controle budgetaire.
      */
     @Query("""
-        select coalesce(sum(n.montant), 0) from NoteFrais n
-        where n.statut = com.mbsc.finapp.domain.enums.StatutNote.TRANSMISE_CAISSE
-          and n.priorite in :priorites
-          and n.id <> :excludeId
+        select distinct n from NoteFrais n
+        left join fetch n.lignes l
+        left join fetch l.compteImputation
+        left join fetch n.service
+        where n.statut in :statuts
+          and n.sens = com.mbsc.finapp.domain.enums.SensTransaction.DECAISSEMENT
+          and n.dateCreation >= :du and n.dateCreation < :au
     """)
-    java.math.BigDecimal sumMontantPendingByPriorities(
-        @Param("priorites") List<PrioriteNote> priorites,
-        @Param("excludeId") Long excludeId);
+    List<NoteFrais> findDecaissementsAvecLignes(@Param("statuts") java.util.Collection<com.mbsc.finapp.domain.enums.StatutNote> statuts,
+                                                @Param("du") java.time.Instant du, @Param("au") java.time.Instant au);
+
+    /** Notes d'une periode dont le controle budgetaire a la soumission exigeait une justification (non annulees). */
+    @Query("""
+        select n from NoteFrais n
+        left join fetch n.createur
+        left join fetch n.service
+        where n.statutBudget in :statuts
+          and n.statut <> com.mbsc.finapp.domain.enums.StatutNote.ANNULEE
+          and n.dateCreation >= :du and n.dateCreation < :au
+        order by n.dateCreation desc
+    """)
+    List<NoteFrais> findHorsBudgetEntre(@Param("statuts") java.util.Collection<com.mbsc.finapp.domain.enums.StatutControleBudget> statuts,
+                                         @Param("du") java.time.Instant du, @Param("au") java.time.Instant au);
+
+    /**
+     * Notes de decaissement d'une periode rattachees a un service (hors brouillons et notes annulees) : depenses
+     * suivies par service dans le suivi d'un budget.
+     */
+    @Query("""
+        select n from NoteFrais n
+        join fetch n.service
+        where n.sens = com.mbsc.finapp.domain.enums.SensTransaction.DECAISSEMENT
+          and n.statut not in (com.mbsc.finapp.domain.enums.StatutNote.BROUILLON,
+                               com.mbsc.finapp.domain.enums.StatutNote.ANNULEE)
+          and n.dateCreation >= :du and n.dateCreation < :au
+        order by n.dateCreation desc
+    """)
+    List<NoteFrais> findDecaissementsDesServicesEntre(@Param("du") java.time.Instant du, @Param("au") java.time.Instant au);
 }

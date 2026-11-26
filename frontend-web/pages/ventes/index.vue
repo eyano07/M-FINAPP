@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
+import { usePermissionsStore } from '~/stores/permissions'
 definePageMeta({ module: 'VENTES' })
 
 interface Vente {
@@ -17,6 +19,7 @@ interface Vente {
   pieceReference?: string
   mouvementReference?: string
   createdByNom?: string
+  tableNumero?: string
 }
 
 const api = useApi()
@@ -41,7 +44,8 @@ async function charger() {
         convertisseurs (tous gardes par `taux > 0`) renvoient 0, valeur
         manifestement fausse plutot que plausible. */,
     ])
-    ventes.value = data
+    // Ancien exercice choisi dans la barre du haut : ses ventes seulement.
+    ventes.value = data.filter(v => useExerciceStore().dansExercice(v.dateVente))
     tauxChange.value = tauxData.taux || 0
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les ventes.')
@@ -50,6 +54,52 @@ async function charger() {
   }
 }
 onMounted(charger)
+
+// ── Filtres de la liste (les cartes de synthèse ci-dessus, elles, portent
+// toujours sur l'ensemble des ventes chargées, pas sur ce sous-ensemble). Par
+// defaut, seule la date du jour : la liste des ventes grossit vite et
+// personne ne veut refaire defiler l'historique complet chaque matin.
+// Ancien exercice choisi dans la barre du haut : tout l'exercice, du 1er janvier au 31 décembre.
+const exerciceConsulte = useExerciceStore()
+// Colonne « Table » : seulement avec le module Restaurant.
+const permissionsVentes = usePermissionsStore()
+const entetes = computed(() => [
+  { title: 'Date', key: 'dateVente' },
+  { title: 'Référence', key: 'reference' },
+  { title: 'Client', key: 'clientNom', sortable: false },
+  ...(permissionsVentes.peutVoir('RESTAURANT') ? [{ title: 'Table', key: 'tableNumero', sortable: false }] : []),
+  { title: 'Règlement', key: 'modeReglement', sortable: false },
+  { title: 'Total HT', key: 'totalHt', align: 'end' as const },
+  { title: 'TVA', key: 'totalTva', align: 'end' as const },
+  { title: 'Total TTC', key: 'totalTtc', align: 'end' as const },
+  { title: 'Statut', key: 'statut', align: 'center' as const },
+  { title: 'Pièce', key: 'pieceReference', sortable: false },
+])
+const aujourdhui = () => new Date().toISOString().slice(0, 10)
+const duParDefaut = () => exerciceConsulte.enConsultation ? exerciceConsulte.debut : aujourdhui()
+const auParDefaut = () => exerciceConsulte.enConsultation ? exerciceConsulte.fin : aujourdhui()
+const filtreDu = ref(duParDefaut())
+const filtreAu = ref(auParDefaut())
+const filtreClient = ref('')
+const filtrePiece = ref('')
+const filtreReference = ref('')
+
+function reinitialiserFiltres() {
+  filtreDu.value = duParDefaut()
+  filtreAu.value = auParDefaut()
+  filtreClient.value = ''
+  filtrePiece.value = ''
+  filtreReference.value = ''
+}
+
+const ventesFiltrees = computed(() => ventes.value.filter((v) => {
+  if (filtreDu.value && v.dateVente < filtreDu.value) return false
+  if (filtreAu.value && v.dateVente > filtreAu.value) return false
+  if (filtreClient.value && !(v.clientNom || '').toLowerCase().includes(filtreClient.value.toLowerCase())) return false
+  if (filtrePiece.value && !(v.pieceReference || '').toLowerCase().includes(filtrePiece.value.toLowerCase())) return false
+  if (filtreReference.value && !(v.reference || '').toLowerCase().includes(filtreReference.value.toLowerCase())) return false
+  return true
+}))
 
 // Chaque vente porte sa devise et le taux figé au moment de l'opération :
 // les cumuls se font donc vente par vente, ramenées en USD avec LEUR taux.
@@ -139,32 +189,39 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
       </div>
     </div>
 
+    <!-- ── Filtres ───────────────────────────────────────────── -->
+    <div class="d-flex ga-3 mt-4 mb-2 flex-wrap align-end vte-filtres">
+      <v-text-field v-model="filtreDu" type="date" label="Du" variant="outlined" density="comfortable" rounded="lg" hide-details style="max-width: 170px" />
+      <v-text-field v-model="filtreAu" type="date" label="Au" variant="outlined" density="comfortable" rounded="lg" hide-details style="max-width: 170px" />
+      <v-text-field v-model="filtreClient" label="Client" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 180px" />
+      <v-text-field v-model="filtrePiece" label="Pièce" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 160px" />
+      <v-text-field v-model="filtreReference" label="Référence" variant="outlined" density="comfortable" rounded="lg" hide-details clearable style="max-width: 180px" />
+      <v-btn variant="text" color="primary" height="48" prepend-icon="mdi-filter-remove-outline" @click="reinitialiserFiltres">
+        Réinitialiser
+      </v-btn>
+    </div>
+
     <!-- ── Liste ─────────────────────────────────────────────── -->
-    <v-card class="classroom-card mt-4">
-      <v-card-title class="text-subtitle-1 font-weight-semibold pa-4 pb-2">
-        Historique des ventes
+    <v-card class="classroom-card">
+      <v-card-title class="text-subtitle-1 font-weight-semibold pa-4 pb-2 d-flex align-center justify-space-between">
+        <span>Historique des ventes</span>
+        <span class="text-caption text-medium-emphasis font-weight-regular">{{ ventesFiltrees.length }} vente(s)</span>
       </v-card-title>
       <v-data-table
-        :items="ventes"
+        :items="ventesFiltrees"
         :loading="loading"
         density="comfortable"
         items-per-page="15"
-        :headers="[
-          { title: 'Date', key: 'dateVente' },
-          { title: 'Référence', key: 'reference' },
-          { title: 'Client', key: 'clientNom', sortable: false },
-          { title: 'Règlement', key: 'modeReglement', sortable: false },
-          { title: 'Total HT', key: 'totalHt', align: 'end' },
-          { title: 'TVA', key: 'totalTva', align: 'end' },
-          { title: 'Total TTC', key: 'totalTtc', align: 'end' },
-          { title: 'Statut', key: 'statut', align: 'center' },
-          { title: 'Pièce', key: 'pieceReference', sortable: false },
-        ]"
+        :headers="entetes"
         @click:row="(_: unknown, { item }: any) => navigateTo(`/ventes/${item.id}`)"
       >
         <template #[`item.dateVente`]="{ item }">{{ fmtDate(item.dateVente) }}</template>
         <template #[`item.reference`]="{ item }">
           <code class="text-caption text-primary">{{ item.reference }}</code>
+        </template>
+        <template #[`item.tableNumero`]="{ item }">
+          <span v-if="item.tableNumero">Table {{ item.tableNumero }}</span>
+          <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #[`item.modeReglement`]="{ item }">
           <span class="d-inline-flex align-center">
@@ -191,8 +248,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
         </template>
         <template #no-data>
           <div class="vte-empty">
-            <v-icon icon="mdi-receipt-text-outline" size="42" color="#d1d5db" class="mb-2" />
-            <p>Aucune vente enregistrée.</p>
+            <v-icon icon="mdi-receipt-text-outline" size="42" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" class="mb-2" />
+            <p v-if="ventes.length">Aucune vente ne correspond aux filtres.</p>
+            <p v-else>Aucune vente enregistrée.</p>
           </div>
         </template>
       </v-data-table>
@@ -201,10 +259,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 
 .vte-stats {
   display: grid;
@@ -217,9 +272,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
   gap: 14px;
   padding: 18px 20px;
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
 }
 .vte-stat__icon {
   display: flex;
@@ -229,19 +284,27 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
   border-radius: 12px;
   flex-shrink: 0;
 }
-.vte-stat--ca  .vte-stat__icon { background: #dcfce7; color: #16a34a; }
+.vte-stat--ca  .vte-stat__icon { background: var(--color-primary-light); color: var(--color-primary); }
 .vte-stat--tva .vte-stat__icon { background: #ede9fe; color: #7c3aed; }
 .vte-stat--nb  .vte-stat__icon { background: #dbeafe; color: #2563eb; }
-.vte-stat__label { font-size: 0.78rem; color: #9ca3af; margin-bottom: 2px; }
-.vte-stat__value { font-size: 1.1rem; font-weight: 700; color: #111827; }
+.vte-stat__label { font-size: 0.78rem; color: var(--ink-faint); margin-bottom: 2px; }
+.vte-stat__value { font-size: 1.1rem; font-weight: 700; color: var(--ink); }
+
+/* Sur tablette les quatre filtres à texte se serraient à 84 px (« Réf… ») : 130 px au moins, ils passent à la ligne sinon. */
+.vte-filtres > .v-input { min-width: 130px; }
 
 .vte-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 40px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
 }
 .vte-empty p { margin: 0; }
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .vte-stat--nb  .vte-stat__icon { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Tableau de bord du module Restaurant : stock de bouteilles et casiers,
@@ -17,6 +17,8 @@ interface BoissonStat {
   stockPleines: number
   bouteillesVides?: number | null
   casiers?: number | null
+  /** Bouteilles par casier ; null si la boisson n'a pas de conditionnement. */
+  contenanceCasier?: number | null
 }
 interface VentesJour { date: string; quantite: number; montant: number }
 interface PerteType { type: string; label: string; quantite: number; valeur: number }
@@ -87,6 +89,10 @@ watch([mois, annee], charger)
 const fmtNb = (n?: number | null) => new Intl.NumberFormat('fr-FR').format(n || 0)
 
 // ── Analyse IA (à la demande) ────────────────────────────────────────────
+// Rôles admis par RestaurantAnalyseIaService : le bouton n'est pas proposé
+// aux autres lecteurs du module (DA, comptable, caissier), qui recevraient un refus.
+const auth = useAuthStore()
+const peutAnalyser = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'ADMIN']))
 const chargementIa = ref(false)
 const erreurIa = ref('')
 const analyse = ref<AnalyseIa | null>(null)
@@ -96,7 +102,6 @@ async function genererAnalyse() {
   erreurIa.value = ''
   try {
     analyse.value = await api<AnalyseIa>('/restaurant/tableau-bord/analyse-ia', {
-      method: 'POST',
       params: { du: du.value, au: au.value },
     })
   } catch (e: any) {
@@ -119,6 +124,36 @@ const cb: any = {
 
 const fmtDateCourte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
 
+// Chart.js peint sur un <canvas> : contrairement au DOM, son API 2D ne sait
+// pas resoudre var(--color-primary) (couleur invalide → noir). On lit donc
+// la couleur de marque directement depuis le store — une chaine hex simple,
+// exploitable telle quelle par Canvas — plutot que de sonder le CSS calcule :
+// une sonde DOM lue dans onMounted peut s'executer AVANT que
+// useParametresStore().charger() (voir stores/parametres.ts, appele au
+// niveau du layout) n'ait fini d'appliquer la vraie couleur admin sur
+// :root, et capturer a tort la teinte par defaut du store. Une lecture
+// reactive du store n'a pas ce probleme : le graphique se met a jour de
+// lui-meme des que la couleur arrive, quel que soit l'ordre de chargement.
+const identite = useParametresStore()
+const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#15803D')
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!m) return hex
+  const [r, g, b] = [m[1], m[2], m[3]].map(h => parseInt(h, 16))
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/**
+ * Ramène un montant USD (devise de base) vers la préférence d'affichage du
+ * module — mêmes règles que parametres.fmtMontant, mais un NOMBRE pour
+ * alimenter le graphique plutôt qu'une chaîne déjà formatée.
+ */
+function versDeviseAffichage(montantUSD: number): number {
+  return parametres.devise === 'CDF' && parametres.tauxChange > 0
+    ? montantUSD * parametres.tauxChange
+    : montantUSD
+}
+
 /** Ventes par jour : quantité (barres) et chiffre d'affaires (courbe), deux axes. */
 const ventesJourData = computed(() => ({
   labels: (tb.value?.ventesParJour || []).map(v => fmtDateCourte(v.date)),
@@ -127,15 +162,18 @@ const ventesJourData = computed(() => ({
       type: 'bar' as const,
       label: 'Bouteilles vendues',
       data: (tb.value?.ventesParJour || []).map(v => v.quantite),
-      backgroundColor: 'rgba(22,163,74,0.65)',
-      borderColor: '#16a34a',
+      backgroundColor: hexToRgba(couleurPrimaireHex.value, 0.65),
+      borderColor: couleurPrimaireHex.value,
       borderRadius: 6,
       yAxisID: 'y',
     },
     {
       type: 'line' as const,
-      label: 'Chiffre d\'affaires (USD)',
-      data: (tb.value?.ventesParJour || []).map(v => v.montant),
+      // Reactif a la preference d'affichage : afficher "(USD)" alors que
+      // les valeurs tracees (et les KPI juste au-dessus) sont converties en
+      // FC laissait croire a un bug des que la preference etait sur FC.
+      label: `Chiffre d'affaires (${parametres.devise === 'CDF' ? 'FC' : 'USD'})`,
+      data: (tb.value?.ventesParJour || []).map(v => versDeviseAffichage(v.montant)),
       borderColor: '#2563eb',
       backgroundColor: 'rgba(37,99,235,0.08)',
       tension: 0.4,
@@ -152,9 +190,25 @@ const ventesJourOpts: any = {
     y: { type: 'linear', position: 'left', beginAtZero: true, ticks: { precision: 0 } },
     y1: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } },
   },
+  plugins: {
+    ...cb.plugins,
+    tooltip: {
+      ...cb.plugins.tooltip,
+      callbacks: {
+        // ctx.parsed.y est deja dans la devise d'affichage (voir
+        // versDeviseAffichage ci-dessus) : on le formate directement,
+        // sans repasser par fmtMontant qui attend un montant en USD brut.
+        label: (ctx: any) => {
+          if (ctx.dataset.type !== 'line') return `${ctx.dataset.label}: ${ctx.parsed.y}`
+          const texte = parametres.fmtDans(ctx.parsed.y, parametres.devise)
+          return `${ctx.dataset.label}: ${texte}`
+        },
+      },
+    },
+  },
 }
 
-const COULEURS = ['#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const COULEURS = computed(() => [couleurPrimaireHex.value, '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d'])
 
 /** Répartition du chiffre d'affaires entre les boissons vendues. */
 const repartitionVentesData = computed(() => {
@@ -163,8 +217,8 @@ const repartitionVentesData = computed(() => {
     labels: items.map(b => b.libelle),
     datasets: [{
       data: items.map(b => b.chiffreAffaires),
-      backgroundColor: items.map((_, i) => COULEURS[i % COULEURS.length] + 'cc'),
-      borderColor: items.map((_, i) => COULEURS[i % COULEURS.length]),
+      backgroundColor: items.map((_, i) => hexToRgba(COULEURS.value[i % COULEURS.value.length], 0.8)),
+      borderColor: items.map((_, i) => COULEURS.value[i % COULEURS.value.length]),
       borderWidth: 2,
       hoverOffset: 8,
     }],
@@ -324,22 +378,34 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
             { title: 'Vendu', key: 'quantiteVendue', align: 'end' },
             { title: 'CA', key: 'chiffreAffaires', align: 'end' },
             { title: 'Stock plein', key: 'stockPleines', align: 'end' },
-            { title: 'Vides', key: 'bouteillesVides', align: 'end' },
+            { title: 'Stock vide', key: 'bouteillesVides', align: 'end' },
           ]"
           :items="tb.parBoisson"
           items-per-page="10"
         >
           <template #item.quantiteVendue="{ item }">{{ fmtNb(item.quantiteVendue) }}</template>
           <template #item.chiffreAffaires="{ item }">{{ parametres.fmtMontant(item.chiffreAffaires) }}</template>
-          <template #item.stockPleines="{ item }">{{ fmtNb(item.stockPleines) }}</template>
+          <!-- « N casiers + M bouteilles », avec le total en bouteilles dessous — voir composables/useCasiers. -->
+          <template #item.stockPleines="{ item }">
+            <div>{{ formatCasiers(item.stockPleines, item.contenanceCasier || 0) }}</div>
+            <div v-if="item.contenanceCasier" class="text-caption text-medium-emphasis">
+              soit {{ fmtNb(item.stockPleines) }} bouteille{{ item.stockPleines > 1 ? 's' : '' }}
+            </div>
+          </template>
           <template #item.bouteillesVides="{ item }">
-            {{ item.bouteillesVides != null ? `${fmtNb(item.bouteillesVides)} (${item.casiers} casier${(item.casiers || 0) > 1 ? 's' : ''})` : '—' }}
+            <template v-if="item.bouteillesVides != null">
+              <div>{{ formatCasiers(item.bouteillesVides, item.contenanceCasier || 0) }}</div>
+              <div v-if="item.contenanceCasier" class="text-caption text-medium-emphasis">
+                soit {{ fmtNb(item.bouteillesVides) }} bouteille{{ item.bouteillesVides > 1 ? 's' : '' }}
+              </div>
+            </template>
+            <span v-else class="text-medium-emphasis">—</span>
           </template>
         </v-data-table>
       </v-card>
 
       <!-- ── Analyse IA ────────────────────────────────────────────── -->
-      <div class="rdb-ia">
+      <div v-if="peutAnalyser" class="rdb-ia">
         <v-btn
           variant="tonal"
           color="deep-purple"
@@ -400,30 +466,37 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
   gap: 12px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: #f9fafb;
+  background: var(--surface-2);
 }
-.rdb-kpi--ca      { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
-.rdb-kpi--profit  { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
-.rdb-kpi--perte   { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
-.rdb-kpi--pertes  { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
-.rdb-kpi--stock   { background: linear-gradient(135deg,#faf5ff,#f3e8ff); color: #7e22ce; }
-.rdb-kpi--vides   { background: linear-gradient(135deg,#ecfeff,#cffafe); color: #0e7490; }
-.rdb-kpi--alerte  { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
-.rdb-kpi--ok      { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rdb-kpi--ca      { background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 62%, transparent), color-mix(in srgb, #dbeafe 55%, transparent)); color: #1d4ed8; }
+.rdb-kpi--profit  { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
+.rdb-kpi--perte   { background: linear-gradient(135deg, color-mix(in srgb, #fef2f2 62%, transparent), color-mix(in srgb, #fee2e2 55%, transparent)); color: #b91c1c; }
+.rdb-kpi--pertes  { background: linear-gradient(135deg, color-mix(in srgb, #fff7ed 62%, transparent), color-mix(in srgb, #ffedd5 55%, transparent)); color: #c2410c; }
+.rdb-kpi--stock   { background: linear-gradient(135deg, color-mix(in srgb, #faf5ff 62%, transparent), color-mix(in srgb, #f3e8ff 55%, transparent)); color: #7e22ce; }
+.rdb-kpi--vides   { background: linear-gradient(135deg, color-mix(in srgb, #ecfeff 62%, transparent), color-mix(in srgb, #cffafe 55%, transparent)); color: #0e7490; }
+.rdb-kpi--alerte  { background: linear-gradient(135deg, color-mix(in srgb, #fef2f2 62%, transparent), color-mix(in srgb, #fee2e2 55%, transparent)); color: #b91c1c; }
+/* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
+:global(html[data-theme='dark'] .rdb-kpi--ca) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }
+:global(html[data-theme='dark'] .rdb-kpi--perte) { background: color-mix(in srgb, #f19a9a 10%, var(--surface)); color: #f19a9a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f19a9a 22%, transparent); }
+:global(html[data-theme='dark'] .rdb-kpi--pertes) { background: color-mix(in srgb, #f0a77a 10%, var(--surface)); color: #f0a77a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f0a77a 22%, transparent); }
+:global(html[data-theme='dark'] .rdb-kpi--stock) { background: color-mix(in srgb, #c7a3ee 10%, var(--surface)); color: #c7a3ee; box-shadow: inset 0 0 0 1px color-mix(in srgb, #c7a3ee 22%, transparent); }
+:global(html[data-theme='dark'] .rdb-kpi--vides) { background: color-mix(in srgb, #7cc9d8 10%, var(--surface)); color: #7cc9d8; box-shadow: inset 0 0 0 1px color-mix(in srgb, #7cc9d8 22%, transparent); }
+:global(html[data-theme='dark'] .rdb-kpi--alerte) { background: color-mix(in srgb, #f19a9a 10%, var(--surface)); color: #f19a9a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f19a9a 22%, transparent); }
+.rdb-kpi--ok      { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rdb-kpi__val { display: block; font-size: 1.05rem; font-weight: 800; letter-spacing: -0.4px; }
 .rdb-kpi__lbl { display: block; font-size: 0.72rem; font-weight: 500; opacity: 0.8; }
 
 .rdb-charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .rdb-chart {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 16px;
   padding: 16px 18px 20px;
 }
 .rdb-chart--wide { grid-column: 1 / -1; }
-.rdb-chart__title { font-size: 0.8rem; font-weight: 700; color: #374151; margin: 0 0 12px; display: flex; align-items: center; }
+.rdb-chart__title { font-size: 0.8rem; font-weight: 700; color: var(--ink-2); margin: 0 0 12px; display: flex; align-items: center; }
 .rdb-chart__body { height: 260px; position: relative; }
-.rdb-chart__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.82rem; }
+.rdb-chart__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ink-faint); font-size: 0.82rem; }
 
 @media (max-width: 900px) {
   .rdb-charts { grid-template-columns: 1fr; }
@@ -436,13 +509,13 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
   font-weight: 700;
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--ink-soft);
   padding: 16px 20px 12px;
 }
 
 /* ── Analyse IA ──────────────────────────────────────────── */
 .rdb-ia__card {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #ede9fe;
   border-left: 3px solid #7c3aed;
   border-radius: 16px;
@@ -451,15 +524,15 @@ const pertesOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugi
   box-shadow: 0 2px 10px rgba(124, 58, 237, 0.06);
 }
 .rdb-ia__head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: #7c3aed; }
-.rdb-ia__title { font-size: 0.95rem; font-weight: 700; color: #111827; }
-.rdb-ia__synthese { font-size: 0.875rem; color: #374151; line-height: 1.6; margin: 0 0 18px; }
+.rdb-ia__title { font-size: 0.95rem; font-weight: 700; color: var(--ink); }
+.rdb-ia__synthese { font-size: 0.875rem; color: var(--ink-2); line-height: 1.6; margin: 0 0 18px; }
 .rdb-ia__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
 .rdb-ia__col-title { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 8px; }
-.rdb-ia__col-title--forts { color: #16a34a; }
+.rdb-ia__col-title--forts { color: var(--color-primary); }
 .rdb-ia__col-title--attention { color: #d97706; }
 .rdb-ia__col-title--reco { color: #7c3aed; }
 .rdb-ia__col ul, .rdb-ia__reco ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
-.rdb-ia__col li, .rdb-ia__reco li { font-size: 0.8125rem; color: #374151; line-height: 1.5; }
+.rdb-ia__col li, .rdb-ia__reco li { font-size: 0.8125rem; color: var(--ink-2); line-height: 1.5; }
 .rdb-ia__reco { padding-top: 14px; border-top: 1px dashed #ede9fe; }
 
 @media (max-width: 640px) {

@@ -60,3 +60,14 @@ EVOLUTION CAISSE *.xlsx
 ### OS ###
 .DS_Store
 Thumbs.db
+
+### Livraison pour le serveur (images, base, .env : donnees reelles et secrets) ###
+livraison/
+livraison-maj/
+*.tar.gz
+
+# Cles et secrets deposes a la main (cle Firebase du compte de service...) : jamais dans le depot.
+secrets/
+
+# APK de l'application Android servi par nginx (/telechargements/) : fichier construit, jamais dans le dépôt.
+telechargements/

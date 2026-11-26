@@ -6,10 +6,36 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface MouvementStockRepository extends JpaRepository<MouvementStock, Long> {
+
+    /**
+     * true si cette pièce comptable appartient à un mouvement de stock — sa
+     * pièce de stock, la pièce d'achat d'une réception directe de provision,
+     * ou la pièce d'écart constatée à son annulation. Utilisé pour refuser
+     * son extourne directe depuis l'écran Comptabilité (voir
+     * ComptabiliteService.annuler) : un mouvement de stock (donc, par
+     * transitivité, une production, qui n'a pas de pièce propre mais deux
+     * mouvements) ne doit être extourné que par son écran métier
+     * (Logistique, Vente, Production ou Restaurant), seul capable de rejouer
+     * le niveau de stock et les statuts associés en cohérence.
+     *
+     * <p>Jointures externes explicites : chacune de ces pièces est
+     * facultative, et un chemin implicite ({@code m.pieceAchat.id}) peut être
+     * traduit en jointure interne, qui écarterait tout mouvement n'ayant pas
+     * les trois.</p>
+     */
+    @Query("""
+        select count(m) > 0 from MouvementStock m
+        left join m.piece p
+        left join m.pieceAchat pa
+        left join m.pieceEcartAnnulation pe
+        where p.id = :pieceId or pa.id = :pieceId or pe.id = :pieceId
+    """)
+    boolean existsAvecPieceId(@Param("pieceId") Long pieceId);
 
     /**
      * Receptions de boissons validees sur une periode — alimente le tableau
@@ -55,6 +81,27 @@ public interface MouvementStockRepository extends JpaRepository<MouvementStock, 
     """)
     List<MouvementStock> sortiesProvisionsPeriode(@Param("du") LocalDate du, @Param("au") LocalDate au);
 
+    /**
+     * Sorties de boissons validees sur une periode : ventes, casse d'une
+     * bouteille pleine, peremption, cadeau — toutes passent par une SORTIE de
+     * stock valorisee au CMP du moment ({@code StockService.appliquerLigne}).
+     *
+     * <p>Alimente le cout des ventes du tableau de bord Restaurant, qui
+     * l'estimait auparavant au CMP <i>courant</i> : le cout historique reel
+     * est deja porte par {@code LigneMouvementStock.montant}, il suffit de le
+     * lire plutot que de le recalculer.</p>
+     */
+    @Query("""
+        select distinct m from MouvementStock m
+        join fetch m.lignes l
+        join fetch l.article a
+        where m.type = com.mbsc.finapp.domain.enums.TypeMouvementStock.SORTIE
+          and m.statut = com.mbsc.finapp.domain.enums.StatutMouvement.VALIDE
+          and m.dateMouvement between :du and :au
+          and a.type = com.mbsc.finapp.domain.enums.TypeArticle.BOISSON
+    """)
+    List<MouvementStock> sortiesBoissonsPeriode(@Param("du") LocalDate du, @Param("au") LocalDate au);
+
     @Query("""
         select distinct m from MouvementStock m
         left join fetch m.lignes l
@@ -72,4 +119,69 @@ public interface MouvementStockRepository extends JpaRepository<MouvementStock, 
         order by m.dateMouvement desc, m.id desc
     """)
     List<MouvementStock> findAllWithCreatedBy();
+
+    /**
+     * Mouvements valides portant sur au moins un plat, une boisson ou une
+     * provision — articles du module Restaurant, que seul l'administrateur
+     * peut corriger depuis la Logistique (voir StockService.listerMouvements).
+     */
+    @Query("""
+        select distinct m.id from LigneMouvementStock l
+        join l.mouvement m
+        join l.article a
+        where m.statut = com.mbsc.finapp.domain.enums.StatutMouvement.VALIDE
+          and a.type in (com.mbsc.finapp.domain.enums.TypeArticle.PLAT,
+                         com.mbsc.finapp.domain.enums.TypeArticle.BOISSON,
+                         com.mbsc.finapp.domain.enums.TypeArticle.PROVISION)
+    """)
+    List<Long> idsValidesModuleRestaurant();
+
+    /**
+     * Identifiants des mouvements, tous statuts confondus, qui portent au moins un article de l'un de ces
+     * types : limite la liste des mouvements d'un responsable cuisine ou bar a son domaine (voir
+     * StockService.listerMouvements et PerimetreRestaurant).
+     */
+    @Query("""
+        select distinct m.id from LigneMouvementStock l
+        join l.mouvement m
+        join l.article a
+        where a.type in :types
+    """)
+    List<Long> idsMouvementsParTypes(@Param("types") Collection<com.mbsc.finapp.domain.enums.TypeArticle> types);
+
+    /** Un seul mouvement citant cet article suffit a interdire sa suppression definitive. */
+    @Query("select count(l) > 0 from LigneMouvementStock l where l.article.id = :articleId")
+    boolean existsLigneAvecArticle(@Param("articleId") Long articleId);
+
+    /**
+     * Recuperation groupee (fetch join) des mouvements et de leurs lignes,
+     * pour reconstituer le cout historique reel de chaque vente sans
+     * requete par ligne — voir RestaurantService.analyserVentes.
+     */
+    @Query("""
+        select distinct m from MouvementStock m
+        left join fetch m.lignes l
+        left join fetch l.article
+        where m.id in :ids
+    """)
+    List<MouvementStock> findAllByIdInWithLignes(@Param("ids") Collection<Long> ids);
+
+    /**
+     * Lignes de sortie de consommables (19/11/2026, page Patrimoine › Sorties de consommables) : chaque ligne avec son
+     * mouvement, l'article, l'entrepôt source et l'auteur, la plus récente d'abord. Mouvements annulés compris (statut
+     * affiché).
+     */
+    @Query("""
+        select l from LigneMouvementStock l
+        join fetch l.mouvement m
+        join fetch l.article a
+        left join fetch l.entrepotSource
+        left join fetch a.compteCharge
+        left join fetch m.createdBy
+        left join fetch m.piece
+        where m.type = com.mbsc.finapp.domain.enums.TypeMouvementStock.SORTIE
+          and a.type = com.mbsc.finapp.domain.enums.TypeArticle.CONSOMMABLE
+        order by m.dateMouvement desc, m.id desc, l.id
+    """)
+    List<com.mbsc.finapp.domain.LigneMouvementStock> lignesSortiesConsommables();
 }

@@ -7,21 +7,45 @@ interface ModuleConfig {
   parentModule: string | null
 }
 
+/** Ce que changerait la coupure d'un module : les rôles qui disparaîtraient et les comptes qui seraient désactivés. */
+interface ImpactModule {
+  module: string
+  actif: boolean
+  roles: string[]
+  comptesADesactiver: string[]
+  comptesAReactiver: string[]
+}
+
 const api = useApi()
+const rolesStore = useRolesStore()
 const loading = ref(true)
 const erreur = ref('')
+const succes = ref('')
 const toggling = ref<string | null>(null)
 const modules = ref<ModuleConfig[]>([])
+/** Coupure en attente de confirmation (le module et son aperçu d'impact), ou null. */
+const aConfirmer = ref<{ module: ModuleConfig; impact: ImpactModule } | null>(null)
+/**
+ * Un clic sur l'interrupteur bascule d'abord la case native, avant que la page ait décidé quoi que ce soit : si la
+ * coupure est annulée (ou échoue), le module reste actif mais la case est restée « éteinte ». Incrémenter ce
+ * compteur, qui entre dans la clé des interrupteurs, les recrée dans l'état réel du module.
+ */
+const resynchro = ref(0)
 
 const META: Record<string, { label: string; description: string; icon: string; color: string }> = {
-  CAISSE: { label: 'Caisse', description: 'Opérations de caisse, paiement des notes de frais, journal, grand livre et balance.', icon: 'mdi-cash-register', color: '#16a34a' },
+  CAISSE: { label: 'Caisse', description: 'Opérations de caisse, paiement des notes de frais, journal, grand livre et balance.', icon: 'mdi-cash-register', color: 'var(--color-primary)' },
   BANQUE: { label: 'Banque', description: 'Opérations bancaires et journal de banque.', icon: 'mdi-bank', color: '#2563eb' },
   MOBILE_MONEY: { label: 'Mobile Money', description: 'Opérations mobile money et journal associé.', icon: 'mdi-cellphone', color: '#7c3aed' },
-  COMPTABILITE: { label: 'Comptabilité', description: 'Pièces comptables, grand livre par compte, bilan, compte de résultat, budgets, clôture.', icon: 'mdi-calculator-variant-outline', color: '#0891b2' },
+  COMPTABILITE: { label: 'Comptabilité', description: 'Pièces comptables, grand livre par compte, bilan, compte de résultat, clôture.', icon: 'mdi-calculator-variant-outline', color: '#0891b2' },
+  RAPPROCHEMENT: { label: 'Rapprochement bancaire', description: 'Relevés des banques et du mobile money lus par l\'IA, pointés contre la comptabilité, état de rapprochement validé par le DFIN.', icon: 'mdi-bank-check', color: '#0891b2' },
+  BUDGET: { label: 'Budget', description: 'Budgets prévisionnels et contrôle budgétaire des notes de frais. Désactivé : les dépenses ne sont plus rattachées au budget ni contrôlées.', icon: 'mdi-chart-box-outline', color: '#0891b2' },
+  FACTURATION_NORMALISEE: { label: 'Facture normalisée (DGI)', description: 'Chaque vente validée est transmise au dispositif e-MCF de la DGI (UID, signature, code QR sur la facture). Désactivé : plus aucune transmission. Réglages du dispositif : Administration › Facture normalisée.', icon: 'mdi-receipt-text-check-outline', color: '#ea580c' },
   VENTES: { label: 'Ventes', description: 'Ventes et clients.', icon: 'mdi-cart-outline', color: '#ea580c' },
   LOGISTIQUE: { label: 'Logistique', description: 'Articles, entrepôts, mouvements et stock.', icon: 'mdi-package-variant-closed', color: '#b45309' },
+  MINE: { label: 'Mine', description: 'Minerais suivis camion par camion : réception, frais connexes, vente au prix du chargement et règlement des camions. Désactivé : les pages et fonctions des minerais disparaissent.', icon: 'mdi-dump-truck', color: '#b45309' },
   TRANSPORT: { label: 'Transport', description: 'Véhicules, trajets et dépenses de transport.', icon: 'mdi-truck-outline', color: '#dc2626' },
   PATRIMOINE: { label: 'Patrimoine', description: 'Biens immobilises, amortissements et consommables', icon: 'mdi-office-building-cog-outline', color: '#9333ea' },
+  HOTELLERIE: { label: 'Hôtellerie (PMS)', description: 'Application à part pour les hôtels, motels et appartements : réservations, arrivées et départs, folios encaissés par la réception, ménage. Activez le module puis saisissez son adresse et son port dans Administration › Hôtellerie.', icon: 'mdi-bed-outline', color: '#0f766e' },
   RESTAURANT: { label: 'Restaurant', description: 'Carte (plats, boissons) et parc d\'emballages consignés (bouteilles, bacs).', icon: 'mdi-silverware-fork-knife', color: '#e11d48' },
   DRH: { label: 'DRH', description: 'Ressources humaines et paie — module conteneur, regroupe les 4 sous-modules ci-dessous.', icon: 'mdi-account-tie-outline', color: '#0d9488' },
   DRH_PERSONNEL: { label: 'Personnel', description: 'Fiches employés, matricules.', icon: 'mdi-account-multiple-outline', color: '#0d9488' },
@@ -50,19 +74,66 @@ async function charger() {
 }
 onMounted(charger)
 
+/** Combien de comptes en clair : « 1 compte », « 3 comptes ». */
+const comptes = (n: number) => `${n} compte${n > 1 ? 's' : ''}`
+
 async function basculer(m: ModuleConfig) {
   const nouvelEtat = !m.actif
+  erreur.value = ''
+  succes.value = ''
+  // Couper un module qui porte des rôles ou des comptes : on montre d'abord ce qui va disparaître et on demande
+  // confirmation. Les comptes concernés sont désactivés et masqués, puis remis en service avec le module.
+  if (!nouvelEtat) {
+    toggling.value = m.module
+    try {
+      const impact = await api<ImpactModule>(`/admin/modules/${m.module}/impact`, { query: { actif: false } })
+      if (impact.roles.length > 0 || impact.comptesADesactiver.length > 0) {
+        aConfirmer.value = { module: m, impact }
+        return
+      }
+    } catch (e: any) {
+      erreur.value = messageErreurApi(e, "Impossible de mesurer l'effet de la désactivation.")
+      resynchro.value++
+      return
+    } finally {
+      toggling.value = null
+    }
+  }
+  await appliquer(m, nouvelEtat)
+}
+
+/** Coupure refusée (bouton Annuler, clic à côté, Échap) : le module reste actif, l'interrupteur aussi. */
+function annulerCoupure() {
+  aConfirmer.value = null
+  resynchro.value++
+}
+
+async function confirmerCoupure() {
+  const attente = aConfirmer.value
+  aConfirmer.value = null
+  if (attente) await appliquer(attente.module, false)
+}
+
+async function appliquer(m: ModuleConfig, nouvelEtat: boolean) {
   toggling.value = m.module
   erreur.value = ''
   try {
-    await api(`/admin/modules/${m.module}`, { method: 'PUT', body: { actif: nouvelEtat } })
+    const reponse = await api<{ comptesDesactives?: number | null; comptesReactives?: number | null }>(
+      `/admin/modules/${m.module}`, { method: 'PUT', body: { actif: nouvelEtat } })
     m.actif = nouvelEtat
+    const coupes = reponse?.comptesDesactives ?? 0
+    const remis = reponse?.comptesReactives ?? 0
+    const nom = meta(m.module).label
+    succes.value = nouvelEtat
+      ? `Module « ${nom} » activé.` + (remis ? ` ${comptes(remis)} réactivé${remis > 1 ? 's' : ''} et de nouveau visible${remis > 1 ? 's' : ''}.` : '')
+      : `Module « ${nom} » désactivé.` + (coupes ? ` ${comptes(coupes)} désactivé${coupes > 1 ? 's' : ''} et masqué${coupes > 1 ? 's' : ''}.` : '')
     // Les permissions effectives ne sont chargees qu'une fois par session :
     // sans ce rechargement, le module desactive restait visible dans le menu
     // jusqu'a la reconnexion, alors que toutes ses pages renvoyaient deja 403.
     await usePermissionsStore().charger()
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Échec de la mise à jour.')
+    resynchro.value++
   } finally {
     toggling.value = null
   }
@@ -81,9 +152,14 @@ async function basculer(m: ModuleConfig) {
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" density="compact" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
     </v-alert>
+    <v-alert v-if="succes" type="success" variant="tonal" rounded="lg" density="compact" class="mb-4" closable @click:close="succes = ''">
+      {{ succes }}
+    </v-alert>
 
     <v-alert type="info" variant="tonal" rounded="lg" density="compact" class="mb-5">
       Désactiver un module le rend inaccessible à tous les utilisateurs, y compris les administrateurs — cette page reste toujours disponible pour le réactiver.
+      Les rôles propres au module disparaissent de la gestion des utilisateurs, et les comptes qui n'ont plus que ces rôles
+      sont désactivés et masqués, puis remis en service automatiquement quand le module est réactivé.
     </v-alert>
 
     <v-skeleton-loader v-if="loading" type="list-item-avatar-two-line, list-item-avatar-two-line, list-item-avatar-two-line" />
@@ -102,6 +178,7 @@ async function basculer(m: ModuleConfig) {
             {{ m.actif ? 'Actif' : 'Désactivé' }}
           </span>
           <v-switch
+            :key="`${m.module}-${resynchro}`"
             :model-value="m.actif"
             color="primary"
             hide-details
@@ -130,6 +207,7 @@ async function basculer(m: ModuleConfig) {
             {{ !m.actif ? 'Coupé (parent off)' : (enfant.actif ? 'Actif' : 'Désactivé') }}
           </span>
           <v-switch
+            :key="`${enfant.module}-${resynchro}`"
             :model-value="enfant.actif"
             color="primary"
             hide-details
@@ -140,6 +218,39 @@ async function basculer(m: ModuleConfig) {
         </div>
       </template>
     </div>
+
+    <!-- Confirmation avant de couper un module qui porte des rôles ou des comptes. -->
+    <v-dialog :model-value="!!aConfirmer" max-width="520" @update:model-value="(v: boolean) => { if (!v) annulerCoupure() }">
+      <v-card v-if="aConfirmer" rounded="xl" class="pa-2">
+        <v-card-title class="text-h6">Désactiver « {{ meta(aConfirmer.module.module).label }} » ?</v-card-title>
+        <v-card-text>
+          <p v-if="aConfirmer.impact.roles.length" class="mb-3">
+            Ces rôles disparaissent de la gestion des utilisateurs :
+            <strong>{{ aConfirmer.impact.roles.map((r) => rolesStore.libelle(r)).join(', ') }}</strong>.
+          </p>
+          <template v-if="aConfirmer.impact.comptesADesactiver.length">
+            <p class="mb-2">
+              <strong>{{ comptes(aConfirmer.impact.comptesADesactiver.length) }}</strong>
+              {{ aConfirmer.impact.comptesADesactiver.length > 1 ? 'seront désactivés et masqués' : 'sera désactivé et masqué' }}
+              (leurs sessions ouvertes sont fermées) :
+            </p>
+            <ul class="mod-impact">
+              <li v-for="nom in aConfirmer.impact.comptesADesactiver.slice(0, 8)" :key="nom">{{ nom }}</li>
+              <li v-if="aConfirmer.impact.comptesADesactiver.length > 8">… et {{ aConfirmer.impact.comptesADesactiver.length - 8 }} autre(s)</li>
+            </ul>
+          </template>
+          <p v-else class="mb-2">Aucun compte n'est désactivé : ils ont tous un autre rôle.</p>
+          <p class="text-caption text-medium-emphasis mt-3 mb-0">
+            Ils sont réactivés automatiquement quand le module est réactivé. Un compte désactivé à la main n'est jamais réactivé automatiquement.
+          </p>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-3">
+          <v-spacer />
+          <v-btn variant="text" @click="annulerCoupure">Annuler</v-btn>
+          <v-btn color="error" variant="flat" rounded="lg" @click="confirmerCoupure">Désactiver le module</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -152,8 +263,8 @@ async function basculer(m: ModuleConfig) {
   align-items: center;
   gap: 14px;
   padding: 16px 18px;
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 16px;
   transition: opacity 0.15s;
 }
@@ -173,8 +284,8 @@ async function basculer(m: ModuleConfig) {
   flex-shrink: 0;
 }
 .mod-row__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mod-row__label { font-size: 0.9rem; font-weight: 700; color: #111827; }
-.mod-row__desc { font-size: 0.78rem; color: #9ca3af; }
+.mod-row__label { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
+.mod-row__desc { font-size: 0.78rem; color: var(--ink-faint); }
 
 .mod-row__statut {
   font-size: 0.7rem;
@@ -184,6 +295,20 @@ async function basculer(m: ModuleConfig) {
   flex-shrink: 0;
   white-space: nowrap;
 }
-.mod-row__statut--on { background: #dcfce7; color: #16a34a; }
-.mod-row__statut--off { background: #f3f4f6; color: #9ca3af; }
+.mod-impact { margin: 0 0 4px; padding-left: 20px; font-size: 0.85rem; color: var(--ink-2); }
+.mod-row__statut--on { background: var(--color-primary-light); color: var(--color-primary); }
+.mod-row__statut--off { background: var(--surface-2); color: var(--ink-faint); }
+
+/* ── Téléphone (21/11/2026) : icône et nom en tête, statut et interrupteur à droite, description sur toute la largeur. */
+@media (max-width: 599px) {
+  .mod-row { display: grid !important; grid-template-columns: auto 1fr auto auto; align-items: center; column-gap: 10px; row-gap: 6px; padding: 14px; }
+  .mod-row--enfant { margin-left: 14px; padding: 12px 14px; }
+  .mod-row__enfant-trait { display: none; }
+  .mod-row__body { display: contents; }
+  .mod-row__icon { grid-column: 1; grid-row: 1; }
+  .mod-row__label { grid-column: 2; grid-row: 1; }
+  .mod-row__statut { grid-column: 3; grid-row: 1; }
+  .mod-row > :last-child { grid-column: 4; grid-row: 1; }
+  .mod-row__desc { grid-column: 1 / -1; grid-row: 2; font-size: 0.8rem; line-height: 1.45; }
+}
 </style>

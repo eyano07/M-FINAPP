@@ -21,9 +21,13 @@ public record TransactionCaisseResponse(
     String caissierNom,
     Long noteFraisId,
     String noteFraisReference,
+    String beneficiaire,
     Instant dateOperation,
     Instant dateEnregistrement,
-    BigDecimal tauxJournalier
+    BigDecimal tauxJournalier,
+    /** Retour de fonds : la note payee que cet encaissement reduit (null sinon). Distinct de noteFraisId, le paiement. */
+    Long noteRetourId,
+    String noteRetourReference
 ) {
     public static TransactionCaisseResponse from(TransactionCaisse t) {
         var caissier = t.getCaissier();
@@ -31,6 +35,7 @@ public record TransactionCaisseResponse(
             : ((caissier.getPrenom() == null ? "" : caissier.getPrenom()) + " "
              + (caissier.getNom() == null ? "" : caissier.getNom())).trim();
         var note = t.getNoteFrais();
+        var noteRetour = t.getNoteRetour();
         return new TransactionCaisseResponse(
             t.getId(),
             t.getUuid(),
@@ -42,9 +47,12 @@ public record TransactionCaisseResponse(
             nom,
             note == null ? null : note.getId(),
             note == null ? null : note.getReference(),
+            note == null ? null : note.getBeneficiaire(),
             t.getDateOperation(),
             t.getDateEnregistrement(),
-            t.getTauxJournalier()
+            t.getTauxJournalier(),
+            noteRetour == null ? null : noteRetour.getId(),
+            noteRetour == null ? null : noteRetour.getReference()
         );
     }
 }

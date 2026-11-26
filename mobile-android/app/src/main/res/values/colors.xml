@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Logo M-FINAPP -->
+    <color name="logo_fond">#0B2545</color>
+    <color name="logo_vert">#10B981</color>
+    <!-- Widgets de l'écran d'accueil (clair ; nuit dans values-night) -->
+    <color name="widget_fond">#E6FFFFFF</color>
+    <color name="widget_fond_fin">#D9E0F2FB</color>
+    <color name="widget_bord">#B3FFFFFF</color>
+    <color name="widget_encre">#0D1A15</color>
+    <color name="widget_doux">#5B6B64</color>
+    <color name="widget_ligne">#99FFFFFF</color>
+    <color name="widget_accent">#0B2545</color>
+    <color name="widget_alerte">#C2410C</color>
+    <color name="widget_ok">#047857</color>
+    <!-- Pipeline des notes (widget) -->
+    <color name="etape_dfin">#2563EB</color>
+    <color name="etape_validee">#16A34A</color>
+    <color name="etape_payee">#047857</color>
+    <color name="etape_rejetee">#DC2626</color>
+    <color name="etape_attente">#F59E0B</color>
+    <color name="etape_avenir">#D5DCD8</color>
+</resources>

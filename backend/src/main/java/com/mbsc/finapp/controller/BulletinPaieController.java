@@ -1,9 +1,15 @@
 package com.mbsc.finapp.controller;
 
+import com.mbsc.finapp.domain.enums.OrganismePaie;
 import com.mbsc.finapp.dto.drh.BulletinPaieRequest;
+import com.mbsc.finapp.dto.drh.NotesPaieResponse;
+import com.mbsc.finapp.dto.notes.ActionWorkflowRequest;
+import com.mbsc.finapp.service.PaieNoteService;
 import com.mbsc.finapp.dto.drh.BulletinPaieResponse;
+import com.mbsc.finapp.dto.drh.DeclarationSocialeResponse;
 import com.mbsc.finapp.dto.drh.ResultatCalculPaie;
 import com.mbsc.finapp.service.BulletinPaieService;
+import com.mbsc.finapp.service.DeclarationSocialeService;
 import com.mbsc.finapp.service.DrhExcelService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,10 +32,19 @@ public class BulletinPaieController {
 
     private final BulletinPaieService service;
     private final DrhExcelService excelService;
+    private final DeclarationSocialeService declarationService;
+    private final PaieNoteService paieNoteService;
 
     @GetMapping
     public List<BulletinPaieResponse> lister(@RequestParam Integer mois, @RequestParam Integer annee) {
         return service.listerParPeriode(mois, annee);
+    }
+
+    /** Bordereau recapitulatif CNSS / ONEM / INPP / IPR de la periode. */
+    @GetMapping("/declaration-sociale")
+    public DeclarationSocialeResponse declarationSociale(
+        @RequestParam Integer mois, @RequestParam Integer annee) {
+        return declarationService.etablir(mois, annee);
     }
 
     @GetMapping("/{id}")
@@ -68,9 +83,50 @@ public class BulletinPaieController {
         return service.annuler(id);
     }
 
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void supprimer(@PathVariable Long id) {
+        service.supprimer(id);
+    }
+
     @PostMapping("/cloturer")
     public List<BulletinPaieResponse> cloturerPeriode(@RequestParam Integer mois, @RequestParam Integer annee) {
         return service.cloturerPeriode(mois, annee);
+    }
+
+    /** Mode de comptabilisation manuel : écrit la constatation de la paie d'un mois clôturé (DFIN). */
+    @PostMapping("/comptabiliser")
+    public List<BulletinPaieResponse> comptabiliserPeriode(@RequestParam Integer mois, @RequestParam Integer annee) {
+        return service.comptabiliserPeriode(mois, annee);
+    }
+
+    @PostMapping("/rouvrir")
+    public List<BulletinPaieResponse> rouvrirPeriode(@RequestParam Integer mois, @RequestParam Integer annee) {
+        return service.rouvrirPeriode(mois, annee);
+    }
+
+    // ── Règlement de la paie : note de paie et notes fiscales (voir PaieNoteService) ──
+
+    @GetMapping("/reglement")
+    public NotesPaieResponse reglement(@RequestParam Integer mois, @RequestParam Integer annee) {
+        return paieNoteService.etat(mois, annee);
+    }
+
+    @PostMapping("/reglement/note-paie")
+    public NotesPaieResponse creerNotePaie(@RequestParam Integer mois, @RequestParam Integer annee) {
+        return paieNoteService.creerNotePaie(mois, annee);
+    }
+
+    @PostMapping("/reglement/notes-impots/{organisme}")
+    public NotesPaieResponse creerNoteImpot(@PathVariable OrganismePaie organisme,
+                                            @RequestParam Integer mois, @RequestParam Integer annee) {
+        return paieNoteService.creerNoteImpot(mois, annee, organisme);
+    }
+
+    @PostMapping("/reglement/notes/{noteId}/annuler")
+    public NotesPaieResponse annulerNote(@PathVariable Long noteId,
+                                         @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
+        return paieNoteService.annulerNote(noteId, action == null ? null : action.commentaire());
     }
 
     /** Registre de paie "DEBOURS MBSC" de la période, en classeur Excel (voir {@code DrhExcelService}). */

@@ -1,5 +1,6 @@
 package com.mbsc.desktop.service;
 
+import com.mbsc.desktop.config.RoleLabels;
 import com.mbsc.desktop.model.LocalTransaction;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -54,7 +55,7 @@ public class RecuService {
                 y -= 24;
                 line(cs, bold, normal, x, y, "Date :", DATE_FMT.format(tx.getDateOperation()));
                 y -= 24;
-                line(cs, bold, normal, x, y, "Caissier :", tx.getCaissierEmail());
+                line(cs, bold, normal, x, y, RoleLabels.caissier() + " :", tx.getCaissierEmail());
                 y -= 24;
                 line(cs, bold, normal, x, y, "Sens :", tx.getSens().name());
 

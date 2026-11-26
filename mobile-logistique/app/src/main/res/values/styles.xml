@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Logistique" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">#0f6e56</item>
+        <item name="android:colorPrimaryDark">#0b5341</item>
+        <item name="android:colorAccent">#13a37f</item>
+        <item name="android:statusBarColor">#0b5341</item>
+        <item name="android:navigationBarColor">#0b5341</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

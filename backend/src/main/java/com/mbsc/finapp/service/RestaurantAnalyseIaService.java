@@ -61,7 +61,7 @@ public class RestaurantAnalyseIaService {
         "required", List.of("synthese", "pointsForts", "pointsAttention", "recommandations"),
         "additionalProperties", false);
 
-    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public RestaurantAnalyseIaResponse analyser(LocalDate du, LocalDate au) {
         LocalDate fin = au != null ? au : LocalDate.now();
@@ -72,7 +72,7 @@ public class RestaurantAnalyseIaService {
         if (chatGptClient.disponible()) {
             try {
                 String prompt = construirePrompt(tb);
-                String contenu = chatGptClient.json(SYSTEME, prompt, 3000, SCHEMA_REPONSE);
+                String contenu = chatGptClient.jsonAnalyse(SYSTEME, prompt, 3000, SCHEMA_REPONSE);
                 AnalyseIaJson json = objectMapper.readValue(nettoyerJson(contenu), AnalyseIaJson.class);
                 if (StringUtils.hasText(json.synthese())) {
                     return new RestaurantAnalyseIaResponse(debut, fin, json.synthese(),
@@ -88,7 +88,7 @@ public class RestaurantAnalyseIaService {
     }
 
     /** Pendant de {@link #analyser} pour le tableau de bord des provisions (vivres, épices, charbon...). */
-    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'DFIN', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public RestaurantAnalyseIaResponse analyserProvisions(LocalDate du, LocalDate au) {
         LocalDate fin = au != null ? au : LocalDate.now();
@@ -99,7 +99,7 @@ public class RestaurantAnalyseIaService {
         if (chatGptClient.disponible()) {
             try {
                 String prompt = construirePromptProvisions(tb);
-                String contenu = chatGptClient.json(SYSTEME_PROVISIONS, prompt, 3000, SCHEMA_REPONSE);
+                String contenu = chatGptClient.jsonAnalyse(SYSTEME_PROVISIONS, prompt, 3000, SCHEMA_REPONSE);
                 AnalyseIaJson json = objectMapper.readValue(nettoyerJson(contenu), AnalyseIaJson.class);
                 if (StringUtils.hasText(json.synthese())) {
                     return new RestaurantAnalyseIaResponse(debut, fin, json.synthese(),

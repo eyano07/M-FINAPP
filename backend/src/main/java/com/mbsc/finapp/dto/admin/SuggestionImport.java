@@ -20,5 +20,12 @@ public record SuggestionImport(
     String valeurProposee,
     String libelle,
     String raison,
-    boolean genereParIa
-) {}
+    boolean genereParIa,
+    /** Compte sous lequel créer le compte proposé (suggestion CREATION) ; null sinon. */
+    String parentNumero
+) {
+    public SuggestionImport(String type, String valeurActuelle, String valeurProposee, String libelle, String raison,
+                            boolean genereParIa) {
+        this(type, valeurActuelle, valeurProposee, libelle, raison, genereParIa, null);
+    }
+}

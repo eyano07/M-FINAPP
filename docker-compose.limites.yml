@@ -1,0 +1,19 @@
+# Plafonds de ressources pour une instance installee A COTE d'une autre (par exemple une instance de test sur
+# le serveur de production) : elle ne peut alors jamais priver l'autre de memoire ou de processeur.
+# A ajouter dans le .env :  COMPOSE_FILE=docker-compose.prod.yml:docker-compose.limites.yml
+services:
+  db:
+    cpus: 0.5
+    mem_limit: 768m
+  backend:
+    cpus: 1.0
+    mem_limit: 1536m
+    environment:
+      # Tas Java a 65 % de la memoire autorisee au conteneur (environ 1 Go), le reste pour la JVM elle-meme.
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65"
+  frontend:
+    cpus: 0.5
+    mem_limit: 512m
+  nginx:
+    cpus: 0.25
+    mem_limit: 128m

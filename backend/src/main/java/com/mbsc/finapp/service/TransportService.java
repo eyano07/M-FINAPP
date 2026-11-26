@@ -171,6 +171,7 @@ public class TransportService {
         t.setDateArrivee(req.dateArrivee());
         t.setOrigine(req.origine());
         t.setDestination(req.destination());
+        t.setMotif(req.motif() == null || req.motif().isBlank() ? null : req.motif().trim());
         t.setDistanceKm(req.distanceKm() == null ? BigDecimal.ZERO : req.distanceKm());
     }
 

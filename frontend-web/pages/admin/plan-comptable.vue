@@ -1,10 +1,13 @@
 <script setup lang="ts">
-definePageMeta({ roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'LOGISTIQUE'] })
+definePageMeta({ roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 import { useDisplay } from 'vuetify'
 
 const auth = useAuthStore()
-const isAdmin = computed(() => auth.hasRole('ADMIN'))
+// Ajout/suppression de comptes reserves a ADMIN et DFIN (AdminService,
+// ajouterCompte/supprimerCompte) : DFIN pilote le referentiel comptable au
+// quotidien, ADMIN le supervise.
+const peutGererComptes = computed(() => auth.hasAnyRole(['ADMIN', 'DFIN']))
 
 // Bascule table <-> cartes sous 600px. Base sur la largeur reactive de
 // Vuetify plutot que $vuetify.display.mobile (seuil global a 1280px, non
@@ -60,6 +63,11 @@ const filtreType = ref<string | null>(null)
 const dialog = ref(false)
 const dialogDel = ref(false)
 const comptePourSuppr = ref<Compte | null>(null)
+const dialogEdit = ref(false)
+const comptePourEdit = ref<Compte | null>(null)
+const formEdit = reactive({ libelle: '' })
+const savingEdit = ref(false)
+const erreurEdit = ref('')
 
 // ── Fiche du référentiel commenté ─────────────────────────────────────────
 // Les rubriques pèsent plusieurs centaines de Ko sur l'ensemble du plan :
@@ -74,7 +82,7 @@ const RUBRIQUES = [
   { cle: 'commentaires', titre: 'Commentaires', icone: 'mdi-comment-quote-outline', couleur: '#7c3aed' },
   { cle: 'fonctionnement', titre: 'Fonctionnement', icone: 'mdi-swap-horizontal', couleur: '#0369a1' },
   { cle: 'exclusions', titre: 'Exclusions', icone: 'mdi-cancel', couleur: '#b91c1c' },
-  { cle: 'controle', titre: 'Éléments de contrôle', icone: 'mdi-check-decagram-outline', couleur: '#15803d' },
+  { cle: 'controle', titre: 'Éléments de contrôle', icone: 'mdi-check-decagram-outline', couleur: 'var(--color-primary-dark)' },
 ] as const
 
 const ficheRubriques = computed(() =>
@@ -112,15 +120,17 @@ function lignesRubrique(texte: string) {
                    texte: l.replace(/^[•–-]\s*/, '') }))
 }
 
-const form = reactive({ parentNumero: '', suffixe: '', libelle: '' })
+const form = reactive({ parentNumero: '', suffixe: '', libelle: '', note: '' })
 
 // ── Compte parent sélectionné ─────────────────────────────────────────────
 const parentChoisi = computed<Compte | null>(() =>
   form.parentNumero ? (comptes.value.find((c) => c.numero === form.parentNumero) ?? null) : null
 )
+// Codification décimale du SYSCOHADA (audit du 10/11/2026, C-17) : le sous-compte prolonge le numéro du parent par
+// des chiffres, sans point (4221 + 1 -> 42211).
 const numeroPreview = computed(() =>
   form.parentNumero && form.suffixe.trim()
-    ? `${form.parentNumero}.${form.suffixe.trim()}`
+    ? `${form.parentNumero}${form.suffixe.trim()}`
     : ''
 )
 
@@ -155,6 +165,7 @@ function ouvrirDialog() {
   form.parentNumero = ''
   form.suffixe = ''
   form.libelle = ''
+  form.note = ''
   erreur.value = ''
   dialog.value = true
 }
@@ -170,16 +181,55 @@ async function ajouter() {
   try {
     const c = await api<Compte>('/comptes', {
       method: 'POST',
-      body: { parentNumero: form.parentNumero, suffixe: form.suffixe.trim(), libelle: form.libelle.trim() },
+      body: {
+        parentNumero: form.parentNumero,
+        suffixe: form.suffixe.trim(),
+        libelle: form.libelle.trim(),
+        note: form.note.trim() || null,
+      },
     })
     comptes.value.push(c)
     comptes.value.sort((a, b) => a.numero.localeCompare(b.numero))
-    succes.value = `Compte ${fmtNumero(c.numero)} — ${c.libelle} créé.`
+    succes.value = `Compte ${fmtNumero(c.numero)} — ${c.libelle} créé, avec sa fiche de documentation.`
     dialog.value = false
   } catch (e: any) {
     erreur.value = e?.data?.message || "Échec de l'ajout."
   } finally {
     saving.value = false
+  }
+}
+
+// ── Modification (renommage) ───────────────────────────────────────────────
+function demanderEdit(c: Compte) {
+  comptePourEdit.value = c
+  formEdit.libelle = c.libelle
+  erreurEdit.value = ''
+  dialogEdit.value = true
+}
+
+async function confirmerEdit() {
+  const c = comptePourEdit.value
+  if (!c) return
+  if (!formEdit.libelle.trim()) {
+    erreurEdit.value = 'Le libellé est obligatoire.'
+    return
+  }
+  savingEdit.value = true
+  erreurEdit.value = ''
+  try {
+    const maj = await api<Compte>(`/comptes/${c.id}`, {
+      method: 'PUT',
+      body: { libelle: formEdit.libelle.trim() },
+    })
+    const i = comptes.value.findIndex((x) => x.id === c.id)
+    if (i !== -1) comptes.value[i] = { ...comptes.value[i], libelle: maj.libelle }
+    cacheFiches.delete(c.id)
+    succes.value = `Compte ${fmtNumero(c.numero)} renommé.`
+    dialogEdit.value = false
+  } catch (e: any) {
+    erreurEdit.value = e?.data?.message || 'Échec de la modification.'
+  } finally {
+    savingEdit.value = false
   }
 }
 
@@ -211,14 +261,11 @@ const typeColor: Record<string, { bg: string; color: string }> = {
   ACTIF:   { bg: '#dbeafe', color: '#1d4ed8' },
   PASSIF:  { bg: '#fed7aa', color: '#c2410c' },
   CHARGE:  { bg: '#fee2e2', color: '#dc2626' },
-  PRODUIT: { bg: '#dcfce7', color: '#16a34a' },
+  PRODUIT: { bg: 'var(--color-primary-light)', color: 'var(--color-primary)' },
 }
 const classeLabel = (n: number) => CLASSES.find((c) => c.num === n)?.label ?? ''
-const fmtNumero = (n: string) => {
-  if (n.length <= 2) return n
-  if (n[2] === '.') return n // point déjà en position 2 (ex: "10.11.1")
-  return n.slice(0, 2) + '.' + n.slice(2) // "1011" → "10.11", "1011.1" → "10.11.1"
-}
+// Numéro affiché tel qu'il est enregistré : un numéro SYSCOHADA s'écrit sans point (C-17).
+const fmtNumero = (n: string) => n
 
 // Autocomplete parents : tri par numéro
 const parentOptions = computed(() =>
@@ -241,7 +288,7 @@ const parentOptions = computed(() =>
         <button class="pc-refresh-btn" :disabled="loading" @click="charger">
           <v-icon icon="mdi-refresh" size="16" />
         </button>
-        <button v-if="isAdmin" class="pc-new-btn" @click="ouvrirDialog">
+        <button v-if="peutGererComptes" class="pc-new-btn" @click="ouvrirDialog">
           <v-icon icon="mdi-plus" size="18" class="mr-1" />
           Ajouter un compte
         </button>
@@ -258,7 +305,7 @@ const parentOptions = computed(() =>
     <!-- ── Filtres ────────────────────────────────────────────── -->
     <div class="pc-filters">
       <div class="pc-search">
-        <v-icon icon="mdi-magnify" size="16" color="#9ca3af" class="pc-search__icon" />
+        <v-icon icon="mdi-magnify" size="16" color="color-mix(in srgb, var(--color-primary) 75%, var(--ink-soft))" class="pc-search__icon" />
         <input v-model="search" class="pc-search__input" placeholder="Numéro ou libellé…" />
       </div>
       <div class="pc-chips">
@@ -285,7 +332,7 @@ const parentOptions = computed(() =>
         <v-progress-circular indeterminate color="primary" size="28" />
       </div>
       <div v-else-if="comptesFiltres.length === 0" class="pc-empty">
-        <v-icon icon="mdi-book-off-outline" size="40" color="#d1d5db" />
+        <v-icon icon="mdi-book-off-outline" size="40" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucun compte trouvé.</p>
       </div>
       <div v-else-if="!esMobile" class="pc-table-scroll">
@@ -314,7 +361,7 @@ const parentOptions = computed(() =>
             </td>
             <td class="pc-libelle">
               {{ c.libelle }}
-              <span v-if="c.commente" class="pc-fiche-badge" title="Fiche du référentiel SYSCOHADA disponible">
+              <span v-if="c.commente" class="pc-fiche-badge" :title="c.manuel ? 'Fiche de documentation du compte' : 'Fiche du référentiel SYSCOHADA disponible'">
                 <v-icon icon="mdi-book-open-page-variant-outline" size="13" />
                 Fiche
               </span>
@@ -328,10 +375,15 @@ const parentOptions = computed(() =>
             </td>
             <td><span class="pc-classe">{{ c.classe }} — {{ classeLabel(c.classe) }}</span></td>
             <td>
-              <button v-if="c.manuel && isAdmin" class="pc-del-btn" :disabled="deleting === c.id" @click="demanderSuppr(c)" title="Supprimer">
-                <v-progress-circular v-if="deleting === c.id" indeterminate size="14" width="2" color="currentColor" />
-                <v-icon v-else icon="mdi-delete-outline" size="16" />
-              </button>
+              <div v-if="c.manuel && peutGererComptes" class="pc-row-actions">
+                <button class="pc-edit-btn" @click.stop="demanderEdit(c)" title="Modifier le libellé">
+                  <v-icon icon="mdi-pencil-outline" size="16" />
+                </button>
+                <button class="pc-del-btn" :disabled="deleting === c.id" @click.stop="demanderSuppr(c)" title="Supprimer">
+                  <v-progress-circular v-if="deleting === c.id" indeterminate size="14" width="2" color="currentColor" />
+                  <v-icon v-else icon="mdi-delete-outline" size="16" />
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -369,14 +421,66 @@ const parentOptions = computed(() =>
 
           <div class="pc-card-item__footer">
             <span class="pc-classe">Cl. {{ c.classe }} — {{ classeLabel(c.classe) }}</span>
-            <button v-if="c.manuel && isAdmin" class="pc-del-btn" :disabled="deleting === c.id" @click.stop="demanderSuppr(c)" title="Supprimer">
-              <v-progress-circular v-if="deleting === c.id" indeterminate size="14" width="2" color="currentColor" />
-              <v-icon v-else icon="mdi-delete-outline" size="16" />
-            </button>
+            <div v-if="c.manuel && peutGererComptes" class="pc-row-actions">
+              <button class="pc-edit-btn" @click.stop="demanderEdit(c)" title="Modifier le libellé">
+                <v-icon icon="mdi-pencil-outline" size="16" />
+              </button>
+              <button class="pc-del-btn" :disabled="deleting === c.id" @click.stop="demanderSuppr(c)" title="Supprimer">
+                <v-progress-circular v-if="deleting === c.id" indeterminate size="14" width="2" color="currentColor" />
+                <v-icon v-else icon="mdi-delete-outline" size="16" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- ── Dialog modification ─────────────────────────────── -->
+    <v-dialog v-model="dialogEdit" max-width="460">
+      <div class="pc-dialog">
+        <div class="pc-dialog__head">
+          <div class="pc-dialog__blob pc-dialog__blob--a" />
+          <div class="pc-dialog__blob pc-dialog__blob--b" />
+          <div class="pc-dialog__icon">
+            <v-icon icon="mdi-pencil-outline" size="22" color="white" />
+          </div>
+          <div class="pc-dialog__head-text">
+            <p class="pc-dialog__head-title">Modifier le libellé</p>
+            <p class="pc-dialog__head-sub" v-if="comptePourEdit">{{ fmtNumero(comptePourEdit.numero) }} — numéro et classe inchangés</p>
+          </div>
+          <button class="pc-dialog__close" @click="dialogEdit = false">
+            <v-icon icon="mdi-close" size="18" color="rgba(255,255,255,0.75)" />
+          </button>
+        </div>
+
+        <div class="pc-dialog__body">
+          <v-alert v-if="erreurEdit" type="error" variant="tonal" rounded="lg" density="compact" class="mb-3" closable @click:close="erreurEdit = ''">
+            {{ erreurEdit }}
+          </v-alert>
+
+          <div class="pc-field">
+            <label class="pc-label">Libellé *</label>
+            <v-text-field
+              v-model="formEdit.libelle"
+              placeholder="Ex: Transports Administratifs"
+              prepend-inner-icon="mdi-text"
+              hide-details="auto"
+              autofocus
+              @keyup.enter="confirmerEdit"
+            />
+          </div>
+        </div>
+
+        <div class="pc-dialog__footer">
+          <button class="pc-cancel-btn" :disabled="savingEdit" @click="dialogEdit = false">Annuler</button>
+          <button class="pc-submit-btn" :disabled="savingEdit || !formEdit.libelle.trim()" @click="confirmerEdit">
+            <v-progress-circular v-if="savingEdit" indeterminate size="16" width="2" color="white" class="mr-2" />
+            <v-icon v-else icon="mdi-content-save-outline" size="17" class="mr-1" />
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </v-dialog>
 
     <!-- ── Dialog suppression ───────────────────────────────── -->
     <v-dialog v-model="dialogDel" max-width="420">
@@ -474,7 +578,7 @@ const parentOptions = computed(() =>
             <label class="pc-label">Suffixe du nouveau compte *</label>
             <v-text-field
               v-model="form.suffixe"
-              placeholder="Ex: 1, 2, A…"
+              placeholder="Ex: 1, 2, 11 (chiffres seulement)"
               prepend-inner-icon="mdi-numeric-positive-1"
               hide-details="auto"
               :hint="numeroPreview ? `Numéro final : ${fmtNumero(numeroPreview)}` : ''"
@@ -490,6 +594,22 @@ const parentOptions = computed(() =>
               placeholder="Ex: Fournitures de bureau — Papeterie"
               prepend-inner-icon="mdi-text"
               hide-details="auto"
+            />
+          </div>
+
+          <!-- Note de documentation -->
+          <div class="pc-field">
+            <label class="pc-label">Note de documentation (facultatif)</label>
+            <v-textarea
+              v-model="form.note"
+              placeholder="Ex : carburant du groupe électrogène du site de Lubumbashi uniquement"
+              prepend-inner-icon="mdi-book-open-page-variant-outline"
+              rows="2"
+              auto-grow
+              counter="1000"
+              maxlength="1000"
+              hint="La fiche du compte est rédigée automatiquement (rôle, fonctionnement et contrôles repris du compte parent). Ajoutez ici ce qui est propre à ce compte."
+              persistent-hint
             />
           </div>
         </div>
@@ -510,7 +630,9 @@ const parentOptions = computed(() =>
       <div class="pc-fiche">
         <div class="pc-fiche__head">
           <div>
-            <p class="pc-fiche__eyebrow">Référentiel SYSCOHADA — AUDCIF 2017</p>
+            <p class="pc-fiche__eyebrow">
+              {{ fiche?.manuel ? 'Compte propre à l\'entreprise — fiche rédigée à sa création' : 'Référentiel SYSCOHADA — AUDCIF 2017' }}
+            </p>
             <p class="pc-fiche__title">
               <span class="pc-fiche__num">{{ fiche ? fmtNumero(fiche.numero) : '' }}</span>
               {{ fiche?.libelle }}
@@ -554,26 +676,26 @@ const parentOptions = computed(() =>
 
 <style scoped>
 /* ── Fiche du référentiel ────────────────────────────────────────────────── */
-.pc-fiche { background: #fff; border-radius: 18px; overflow: hidden; }
+.pc-fiche { background: var(--surface); border-radius: 18px; overflow: hidden; }
 .pc-fiche__head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
   padding: 22px 24px 18px;
   background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--hairline);
 }
 .pc-fiche__eyebrow {
   font-size: 0.66rem; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
   color: #6366f1; margin: 0 0 6px;
 }
-.pc-fiche__title { font-size: 1.08rem; font-weight: 700; color: #111827; margin: 0; }
+.pc-fiche__title { font-size: 1.08rem; font-weight: 700; color: var(--ink); margin: 0; }
 .pc-fiche__num {
   display: inline-block; font-family: ui-monospace, monospace; font-size: 0.95rem;
   background: #4338ca; color: #fff; border-radius: 6px; padding: 1px 8px; margin-right: 8px;
 }
-.pc-fiche__parent { font-size: 0.78rem; color: #6b7280; margin: 6px 0 0; }
+.pc-fiche__parent { font-size: 0.78rem; color: var(--ink-soft); margin: 6px 0 0; }
 .pc-fiche__body { padding: 20px 24px 26px; max-height: 68vh; overflow-y: auto; }
 .pc-fiche__loading { display: flex; justify-content: center; padding: 40px; }
-.pc-fiche__vide { color: #9ca3af; font-size: 0.86rem; text-align: center; padding: 24px; }
+.pc-fiche__vide { color: var(--ink-faint); font-size: 0.86rem; text-align: center; padding: 24px; }
 
 .pc-rub { margin-bottom: 18px; }
 .pc-rub__titre {
@@ -583,21 +705,21 @@ const parentOptions = computed(() =>
 }
 .pc-rub__corps {
   border-left: 3px solid; border-radius: 0 10px 10px 0;
-  background: #f9fafb; padding: 12px 16px;
+  background: var(--surface-2); padding: 12px 16px;
 }
-.pc-rub__para { font-size: 0.85rem; color: #374151; margin: 0 0 7px; line-height: 1.55; }
+.pc-rub__para { font-size: 0.85rem; color: var(--ink-2); margin: 0 0 7px; line-height: 1.55; }
 .pc-rub__para:last-child { margin-bottom: 0; }
 .pc-rub__puce {
-  font-size: 0.85rem; color: #374151; line-height: 1.55;
+  font-size: 0.85rem; color: var(--ink-2); line-height: 1.55;
   margin: 0 0 5px 18px; list-style: disc;
 }
 
 .pc-row--commente { cursor: pointer; }
-.pc-row--commente:hover { background: #f5f3ff; }
+.pc-row--commente:hover { background: color-mix(in srgb, #7c3aed 9%, transparent); }
 .pc-fiche-badge {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
-  color: #6d28d9; background: #ede9fe; border: 1px solid #ddd6fe;
+  color: #6d28d9; background: color-mix(in srgb, #8b5cf6 14%, transparent); border: 1px solid color-mix(in srgb, #8b5cf6 30%, transparent);
   border-radius: 5px; padding: 1px 6px; margin-left: 8px; vertical-align: middle;
 }
 
@@ -606,7 +728,7 @@ const parentOptions = computed(() =>
 .pc-refresh-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; border-radius: 11px;
-  background: #f3f4f6; border: 1px solid #e5e7eb; color: #6b7280;
+  background: var(--surface-2); border: 1px solid var(--hairline); color: var(--ink-soft);
   cursor: pointer; transition: background 0.15s;
 }
 .pc-refresh-btn:hover:not(:disabled) { background: #e5e7eb; }
@@ -614,97 +736,110 @@ const parentOptions = computed(() =>
 .pc-new-btn {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 0 20px; height: 40px; border-radius: 11px;
-  background: #16a34a; color: #fff; font-size: 0.875rem; font-weight: 600;
+  background: var(--color-primary); color: #fff; font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer;
   transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.25);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
-.pc-new-btn:hover { background: #15803d; }
+.pc-new-btn:hover { background: var(--color-primary-dark); }
 
 /* ── Filtres ─────────────────────────────────────────────────────────────── */
 .pc-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; align-items: flex-start; }
 .pc-search {
   display: flex; align-items: center; gap: 8px;
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 11px;
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: 11px;
   padding: 0 14px; height: 40px; min-width: 200px; flex: 1; max-width: 300px;
 }
 .pc-search__icon { flex-shrink: 0; }
-.pc-search__input { flex: 1; border: none; outline: none; font-size: 0.875rem; color: #111827; background: transparent; }
-.pc-search__input::placeholder { color: #9ca3af; }
+.pc-search__input { flex: 1; border: none; outline: none; font-size: 0.875rem; color: var(--ink); background: transparent; }
+.pc-search__input::placeholder { color: var(--ink-faint); }
 .pc-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .pc-chip {
   padding: 4px 12px; border-radius: 100px; font-size: 0.75rem; font-weight: 600;
-  border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280;
+  border: 1px solid var(--hairline); background: var(--surface-2); color: var(--ink-soft);
   cursor: pointer; transition: all 0.15s;
 }
-.pc-chip:hover { border-color: #d1d5db; background: #f3f4f6; }
-.pc-chip--on   { background: #16a34a; color: #fff; border-color: #16a34a; }
-.pc-count { font-size: 0.8rem; color: #9ca3af; margin: 0 0 12px; font-weight: 500; }
+.pc-chip:hover { border-color: #d1d5db; background: var(--surface-2); }
+.pc-chip--on   { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.pc-count { font-size: 0.8rem; color: var(--ink-faint); margin: 0 0 12px; font-weight: 500; }
 
 /* ── Table card ──────────────────────────────────────────────────────────── */
-.pc-card { background: #fff; border: 1px solid #f0f0f0; border-radius: 18px; overflow: hidden; }
+.pc-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 18px; overflow: hidden; }
 .pc-loading, .pc-empty {
   display: flex; flex-direction: column; align-items: center;
-  gap: 10px; padding: 48px 16px; color: #9ca3af; font-size: 0.85rem;
+  gap: 10px; padding: 48px 16px; color: var(--ink-faint); font-size: 0.85rem;
 }
 .pc-empty p { margin: 0; }
 .pc-table-scroll { overflow-x: auto; }
 .pc-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 0.875rem; }
-.pc-table thead tr { border-bottom: 1px solid #f3f4f6; }
+.pc-table thead tr { border-bottom: 1px solid var(--hairline); }
 .pc-table th {
   padding: 12px 16px; font-size: 0.72rem; font-weight: 700;
-  letter-spacing: 0.4px; text-transform: uppercase; color: #9ca3af; text-align: left;
+  letter-spacing: 0.4px; text-transform: uppercase; color: var(--ink-faint); text-align: left;
 }
 .pc-th-action { width: 48px; }
-.pc-table tbody tr { border-bottom: 1px solid #f9fafb; transition: background 0.12s; }
+.pc-table tbody tr { border-bottom: 1px solid color-mix(in srgb, var(--mbsc-border) 55%, transparent); transition: background 0.12s; }
 .pc-table tbody tr:last-child { border-bottom: none; }
-.pc-table tbody tr:hover { background: #fafafa; }
-.pc-row--manuel { background: #f0fdf4; }
-.pc-row--manuel:hover { background: #dcfce7 !important; }
+.pc-table tbody tr:hover { background: var(--surface-2); }
+.pc-row--manuel { background: color-mix(in srgb, var(--color-primary) 7%, transparent); }
+.pc-row--manuel:hover { background: color-mix(in srgb, var(--color-primary) 13%, transparent) !important; }
+/* Compte manuel : pastille de marque à gauche de la ligne (verre, 21/11/2026). */
+.pc-row--manuel > td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--color-primary) 70%, transparent); }
 .pc-table td { padding: 10px 16px; vertical-align: middle; }
 
 .pc-num-cell { display: flex; align-items: center; gap: 6px; }
 .pc-numero {
   font-family: 'JetBrains Mono', 'Courier New', monospace;
-  font-size: 0.875rem; font-weight: 700; color: #111827;
-  background: #f9fafb; border: 1px solid #f0f0f0;
+  font-size: 0.875rem; font-weight: 700; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--hairline);
   padding: 2px 8px; border-radius: 6px; display: inline-block;
 }
 .pc-manuel-badge {
   font-size: 0.6rem; font-weight: 700; padding: 1px 6px;
-  border-radius: 100px; background: #dcfce7; color: #16a34a;
-  border: 1px solid #bbf7d0; letter-spacing: 0.3px;
+  border-radius: 100px; background: var(--color-primary-light); color: var(--color-primary);
+  border: 1px solid var(--color-primary-mid); letter-spacing: 0.3px;
 }
-.pc-libelle { color: #374151; }
-.pc-parent-hint { font-size: 0.72rem; color: #9ca3af; margin-left: 6px; font-family: monospace; }
+.pc-libelle { color: var(--ink-2); }
+.pc-parent-hint { font-size: 0.72rem; color: var(--ink-faint); margin-left: 6px; font-family: monospace; }
 .pc-type-chip {
   display: inline-block; font-size: 0.65rem; font-weight: 700;
   padding: 3px 9px; border-radius: 100px; letter-spacing: 0.3px;
 }
-.pc-classe { font-size: 0.78rem; color: #6b7280; }
+.pc-classe { font-size: 0.78rem; color: var(--ink-soft); }
+
+.pc-row-actions { display: inline-flex; align-items: center; gap: 6px; }
 
 .pc-del-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border-radius: 8px;
-  background: #fef2f2; color: #ef4444; border: 1px solid #fecaca;
+  background: color-mix(in srgb, #ef4444 10%, transparent); color: #ef4444; border: 1px solid color-mix(in srgb, #ef4444 28%, transparent);
   cursor: pointer; transition: background 0.15s;
   flex-shrink: 0;
 }
-.pc-del-btn:hover:not(:disabled) { background: #fee2e2; }
+.pc-del-btn:hover:not(:disabled) { background: color-mix(in srgb, #ef4444 18%, transparent); }
 .pc-del-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pc-edit-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 8px;
+  background: color-mix(in srgb, #2563eb 10%, transparent); color: #2563eb; border: 1px solid color-mix(in srgb, #2563eb 28%, transparent);
+  cursor: pointer; transition: background 0.15s;
+  flex-shrink: 0;
+}
+.pc-edit-btn:hover { background: color-mix(in srgb, #2563eb 18%, transparent); }
 
 /* ── Cartes (mobile) ─────────────────────────────────────────────────────── */
 .pc-cards { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
 .pc-card-item {
-  background: #fff;
-  border: 1px solid #eef0f2;
-  border-left: 3px solid #16a34a;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--color-primary);
   border-radius: 16px;
   padding: 14px 16px;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: box-shadow 0.15s, transform 0.15s;
 }
-.pc-card-item--manuel { background: #f7fdf9; border-color: #dcfce7; border-left-color: #16a34a; }
+.pc-card-item--manuel { background: color-mix(in srgb, var(--color-primary) 7%, transparent); border-color: var(--color-primary-light); border-left-color: var(--color-primary); }
 .pc-card-item--commente { cursor: pointer; }
 .pc-card-item--commente:active { transform: scale(0.99); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
 
@@ -718,7 +853,7 @@ const parentOptions = computed(() =>
 .pc-card-item__libelle {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   line-height: 1.4;
   margin: 0;
 }
@@ -740,11 +875,11 @@ const parentOptions = computed(() =>
 }
 
 /* ── Dialog ──────────────────────────────────────────────────────────────── */
-.pc-dialog { background: #fff; border-radius: 20px; overflow: hidden; }
+.pc-dialog { background: var(--surface); border-radius: 20px; overflow: hidden; }
 .pc-dialog__head {
   position: relative; overflow: hidden;
   display: flex; align-items: center; gap: 14px; padding: 22px;
-  background: linear-gradient(140deg, #22c55e 0%, #16a34a 50%, #14532d 100%);
+  background: linear-gradient(140deg, var(--color-primary-mid) 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%);
 }
 .pc-dialog__head--danger {
   background: linear-gradient(140deg, #f87171 0%, #dc2626 50%, #7f1d1d 100%);
@@ -759,7 +894,7 @@ const parentOptions = computed(() =>
   background: #fef2f2; border: 1px solid #fecaca;
   border-radius: 12px; padding: 14px 16px;
 }
-.pc-del-libelle { font-size: 0.9rem; font-weight: 600; color: #374151; }
+.pc-del-libelle { font-size: 0.9rem; font-weight: 600; color: var(--ink-2); }
 .pc-del-warning {
   display: flex; align-items: flex-start; gap: 4px;
   font-size: 0.8rem; color: #92400e;
@@ -798,24 +933,24 @@ const parentOptions = computed(() =>
 
 .pc-dialog__body { padding: 22px; display: flex; flex-direction: column; gap: 16px; }
 .pc-field { display: flex; flex-direction: column; gap: 6px; }
-.pc-label { font-size: 0.8125rem; font-weight: 600; color: #374151; }
+.pc-label { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
 
 /* Carte d'héritage */
 .pc-inherit-card {
-  background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 12px;
   padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;
 }
 .pc-inherit-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.pc-inherit-label { font-size: 0.78rem; font-weight: 600; color: #9ca3af; }
-.pc-inherit-val { font-size: 0.8rem; font-weight: 600; color: #374151; }
+.pc-inherit-label { font-size: 0.78rem; font-weight: 600; color: var(--ink-faint); }
+.pc-inherit-val { font-size: 0.8rem; font-weight: 600; color: var(--ink-2); }
 
 .pc-dialog__footer {
   display: flex; align-items: center; justify-content: flex-end; gap: 10px;
-  padding: 16px 22px; border-top: 1px solid #f3f4f6;
+  padding: 16px 22px; border-top: 1px solid var(--hairline);
 }
 .pc-cancel-btn {
   padding: 0 18px; height: 40px; border-radius: 10px;
-  background: #f3f4f6; color: #374151; font-size: 0.875rem; font-weight: 600;
+  background: var(--surface-2); color: var(--ink-2); font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer; transition: background 0.15s;
 }
 .pc-cancel-btn:hover:not(:disabled) { background: #e5e7eb; }
@@ -823,11 +958,69 @@ const parentOptions = computed(() =>
 .pc-submit-btn {
   display: inline-flex; align-items: center;
   padding: 0 22px; height: 40px; border-radius: 10px;
-  background: #16a34a; color: #fff; font-size: 0.875rem; font-weight: 600;
+  background: var(--color-primary); color: #fff; font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer;
   transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.25);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
-.pc-submit-btn:hover:not(:disabled) { background: #15803d; }
+.pc-submit-btn:hover:not(:disabled) { background: var(--color-primary-dark); }
 .pc-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Téléphone (21/11/2026) : épuré, en verre ─────────────────────────────────────────────────────────────────────── */
+@media (max-width: 599px) {
+  /* En-tête : bouton Actualiser carré et « Ajouter un compte » sur le reste de la ligne, même hauteur. */
+  .page-head > .pc-head-actions.pc-head-actions { width: 100%; display: grid; grid-template-columns: 48px 1fr; gap: 10px; }
+  .pc-head-actions > button { height: 48px; border-radius: 14px; justify-content: center; }
+  .pc-head-actions > button:only-child { grid-column: 1 / -1; }
+  .pc-refresh-btn { width: 48px; }
+  /* Recherche pleine largeur ; filtres en rangées défilantes, sans retour à la ligne. */
+  .pc-search { max-width: none; width: 100%; height: 48px; border-radius: 14px; }
+  .pc-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; margin-inline: -2px; }
+  .pc-chips::-webkit-scrollbar { display: none; }
+  .pc-chip { flex: 0 0 auto; }
+  /* Liste : les cartes posées sur le fond, sans cadre autour. */
+  .pc-card { background: transparent !important; border: 0 !important; box-shadow: none !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important; overflow: visible; }
+  .pc-cards { padding: 0; gap: 12px; }
+  .pc-card-item {
+    position: relative;
+    padding: 16px 16px 14px 18px;
+    background: var(--verre) !important;
+    -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+    border: 1px solid var(--verre-bord) !important;
+    border-radius: 20px;
+    box-shadow: var(--verre-ombre);
+  }
+  /* Repère de couleur discret à gauche de l'en-tête, au lieu de la barre pleine hauteur. */
+  .pc-card-item::before {
+    content: ''; position: absolute; left: 0; top: 18px; width: 4px; height: 20px; border-radius: 0 4px 4px 0;
+    background: color-mix(in srgb, var(--color-primary) 55%, var(--ink-faint));
+  }
+  .pc-card-item--manuel::before { background: var(--color-primary); }
+  .pc-card-item--manuel { background: color-mix(in srgb, var(--color-primary) 8%, var(--verre)) !important; }
+  .pc-card-item__top { margin-bottom: 6px; }
+  /* Numéro : grand et net, sans boîte. */
+  .pc-card-item .pc-numero {
+    padding: 0; border: 0 !important; background: transparent !important;
+    font-size: 1.15rem; font-weight: 800; letter-spacing: 0.3px; color: var(--ink);
+  }
+  .pc-card-item__libelle { font-size: 0.95rem; font-weight: 600; line-height: 1.4; }
+  .pc-card-item__tags { margin-top: 6px; gap: 6px; }
+  .pc-card-item__footer {
+    margin-top: 12px; padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--mbsc-border) 55%, transparent);
+  }
+  .pc-card-item .pc-classe { font-size: 0.78rem; color: var(--ink-soft); }
+}
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .pc-fiche__head { background: color-mix(in srgb, #a5b4fc 11%, var(--surface)) !important; }
+html[data-theme='dark'] .pc-del-btn { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; border-color: color-mix(in srgb, #f19a9a 28%, transparent) !important; }
+html[data-theme='dark'] .pc-del-btn:hover:not(:disabled) { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; }
+html[data-theme='dark'] .pc-edit-btn { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .pc-edit-btn:hover { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; }
+html[data-theme='dark'] .pc-del-compte-card { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; border-color: color-mix(in srgb, #f19a9a 28%, transparent) !important; }
+html[data-theme='dark'] .pc-del-warning { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; color: #f2c66d !important; border-color: color-mix(in srgb, #f2c66d 28%, transparent) !important; }
 </style>

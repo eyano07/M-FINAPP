@@ -31,6 +31,15 @@ public class LigneVente {
     @JoinColumn(name = "article_id", nullable = false)
     private Article article;
 
+    /**
+     * Chargement de minerais cede par cette ligne, non nul pour un article
+     * {@code minerais} uniquement : c'est lui qui porte l'identite du camion
+     * (plaque, jour d'achat) derriere le prix de vente propre a la ligne.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "camion_id")
+    private CamionMinerai camion;
+
     /** Libelle fige a la saisie : la facture reste lisible si l'article change. */
     @Column(nullable = false, length = 200)
     private String designation;
@@ -40,6 +49,10 @@ public class LigneVente {
 
     @Column(name = "prix_unitaire", nullable = false, precision = 15, scale = 2)
     private BigDecimal prixUnitaire;
+
+    /** Groupe de taxation DGI fige a la vente ; null = deduit de soumisTva. */
+    @Column(name = "groupe_taxe", length = 5)
+    private String groupeTaxe;
 
     @Column(name = "soumis_tva", nullable = false)
     @Builder.Default

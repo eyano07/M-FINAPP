@@ -19,5 +19,7 @@ public record BulletinPaieRequest(
     @PositiveOrZero BigDecimal primeRendement,
     @PositiveOrZero BigDecimal avanceSalaire,
     @PositiveOrZero BigDecimal pret,
-    LocalDate datePaiement
+    LocalDate datePaiement,
+    /** Antidate la mention "Imprimé le" du document imprimé ; null = date réelle d'impression. */
+    LocalDate dateImpression
 ) {}

@@ -1,0 +1,29 @@
+// Couleurs des statuts de réservation et des états de ménage (calendrier, listes), lisibles en clair comme en nuit.
+:root {
+  --res-option: #a855f7;
+  --res-confirmee: #2563eb;
+  --res-arrivee: #15803d;
+  --res-partie: #64748b;
+  --res-annulee: #dc2626;
+  --menage-propre: #15803d;
+  --menage-sale: #dc2626;
+  --menage-encours: #d97706;
+  --menage-inspecter: #2563eb;
+}
+html[data-theme='dark'] {
+  --res-option: #c084fc;
+  --res-confirmee: #8db7ff;
+  --res-arrivee: #3fbf7f;
+  --res-partie: #94a3b8;
+  --res-annulee: #f87171;
+  --menage-propre: #3fbf7f;
+  --menage-sale: #f87171;
+  --menage-encours: #f5b04c;
+  --menage-inspecter: #8db7ff;
+}
+.pastille {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 600; line-height: 1.6;
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent);
+}
+.pastille::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }

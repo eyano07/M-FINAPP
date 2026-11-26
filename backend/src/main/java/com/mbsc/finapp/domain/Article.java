@@ -28,6 +28,13 @@ public class Article {
     @Column(name = "unite_mesure", length = 20)
     private String uniteMesure;
 
+    /** Sous-classification libre (ex. Alcool, Vin, Whisky pour une BOISSON) ; sans effet en dehors de la carte du restaurant. */
+    @Column(length = 40)
+    private String categorie;
+    /** Société du produit (brasserie, fabricant ou fournisseur : Bracongo, Brasimba...) ; facultative, réservée aux boissons de la carte. */
+    @Column(length = 100)
+    private String societe;
+
     /** MARCHANDISE (stockee) ou SERVICE (prestation, sans stock). */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -41,6 +48,29 @@ public class Article {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "compte_charge_id")
     private CompteOHADA compteCharge;
+
+    /** Compte d'achat (601x), débité au règlement d'une note de frais d'achat de marchandise — voir NoteFraisService. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "compte_achat_id")
+    private CompteOHADA compteAchat;
+
+    /**
+     * true pour un minerais : le stock se suit camion par camion
+     * ({@link CamionMinerai}), chacun ayant son propre prix de vente. Réservé
+     * aux marchandises stockées ; sans effet sur les comptes d'imputation,
+     * identiques pour tous les chargements d'un même minerais.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean minerais = false;
+
+    /**
+     * true pour une prestation d'hébergement vendue par l'application Hôtellerie (nuitée, heure, semaine, mois : V152) :
+     * reflétée dans l'activité analytique 986 Hébergement plutôt que 985 Services.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean hebergement = false;
 
     /** Entrepot d'affectation, obligatoire pour une marchandise, toujours nul pour un service. */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -56,6 +86,19 @@ public class Article {
     @Column(name = "prix_vente", precision = 15, scale = 2)
     private BigDecimal prixVente;
 
+    /**
+     * Prix d'achat unitaire indicatif, en devise de base (FC). Facultatif :
+     * il ne sert qu'a preremplir le montant d'un achat saisi a la caisse, que
+     * le caissier corrige au prix reellement paye. Le cout d'entree en stock
+     * (CMP) reste toujours celui effectivement saisi, jamais cette valeur.
+     */
+    @Column(name = "prix_achat", precision = 15, scale = 2)
+    private BigDecimal prixAchat;
+
+    /** Groupe de taxation DGI (A, B...) ; null = deduit de soumisTva (B si taxable, A sinon). */
+    @Column(name = "groupe_taxe", length = 5)
+    private String groupeTaxe;
+
     /** false = article exonere de TVA. */
     @Column(name = "soumis_tva", nullable = false)
     @Builder.Default
@@ -64,6 +107,23 @@ public class Article {
     @Column(name = "stock_min", nullable = false, precision = 15, scale = 3)
     @Builder.Default
     private BigDecimal stockMin = BigDecimal.ZERO;
+
+    /**
+     * Durée de conservation d'un plat, en jours, définie dans sa fiche technique : les portions d'une production expirent
+     * à sa date de production + cette durée (0 : le jour même), et celles qui n'ont pas été vendues ensuite sont périmées.
+     * Absente : le plat ne se périme pas. Sans objet pour les autres types d'article.
+     */
+    @Column(name = "duree_conservation_jours")
+    private Integer dureeConservationJours;
+
+    /**
+     * BOISSON seulement : true pour une boisson sans consigne (whisky, vin, champagne, jus en carton...) dont on ne gere pas
+     * les bouteilles vides : pas de conditionnement, achat par carton ou a l'unite sans echange de consigne, vente sans
+     * vide (V134). Une boisson consignee (biere, sucrerie en casier) a un conditionnement et un stock de vides.
+     */
+    @Column(name = "sans_consigne", nullable = false)
+    @Builder.Default
+    private boolean sansConsigne = false;
 
     @Column(nullable = false)
     @Builder.Default

@@ -11,13 +11,17 @@ import com.mbsc.finapp.repository.ModuleConfigRepository;
 import com.mbsc.finapp.repository.RolePermissionRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Resolution des droits d'acces aux modules metier desactivables, a partir
@@ -29,6 +33,7 @@ import java.util.Map;
  * puisse verrouiller un administrateur hors de l'application (y compris
  * hors de la page de configuration qui permettrait de reparer l'erreur).</p>
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PermissionService {
@@ -36,6 +41,8 @@ public class PermissionService {
     private final ModuleConfigRepository moduleConfigRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final CurrentUserProvider currentUser;
+    /** Copie en ligne ou ancien serveur local (V132) : aucun module au-dessus de LECTURE. */
+    private final InstanceService instance;
 
     /** Les roles de l'utilisateur courant (entite metier, pas les autorites Spring). */
     private List<RoleType> mesRoles() {
@@ -64,6 +71,12 @@ public class PermissionService {
     }
 
     private NiveauPermission niveauEffectif(ModuleMetier module) {
+        NiveauPermission niveau = niveauSelonRoles(module);
+        // Serveur en lecture seule (copie en ligne d'un serveur local, ancien serveur local) : on consulte, on ne saisit pas.
+        return niveau == NiveauPermission.ECRITURE && instance.lectureSeule() ? NiveauPermission.LECTURE : niveau;
+    }
+
+    private NiveauPermission niveauSelonRoles(ModuleMetier module) {
         // Un module desactive coupe l'acces pour tout le monde, ADMIN inclus :
         // c'est une action deliberee de l'administrateur, pas une
         // mauvaise config accidentelle a compenser. /admin/modules reste
@@ -74,10 +87,14 @@ public class PermissionService {
         // Cascade hierarchique (DRH et ses sous-modules) : un sous-module ne
         // peut jamais etre plus permissif que son parent. Le parent lui-meme
         // n'a pas de parentModule, donc cette verification ne boucle pas.
-        if (actif && config != null && config.getParentModule() != null) {
-            actif = moduleConfigRepository.findById(config.getParentModule())
-                .map(ModuleConfig::isActif)
-                .orElse(true);
+        if (actif) {
+            // Parent de la ligne, ou celui de la hierarchie du code si la ligne manque ou l'a perdu.
+            ModuleMetier parent = EtatModules.parentDe(config, module);
+            if (parent != null) {
+                actif = moduleConfigRepository.findById(parent)
+                    .map(ModuleConfig::isActif)
+                    .orElse(true);
+            }
         }
         if (!actif) {
             return NiveauPermission.AUCUN;
@@ -120,7 +137,9 @@ public class PermissionService {
     /** ADMIN est exclu de la grille : acces total fixe, non editable (voir la Javadoc de la classe). */
     private static final List<RoleType> ROLES_CONFIGURABLES = List.of(
         RoleType.DG, RoleType.DA, RoleType.DFIN, RoleType.DIRECTEUR, RoleType.CAISSIER, RoleType.COMPTABLE,
-        RoleType.LOGISTIQUE, RoleType.GEST_PATRIMOINE, RoleType.RESP_DRH, RoleType.RESP_RESTAURANT);
+        RoleType.LOGISTIQUE, RoleType.GEST_PATRIMOINE, RoleType.RESP_DRH, RoleType.RESP_RESTAURANT,
+        RoleType.RESP_CUISINE, RoleType.RESP_BAR,
+        RoleType.RECEPTIONNISTE, RoleType.GOUVERNANTE, RoleType.TECHNICIEN, RoleType.DIR_HEBERGEMENT);
 
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
@@ -133,5 +152,37 @@ public class PermissionService {
         rp.setNiveau(niveau);
         rolePermissionRepository.save(rp);
         return new RolePermissionResponse(role, module, niveau);
+    }
+
+    /**
+     * Pose les droits d'origine ({@link DroitsParDefaut}) des roles donnes qui
+     * n'ont encore AUCUNE ligne dans la grille, et rend ces roles. Un role
+     * deja configure — meme si l'administrateur lui a retire tous ses acces
+     * (lignes AUCUN) — n'est jamais touche : son choix prime.
+     *
+     * <p>Les droits sont rattaches au role, pas a l'utilisateur. Sans ligne,
+     * un role n'ouvre aucun module, et la page d'accueil d'un role de module
+     * (restaurant, logistique, patrimoine, DRH) renvoyait alors a la connexion
+     * vers elle-meme, sans fin. Appele a la creation d'un utilisateur et au
+     * changement de ses roles.</p>
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public List<RoleType> appliquerDroitsParDefaut(Collection<RoleType> roles) {
+        List<RoleType> appliques = new ArrayList<>();
+        for (RoleType role : roles.stream().distinct().sorted().toList()) {
+            if (role == RoleType.ADMIN || rolePermissionRepository.existsByRole(role)) {
+                continue;
+            }
+            Map<ModuleMetier, NiveauPermission> droits = DroitsParDefaut.pour(role);
+            if (droits.isEmpty()) {
+                continue;
+            }
+            droits.forEach((module, niveau) -> rolePermissionRepository.save(
+                RolePermission.builder().role(role).module(module).niveau(niveau).build()));
+            appliques.add(role);
+            log.info("Droits d'origine poses sur le role {} ({} module(s)) : aucun droit n'etait defini", role, droits.size());
+        }
+        return appliques;
     }
 }

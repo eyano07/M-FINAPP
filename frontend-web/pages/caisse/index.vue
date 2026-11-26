@@ -1,5 +1,9 @@
 <script setup lang="ts">
-definePageMeta({ module: 'CAISSE', niveau: 'ECRITURE' })
+import { useExerciceStore } from '~/stores/exercice'
+import type { RetourFonds } from '~/components/notes-frais/DetailRetourFonds.vue'
+
+const rolesStore = useRolesStore()
+definePageMeta({ module: 'CAISSE', niveau: 'ECRITURE', roles: ['CAISSIER'] })
 
 interface Transaction {
   id: number
@@ -11,8 +15,12 @@ interface Transaction {
   caissierNom?: string
   noteFraisId?: number
   noteFraisReference?: string
+  beneficiaire?: string
   dateOperation: string
   tauxJournalier?: number
+  /** Retour de fonds : la note payée que cet encaissement réduit (distincte de noteFraisId, le paiement). */
+  noteRetourId?: number
+  noteRetourReference?: string
 }
 
 interface Compte {
@@ -60,11 +68,37 @@ interface RecuData {
 const api = useApi()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
+// Le bouton "Vente" (vers /ventes/nouvelle, deja pre-configuree en reglement
+// Caisse) n'a de sens que si le module RESTAURANT est actif pour ce role —
+// sans plats/boissons a vendre, ce serait un raccourci mort.
+const permissions = usePermissionsStore()
+onMounted(() => { if (!permissions.charge) permissions.charger() })
 onMounted(() => { parametresStore.charger() })
 
 const loading = ref(false)
 const erreur = ref('')
 const transactions = ref<Transaction[]>([])
+const filtreLibelle = ref('')
+const filtreNoteFrais = ref('')
+const filtreRecu = ref('')
+const filtreBeneficiaire = ref('')
+const transactionsFiltrees = computed(() => {
+  // Vuetify (clearable) remet le modele a null, pas '' : sans ce filet,
+  // .trim() y jetait une exception qui figeait le calcul sur son dernier
+  // resultat reussi (le tableau vide du filtre precedent), au lieu de
+  // revenir a la liste complete une fois le champ videmait vide.
+  const l = (filtreLibelle.value || '').trim().toLowerCase()
+  const n = (filtreNoteFrais.value || '').trim().toLowerCase()
+  const r = (filtreRecu.value || '').trim().toLowerCase()
+  const b = (filtreBeneficiaire.value || '').trim().toLowerCase()
+  if (!l && !n && !r && !b) return transactions.value
+  return transactions.value.filter((t) =>
+    (!l || (t.libelle || '').toLowerCase().includes(l)) &&
+    (!n || (t.noteFraisReference || '').toLowerCase().includes(n)) &&
+    (!r || (t.numeroRecu || '').toLowerCase().includes(r)) &&
+    (!b || (t.beneficiaire || '').toLowerCase().includes(b))
+  )
+})
 const comptes = ref<Compte[]>([])
 const soldeComptable = ref<LigneBalance | null>(null)
 const tauxChange = ref(1)
@@ -88,6 +122,127 @@ const form = reactive({
   noteFraisId: null as number | null,
 })
 
+// ── Achat de marchandise au comptant ──────────────────────────────────────
+interface ArticleAchat {
+  id: number
+  code: string
+  libelle: string
+  type: string
+  uniteMesure?: string
+  prixAchat?: number
+  compteStockNumero?: string
+  compteChargeNumero?: string
+}
+interface EntrepotAchat { id: number; nom: string; actif: boolean }
+
+const dialogAchat = ref(false)
+const envoiAchat = ref(false)
+const erreurAchat = ref('')
+const articlesAchat = ref<ArticleAchat[]>([])
+const entrepotsAchat = ref<EntrepotAchat[]>([])
+
+const formAchat = reactive({
+  articleId: null as number | null,
+  entrepotId: null as number | null,
+  quantite: 1,
+  prixUnitaireUSD: null as number | null,
+  compteAchatNumero: '' as string | null,
+  compteStockNumero: '' as string | null,
+  compteVariationNumero: '' as string | null,
+  libelle: '',
+})
+
+// Seules les marchandises stockables : un service n'entre pas en stock.
+const articlesStockables = computed(() =>
+  articlesAchat.value.filter(a => a.type !== 'SERVICE'))
+
+const articleChoisi = computed(() =>
+  articlesAchat.value.find(a => a.id === formAchat.articleId) || null)
+
+const totalAchatUSD = computed(() =>
+  (formAchat.prixUnitaireUSD || 0) * (formAchat.quantite || 0))
+
+/**
+ * Choix d'un article : préremplit le prix d'achat indicatif (stocké en FC,
+ * converti en USD comme partout ailleurs) et les comptes de stock/variation
+ * définis par la logistique. Les trois restent modifiables — c'est le prix
+ * réellement payé qui fait foi pour le CMP.
+ */
+function onArticleAchatChoisi() {
+  const a = articleChoisi.value
+  if (!a) return
+  formAchat.prixUnitaireUSD = a.prixAchat != null && tauxChange.value > 0
+    ? Number((a.prixAchat / tauxChange.value).toFixed(2))
+    : null
+  formAchat.compteStockNumero = a.compteStockNumero || ''
+  formAchat.compteVariationNumero = a.compteChargeNumero || ''
+}
+
+async function ouvrirDialogAchat() {
+  erreurAchat.value = ''
+  Object.assign(formAchat, {
+    articleId: null, entrepotId: null, quantite: 1, prixUnitaireUSD: null,
+    compteAchatNumero: '', compteStockNumero: '', compteVariationNumero: '', libelle: '',
+  })
+  dialogAchat.value = true
+  try {
+    const [arts, ents] = await Promise.all([
+      api<ArticleAchat[]>('/logistique/articles'),
+      api<EntrepotAchat[]>('/logistique/entrepots'),
+    ])
+    articlesAchat.value = arts
+    entrepotsAchat.value = ents.filter(e => e.actif)
+    if (entrepotsAchat.value.length === 1) {
+      formAchat.entrepotId = entrepotsAchat.value[0].id
+    }
+  } catch (e: any) {
+    erreurAchat.value = messageErreurApi(e, 'Impossible de charger le catalogue.')
+  }
+}
+
+async function enregistrerAchat() {
+  if (!formAchat.articleId || !formAchat.entrepotId) {
+    erreurAchat.value = 'Marchandise et entrepôt sont obligatoires.'
+    return
+  }
+  if (!formAchat.quantite || formAchat.quantite <= 0) {
+    erreurAchat.value = 'La quantité doit être strictement positive.'
+    return
+  }
+  if (!formAchat.prixUnitaireUSD || formAchat.prixUnitaireUSD <= 0) {
+    erreurAchat.value = "Le prix d'achat unitaire doit être strictement positif."
+    return
+  }
+  if (!formAchat.compteAchatNumero || !formAchat.compteStockNumero || !formAchat.compteVariationNumero) {
+    erreurAchat.value = 'Les trois comptes sont obligatoires (achat, stock, variation de stock).'
+    return
+  }
+  envoiAchat.value = true
+  erreurAchat.value = ''
+  try {
+    await api('/caisse/achats', {
+      method: 'POST',
+      body: {
+        articleId: formAchat.articleId,
+        entrepotId: formAchat.entrepotId,
+        quantite: formAchat.quantite,
+        prixUnitaire: formAchat.prixUnitaireUSD,
+        compteAchatNumero: formAchat.compteAchatNumero,
+        compteStockNumero: formAchat.compteStockNumero,
+        compteVariationNumero: formAchat.compteVariationNumero,
+        libelle: formAchat.libelle || null,
+      },
+    })
+    dialogAchat.value = false
+    await charger()
+  } catch (e: any) {
+    erreurAchat.value = messageErreurApi(e, "Échec de l'achat.")
+  } finally {
+    envoiAchat.value = false
+  }
+}
+
+
 const rules = {
   montant: [(v: any) => (v && v > 0) || 'Montant obligatoire et positif'],
   compte: [(v: any) => !!v || 'Compte obligatoire'],
@@ -109,10 +264,13 @@ async function charger() {
         manifestement fausse plutot que plausible. */,
       // Position comptable reelle du compte 571, toutes origines confondues
       // (saisie caisse, journal importe, piece manuelle). Les transactions du
-      // module ci-dessus n'en sont qu'une partie.
-      api<LigneBalance[]>('/caisse/balance').catch(() => [] as LigneBalance[]),
+      // module ci-dessus n'en sont qu'une partie. Soldes de tresorerie seuls :
+      // la balance generale est fermee au caissier.
+      // Ancien exercice consulté : soldes arrêtés au 31 décembre.
+      api<LigneBalance[]>('/caisse/soldes-tresorerie', { query: useExerciceStore().enConsultation ? { au: useExerciceStore().fin } : undefined })
+        .catch(() => [] as LigneBalance[]),
     ])
-    transactions.value = txs
+    transactions.value = txs.filter(t => useExerciceStore().dansExercice(t.dateOperation))
     comptes.value = cpts
     soldeComptable.value = bal.find((l) => l.compteNumero === COMPTE_CAISSE) ?? null
     // 0 et non 1 : un repli a 1 traiterait les FC comme des USD sans le signaler.
@@ -122,7 +280,7 @@ async function charger() {
   } finally {
     loading.value = false
   }
-  await chargerNotes()
+  await Promise.all([chargerNotes(), chargerRetours()])
 }
 
 async function chargerNotes() {
@@ -147,6 +305,86 @@ async function chargerNotes() {
 
 onMounted(charger)
 
+// ── Retours de fonds à recevoir ───────────────────────────────────────
+// L'émetteur d'une note payée l'a réduite : il rapporte la différence en espèces. À la réception, le caissier valide
+// (le serveur passe le retour en caisse, sort du stock les marchandises rendues, met la note à jour et prévient les
+// personnes concernées) ou refuse avec un motif, transmis à l'émetteur. Il ne corrige pas le montant.
+const retoursFonds = ref<RetourFonds[]>([])
+const loadingRetours = ref(false)
+const retourAValider = ref<RetourFonds | null>(null)
+const retourARefuser = ref<RetourFonds | null>(null)
+const motifRefus = ref('')
+const traitementRetour = ref(false)
+const erreurRetour = ref('')
+const succesRetour = ref('')
+
+async function chargerRetours() {
+  loadingRetours.value = true
+  try {
+    retoursFonds.value = await api<RetourFonds[]>('/caisse/retours-fonds')
+  } catch {
+    retoursFonds.value = []
+  } finally {
+    loadingRetours.value = false
+  }
+}
+
+const fmtMontantDevise = (v: number, devise?: string | null) =>
+  `${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0)} ${devise || ''}`.trim()
+
+function demanderValidationRetour(r: RetourFonds) {
+  erreurRetour.value = ''
+  succesRetour.value = ''
+  retourAValider.value = r
+}
+
+function demanderRefusRetour(r: RetourFonds) {
+  erreurRetour.value = ''
+  succesRetour.value = ''
+  motifRefus.value = ''
+  retourARefuser.value = r
+}
+
+async function validerRetour() {
+  const r = retourAValider.value
+  if (!r) return
+  traitementRetour.value = true
+  erreurRetour.value = ''
+  try {
+    const res = await api<RetourFonds>(`/caisse/retours-fonds/${r.id}/valider`, { method: 'POST' })
+    retourAValider.value = null
+    succesRetour.value = `Retour de fonds reçu : ${fmtMontantDevise(res.montant, res.devise)} pour la note ${res.noteReference}`
+      + `${res.numeroRecu ? ` (reçu n° ${res.numeroRecu})` : ''}. La note est réduite, les personnes concernées sont prévenues.`
+    await charger()
+    // Le reçu s'affiche aussitôt, prêt à imprimer pour l'émetteur qui a rapporté l'argent.
+    const tx = transactions.value.find((t) => t.reference === res.transactionReference)
+    if (tx) afficherRecu(tx, res.demandeurNom || undefined)
+  } catch (e: any) {
+    erreurRetour.value = e?.data?.message || "La réception n'a pas pu être enregistrée."
+    await chargerRetours()
+  } finally {
+    traitementRetour.value = false
+  }
+}
+
+async function refuserRetour() {
+  const r = retourARefuser.value
+  if (!r || !motifRefus.value.trim()) return
+  traitementRetour.value = true
+  erreurRetour.value = ''
+  try {
+    await api(`/caisse/retours-fonds/${r.id}/refuser`, { method: 'POST', body: { motif: motifRefus.value.trim() } })
+    retourARefuser.value = null
+    succesRetour.value = `Retour de fonds de la note ${r.noteReference} refusé : l'émetteur est prévenu du motif.`
+    await chargerRetours()
+  } catch (e: any) {
+    erreurRetour.value = e?.data?.message || "Le refus n'a pas pu être enregistré."
+    await chargerRetours()
+  } finally {
+    traitementRetour.value = false
+  }
+}
+
 // ── Reçu de paiement (imprimable) ─────────────────────────────────────
 const recuData = ref<RecuData | null>(null)
 const dateEditionRecu = ref('')
@@ -159,7 +397,7 @@ function construireRecu(tx: Transaction, beneficiaire?: string): RecuData {
     montant: tx.montant,
     dateOperation: tx.dateOperation,
     caissierNom: tx.caissierNom,
-    noteFraisReference: tx.noteFraisReference,
+    noteFraisReference: tx.noteFraisReference || tx.noteRetourReference,
     objet: tx.libelle,
     beneficiaire,
   }
@@ -174,8 +412,31 @@ function fermerRecu() {
   recuData.value = null
 }
 
+const modeImpressionRecu = ref<'NORMAL' | 'TICKET'>('NORMAL')
+
 function imprimerRecu() {
+  modeImpressionRecu.value = 'NORMAL'
   nextTick(() => window.print())
+}
+
+/**
+ * Ticket format imprimante thermique (80mm), meme mecanique que le ticket de
+ * vente (voir ventes/[id].vue imprimerTicket) : mise en page verticale a une
+ * colonne le temps de l'impression, puis retour au reçu normal.
+ */
+function imprimerRecuThermique() {
+  modeImpressionRecu.value = 'TICKET'
+  nextTick(() => {
+    const style = document.createElement('style')
+    style.id = 'recu-ticket-page-style'
+    style.textContent = '@page { size: 80mm auto; margin: 3mm; }'
+    document.head.appendChild(style)
+    window.print()
+    window.addEventListener('afterprint', () => {
+      document.getElementById('recu-ticket-page-style')?.remove()
+      modeImpressionRecu.value = 'NORMAL'
+    }, { once: true })
+  })
 }
 
 /** Réimpression depuis l'historique : va rechercher le bénéficiaire (créateur de la note) au besoin. */
@@ -187,6 +448,14 @@ async function voirRecu(item: Transaction) {
       beneficiaire = note?.beneficiaire || note?.demandeurNom
     } catch {
       // Reçu affiché sans le nom du bénéficiaire si la note n'est plus consultable.
+    }
+  } else if (item.sens === 'ENCAISSEMENT' && item.noteRetourId) {
+    // Retour de fonds : le payeur est l'émetteur de la note, qui a rapporté l'argent.
+    try {
+      const note = await api<{ demandeurNom?: string }>(`/notes-frais/${item.noteRetourId}`)
+      beneficiaire = note?.demandeurNom
+    } catch {
+      // Reçu affiché sans le nom du payeur si la note n'est plus consultable.
     }
   }
   afficherRecu(item, beneficiaire)
@@ -266,11 +535,25 @@ function onNoteFraisSelect(id: number | null) {
   // taux du jour, uniquement pour l'affichage : le paiement réel est
   // recalculé côté serveur à partir du montant et de la devise de la note).
   const estUSD = (note.devise || 'CDF').toUpperCase() === 'USD'
+  // Arrondi au centime comme le serveur (ConversionDeviseService), qui
+  // recalcule de toute façon le montant réel : sans cet arrondi, une note
+  // de 237 800 FC s'affichait « 108,0909090909091 ».
   form.montantUSD = estUSD
     ? note.montant
-    : (tauxChange.value > 0 ? note.montant / tauxChange.value : note.montant)
+    : (tauxChange.value > 0 ? Math.round((note.montant / tauxChange.value) * 100) / 100 : note.montant)
   form.libelle = note.objet || ''
 }
+
+/**
+ * Note en francs choisie pour un paiement : son montant exact s'affiche sous
+ * le champ, plutôt qu'une reconversion du montant arrondi en dollars
+ * (108,09 × 2 200 = 237 798 FC au lieu des 237 800 FC réels).
+ */
+const noteEnFrancs = computed(() => {
+  if (form.sens !== 'DECAISSEMENT' || !form.noteFraisId) return null
+  const n = notesAPayer.value.find(x => x.id === form.noteFraisId)
+  return n && (n.devise || 'CDF').toUpperCase() !== 'USD' ? n : null
+})
 
 const notesOptions = computed(() =>
   notesAPayer.value.map((n) => ({
@@ -372,6 +655,16 @@ const fmtTaux = computed(() =>
         <v-btn variant="outlined" color="primary" prepend-icon="mdi-notebook-outline" rounded="lg" to="/caisse/journal">
           Journal de caisse
         </v-btn>
+        <v-btn
+          v-if="permissions.peutVoir('RESTAURANT')"
+          variant="tonal"
+          color="deep-orange"
+          prepend-icon="mdi-cart-outline"
+          rounded="lg"
+          to="/ventes/nouvelle"
+        >
+          Vente
+        </v-btn>
         <v-btn color="primary" prepend-icon="mdi-cash-plus" rounded="lg" @click="ouvrirDialog">
           Encaissement
         </v-btn>
@@ -422,7 +715,7 @@ const fmtTaux = computed(() =>
         <v-progress-circular indeterminate color="primary" size="28" />
       </div>
       <div v-else-if="notesAPayer.length === 0" class="caisse-empty">
-        <v-icon icon="mdi-check-circle-outline" size="28" color="#d1d5db" />
+        <v-icon icon="mdi-check-circle-outline" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucune note transmise à la caisse pour le moment.</p>
         <!-- Toujours expliquer un état vide qui pourrait être pris pour un
              bug : ces notes existent, mais ce n'est pas encore le tour de
@@ -436,9 +729,9 @@ const fmtTaux = computed(() =>
           class="mt-3 text-left"
         >
           {{ notesEnAttenteDfin.length }} note{{ notesEnAttenteDfin.length > 1 ? 's' : '' }}
-          validée{{ notesEnAttenteDfin.length > 1 ? 's' : '' }} par le DA
+          validée{{ notesEnAttenteDfin.length > 1 ? 's' : '' }} par {{ rolesStore.libelle('DA') }}
           {{ notesEnAttenteDfin.length > 1 ? 'attendent' : 'attend' }} encore la transmission
-          à la trésorerie par le DFIN — elle{{ notesEnAttenteDfin.length > 1 ? 's' : '' }}
+          à la trésorerie par {{ rolesStore.libelle('DFIN') }} — elle{{ notesEnAttenteDfin.length > 1 ? 's' : '' }}
           apparaîtr{{ notesEnAttenteDfin.length > 1 ? 'ont' : 'a' }} ici une fois transmise{{ notesEnAttenteDfin.length > 1 ? 's' : '' }}.
         </v-alert>
       </div>
@@ -462,6 +755,7 @@ const fmtTaux = computed(() =>
             {{ new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n.montant) }} {{ n.devise || 'FC' }}
           </div>
           <v-btn
+            v-if="auth.hasRole('CAISSIER')"
             color="primary"
             variant="flat"
             rounded="lg"
@@ -474,6 +768,112 @@ const fmtTaux = computed(() =>
         </div>
       </div>
     </v-card>
+
+
+    <!-- ── Retours de fonds à recevoir ──────────────────────────────────── -->
+    <v-card v-if="retoursFonds.length || succesRetour || erreurRetour" id="retours-fonds" class="classroom-card mt-4">
+      <v-card-title class="text-subtitle-1 font-weight-semibold pa-4 pb-2 d-flex align-center">
+        Retours de fonds à recevoir
+        <v-chip v-if="retoursFonds.length" size="small" color="teal" variant="tonal" class="ml-2">
+          {{ retoursFonds.length }}
+        </v-chip>
+        <v-spacer />
+        <v-btn size="small" variant="text" icon="mdi-refresh" :loading="loadingRetours" @click="chargerRetours" />
+      </v-card-title>
+      <div class="px-4 pb-4">
+        <v-alert v-if="succesRetour" type="success" variant="tonal" density="compact" rounded="lg" class="mb-3" closable
+          @click:close="succesRetour = ''">
+          {{ succesRetour }}
+        </v-alert>
+        <v-alert v-if="erreurRetour" type="error" variant="tonal" density="compact" rounded="lg" class="mb-3" closable
+          @click:close="erreurRetour = ''">
+          {{ erreurRetour }}
+        </v-alert>
+        <p v-if="retoursFonds.length" class="text-body-2 text-medium-emphasis mb-3">
+          Ces notes payées ont été réduites par leur émetteur : il doit vous remettre la différence en espèces. Validez à la
+          réception de l'argent, ou refusez en indiquant le motif.
+        </p>
+        <p v-else class="text-body-2 text-medium-emphasis mb-0">Aucun retour de fonds en attente.</p>
+        <div class="caisse-retours">
+          <div v-for="r in retoursFonds" :key="r.id" class="caisse-retour">
+            <div class="caisse-retour__tete">
+              <nuxt-link :to="`/notes-frais/${r.noteId}`" class="caisse-note__ref">{{ r.noteReference }}</nuxt-link>
+              <span class="caisse-retour__objet">{{ r.noteObjet }}</span>
+              <v-spacer />
+              <span class="caisse-retour__montant">{{ fmtMontantDevise(r.montant, r.devise) }}</span>
+            </div>
+            <NotesFraisDetailRetourFonds :retour="r" :avec-statut="false" :avec-montant="false" />
+            <div v-if="auth.hasRole('CAISSIER')" class="caisse-retour__actions">
+              <v-btn color="error" variant="text" rounded="lg" size="small" prepend-icon="mdi-close"
+                :disabled="traitementRetour" @click="demanderRefusRetour(r)">
+                Refuser
+              </v-btn>
+              <v-btn color="teal" variant="flat" rounded="lg" size="small" prepend-icon="mdi-cash-check"
+                :disabled="traitementRetour" @click="demanderValidationRetour(r)">
+                Valider la réception
+              </v-btn>
+            </div>
+          </div>
+        </div>
+      </div>
+    </v-card>
+
+    <!-- Confirmation de la réception de l'argent -->
+    <v-dialog :model-value="!!retourAValider" max-width="480" :persistent="traitementRetour"
+      @update:model-value="(v) => { if (!v) retourAValider = null }">
+      <v-card v-if="retourAValider" rounded="xl">
+        <v-card-title class="d-flex align-center ga-2 pt-4 px-5">
+          <v-icon icon="mdi-cash-check" color="teal" />
+          Valider la réception
+        </v-card-title>
+        <v-card-text class="px-5">
+          <p class="mb-3">
+            J'ai reçu <strong>{{ fmtMontantDevise(retourAValider.montant, retourAValider.devise) }}</strong> en espèces de
+            {{ retourAValider.demandeurNom || "l'émetteur" }} pour la note <strong>{{ retourAValider.noteReference }}</strong>.
+          </p>
+          <p class="text-body-2 text-medium-emphasis mb-0">
+            Le retour est enregistré en caisse avec un reçu ; la note est réduite, les marchandises rendues sortent du stock
+            et {{ rolesStore.libelle('DFIN') }}, {{ rolesStore.libelle('COMPTABLE') }}, {{ rolesStore.libelle('DA') }},
+            {{ rolesStore.libelle('ADMIN') }} ainsi que le responsable du bar ou de la cuisine concerné sont prévenus.
+          </p>
+        </v-card-text>
+        <v-card-actions class="px-5 pb-4">
+          <v-spacer />
+          <v-btn variant="text" :disabled="traitementRetour" @click="retourAValider = null">Annuler</v-btn>
+          <v-btn color="teal" variant="flat" rounded="lg" :loading="traitementRetour" @click="validerRetour">
+            J'ai reçu l'argent
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Refus motivé -->
+    <v-dialog :model-value="!!retourARefuser" max-width="480" :persistent="traitementRetour"
+      @update:model-value="(v) => { if (!v) retourARefuser = null }">
+      <v-card v-if="retourARefuser" rounded="xl">
+        <v-card-title class="d-flex align-center ga-2 pt-4 px-5">
+          <v-icon icon="mdi-cash-remove" color="error" />
+          Refuser le retour de fonds
+        </v-card-title>
+        <v-card-text class="px-5">
+          <p class="mb-3">
+            Note <strong>{{ retourARefuser.noteReference }}</strong> :
+            {{ fmtMontantDevise(retourARefuser.montant, retourARefuser.devise) }} annoncés par
+            {{ retourARefuser.demandeurNom || "l'émetteur" }}. La note restera inchangée.
+          </p>
+          <v-textarea v-model="motifRefus" label="Motif du refus *" rows="3" auto-grow counter="500" maxlength="500"
+            variant="outlined" density="comfortable" placeholder="Ex. : argent non remis, montant incomplet…" />
+        </v-card-text>
+        <v-card-actions class="px-5 pb-4">
+          <v-spacer />
+          <v-btn variant="text" :disabled="traitementRetour" @click="retourARefuser = null">Annuler</v-btn>
+          <v-btn color="error" variant="flat" rounded="lg" :loading="traitementRetour" :disabled="!motifRefus.trim()"
+            @click="refuserRetour">
+            Refuser
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- ── Tableau des transactions ──────────────────────────────────── -->
     <v-card class="classroom-card mt-4">
@@ -501,8 +901,50 @@ const fmtTaux = computed(() =>
         et dans la Balance ; seules les opérations enregistrées ici apparaissent
         dans le tableau ci-dessous.
       </v-alert>
+      <div class="d-flex flex-wrap ga-3 px-4 pb-3">
+        <v-text-field
+          v-model="filtreLibelle"
+          label="Libellé"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          style="max-width: 240px"
+        />
+        <v-text-field
+          v-model="filtreNoteFrais"
+          label="Note de frais"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          style="max-width: 200px"
+        />
+        <v-text-field
+          v-model="filtreRecu"
+          label="Reçu"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          style="max-width: 200px"
+        />
+        <v-text-field
+          v-model="filtreBeneficiaire"
+          label="Bénéficiaire"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          style="max-width: 220px"
+        />
+      </div>
       <v-data-table
-        :items="transactions"
+        :items="transactionsFiltrees"
         :loading="loading"
         density="comfortable"
         items-per-page="15"
@@ -512,10 +954,11 @@ const fmtTaux = computed(() =>
           { title: 'Référence', key: 'reference' },
           { title: 'Libellé', key: 'libelle', sortable: false },
           { title: 'Note de frais', key: 'noteFraisReference', sortable: false },
+          { title: 'Bénéficiaire', key: 'beneficiaire', sortable: false },
           { title: 'Sens', key: 'sens', align: 'center' },
           { title: 'Montant (USD)', key: 'montant', align: 'end' },
           { title: 'Taux du jour', key: 'tauxJournalier', align: 'end', sortable: false },
-          { title: 'Caissier', key: 'caissierNom', sortable: false },
+          { title: rolesStore.libelle('CAISSIER'), key: 'caissierNom', sortable: false },
           { title: 'Reçu', key: 'numeroRecu', sortable: false },
         ]"
       >
@@ -545,7 +988,14 @@ const fmtTaux = computed(() =>
         </template>
         <template #[`item.noteFraisReference`]="{ item }">
           <code v-if="item.noteFraisReference" class="text-caption text-primary">{{ item.noteFraisReference }}</code>
+          <span v-else-if="item.noteRetourReference" class="d-inline-flex align-center ga-1" title="Retour de fonds sur cette note">
+            <code class="text-caption text-teal">{{ item.noteRetourReference }}</code>
+            <v-icon icon="mdi-cash-refund" size="14" color="teal" />
+          </span>
           <span v-else class="text-medium-emphasis">—</span>
+        </template>
+        <template #[`item.beneficiaire`]="{ item }">
+          <span class="text-medium-emphasis">{{ item.beneficiaire || '—' }}</span>
         </template>
         <template #[`item.numeroRecu`]="{ item }">
           <span v-if="item.numeroRecu" class="d-flex align-center ga-1">
@@ -623,7 +1073,9 @@ const fmtTaux = computed(() =>
               density="comfortable"
               rounded="lg"
               :rules="rules.montant"
-              :hint="form.montantUSD ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round((form.montantUSD ?? 0) * tauxChange))} FC` : ''"
+              :hint="noteEnFrancs
+                ? `Note de ${new Intl.NumberFormat('fr-FR').format(noteEnFrancs.montant)} FC, convertie au taux du jour`
+                : (form.montantUSD ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round((form.montantUSD ?? 0) * tauxChange))} FC` : '')"
               persistent-hint
               :readonly="form.sens === 'DECAISSEMENT' && !!form.noteFraisId"
               class="mb-3"
@@ -632,7 +1084,7 @@ const fmtTaux = computed(() =>
             <!-- Compte contrepartie (uniquement pour encaissement) -->
             <template v-if="form.sens === 'ENCAISSEMENT'">
               <v-autocomplete
-                :model-value="form.compteContrepartie"
+                v-model="form.compteContrepartie"
                 :items="comptesOptions"
                 label="Compte contrepartie"
                 prepend-inner-icon="mdi-format-list-numbered"
@@ -641,8 +1093,8 @@ const fmtTaux = computed(() =>
                 rounded="lg"
                 :rules="rules.compte"
                 class="mb-1"
-                readonly
-                hint="Déterminé automatiquement par l'IA à partir du libellé"
+                clearable
+                hint="Suggéré automatiquement par l'IA à partir du libellé — modifiable"
                 persistent-hint
               />
               <div v-if="chargementSuggestion" class="ia-suggestion ia-suggestion--loading mb-3">
@@ -691,6 +1143,90 @@ const fmtTaux = computed(() =>
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- ── Achat de marchandise au comptant ────────────────────────── -->
+    <v-dialog v-model="dialogAchat" max-width="640" persistent scrollable>
+      <v-card>
+        <v-card-title class="d-flex align-center ga-2">
+          <v-icon icon="mdi-cart-outline" color="teal" />
+          Achat de marchandise
+        </v-card-title>
+        <v-divider />
+        <v-card-text>
+          <v-alert v-if="erreurAchat" type="error" variant="tonal" density="compact" class="mb-3">
+            {{ erreurAchat }}
+          </v-alert>
+
+          <v-select
+            v-model="formAchat.articleId"
+            :items="articlesStockables.map(a => ({ title: `${a.code} — ${a.libelle}`, value: a.id }))"
+            label="Marchandise *"
+            variant="outlined" density="comfortable" class="mb-3"
+            hint="Enregistrée en amont par la logistique" persistent-hint
+            @update:model-value="onArticleAchatChoisi"
+          />
+
+          <v-row dense>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="formAchat.entrepotId"
+                :items="entrepotsAchat.map(e => ({ title: e.nom, value: e.id }))"
+                label="Entrepôt de destination *"
+                variant="outlined" density="comfortable" class="mb-3"
+              />
+            </v-col>
+            <v-col cols="6" md="3">
+              <v-text-field v-model.number="formAchat.quantite" type="number" min="0" step="0.001"
+                :suffix="articleChoisi?.uniteMesure || ''"
+                label="Quantité *" variant="outlined" density="comfortable" class="mb-3" />
+            </v-col>
+            <v-col cols="6" md="3">
+              <v-text-field v-model.number="formAchat.prixUnitaireUSD" type="number" min="0" step="0.01"
+                label="Prix unitaire (USD) *" prepend-inner-icon="mdi-currency-usd"
+                variant="outlined" density="comfortable" class="mb-3" />
+            </v-col>
+          </v-row>
+
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            Total décaissé : <strong>{{ fmtUSD(totalAchatUSD) }}</strong>
+            <span v-if="articleChoisi?.prixAchat && tauxChange > 0" class="text-caption d-block mt-1">
+              Prix indicatif catalogue : {{ fmtUSD(articleChoisi.prixAchat / tauxChange) }} / unité — corrigez-le
+              si le prix réellement payé diffère, c'est lui qui valorise le stock.
+            </span>
+          </v-alert>
+
+          <p class="achat-section">Imputation comptable</p>
+          <ComptabiliteSelecteurCompte v-model="formAchat.compteAchatNumero"
+            label="Compte d'achat (ex. 6011) *" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="formAchat.compteStockNumero"
+            label="Compte de stock (ex. 3111) *" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="formAchat.compteVariationNumero"
+            label="Compte de variation de stock (ex. 6031) *" class="mb-3" />
+
+          <v-alert type="success" variant="tonal" density="compact" class="mb-3">
+            <div class="text-caption font-weight-bold mb-1">Écritures générées (SYSCOHADA — inventaire permanent)</div>
+            <div class="text-caption">
+              1. Achat : <strong>D {{ formAchat.compteAchatNumero || '601…' }}</strong> /
+              <strong>C 571 Caisse</strong><br>
+              2. Entrée en stock : <strong>D {{ formAchat.compteStockNumero || '311…' }}</strong> /
+              <strong>C {{ formAchat.compteVariationNumero || '6031' }}</strong>
+            </div>
+          </v-alert>
+
+          <v-text-field v-model="formAchat.libelle" label="Libellé (facultatif)"
+            variant="outlined" density="comfortable" hide-details />
+        </v-card-text>
+        <v-divider />
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="envoiAchat" @click="dialogAchat = false">Annuler</v-btn>
+          <v-btn color="teal" variant="flat" :loading="envoiAchat" @click="enregistrerAchat">
+            Enregistrer l'achat
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </div>
 
   <!-- ── Reçu de paiement (imprimable) ─────────────────────────────── -->
@@ -704,7 +1240,7 @@ const fmtTaux = computed(() =>
         </button>
       </div>
 
-      <div class="recu-card__doc">
+      <div v-if="modeImpressionRecu === 'NORMAL'" class="recu-card__doc">
         <div class="recu-doc__brand">
           <div class="recu-doc__logo" :class="{ 'recu-doc__logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
@@ -742,7 +1278,7 @@ const fmtTaux = computed(() =>
             <strong>{{ recuData.objet || '—' }}</strong>
           </div>
           <div class="recu-doc__row">
-            <span>Caissier</span>
+            <span>{{ rolesStore.libelle('CAISSIER') }}</span>
             <strong>{{ recuData.caissierNom || '—' }}</strong>
           </div>
         </div>
@@ -755,10 +1291,12 @@ const fmtTaux = computed(() =>
         <div class="recu-doc__signatures">
           <div class="recu-doc__sign">
             <span>{{ recuData.sens === 'ENCAISSEMENT' ? 'Payeur' : 'Bénéficiaire' }}</span>
+            <strong v-if="recuData.beneficiaire" class="recu-doc__sign-name">{{ recuData.beneficiaire }}</strong>
             <div class="recu-doc__sign-line" />
           </div>
           <div class="recu-doc__sign">
-            <span>Caissier</span>
+            <span>{{ rolesStore.libelle('CAISSIER') }}</span>
+            <strong v-if="recuData.caissierNom" class="recu-doc__sign-name">{{ recuData.caissierNom }}</strong>
             <div class="recu-doc__sign-line" />
           </div>
         </div>
@@ -766,9 +1304,36 @@ const fmtTaux = computed(() =>
         <p class="recu-doc__footer">Édité le {{ dateEditionRecu }}</p>
       </div>
 
+      <!-- ── Ticket imprimante thermique (impression uniquement) ─────── -->
+      <div v-else class="recu-ticket">
+        <div class="recu-ticket__marque">
+          <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo" class="recu-ticket__logo">
+          <p class="recu-ticket__nom">{{ parametresStore.parametres.nom }}</p>
+          <p>{{ recuData!.sens === 'ENCAISSEMENT' ? "Reçu d'encaissement" : 'Reçu de décaissement' }}</p>
+        </div>
+        <div class="recu-ticket__sep" />
+        <p class="recu-ticket__ref">N° {{ recuData!.numeroRecu || '—' }}</p>
+        <p>{{ fmtDate(recuData!.dateOperation) }} à {{ fmtHeure(recuData!.dateOperation) }}</p>
+        <p>Référence : {{ recuData!.reference }}</p>
+        <p v-if="recuData!.noteFraisReference">Note de frais : {{ recuData!.noteFraisReference }}</p>
+        <p v-if="recuData!.beneficiaire">{{ recuData!.sens === 'ENCAISSEMENT' ? 'Payeur' : 'Bénéficiaire' }} : {{ recuData!.beneficiaire }}</p>
+        <p>Motif : {{ recuData!.objet || '—' }}</p>
+        <p>Caissier : {{ recuData!.caissierNom || '—' }}</p>
+        <div class="recu-ticket__sep" />
+        <div class="recu-ticket__total-row">
+          <span>MONTANT {{ recuData!.sens === 'ENCAISSEMENT' ? 'ENCAISSÉ' : 'PAYÉ' }}</span>
+          <span>{{ new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(recuData!.montant) }} USD</span>
+        </div>
+        <div class="recu-ticket__sep" />
+        <p class="recu-ticket__horodatage">Édité le {{ dateEditionRecu }}</p>
+      </div>
+
       <div class="recu-card__actions no-print">
         <v-btn variant="tonal" rounded="lg" @click="fermerRecu">Fermer</v-btn>
         <v-spacer />
+        <v-btn color="primary" variant="outlined" rounded="lg" prepend-icon="mdi-receipt-outline" @click="imprimerRecuThermique">
+          Ticket
+        </v-btn>
         <v-btn color="primary" variant="flat" rounded="lg" prepend-icon="mdi-printer-outline" @click="imprimerRecu">
           Imprimer
         </v-btn>
@@ -779,22 +1344,21 @@ const fmtTaux = computed(() =>
 </template>
 
 <style scoped>
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
+.achat-section {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 4px 0 10px;
 }
+
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .taux-badge {
   font-size: 0.78rem;
-  background: #f0fdf4;
-  color: #16a34a;
-  border: 1px solid #bbf7d0;
+  background: var(--color-primary-lighter);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary-mid);
   border-radius: 6px;
   padding: 1px 7px;
   font-weight: 600;
@@ -811,9 +1375,9 @@ const fmtTaux = computed(() =>
   gap: 14px;
   padding: 18px 20px;
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
 }
 .caisse-stat__icon {
   display: flex;
@@ -824,12 +1388,12 @@ const fmtTaux = computed(() =>
   border-radius: 12px;
   flex-shrink: 0;
 }
-.caisse-stat--enc .caisse-stat__icon { background: #dcfce7; color: #16a34a; }
+.caisse-stat--enc .caisse-stat__icon { background: var(--color-primary-light); color: var(--color-primary); }
 .caisse-stat--dec .caisse-stat__icon { background: #fee2e2; color: #dc2626; }
 .caisse-stat--pos .caisse-stat__icon { background: #dbeafe; color: #2563eb; }
 .caisse-stat--neg .caisse-stat__icon { background: #fef3c7; color: #d97706; }
-.caisse-stat__label { font-size: 0.78rem; color: #9ca3af; margin-bottom: 2px; }
-.caisse-stat__value { font-size: 1.1rem; font-weight: 700; color: #111827; }
+.caisse-stat__label { font-size: 0.78rem; color: var(--ink-faint); margin-bottom: 2px; }
+.caisse-stat__value { font-size: 1.1rem; font-weight: 700; color: var(--ink); }
 
 /* ── Notes en attente de paiement ────────────────────────────────── */
 .caisse-empty {
@@ -838,7 +1402,7 @@ const fmtTaux = computed(() =>
   align-items: center;
   gap: 8px;
   padding: 32px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -850,22 +1414,22 @@ const fmtTaux = computed(() =>
   align-items: center;
   gap: 16px;
   padding: 14px 20px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
 }
 .caisse-note__main { flex: 1; min-width: 0; }
 .caisse-note__head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
 .caisse-note__ref {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #16a34a;
-  background: #f0fdf4;
+  color: var(--color-primary);
+  background: var(--color-primary-lighter);
   padding: 2px 7px;
   border-radius: 6px;
 }
 .caisse-note__objet {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #111827;
+  color: var(--ink);
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -874,15 +1438,32 @@ const fmtTaux = computed(() =>
 .caisse-note__montant {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* Téléphone et tablette : l'objet s'affiche en entier ; le montant et « Payer » passent sous le texte, sur toute la largeur. */
+@media screen and (max-width: 959px) {
+  .caisse-note { flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; }
+  .caisse-note .caisse-note__objet { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+  .caisse-note .caisse-note__main { flex: 1 1 100%; }
+  .caisse-note .caisse-note__montant { flex: 1 1 auto; font-size: 1.05rem; }
+  .caisse-note .v-btn { flex: 0 0 auto; }
+}
+
+/* ── Retours de fonds à recevoir ─────────────────────────────────── */
+.caisse-retours { display: flex; flex-direction: column; gap: 12px; }
+.caisse-retour { border: 1px solid #ccfbf1; background: #fcfffe; border-radius: 12px; padding: 12px 14px; }
+.caisse-retour__tete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.caisse-retour__tete .caisse-note__ref { text-decoration: none; }
+.caisse-retour__objet { font-size: 0.875rem; font-weight: 500; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.caisse-retour__montant { font-size: 1rem; font-weight: 700; color: #0f766e; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.caisse-retour__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 
 .dialog-card { overflow: hidden; }
 .dialog-header { padding: 28px 28px 20px; text-align: center; }
 .dialog-header--caisse {
-  background: linear-gradient(140deg, #34d399 0%, #16a34a 50%, #14532d 100%);
+  background: linear-gradient(140deg, #34d399 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%);
 }
 
 /* ── Suggestion IA du compte ─────────────────────────────────────── */
@@ -898,14 +1479,14 @@ const fmtTaux = computed(() =>
   border-radius: 8px;
   padding: 5px 8px;
 }
-.ia-suggestion--loading { color: #6b7280; background: #f9fafb; border-color: #f0f0f0; }
+.ia-suggestion--loading { color: var(--ink-soft); background: var(--surface-2); border-color: var(--hairline); }
 .ia-suggestion__dismiss {
   display: inline-flex;
   align-items: center;
   margin-left: auto;
   background: none;
   border: none;
-  color: #9ca3af;
+  color: var(--ink-faint);
   cursor: pointer;
   padding: 0;
 }
@@ -931,7 +1512,7 @@ const fmtTaux = computed(() =>
   max-width: 420px;
   max-height: 90vh;
   overflow-y: auto;
-  background: #fff;
+  background: var(--surface);
   border-radius: 20px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.25);
 }
@@ -941,8 +1522,8 @@ const fmtTaux = computed(() =>
   justify-content: space-between;
   padding: 18px 20px;
   font-weight: 700;
-  color: #111827;
-  border-bottom: 1px solid #f3f4f6;
+  color: var(--ink);
+  border-bottom: 1px solid var(--hairline);
 }
 .recu-card__close {
   display: inline-flex;
@@ -952,8 +1533,8 @@ const fmtTaux = computed(() =>
   height: 30px;
   border-radius: 8px;
   border: none;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--surface-2);
+  color: var(--ink-soft);
   cursor: pointer;
 }
 .recu-card__close:hover { background: #e5e7eb; }
@@ -967,28 +1548,28 @@ const fmtTaux = computed(() =>
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: #16a34a;
+  background: var(--color-primary);
   flex-shrink: 0;
   overflow: hidden;
 }
-.recu-doc__logo--image { background: #fff; border: 1px solid #f0f0f0; }
+.recu-doc__logo--image { background: var(--surface); border: 1px solid var(--hairline); }
 .recu-doc__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
-.recu-doc__company { font-size: 1rem; font-weight: 800; color: #111827; }
+.recu-doc__company { font-size: 1rem; font-weight: 800; color: var(--ink); }
 .recu-doc__type {
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #16a34a;
+  color: var(--color-primary);
   margin-top: 1px;
 }
 .recu-doc__numero {
   text-align: center;
   font-size: 0.95rem;
   font-weight: 700;
-  color: #111827;
-  background: #f0fdf4;
-  border: 1px dashed #bbf7d0;
+  color: var(--ink);
+  background: var(--color-primary-lighter);
+  border: 1px dashed var(--color-primary-mid);
   border-radius: 10px;
   padding: 8px;
   margin-bottom: 18px;
@@ -1001,8 +1582,8 @@ const fmtTaux = computed(() =>
   gap: 12px;
   font-size: 0.84rem;
 }
-.recu-doc__row span { color: #9ca3af; }
-.recu-doc__row strong { color: #111827; text-align: right; }
+.recu-doc__row span { color: var(--ink-faint); }
+.recu-doc__row strong { color: var(--ink); text-align: right; }
 .recu-doc__montant {
   display: flex;
   align-items: center;
@@ -1010,16 +1591,21 @@ const fmtTaux = computed(() =>
   gap: 12px;
   padding: 14px 16px;
   border-radius: 12px;
-  background: #f0fdf4;
-  border: 1px solid #dcfce7;
+  background: var(--color-primary-lighter);
+  border: 1px solid var(--color-primary-light);
   margin-bottom: 22px;
 }
-.recu-doc__montant span { font-size: 0.78rem; font-weight: 600; color: #166534; text-transform: uppercase; letter-spacing: 0.4px; }
-.recu-doc__montant strong { font-size: 1.15rem; color: #15803d; }
+.recu-doc__montant span { font-size: 0.78rem; font-weight: 600; color: var(--color-primary-darkest); text-transform: uppercase; letter-spacing: 0.4px; }
+.recu-doc__montant strong { font-size: 1.15rem; color: var(--color-primary-dark); }
 .recu-doc__signatures { display: flex; gap: 24px; margin-bottom: 16px; }
-.recu-doc__sign { flex: 1; text-align: center; }
-.recu-doc__sign span { display: block; font-size: 0.7rem; color: #9ca3af; margin-bottom: 24px; }
-.recu-doc__sign-line { border-top: 1px solid #d1d5db; }
+/* Colonne en flex, ligne poussee en bas (margin-top:auto) : avec ou sans nom
+   pre-rempli, la ligne de signature reste alignee entre Beneficiaire et
+   Caissier plutot que de suivre la hauteur variable du nom. */
+.recu-doc__sign { flex: 1; text-align: center; display: flex; flex-direction: column; min-height: 46px; }
+.recu-doc__sign span { display: block; font-size: 0.7rem; color: var(--ink-faint); }
+.recu-doc__sign-name { display: block; font-size: 0.78rem; color: var(--ink); margin: 4px 0 auto; }
+.recu-doc__sign-line { border-top: 1px solid #d1d5db; margin-top: 24px; }
+.recu-doc__sign-name + .recu-doc__sign-line { margin-top: 0; }
 .recu-doc__footer { text-align: center; font-size: 0.68rem; color: #d1d5db; margin: 0 0 4px; }
 
 .recu-card__actions {
@@ -1028,9 +1614,17 @@ const fmtTaux = computed(() =>
   gap: 10px;
   padding: 14px 20px 20px;
 }
+
 </style>
 
 <style>
+/* Ticket thermique : uniquement a l'impression (voir @media print plus
+   bas) — non scope, comme le reste de ce bloc : une regle .recu-ticket
+   scopee ici serait plus specifique que le display:block du @media print
+   ci-dessous (qui ne porte pas l'attribut data-v-* de la portee), et le
+   garderait cache meme a l'impression. */
+.recu-ticket { display: none; }
+
 /* Le reçu est un overlay hors dialog Vuetify (les dialogs sont masqués à
    l'impression par .v-overlay-container dans classroom.scss) : à
    l'impression, on masque tout le contenu normal de la page et les
@@ -1043,6 +1637,10 @@ const fmtTaux = computed(() =>
   .recu-overlay {
     position: static;
     padding: 0;
+    /* Le centrage flex (voir la regle de base) plaquerait sinon le ticket
+       au milieu de la page au lieu de partir du haut, comme sur une
+       imprimante thermique. */
+    display: block;
   }
   .recu-card {
     max-width: none;
@@ -1051,5 +1649,38 @@ const fmtTaux = computed(() =>
     border-radius: 0;
     box-shadow: none;
   }
+
+  /* ── Ticket imprimante thermique (80mm) ──────────────────── */
+  .recu-ticket {
+    display: block;
+    width: 100%;
+    max-width: 74mm;
+    /* Pas de "margin: auto" : certains moteurs d'impression (ex. "Enregistrer
+       en PDF") n'honorent pas toujours le @page size 80mm ci-dessus et
+       gardent une page bien plus large — un centrage horizontal y ferait
+       flotter le ticket au milieu au lieu de partir du bord, comme sur une
+       vraie imprimante thermique ou le papier fait a peine plus large que
+       le contenu. */
+    margin: 0;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #000;
+  }
+  .recu-ticket p { margin: 0; }
+  .recu-ticket__marque { text-align: center; margin-bottom: 4px; }
+  .recu-ticket__logo { max-width: 40mm; max-height: 18mm; object-fit: contain; margin-bottom: 4px; }
+  .recu-ticket__nom { font-size: 13px; font-weight: 700; text-transform: uppercase; }
+  .recu-ticket__ref { font-weight: 700; }
+  .recu-ticket__sep { border-top: 1px dashed #000; margin: 6px 0; }
+  .recu-ticket__total-row { display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; }
+  .recu-ticket__horodatage { text-align: center; font-size: 9px; color: #444; margin-top: 6px; }
 }
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .caisse-stat--dec .caisse-stat__icon { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+html[data-theme='dark'] .caisse-stat--pos .caisse-stat__icon { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .caisse-stat--neg .caisse-stat__icon { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; color: #f2c66d !important; }
 </style>

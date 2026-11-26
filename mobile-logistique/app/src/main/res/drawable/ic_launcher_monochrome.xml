@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icône monochrome (icônes à thème d'Android 13) : un carton et le cadre de visée du scanner, dans les 66 dp centraux de l'icône adaptative. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="27" android:translateY="27" android:scaleX="2.25" android:scaleY="2.25">
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M2,2V6H0V2A2,2 0 0,1 2,0H6V2H2M22,0A2,2 0 0,1 24,2V6H22V2H18V0H22M2,18V22H6V24H2A2,2 0 0,1 0,22V18H2M22,22V18H24V22A2,2 0 0,1 22,24H18V22H22Z" />
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M12,4.5L19,8.25V15.75L12,19.5L5,15.75V8.25L12,4.5M12,6.8L8,8.95L12,11.1L16,8.95L12,6.8M7,10.6V14.6L11,16.75V12.75L7,10.6M17,10.6L13,12.75V16.75L17,14.6V10.6Z" />
+    </group>
+</vector>

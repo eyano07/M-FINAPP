@@ -1,6 +1,11 @@
 <script setup lang="ts">
+// Voir pages/notes-frais/index.vue : ni le DRH ni LOGISTIQUE n'ont acces a cet ecran.
+definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'LOGISTIQUE'] })
+
 interface Observation {
   auteurNom?: string
+  /** Fonction inscrite sur la fiche de l'auteur ; absente si elle n'est pas renseignée. */
+  auteurFonction?: string | null
   auteur?: string
   statut?: string
   statutAuMoment?: string
@@ -24,6 +29,8 @@ interface LigneNoteFrais {
   soumisTva?: boolean
   compteTva?: string | null
   compteTvaLibelle?: string | null
+  /** Transport et manutention, incorporés au coût des marchandises achetées. */
+  fraisApproche?: boolean
 }
 interface PieceJointe {
   id: number
@@ -45,20 +52,62 @@ interface NoteDetail {
   priorite?: string | null
   description?: string
   demandeurNom?: string
+  demandeurFonction?: string | null
   demandeurEmail?: string
+  /** Contrôle budgétaire relevé à la soumission, justification fournie par le créateur, budget de référence. */
+  statutBudget?: string | null
+  justificationBudget?: string | null
+  budgetReference?: string | null
+  /** Service qui engage la dépense (contrôlée et suivie sur son budget). */
+  serviceId?: number | null
+  serviceNom?: string | null
+  serviceResponsable?: string | null
+  serviceActif?: boolean
+  /** Notes du module DRH : PAIE ou IMPOT_PAIE (comptes imposés), avec leur mois de paie. */
+  categorie?: string | null
+  paieMois?: number | null
+  paieAnnee?: number | null
+  organismePaie?: string | null
   lignes: LigneNoteFrais[]
   piecesJointes: PieceJointe[]
   observations: Observation[]
+  /** Retours de fonds demandés après paiement (réductions de la note), du plus ancien au plus récent. */
+  retoursFonds?: RetourFonds[]
+  /** Une demande attend l'argent à la caisse. */
+  retourEnAttente?: boolean
 }
+
+import { useDisplay } from 'vuetify'
+import type { RetourFonds } from '~/components/notes-frais/DetailRetourFonds.vue'
+import { useInstanceStore } from '~/stores/instance'
+import { estApplicationMobile } from '~/utils/applicationMobile'
 
 const route = useRoute()
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
+// Copie en ligne d'un serveur local (V133) : seules les actions du circuit (soumettre, vérifier, valider, rejeter,
+// transmettre, priorité, observation) y sont possibles ; elles sont mises en attente puis appliquées au serveur local.
+const instance = useInstanceStore()
+const surCopie = computed(() => instance.estCopie)
+interface ActionEnLigne { uuid: string, libelle: string, resume: string, statut: string, message: string | null, auteur: string, creeLe: string }
+const actionsEnLigne = ref<ActionEnLigne[]>([])
+async function chargerActionsEnLigne() {
+  if (!surCopie.value) { actionsEnLigne.value = []; return }
+  try {
+    actionsEnLigne.value = await api<ActionEnLigne[]>(`/actions-distantes/note/${id.value}`)
+  } catch {
+    actionsEnLigne.value = []
+  }
+}
+const { mobile } = useDisplay()
 const id = computed(() => route.params.id as string)
 const parametresStore = useParametresStore()
 onMounted(() => { parametresStore.charger() })
 
 const note = ref<NoteDetail | null>(null)
+// Barre d'application (téléphone) : la référence de la note, pas son objet (long) que la page affiche en grand titre.
+usePageTitle(() => (note.value ? `Note ${note.value.reference}` : 'Note de frais'))
 const loading = ref(false)
 const busy = ref(false)
 const erreur = ref('')
@@ -80,20 +129,50 @@ const prioriteOptions = [
 const statutMeta = computed(() => statutNoteMeta(note.value?.statut, note.value?.sens))
 const heroGradient = computed(() => statutMeta.value.gradient)
 const estEncaissement = computed(() => note.value?.sens === 'ENCAISSEMENT')
+
+// Nom de l'auteur de l'étape ayant amené la note au statut donné (ex.
+// VERIFIEE_DFIN), retrouvé dans l'historique : c'est la seule trace de QUI a
+// vérifié/validé/payé — la note elle-même ne porte que le statut courant, pas
+// l'identité de chaque intervenant. N'affiche donc un nom sur la ligne de
+// signature que si l'étape a réellement eu lieu ; sinon la ligne reste vide,
+// prête à être signée à la main.
+function signataire(statutCible: string): string {
+  const o = note.value?.observations.find((o) => (o.statutAuMoment || o.statut) === statutCible)
+  return o?.auteurNom || o?.auteur || ''
+}
+
 const prioMeta: Record<string, { label: string; bg: string; color: string }> = {
   HAUTE:   { label: 'Haute',   bg: '#fee2e2', color: '#dc2626' },
   MOYENNE: { label: 'Moyenne', bg: '#ffedd5', color: '#ea580c' },
   BASSE:   { label: 'Basse',   bg: '#dbeafe', color: '#2563eb' },
 }
 
+// Serveur qui redémarre (mise à jour) ou réseau coupé au moment de l'ouverture — fréquent quand on touche une
+// notification sur le téléphone : on réessaie seul quelques fois au lieu d'afficher « Note introuvable ».
+let essaisAuto = 0
+const reessayable = ref(false)
 async function charger() {
   loading.value = true
   erreur.value = ''
+  reessayable.value = false
   try {
     note.value = await api<NoteDetail>(`/notes-frais/${id.value}`)
     prioriteChoisie.value = note.value?.priorite ?? null
+    void chargerActionsEnLigne()
   } catch (e: any) {
-    erreur.value = e?.data?.message || 'Note introuvable.'
+    // 404 : note inexistante, ou que le rôle de l'utilisateur ne lui permet pas de voir — le serveur ne
+    // distingue volontairement pas les deux (une note cachée ne doit pas révéler son existence).
+    const introuvable = (e?.response?.status ?? e?.statusCode ?? e?.status) === 404
+    const statut = e?.response?.status ?? e?.statusCode ?? e?.status
+    const passager = !statut || statut === 502 || statut === 503 || statut === 504
+    erreur.value = introuvable
+      ? "Cette note est introuvable, ou vous n'êtes pas autorisé à la consulter : selon votre rôle, certaines notes ne vous sont pas accessibles."
+      : messageErreurApi(e, "Impossible d'afficher la note.")
+    reessayable.value = passager
+    if (passager && essaisAuto < 4) {
+      essaisAuto++
+      setTimeout(() => { if (!note.value) void charger() }, 3000 * essaisAuto)
+    }
   } finally {
     loading.value = false
   }
@@ -106,6 +185,11 @@ onMounted(async () => {
     imprimer()
   }
 })
+// La navigation vers "la note suivante" (voir allerNoteSuivante) reste sur
+// cette meme route dynamique : Vue Router reutilise l'instance du composant
+// au lieu de la remonter, donc sans ce watcher la page garderait affichee
+// l'ancienne note malgre l'URL a jour.
+watch(id, charger)
 
 const montantFmt = computed(() =>
   note.value
@@ -115,60 +199,234 @@ const montantFmt = computed(() =>
 )
 
 const statut = computed(() => note.value?.statut)
-const isDFIN = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
-const isDA = computed(() => auth.hasAnyRole(['DA', 'ADMIN']))
-const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER']))
+const rolesStore = useRolesStore()
+const lDFIN = computed(() => rolesStore.libelle('DFIN'))
+const lDA = computed(() => rolesStore.libelle('DA'))
+const isDFIN = computed(() => auth.hasRole('DFIN'))
+const isDA = computed(() => auth.hasRole('DA'))
+// Rôles que le serveur autorise à créer et soumettre une note (NoteFraisService.soumettre) : le responsable restaurant en
+// fait partie. Absent d'ici, il ne pouvait ni soumettre ni justifier une note restée en brouillon (échec de l'envoi
+// automatique depuis « Achat de boissons »), et le DFIN n'était jamais prévenu.
+const isCreateur = computed(() => auth.hasAnyRole(['COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']))
+// Rôles admis à émettre une note, administrateur compris (NoteFraisService.creer, RetourFondsService.EMETTEURS).
+const isCreateurOuAdmin = computed(() => isCreateur.value || auth.hasRole('ADMIN'))
 
 // Une note d'encaissement ne suit pas le circuit DFIN/DA : "Soumettre" ne
 // s'applique qu'au décaissement (isCreateur n'est qu'un contrôle de rôle,
 // pas de propriété — un caissier verrait sinon ce bouton sur ses propres
 // notes d'encaissement, alors que le backend rejette cette transition).
-const peutSoumettre    = computed(() =>
+// Sur la copie, une seule action en attente par note : le serveur local refuserait la suivante (la note aura changé).
+const actionEnAttente = computed(() => surCopie.value && actionsEnLigne.value.some(a => a.statut === 'EN_ATTENTE'))
+const peutSoumettre    = computed(() => !actionEnAttente.value &&
   isCreateur.value && !estEncaissement.value && ['BROUILLON','REJETEE_DA'].includes(statut.value || ''))
-const peutEncaisser    = computed(() =>
-  auth.hasAnyRole(['CAISSIER', 'ADMIN']) && estEncaissement.value && statut.value === 'BROUILLON')
-const peutVerifier     = computed(() => isDFIN.value && statut.value === 'SOUMISE')
+const peutEncaisser    = computed(() => !surCopie.value &&
+  auth.hasRole('CAISSIER') && estEncaissement.value && statut.value === 'BROUILLON')
+const peutVerifier     = computed(() => !actionEnAttente.value && isDFIN.value && statut.value === 'SOUMISE')
 // Le DFIN peut corriger le compte d'imputation des lignes pendant sa
 // vérification (note SOUMISE), qu'il en soit ou non le créateur — voir
 // NoteFraisService.modifierComptesLignes côté backend.
-const peutModifierComptes = computed(() => isDFIN.value && statut.value === 'SOUMISE')
-const peutValiderRejeter = computed(() => isDA.value && statut.value === 'VERIFIEE_DFIN')
-const peutPrioriser    = computed(() => isDA.value && ['VALIDEE_DA', 'TRANSMISE_CAISSE'].includes(statut.value || ''))
-const peutTransmettre  = computed(() => isDFIN.value && statut.value === 'VALIDEE_DA')
-const peutAnnuler      = computed(() =>
-  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','ADMIN']) &&
+// Une note faite uniquement d'achats de marchandise n'a aucun compte a
+// reimputer : le compte de chaque ligne decoule de son article.
+// Notes de paie et notes fiscales (module DRH) : comptes imposés par le système, jamais réimputés.
+const categorieDrh = computed(() => libelleCategorieNote(note.value))
+const peutModifierComptes = computed(() => !surCopie.value && isDFIN.value && statut.value === 'SOUMISE' && !categorieDrh.value
+  && (note.value?.lignes || []).some(l => !l.achatMarchandise))
+// Meme fenetre que peutModifierComptes : le DFIN corrige une saisie
+// maladroite de l'employe pendant sa verification, sans renvoyer la note
+// pour un nouveau cycle de soumission — voir NoteFraisService.modifierObjet.
+const peutModifierObjet = computed(() => !surCopie.value && isDFIN.value && statut.value === 'SOUMISE')
+const peutValiderRejeter = computed(() => !actionEnAttente.value && isDA.value && statut.value === 'VERIFIEE_DFIN')
+const peutPrioriser    = computed(() => !actionEnAttente.value && isDA.value && ['VALIDEE_DA', 'TRANSMISE_CAISSE'].includes(statut.value || ''))
+const peutTransmettre  = computed(() => !actionEnAttente.value && isDFIN.value && statut.value === 'VALIDEE_DA')
+const peutAnnuler      = computed(() => !surCopie.value &&
+  auth.hasAnyRole(['DIRECTEUR','COMPTABLE','CAISSIER','DFIN','RESP_RESTAURANT','RESP_CUISINE','RESP_BAR','LOGISTIQUE','ADMIN']) &&
   ['BROUILLON','SOUMISE','VERIFIEE_DFIN','VALIDEE_DA','REJETEE_DA'].includes(statut.value || ''))
 
 /** Message contextuel quand aucune action n'est disponible. */
 const messageAucuneAction = computed(() => {
   const s = statut.value || ''
-  if (s === 'BROUILLON' && estEncaissement.value) return "Seul le caissier peut encaisser cette note directement (sans validation DFIN/DA)."
+  if (actionEnAttente.value) return 'Une action faite en ligne attend la synchronisation : les suivantes seront possibles une fois appliquée par le serveur local.'
+  if (s === 'BROUILLON' && estEncaissement.value) return "Seul le caissier peut encaisser cette note directement (sans validation "+lDFIN.value+"/"+lDA.value+")."
   if (s === 'TRANSMISE_CAISSE') return 'Cette note est transmise à la trésorerie et attend son paiement (caisse, banque ou mobile money).'
   if (s === 'PAYEE')            return estEncaissement.value ? 'Cette note a déjà été encaissée. Aucune action requise.' : 'Cette note a déjà été payée. Aucune action requise.'
   if (s === 'ANNULEE')          return 'Cette note est annulée.'
   if (s === 'SOUMISE')
-    return 'En attente de vérification par le DFIN.'
+    return `En attente de vérification par ${lDFIN.value}.`
   if (s === 'VERIFIEE_DFIN' && !isDA.value)
-    return 'Note vérifiée par le DFIN. En attente de validation par le DA.'
+    return `Note vérifiée par ${lDFIN.value}. En attente de validation par ${lDA.value}.`
   if (s === 'VALIDEE_DA' && !isDFIN.value)
-    return 'Note validée par le DA. En attente de transmission à la trésorerie par le DFIN.'
+    return `Note validée par ${lDA.value}. En attente de transmission à la trésorerie par ${lDFIN.value}.`
   return 'Aucune action disponible pour votre rôle à ce stade.'
 })
 
-async function action(chemin: string, requiertCommentaire = false) {
+// ── Retour de fonds : l'émetteur réduit sa note payée, le caissier valide à la réception de l'argent ──
+// Seul l'émetteur de la note la réduit (RetourFondsService.exigerEmetteur) ; l'identifiant de connexion ne tient pas
+// compte de la casse (IdentifiantConnexion côté serveur).
+const estEmetteur = computed(() => {
+  const emetteur = note.value?.demandeurEmail?.toLowerCase()
+  return !!emetteur && emetteur === auth.user?.email?.toLowerCase()
+})
+const retourEnAttente = computed(() => (note.value?.retoursFonds || []).find(r => r.statut === 'EN_ATTENTE') || null)
+const retoursValides = computed(() => (note.value?.retoursFonds || []).filter(r => r.statut === 'VALIDE'))
+/** Total déjà rendu à la caisse : le montant payé à l'origine est le montant actuel de la note plus ce total. */
+const montantRendu = computed(() => retoursValides.value.reduce((s, r) => s + Number(r.montant || 0), 0))
+// Retour de fonds : émetteurs d'une note, plus la logistique et le patrimoine pour leurs achats de consommables
+// (RetourFondsService.EMETTEURS).
+const peutRendre = computed(() => isCreateurOuAdmin.value || auth.hasAnyRole(['LOGISTIQUE', 'GEST_PATRIMOINE']))
+const peutReduire = computed(() => !surCopie.value && estEmetteur.value && peutRendre.value && !estEncaissement.value
+  && statut.value === 'PAYEE' && !categorieDrh.value && !retourEnAttente.value)
+const peutAnnulerRetour = computed(() => !surCopie.value && estEmetteur.value && peutRendre.value && !!retourEnAttente.value)
+const reductionOuverte = ref(false)
+const succes = ref('')
+
+function ouvrirReduction() {
+  erreur.value = ''
+  succes.value = ''
+  reductionOuverte.value = true
+}
+
+async function retourEnvoye(r: RetourFonds) {
+  succes.value = `Demande envoyée : ${fmtMontant(r.montant)} ${r.devise || ''} à remettre en espèces au caissier. `
+    + "La note sera réduite quand il aura validé la réception de l'argent."
+  await charger()
+}
+
+async function annulerRetour() {
+  const r = retourEnAttente.value
+  if (!r) return
+  const confirme = await dialogues.confirmer({
+    titre: `Retirer la demande de retour de fonds de ${fmtMontant(r.montant)} ${r.devise || ''} ?`.replace('  ', ' '),
+    message: 'La note reste inchangée.',
+    bouton: 'Retirer la demande',
+    nature: 'danger',
+    icone: 'mdi-undo-variant',
+  })
+  if (!confirme) return
+  busy.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    await api(`/notes-frais/retours-fonds/${r.id}/annuler`, { method: 'POST' })
+    succes.value = 'Demande de retour de fonds retirée : la note reste inchangée.'
+    await charger()
+  } catch (e: any) {
+    erreur.value = e?.data?.message || "La demande n'a pas pu être retirée."
+  } finally {
+    busy.value = false
+  }
+}
+
+/**
+ * Après une action de vérification/validation/transmission, enchaîne
+ * directement sur la prochaine note en attente au même stade (même statut
+ * que celui qui rendait le bouton visible) pour éviter les allers-retours
+ * par la liste : le DA ou le DFIN traite sa file sans quitter l'écran de
+ * validation. Reste sur la note qui vient d'être traitée s'il n'y en a pas
+ * d'autre, ou si la liste des suivantes est indisponible.
+ */
+async function allerNoteSuivante(statutFile: string, noteActuelleId: string) {
+  try {
+    const suivantes = await api<{ id: number }[]>('/notes-frais', { query: { statut: statutFile } })
+    const prochaine = suivantes.find(n => String(n.id) !== noteActuelleId)
+    if (prochaine) {
+      await navigateTo(`/notes-frais/${prochaine.id}`)
+    }
+  } catch {
+    // Liste indisponible : on reste simplement sur la note traitee.
+  }
+}
+
+// ── Contrôle budgétaire ──────────────────────────────────────────────
+// Contrôle à jour (composant BudgetControleBudgetaire) : une note non couverte par le budget n'est jamais
+// bloquée à la soumission : elle part chez le DFIN, signalée « hors budget », et c'est le DA qui décide et
+// qui doit motiver sa validation. Le demandeur peut ajouter une justification, facultative.
+const controleNote = ref<any | null>(null)
+const rafraichirControle = ref(0)
+const justificationSaisie = ref('')
+const enregistrementJustification = ref(false)
+const horsBudget = computed(() => !!controleNote.value?.justificationRequise)
+const peutJustifier = computed(() => !surCopie.value &&
+  isCreateur.value && !estEncaissement.value && ['BROUILLON', 'REJETEE_DA'].includes(statut.value || ''))
+watch(() => note.value?.justificationBudget, (v) => { justificationSaisie.value = v || '' }, { immediate: true })
+
+// ── Service budgétaire : le créateur avant la soumission, le DFIN pendant la vérification ──
+const peutModifierService = computed(() => !surCopie.value && !estEncaissement.value && (
+  (isCreateur.value && ['BROUILLON', 'REJETEE_DA'].includes(statut.value || '')) || (isDFIN.value && statut.value === 'SOUMISE')))
+const editionService = ref(false)
+const serviceChoisi = ref<number | null>(null)
+const enregistrementService = ref(false)
+const servicesDisponibles = ref<{ id: number, nom: string, responsable: string, actif: boolean }[]>([])
+const servicesChoix = computed(() => servicesDisponibles.value
+  .filter(s => s.actif || s.id === note.value?.serviceId)
+  .map(s => ({ id: s.id, titre: `${s.nom} — ${s.responsable}${s.actif ? '' : ' (désactivé)'}` })))
+
+async function activerEditionService() {
+  serviceChoisi.value = note.value?.serviceId ?? null
+  editionService.value = true
+  try {
+    servicesDisponibles.value = await api<any[]>('/services-budgetaires')
+  } catch {
+    servicesDisponibles.value = []
+  }
+}
+
+async function enregistrerService() {
+  enregistrementService.value = true
+  erreur.value = ''
+  try {
+    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/service`, { method: 'PUT', body: { serviceId: serviceChoisi.value } })
+    editionService.value = false
+    rafraichirControle.value++
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Le service n'a pas pu être enregistré.")
+  } finally {
+    enregistrementService.value = false
+  }
+}
+
+async function enregistrerJustification() {
+  enregistrementJustification.value = true
+  erreur.value = ''
+  try {
+    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/justification-budget`, {
+      method: 'PUT', body: { justification: justificationSaisie.value.trim() || null },
+    })
+  } catch (e: any) {
+    erreur.value = e?.data?.message || "La justification n'a pas pu être enregistrée."
+  } finally {
+    enregistrementJustification.value = false
+  }
+}
+
+/** Sur la copie en ligne, l'action vient d'être mise en attente : le dire, et l'afficher dans la file de la note. */
+function signalerSiRelayee() {
+  if (!surCopie.value) return
+  succes.value = "Action enregistrée : elle sera appliquée au serveur principal à la prochaine synchronisation (vous serez prévenu)."
+  void chargerActionsEnLigne()
+}
+
+async function action(chemin: string, requiertCommentaire = false, statutFileSuivante?: string) {
   if (requiertCommentaire && !observation.value.trim()) {
-    erreur.value = 'Un motif est obligatoire pour cette action.'
+    erreur.value = chemin === 'valider'
+      ? "Cette note n'est pas couverte par le budget : motivez votre validation dans le champ Observation."
+      : 'Un motif est obligatoire pour cette action.'
     return
   }
   busy.value = true
   erreur.value = ''
   try {
-    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/${chemin}`, {
+    const noteActuelleId = id.value
+    note.value = await api<NoteDetail>(`/notes-frais/${noteActuelleId}/${chemin}`, {
       method: 'POST',
       body: { commentaire: observation.value || null },
     })
     observation.value = ''
+    signalerSiRelayee()
     prioriteChoisie.value = note.value?.priorite ?? null
+    rafraichirControle.value++
+    if (statutFileSuivante) {
+      await allerNoteSuivante(statutFileSuivante, noteActuelleId)
+    }
   } catch (e: any) {
     erreur.value = e?.data?.message || "Echec de l'action."
   } finally { busy.value = false }
@@ -194,11 +452,21 @@ async function definirPriorite() {
   busy.value = true
   erreur.value = ''
   try {
-    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/priorite`, {
+    const noteActuelleId = id.value
+    // Juste apres la validation (DA), definir la priorite est la derniere
+    // etape avant d'enchainer sur la note suivante — voir action(). Un
+    // ajustement de priorite plus tard (note deja TRANSMISE_CAISSE) n'a en
+    // revanche aucune file "suivante" a laquelle rattacher cette action.
+    const venaitDEtreValidee = statut.value === 'VALIDEE_DA'
+    note.value = await api<NoteDetail>(`/notes-frais/${noteActuelleId}/priorite`, {
       method: 'POST',
       body: { priorite: prioriteChoisie.value, commentaire: observation.value || null },
     })
     observation.value = ''
+    signalerSiRelayee()
+    if (venaitDEtreValidee) {
+      await allerNoteSuivante('VERIFIEE_DFIN', noteActuelleId)
+    }
   } catch (e: any) {
     erreur.value = e?.data?.message || 'Echec.'
   } finally { busy.value = false }
@@ -214,6 +482,7 @@ async function ajouterObservation() {
       body: { commentaire: observation.value },
     })
     observation.value = ''
+    signalerSiRelayee()
   } catch (e: any) {
     erreur.value = e?.data?.message || "Echec."
   } finally { busy.value = false }
@@ -259,6 +528,39 @@ async function enregistrerComptes() {
     erreur.value = e?.data?.message || "Echec de la modification des comptes."
   } finally {
     enregistrementComptes.value = false
+  }
+}
+
+// ── Libellé (objet), correction par le DFIN pendant la vérification ──────
+const editionObjet = ref(false)
+const objetEdite = ref('')
+const enregistrementObjet = ref(false)
+
+function activerEditionObjet() {
+  objetEdite.value = note.value?.objet || ''
+  editionObjet.value = true
+}
+function annulerEditionObjet() {
+  editionObjet.value = false
+}
+async function enregistrerObjet() {
+  const valeur = objetEdite.value.trim()
+  if (!valeur || valeur === note.value?.objet) {
+    annulerEditionObjet()
+    return
+  }
+  enregistrementObjet.value = true
+  erreur.value = ''
+  try {
+    note.value = await api<NoteDetail>(`/notes-frais/${id.value}/objet`, {
+      method: 'PUT',
+      body: { objet: valeur },
+    })
+    editionObjet.value = false
+  } catch (e: any) {
+    erreur.value = e?.data?.message || "Echec de la modification du libellé."
+  } finally {
+    enregistrementObjet.value = false
   }
 }
 
@@ -337,6 +639,65 @@ async function telechargerPiece(piece: PieceJointe) {
   }
 }
 
+// ── Aperçu (au lieu de forcer le téléchargement pour voir le contenu) ──
+const apercuOuvert = ref(false)
+const apercuPieceActuelle = ref<PieceJointe | null>(null)
+const apercuUrl = ref<string | null>(null)
+const apercuLoading = ref(false)
+const apercuErreur = ref('')
+
+const apercuEstImage = computed(() => !!apercuPieceActuelle.value?.typeMime?.startsWith('image/'))
+const apercuEstPdf = computed(() => apercuPieceActuelle.value?.typeMime === 'application/pdf')
+// #view=FitH : demande au lecteur PDF intégré du navigateur d'ajuster la
+// page à la largeur du cadre — sans ça, le zoom par défaut ("Automatique")
+// centre une page plus étroite que l'iframe, avec de grandes bandes vides.
+const apercuPdfUrl = computed(() => apercuUrl.value ? `${apercuUrl.value}#view=FitH` : null)
+
+function revoquerApercu() {
+  if (apercuUrl.value) {
+    URL.revokeObjectURL(apercuUrl.value)
+    apercuUrl.value = null
+  }
+}
+
+// Application Android : sa vue web ne sait pas afficher un PDF dans la page ; il s'ouvre en plein écran dans la
+// visionneuse PDF du téléphone (passerelle.js : fichier enregistré puis ouvert). Les photos restent dans l'application.
+const applicationMobile = estApplicationMobile()
+
+async function ouvrirApercu(piece: PieceJointe) {
+  if (applicationMobile && piece.typeMime === 'application/pdf') {
+    await telechargerPiece(piece)
+    return
+  }
+  apercuPieceActuelle.value = piece
+  apercuOuvert.value = true
+  apercuErreur.value = ''
+  revoquerApercu()
+
+  const previsualisable = piece.typeMime?.startsWith('image/') || piece.typeMime === 'application/pdf'
+  if (!previsualisable) return
+
+  apercuLoading.value = true
+  try {
+    const blob = await api<Blob>(`/notes-frais/${id.value}/pieces-jointes/${piece.id}`, {
+      responseType: 'blob',
+    })
+    apercuUrl.value = URL.createObjectURL(blob as Blob)
+  } catch (e: any) {
+    apercuErreur.value = e?.data?.message || "Impossible de charger l'aperçu."
+  } finally {
+    apercuLoading.value = false
+  }
+}
+
+function fermerApercu() {
+  apercuOuvert.value = false
+  revoquerApercu()
+  apercuPieceActuelle.value = null
+}
+
+onBeforeUnmount(() => revoquerApercu())
+
 async function supprimerPiece(piece: PieceJointe) {
   deletingPieceId.value = piece.id
   erreur.value = ''
@@ -351,7 +712,7 @@ async function supprimerPiece(piece: PieceJointe) {
   }
 }
 
-const peutGererPieces = computed(() =>
+const peutGererPieces = computed(() => !surCopie.value &&
   auth.hasAnyRole(['DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'ADMIN']))
 </script>
 
@@ -376,6 +737,44 @@ const peutGererPieces = computed(() =>
 
     <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
       {{ erreur }}
+      <div v-if="reessayable && !note" class="mt-2">
+        <v-btn size="small" variant="flat" color="error" rounded="lg" prepend-icon="mdi-refresh" :loading="loading" @click="charger">
+          Réessayer
+        </v-btn>
+      </div>
+    </v-alert>
+    <v-alert v-if="note && categorieDrh" type="info" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-account-cash-outline">
+      <template v-if="note.categorie === 'PAIE'">
+        Note de paie générée depuis les bulletins de paie : ses comptes et montants découlent des bulletins et ne se
+        modifient pas. Son paiement écrit aussi la constatation de la paie du mois (charges de personnel, IPR, CNSS,
+        INPP, ONEM) selon le SYSCOHADA.
+      </template>
+      <template v-else>
+        Note de versement fiscal générée depuis la paie : elle solde la dette constatée au paiement de la note de paie.
+        Ses comptes et montants ne se modifient pas.
+      </template>
+    </v-alert>
+
+    <v-alert v-if="succes" type="success" variant="tonal" rounded="lg" class="mb-4 nd-noprint" closable @click:close="succes = ''">
+      {{ succes }}
+    </v-alert>
+    <!-- Copie en ligne : actions faites ici, en attente du serveur principal (ou traitées récemment) -->
+    <v-alert v-if="actionsEnLigne.length" type="info" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-cloud-sync-outline">
+      <p class="font-weight-bold mb-1">Actions faites en ligne</p>
+      <div v-for="a in actionsEnLigne" :key="a.uuid" class="nd-action-en-ligne">
+        <span class="nd-action-en-ligne__statut" :class="'nd-action-en-ligne__statut--' + a.statut.toLowerCase()">
+          {{ a.statut === 'EN_ATTENTE' ? 'En attente de synchronisation' : a.statut === 'APPLIQUEE' ? 'Appliquée' : 'Refusée' }}
+        </span>
+        {{ a.libelle }} — {{ a.auteur }}, {{ new Date(a.creeLe).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+        <span v-if="a.message && a.statut !== 'EN_ATTENTE'" class="nd-action-en-ligne__message"> : {{ a.message }}</span>
+      </div>
+    </v-alert>
+    <v-alert v-if="note && retourEnAttente" type="warning" variant="tonal" rounded="lg" class="mb-4 nd-noprint" icon="mdi-cash-refund">
+      <strong>Retour de fonds en attente de la caisse :</strong>
+      {{ fmtMontant(retourEnAttente.montant) }} {{ note.devise || 'CDF' }} à remettre en espèces au caissier
+      (demande de {{ retourEnAttente.demandeurNom || '—' }}<template v-if="retourEnAttente.dateDemande"> du {{ fmtDate(retourEnAttente.dateDemande) }}</template>).
+      La note ne sera réduite qu'à la validation du caissier.
+      <nuxt-link v-if="auth.hasRole('CAISSIER')" to="/caisse" class="nd-lien-caisse">Recevoir à la caisse</nuxt-link>
     </v-alert>
 
     <v-skeleton-loader v-if="loading" type="card, article" class="mt-4" />
@@ -383,18 +782,18 @@ const peutGererPieces = computed(() =>
     <div v-else-if="note" class="nd-layout">
 
       <!-- Entête d'impression (visible uniquement sur le document imprimé) -->
-      <div class="nd-print-header">
-        <div class="nd-print-header__brand">
-          <div class="nd-print-header__logo" :class="{ 'nd-print-header__logo--image': parametresStore.parametres.logoUrl }">
+      <div class="nd-print-header print-entete">
+        <div class="nd-print-header__brand print-entete__marque">
+          <div class="nd-print-header__logo print-entete__logo" :class="{ 'nd-print-header__logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
             <v-icon v-else icon="mdi-finance" size="16" color="white" />
           </div>
           <div>
-            <span class="nd-print-header__company">{{ parametresStore.parametres.nom }}</span>
+            <span class="nd-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
             <span class="nd-print-header__doc">{{ estEncaissement ? "Note d'encaissement" : 'Note de frais' }}</span>
           </div>
         </div>
-        <div class="nd-print-header__meta">
+        <div class="nd-print-header__meta print-entete__meta">
           <span class="nd-print-header__ref">{{ note.reference }}</span>
           <span class="nd-print-status-pill" :style="{ background: statutMeta.bg, color: statutMeta.text }">
             {{ statutMeta.label }}
@@ -428,6 +827,10 @@ const peutGererPieces = computed(() =>
                 :style="{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1px solid rgba(255,255,255,0.22)' }">
                 <v-icon icon="mdi-cash-plus" size="12" class="mr-1" />Encaissement
               </span>
+              <span v-if="categorieDrh" class="nd-badge"
+                :style="{ background:'rgba(255,255,255,0.18)', color:'#fff', border:'1px solid rgba(255,255,255,0.22)' }">
+                <v-icon icon="mdi-account-cash-outline" size="12" class="mr-1" />{{ categorieDrh }}
+              </span>
               <span v-if="note.priorite" class="nd-badge"
                 :style="{ background: prioMeta[note.priorite]?.bg, color: prioMeta[note.priorite]?.color }">
                 Priorité {{ prioMeta[note.priorite]?.label }}
@@ -436,8 +839,35 @@ const peutGererPieces = computed(() =>
           </div>
 
           <div class="nd-hero__body">
-            <h1 class="nd-hero__objet">{{ note.objet }}</h1>
+            <div v-if="!editionObjet" class="nd-hero__objet-row">
+              <h1 class="nd-hero__objet">{{ note.objet }}</h1>
+              <button
+                v-if="peutModifierObjet"
+                type="button" class="nd-hero__edit-btn nd-noprint"
+                title="Modifier le libellé" @click="activerEditionObjet"
+              >
+                <v-icon icon="mdi-pencil-outline" size="15" />
+              </button>
+            </div>
+            <div v-else class="nd-hero__objet-edit nd-noprint">
+              <v-text-field
+                v-model="objetEdite"
+                density="compact" variant="solo" hide-details bg-color="white"
+                maxlength="200"
+                class="nd-hero__objet-input"
+                @keyup.enter="enregistrerObjet"
+                @keyup.esc="annulerEditionObjet"
+              />
+              <v-btn size="small" variant="flat" color="indigo" icon="mdi-check"
+                :loading="enregistrementObjet" title="Enregistrer" @click="enregistrerObjet" />
+              <v-btn size="small" variant="tonal" icon="mdi-close"
+                :disabled="enregistrementObjet" title="Annuler" @click="annulerEditionObjet" />
+            </div>
             <p class="nd-hero__montant">{{ montantFmt }}</p>
+            <p v-if="montantRendu > 0" class="nd-hero__rendu">
+              Payé à l'origine : {{ fmtMontant(note.montant + montantRendu) }} {{ note.devise || 'CDF' }}
+              · rendu à la caisse : {{ fmtMontant(montantRendu) }} {{ note.devise || 'CDF' }}
+            </p>
           </div>
         </div>
 
@@ -449,7 +879,10 @@ const peutGererPieces = computed(() =>
               <div class="nd-info-icon"><v-icon icon="mdi-account-outline" size="16" /></div>
               <div>
                 <span class="nd-info-label">Demandeur</span>
-                <span class="nd-info-val">{{ note.demandeurNom || '—' }}</span>
+                <span class="nd-info-val">
+                  <span v-if="note.demandeurFonction" class="nd-fonction">{{ note.demandeurFonction }}<span aria-hidden="true">&nbsp;·&nbsp;</span></span>
+                  <span>{{ note.demandeurNom || '—' }}</span>
+                </span>
               </div>
             </div>
             <div class="nd-info-row">
@@ -460,10 +893,29 @@ const peutGererPieces = computed(() =>
               </div>
             </div>
             <div class="nd-info-row">
-              <div class="nd-info-icon"><v-icon icon="mdi-email-outline" size="16" /></div>
+              <div class="nd-info-icon"><v-icon icon="mdi-account-key-outline" size="16" /></div>
               <div>
-                <span class="nd-info-label">Email</span>
+                <span class="nd-info-label">Identifiant</span>
                 <span class="nd-info-val">{{ note.demandeurEmail || '—' }}</span>
+              </div>
+            </div>
+            <div v-if="!estEncaissement" class="nd-info-row">
+              <div class="nd-info-icon"><v-icon icon="mdi-account-group-outline" size="16" /></div>
+              <div class="nd-service">
+                <span class="nd-info-label">Service</span>
+                <span v-if="!editionService" class="nd-info-val">
+                  <template v-if="note.serviceNom">{{ note.serviceNom }}<span class="nd-fonction"> · {{ note.serviceResponsable }}</span></template>
+                  <template v-else>Aucun service</template>
+                  <button v-if="peutModifierService" type="button" class="nd-service__btn nd-noprint" @click="activerEditionService">
+                    <v-icon icon="mdi-pencil-outline" size="13" /> {{ note.serviceNom ? 'Changer' : 'Choisir' }}
+                  </button>
+                </span>
+                <div v-else class="nd-service__edit nd-noprint">
+                  <v-select v-model="serviceChoisi" :items="servicesChoix" item-title="titre" item-value="id" placeholder="Aucun service"
+                    clearable density="compact" hide-details aria-label="Service de la note" />
+                  <v-btn size="small" color="primary" :loading="enregistrementService" @click="enregistrerService">Enregistrer</v-btn>
+                  <v-btn size="small" variant="text" @click="editionService = false">Annuler</v-btn>
+                </div>
               </div>
             </div>
             <div v-if="note.description" class="nd-info-row nd-info-row--full">
@@ -497,7 +949,10 @@ const peutGererPieces = computed(() =>
           </div>
           <div class="nd-lignes">
             <div v-for="l in note.lignes" :key="l.id" class="nd-ligne">
-              <div v-if="editionComptes" class="nd-ligne__compte-edit nd-noprint">
+              <!-- Une ligne d'achat de marchandise garde le compte d'achat de son
+                   article : le serveur refuse de la réimputer (le stock serait
+                   compté deux fois), le sélecteur n'est donc pas proposé. -->
+              <div v-if="editionComptes && !l.achatMarchandise" class="nd-ligne__compte-edit nd-noprint">
                 <ComptabiliteSelecteurCompte
                   v-model="comptesEdites[l.id]"
                   label="Compte d'imputation"
@@ -507,14 +962,18 @@ const peutGererPieces = computed(() =>
               <div v-else class="nd-ligne__compte">
                 <v-icon icon="mdi-book-open-variant" size="15" class="mr-1" />
                 {{ l.compteImputation ? `${l.compteImputation} — ${l.compteImputationLibelle || ''}` : (estEncaissement ? 'Compte par défaut (758)' : 'Compte par défaut (6588)') }}
+                <span v-if="editionComptes" class="text-caption text-medium-emphasis ml-1">· fixé par l'article</span>
               </div>
               <p v-if="l.description" class="nd-ligne__desc">{{ l.description }}</p>
-              <div v-if="l.achatMarchandise || l.soumisTva" class="nd-ligne__badges">
+              <div v-if="l.achatMarchandise || l.soumisTva || l.fraisApproche" class="nd-ligne__badges">
+                <v-chip v-if="l.fraisApproche" size="x-small" variant="tonal" color="teal" prepend-icon="mdi-truck-outline">
+                  Frais d'approche · incorporés au coût des marchandises de la note
+                </v-chip>
                 <v-chip v-if="l.achatMarchandise" size="x-small" variant="tonal" color="teal" prepend-icon="mdi-package-variant">
                   {{ l.articleLibelle || 'Marchandise' }}{{ l.quantiteMarchandise ? ` · ${l.quantiteMarchandise} × ${fmtMontant(l.montant)}` : '' }}{{ l.entrepotNom ? ` · ${l.entrepotNom}` : '' }}
                 </v-chip>
                 <v-chip v-if="l.soumisTva" size="x-small" variant="tonal" color="indigo" prepend-icon="mdi-percent-outline">
-                  TVA récupérable{{ l.compteTva ? ` · ${l.compteTva}` : '' }}
+                  {{ estEncaissement ? 'TVA collectée' : 'TVA récupérable' }}{{ l.compteTva ? ` · ${l.compteTva}` : '' }}
                 </v-chip>
               </div>
               <span class="nd-ligne__montant">
@@ -534,8 +993,47 @@ const peutGererPieces = computed(() =>
           </div>
         </div>
 
-        <!-- Pièces jointes -->
-        <div class="nd-card">
+        <!-- Retours de fonds : réductions de la note après paiement. À l'impression, seuls les retours reçus par la
+             caisse figurent (ils expliquent l'écart avec le montant payé à l'origine). -->
+        <div v-if="note.retoursFonds?.length" class="nd-card" :class="{ 'nd-noprint': !retoursValides.length }">
+          <p class="nd-card__section-title">Retours de fonds ({{ note.retoursFonds.length }})</p>
+          <div class="nd-retours">
+            <NotesFraisDetailRetourFonds
+              v-for="r in note.retoursFonds" :key="r.id" :retour="r"
+              class="nd-retour" :class="{ 'nd-noprint': r.statut !== 'VALIDE' }"
+            />
+          </div>
+        </div>
+
+        <!-- Contrôle budgétaire : chaque dépense doit être couverte par le budget en exécution, sinon justifiée. -->
+        <div v-if="!estEncaissement" class="nd-card nd-card--budget">
+          <div class="nd-card__body">
+            <BudgetControleBudgetaire :note-id="note.id" :sens="note.sens" :rafraichir="rafraichirControle" @resultat="(r: any) => controleNote = r" />
+            <div v-if="peutJustifier && (horsBudget || note.justificationBudget)" class="nd-justif">
+              <label class="nd-label">Justification budgétaire (facultative)</label>
+              <v-textarea
+                v-model="justificationSaisie"
+                rows="2"
+                auto-grow
+                hide-details
+                placeholder="Pourquoi cette dépense n'est-elle pas couverte par le budget ? (urgence, dépense imprévue, arbitrage de la direction...) Facultatif : la note sera transmise dans tous les cas."
+              />
+              <v-btn class="mt-2" size="small" color="primary" variant="tonal" prepend-icon="mdi-content-save-outline"
+                :loading="enregistrementJustification" :disabled="justificationSaisie === (note.justificationBudget || '')"
+                @click="enregistrerJustification">
+                Enregistrer la justification
+              </v-btn>
+            </div>
+            <div v-else-if="note.justificationBudget" class="nd-justif nd-justif--lecture">
+              <span class="nd-label">Justification budgétaire du demandeur</span>
+              <p>{{ note.justificationBudget }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pièces jointes : masquée à l'impression si vide, la carte vide
+             (icône + texte) n'apportant rien sur un document imprimé. -->
+        <div class="nd-card" :class="{ 'nd-print-hide-if-empty': note.piecesJointes.length === 0 }">
           <div class="nd-card__section-title nd-card__section-title--row">
             <span>Pièces jointes ({{ note.piecesJointes.length }})</span>
             <v-btn
@@ -559,7 +1057,7 @@ const peutGererPieces = computed(() =>
             >
           </div>
           <div v-if="note.piecesJointes.length === 0" class="nd-timeline-empty">
-            <v-icon icon="mdi-paperclip-off" size="28" color="#d1d5db" />
+            <v-icon icon="mdi-paperclip-off" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <p>Aucun justificatif (PDF ou image) joint pour l'instant.</p>
           </div>
           <div v-else class="nd-pieces">
@@ -571,6 +1069,7 @@ const peutGererPieces = computed(() =>
                   {{ fmtTaille(pj.taille) }}<template v-if="pj.ajoutePar"> · {{ pj.ajoutePar }}</template>
                 </span>
               </div>
+              <v-btn class="nd-noprint" icon="mdi-eye-outline" variant="text" size="small" @click="ouvrirApercu(pj)" />
               <v-btn class="nd-noprint" icon="mdi-download" variant="text" size="small" @click="telechargerPiece(pj)" />
               <v-btn
                 v-if="peutGererPieces"
@@ -586,11 +1085,12 @@ const peutGererPieces = computed(() =>
           </div>
         </div>
 
-        <!-- Timeline -->
-        <div class="nd-card">
+        <!-- Timeline : masquée à l'impression (le document imprimé sert de
+             pièce justificative signée, pas de journal d'activité). -->
+        <div class="nd-card nd-noprint">
           <p class="nd-card__section-title">Historique du circuit</p>
           <div v-if="note.observations.length === 0" class="nd-timeline-empty">
-            <v-icon icon="mdi-timeline-outline" size="28" color="#d1d5db" />
+            <v-icon icon="mdi-timeline-outline" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <p>Aucune action dans le circuit pour l'instant.</p>
           </div>
           <div v-else class="nd-timeline">
@@ -598,7 +1098,10 @@ const peutGererPieces = computed(() =>
               <div class="nd-timeline-item__dot" />
               <div class="nd-timeline-item__content">
                 <div class="nd-timeline-item__header">
-                  <strong class="nd-timeline-item__author">{{ o.auteurNom || o.auteur }}</strong>
+                  <span class="nd-timeline-item__who">
+                    <span v-if="o.auteurFonction" class="nd-fonction">{{ o.auteurFonction }}<span aria-hidden="true">&nbsp;·&nbsp;</span></span>
+                    <strong class="nd-timeline-item__author">{{ o.auteurNom || o.auteur }}</strong>
+                  </span>
                   <span class="nd-timeline-item__date">{{ fmtDate(o.dateAction || o.date) }}</span>
                 </div>
                 <span
@@ -624,20 +1127,29 @@ const peutGererPieces = computed(() =>
               <div class="nd-print-sign__line" />
               <span class="nd-print-sign__hint">Signature et cachet</span>
             </div>
+            <div class="nd-print-sign">
+              <span class="nd-print-sign__label">Bénéficiaire</span>
+              <span class="nd-print-sign__name">{{ note.beneficiaire || '—' }}</span>
+              <div class="nd-print-sign__line" />
+              <span class="nd-print-sign__hint">Signature et cachet</span>
+            </div>
             <template v-if="!estEncaissement">
               <div class="nd-print-sign">
-                <span class="nd-print-sign__label">Vérifié DFIN</span>
+                <span class="nd-print-sign__label">Vérifié {{ lDFIN }}</span>
+                <span v-if="signataire('VERIFIEE_DFIN')" class="nd-print-sign__name">{{ signataire('VERIFIEE_DFIN') }}</span>
                 <div class="nd-print-sign__line" />
                 <span class="nd-print-sign__hint">Signature et cachet</span>
               </div>
               <div class="nd-print-sign">
-                <span class="nd-print-sign__label">Validé DA</span>
+                <span class="nd-print-sign__label">Validé {{ lDA }}</span>
+                <span v-if="signataire('VALIDEE_DA')" class="nd-print-sign__name">{{ signataire('VALIDEE_DA') }}</span>
                 <div class="nd-print-sign__line" />
                 <span class="nd-print-sign__hint">Signature et cachet</span>
               </div>
             </template>
             <div class="nd-print-sign">
-              <span class="nd-print-sign__label">Caissier</span>
+              <span class="nd-print-sign__label">{{ rolesStore.libelle('CAISSIER') }}</span>
+              <span v-if="signataire('PAYEE')" class="nd-print-sign__name">{{ signataire('PAYEE') }}</span>
               <div class="nd-print-sign__line" />
               <span class="nd-print-sign__hint">Signature et cachet</span>
             </div>
@@ -660,6 +1172,9 @@ const peutGererPieces = computed(() =>
                 v-model="observation"
                 rows="3"
                 placeholder="Obligatoire pour un rejet ou une remarque"
+                variant="outlined"
+                rounded="lg"
+                class="nd-observation"
                 hide-details
               />
             </div>
@@ -667,7 +1182,7 @@ const peutGererPieces = computed(() =>
             <div class="nd-actions-list">
               <v-btn v-if="peutSoumettre" color="primary" block rounded="lg" elevation="0"
                 prepend-icon="mdi-send-circle" :loading="busy" @click="action('soumettre')">
-                Soumettre au DFIN
+                Soumettre à {{ lDFIN }}
               </v-btn>
 
               <v-btn v-if="peutEncaisser" color="teal" block rounded="lg" elevation="0"
@@ -676,25 +1191,28 @@ const peutGererPieces = computed(() =>
               </v-btn>
 
               <v-btn v-if="peutVerifier" color="indigo" block rounded="lg" elevation="0"
-                prepend-icon="mdi-check-circle" :loading="busy" @click="action('verifier')">
-                Vérifier (DFIN)
+                prepend-icon="mdi-check-circle" :loading="busy" @click="action('verifier', false, 'SOUMISE')">
+                Vérifier ({{ lDFIN }})
               </v-btn>
 
               <template v-if="peutValiderRejeter">
+                <p v-if="horsBudget" class="nd-hint-budget">
+                  Note non couverte par le budget : motivez votre validation dans le champ Observation.
+                </p>
                 <v-btn color="success" block rounded="lg" elevation="0"
-                  prepend-icon="mdi-check" :loading="busy" @click="action('valider')">
-                  Valider (DA)
+                  prepend-icon="mdi-check" :loading="busy" @click="action('valider', horsBudget)">
+                  {{ horsBudget ? `Valider hors budget (${lDA})` : `Valider (${lDA})` }}
                 </v-btn>
                 <v-btn color="error" block rounded="lg" variant="tonal"
-                  prepend-icon="mdi-close" :loading="busy" @click="action('rejeter', true)">
-                  Rejeter (DA)
+                  prepend-icon="mdi-close" :loading="busy" @click="action('rejeter', true, 'VERIFIEE_DFIN')">
+                  Rejeter ({{ lDA }})
                 </v-btn>
               </template>
 
               <template v-if="peutPrioriser">
                 <div class="nd-divider" />
                 <div class="nd-field">
-                  <label class="nd-label">Priorité de paiement (DA)</label>
+                  <label class="nd-label">Priorité de paiement ({{ lDA }})</label>
                   <v-select v-model="prioriteChoisie" :items="prioriteOptions" density="comfortable" hide-details />
                 </div>
                 <v-btn color="deep-purple" block rounded="lg" elevation="0"
@@ -708,7 +1226,7 @@ const peutGererPieces = computed(() =>
               </template>
 
               <v-btn v-if="peutTransmettre" color="teal" block rounded="lg" elevation="0"
-                prepend-icon="mdi-send" :loading="busy" @click="action('transmettre')">
+                prepend-icon="mdi-send" :loading="busy" @click="action('transmettre', false, 'VALIDEE_DA')">
                 Transmettre à la trésorerie
               </v-btn>
 
@@ -717,9 +1235,24 @@ const peutGererPieces = computed(() =>
                 Annuler la note
               </v-btn>
 
-              <div v-if="!peutSoumettre && !peutEncaisser && !peutVerifier && !peutValiderRejeter && !peutPrioriser && !peutTransmettre && !peutAnnuler"
+              <template v-if="peutReduire">
+                <p class="nd-hint-retour">
+                  Moins acheté ou dépensé que prévu ? Réduisez la note et rendez la différence en espèces à la caisse.
+                </p>
+                <v-btn color="teal" block rounded="lg" variant="tonal"
+                  prepend-icon="mdi-cash-refund" :disabled="busy" @click="ouvrirReduction">
+                  Réduire la note (retour de fonds)
+                </v-btn>
+              </template>
+
+              <v-btn v-if="peutAnnulerRetour" color="grey" block rounded="lg" variant="text"
+                prepend-icon="mdi-undo" :loading="busy" @click="annulerRetour">
+                Retirer la demande de retour
+              </v-btn>
+
+              <div v-if="!peutSoumettre && !peutEncaisser && !peutVerifier && !peutValiderRejeter && !peutPrioriser && !peutTransmettre && !peutAnnuler && !peutReduire && !peutAnnulerRetour"
                 class="nd-no-action">
-                <v-icon icon="mdi-lock-outline" size="20" color="#d1d5db" />
+                <v-icon icon="mdi-lock-outline" size="20" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
                 <p>{{ messageAucuneAction }}</p>
               </div>
             </div>
@@ -727,6 +1260,51 @@ const peutGererPieces = computed(() =>
         </div>
       </div>
     </div>
+
+    <NotesFraisReductionNoteDialog
+      v-if="note"
+      v-model="reductionOuverte"
+      :note-id="note.id"
+      :reference="note.reference"
+      :devise="note.devise || 'CDF'"
+      @envoyee="retourEnvoye"
+    />
+
+    <!-- Aperçu d'une pièce jointe : plein écran sur mobile (bouton "X" pour
+         quitter), fenêtre centrée sur desktop — évite d'avoir à télécharger
+         le fichier juste pour voir son contenu. -->
+    <v-dialog
+      v-model="apercuOuvert"
+      :fullscreen="mobile || applicationMobile"
+      :width="mobile || applicationMobile ? undefined : '90vw'"
+      :height="mobile || applicationMobile ? undefined : '92vh'"
+      :max-width="mobile || applicationMobile ? undefined : 1400"
+      scrollable
+      @update:model-value="(v) => { if (!v) fermerApercu() }"
+    >
+      <v-card class="nd-apercu-card">
+        <div class="nd-apercu-head">
+          <span class="nd-apercu-head__nom">{{ apercuPieceActuelle?.nomFichier }}</span>
+          <div class="nd-apercu-head__actions">
+            <v-btn icon="mdi-download" variant="text" size="small" @click="telechargerPiece(apercuPieceActuelle!)" />
+            <v-btn icon="mdi-close" variant="text" size="small" @click="fermerApercu" />
+          </div>
+        </div>
+        <div class="nd-apercu-body">
+          <v-progress-circular v-if="apercuLoading" indeterminate color="primary" />
+          <v-alert v-else-if="apercuErreur" type="error" variant="tonal">{{ apercuErreur }}</v-alert>
+          <img v-else-if="apercuEstImage && apercuUrl" :src="apercuUrl" class="nd-apercu-img" alt="Aperçu">
+          <iframe v-else-if="apercuEstPdf && apercuPdfUrl" :src="apercuPdfUrl" class="nd-apercu-pdf" title="Aperçu du document" />
+          <div v-else class="nd-apercu-non-supporte">
+            <v-icon icon="mdi-file-question-outline" size="48" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
+            <p>Aperçu non disponible pour ce type de fichier.</p>
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-download" @click="telechargerPiece(apercuPieceActuelle!)">
+              Télécharger
+            </v-btn>
+          </div>
+        </div>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -745,11 +1323,11 @@ const peutGererPieces = computed(() =>
   align-items: center;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--ink-soft);
   text-decoration: none;
   transition: color 0.15s;
 }
-.nd-back:hover { color: #111827; }
+.nd-back:hover { color: var(--ink); }
 
 /* ── Entête et signatures d'impression (masqués à l'écran) ──── */
 .nd-print-header,
@@ -762,6 +1340,12 @@ const peutGererPieces = computed(() =>
   gap: 20px;
   align-items: start;
 }
+/* min-width:0 : un enfant de grille est par défaut min-width:auto, donc ne
+   rétrécit jamais sous la largeur intrinsèque de son contenu (ex. le bouton
+   "Joindre un fichier"). Sans ça, un seul élément trop large pousse toute la
+   colonne — puis la page entière — au-delà du viewport mobile, provoquant un
+   défilement horizontal global. */
+.nd-left, .nd-right { min-width: 0; }
 @media (max-width: 900px) {
   .nd-layout { grid-template-columns: 1fr; }
 }
@@ -770,12 +1354,26 @@ const peutGererPieces = computed(() =>
 .nd-hero {
   position: relative;
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 24px 48px -24px rgba(0, 0, 0, 0.45);
   padding: 28px 28px 24px;
   margin-bottom: 16px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+.nd-observation :deep(.v-field) { background: color-mix(in srgb, var(--verre-fort) 70%, transparent); }
+.nd-observation :deep(.v-field__outline) { --v-field-border-opacity: 0.35; color: color-mix(in srgb, var(--color-primary) 55%, var(--ink-soft)); }
+.nd-hero::after {
+  /* Reflet du verre sur le bandeau (21/11/2026). */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(90% 130% at 0% 0%, rgba(255, 255, 255, 0.26), transparent 50%),
+    radial-gradient(70% 120% at 100% 100%, rgba(99, 102, 241, 0.30), transparent 60%);
 }
 .nd-hero__blob {
   position: absolute;
@@ -817,9 +1415,31 @@ const peutGererPieces = computed(() =>
   font-size: clamp(1.1rem, 2vw, 1.5rem);
   font-weight: 700;
   color: #fff;
-  margin: 0 0 10px;
+  margin: 0;
   line-height: 1.3;
 }
+.nd-hero__objet-row { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.nd-hero__edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 24px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+.nd-hero__edit-btn:hover { background: rgba(255, 255, 255, 0.3); }
+.nd-hero__objet-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  max-width: 480px;
+}
+.nd-hero__objet-input :deep(.v-field) { border-radius: 8px; }
 .nd-hero__montant {
   font-size: 2rem;
   font-weight: 800;
@@ -828,11 +1448,12 @@ const peutGererPieces = computed(() =>
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+.nd-hero__rendu { position: relative; margin: 4px 0 0; font-size: 0.8rem; color: rgba(255, 255, 255, 0.85); }
 
 /* ── Info card ───────────────────────────────────────────── */
 .nd-card {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 18px;
   overflow: hidden;
   margin-bottom: 16px;
@@ -842,14 +1463,15 @@ const peutGererPieces = computed(() =>
   font-weight: 700;
   letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: var(--ink-faint);
   padding: 16px 20px 12px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
   margin: 0;
 }
 .nd-card__section-title--row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10px;
   border-bottom: none;
@@ -872,13 +1494,13 @@ const peutGererPieces = computed(() =>
   align-items: center;
   font-size: 0.82rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--ink-2);
 }
 .nd-ligne__compte-edit { grid-column: 1 / 2; max-width: 420px; padding: 4px 0; }
 .nd-ligne__desc {
   grid-column: 1 / 2;
   font-size: 0.78rem;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin: 0;
 }
 .nd-ligne__badges {
@@ -893,7 +1515,7 @@ const peutGererPieces = computed(() =>
   grid-column: 2;
   font-size: 0.9rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -904,7 +1526,7 @@ const peutGererPieces = computed(() =>
   padding: 12px 20px 16px;
   font-size: 0.85rem;
   font-weight: 700;
-  color: #16a34a;
+  color: var(--color-primary);
 }
 
 /* ── Pièces jointes ──────────────────────────────────────── */
@@ -922,12 +1544,54 @@ const peutGererPieces = computed(() =>
 .nd-piece__nom {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nd-piece__meta { font-size: 0.72rem; color: #9ca3af; }
+.nd-piece__meta { font-size: 0.72rem; color: var(--ink-faint); }
+
+/* ── Aperçu pièce jointe ─────────────────────────────────── */
+.nd-apercu-card { display: flex; flex-direction: column; height: 100%; }
+.nd-apercu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 8px 10px 18px;
+  border-bottom: 1px solid var(--hairline);
+  flex-shrink: 0;
+}
+.nd-apercu-head__nom {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nd-apercu-head__actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.nd-apercu-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: var(--surface-2);
+  padding: 16px;
+}
+.nd-apercu-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+.nd-apercu-pdf { width: 100%; height: 100%; border: none; background: var(--surface); }
+.nd-apercu-non-supporte {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+.nd-apercu-non-supporte p { margin: 0; }
 
 .nd-info-grid { padding: 8px 0; }
 .nd-info-row {
@@ -936,15 +1600,15 @@ const peutGererPieces = computed(() =>
   gap: 12px;
   padding: 12px 20px;
 }
-.nd-info-row:hover { background: #fafafa; }
+.nd-info-row:hover { background: var(--surface-2); }
 .nd-info-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 30px; height: 30px;
   border-radius: 8px;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--surface-2);
+  color: var(--ink-soft);
   flex-shrink: 0;
   margin-top: 1px;
 }
@@ -952,14 +1616,14 @@ const peutGererPieces = computed(() =>
   display: block;
   font-size: 0.72rem;
   font-weight: 600;
-  color: #9ca3af;
+  color: var(--ink-faint);
   margin-bottom: 2px;
 }
 .nd-info-val {
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #111827;
+  color: var(--ink);
 }
 
 /* ── Timeline ────────────────────────────────────────────── */
@@ -969,7 +1633,7 @@ const peutGererPieces = computed(() =>
   align-items: center;
   gap: 8px;
   padding: 32px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -995,8 +1659,8 @@ const peutGererPieces = computed(() =>
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #16a34a;
-  border: 3px solid #dcfce7;
+  background: var(--color-primary);
+  border: 3px solid var(--color-primary-light);
   flex-shrink: 0;
   margin-top: 4px;
 }
@@ -1008,24 +1672,32 @@ const peutGererPieces = computed(() =>
   gap: 8px;
   margin-bottom: 4px;
 }
-.nd-timeline-item__author { font-size: 0.875rem; color: #111827; }
-.nd-timeline-item__date   { font-size: 0.72rem; color: #9ca3af; white-space: nowrap; }
+/* Fonction de l'utilisateur, devant son nom : « Directeur Financier · Jean Dupont ». */
+.nd-fonction { color: var(--ink-soft); font-weight: 500; }
+.nd-service { flex: 1; min-width: 0; }
+.nd-service__btn { margin-left: 8px; font-size: 0.75rem; color: var(--color-primary); background: none; border: none; cursor: pointer; padding: 0; }
+.nd-service__edit { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.nd-service__edit .v-select { min-width: 220px; flex: 1 1 220px; }
+.nd-timeline-item__who { min-width: 0; overflow-wrap: anywhere; }
+.nd-timeline-item__who .nd-fonction { font-size: 0.8rem; }
+.nd-timeline-item__author { font-size: 0.875rem; color: var(--ink); }
+.nd-timeline-item__date   { font-size: 0.72rem; color: var(--ink-faint); white-space: nowrap; }
 .nd-timeline-item__statut {
   display: inline-block;
   font-size: 0.68rem;
   font-weight: 700;
-  color: #16a34a;
-  background: #dcfce7;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
   padding: 2px 8px;
   border-radius: 100px;
   margin-bottom: 4px;
 }
-.nd-timeline-item__comment { font-size: 0.85rem; color: #374151; margin: 0; }
+.nd-timeline-item__comment { font-size: 0.85rem; color: var(--ink-2); margin: 0; }
 
 /* ── Action card ─────────────────────────────────────────── */
 .nd-action-card {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 18px;
   overflow: hidden;
   position: sticky;
@@ -1038,9 +1710,9 @@ const peutGererPieces = computed(() =>
   font-weight: 700;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: var(--ink-faint);
   padding: 16px 20px 12px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
 }
 .nd-action-card__body {
   padding: 18px 18px 20px;
@@ -1052,9 +1724,9 @@ const peutGererPieces = computed(() =>
 .nd-actions-list { display: flex; flex-direction: column; gap: 8px; }
 
 .nd-field { display: flex; flex-direction: column; gap: 6px; }
-.nd-label { font-size: 0.8rem; font-weight: 600; color: #374151; }
+.nd-label { font-size: 0.8rem; font-weight: 600; color: var(--ink-2); }
 
-.nd-divider { height: 1px; background: #f3f4f6; }
+.nd-divider { height: 1px; background: var(--surface-2); }
 
 .nd-no-action {
   display: flex;
@@ -1063,7 +1735,7 @@ const peutGererPieces = computed(() =>
   gap: 8px;
   padding: 24px;
   text-align: center;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.82rem;
 }
 .nd-no-action p { margin: 0; }
@@ -1075,9 +1747,15 @@ const peutGererPieces = computed(() =>
 
   * { box-shadow: none !important; }
 
-  .nd-page { max-width: 100%; padding: 0; font-size: 12.5px; color: #1f2937; }
+  /* padding-bottom : degage la place du pied de page fixe (approbations)
+     pour qu'aucun contenu ne passe dessous. */
+  .nd-page { max-width: 100%; padding: 0 0 95px; font-size: 11.5px; color: var(--ink); }
   .nd-layout { display: block; }
   .nd-left { width: 100%; }
+
+  /* Carte sans contenu utile a l'impression (ex. aucune piece jointe) :
+     l'etat vide (icone + texte) n'a de sens qu'a l'ecran. */
+  .nd-print-hide-if-empty { display: none !important; }
 
   /* ── Entête à en-tête ─────────────────────────────────────── */
   .nd-print-header {
@@ -1085,9 +1763,9 @@ const peutGererPieces = computed(() =>
     align-items: flex-end;
     justify-content: space-between;
     gap: 16px;
-    padding-bottom: 12px;
-    margin-bottom: 14px;
-    border-bottom: 3px solid #16a34a;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    border-bottom: 3px solid var(--color-primary);
   }
   .nd-print-header__brand { display: flex; align-items: center; gap: 11px; }
   .nd-print-header__logo {
@@ -1097,20 +1775,20 @@ const peutGererPieces = computed(() =>
     width: 36px;
     height: 36px;
     border-radius: 10px;
-    background: #16a34a;
+    background: var(--color-primary);
     flex-shrink: 0;
     overflow: hidden;
   }
-  .nd-print-header__logo--image { background: #fff; border: 1px solid #e5e7eb; }
+  .nd-print-header__logo--image { background: var(--surface); border: 1px solid var(--hairline); }
   .nd-print-header__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
-  .nd-print-header__company { display: block; font-size: 1.15rem; font-weight: 800; color: #111827; letter-spacing: -0.2px; }
+  .nd-print-header__company { display: block; font-size: 1.15rem; font-weight: 800; color: var(--ink); letter-spacing: -0.2px; }
   .nd-print-header__doc {
     display: block;
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.2px;
-    color: #16a34a;
+    color: var(--color-primary);
     margin-top: 1px;
   }
   .nd-print-header__meta {
@@ -1121,7 +1799,7 @@ const peutGererPieces = computed(() =>
   .nd-print-header__ref {
     font-size: 0.8rem;
     font-weight: 800;
-    color: #111827;
+    color: var(--ink);
     font-variant-numeric: tabular-nums;
   }
   .nd-print-status-pill {
@@ -1133,16 +1811,16 @@ const peutGererPieces = computed(() =>
     padding: 3px 11px;
     border-radius: 100px;
   }
-  .nd-print-header__date { font-size: 0.66rem; color: #9ca3af; }
+  .nd-print-header__date { font-size: 0.66rem; color: var(--ink-faint); }
 
   /* ── Banniere objet / montant, teintee selon le statut ───────── */
   .nd-hero {
     background: var(--print-tint, #f3f4f6) !important;
     border: 1px solid var(--print-text, #d1d5db);
     border-left: 4px solid var(--print-accent, #9ca3af);
-    border-radius: 12px;
-    margin-bottom: 10px;
-    padding: 14px 18px;
+    border-radius: 10px;
+    margin-bottom: 7px;
+    padding: 9px 16px;
     gap: 8px;
     display: flex;
     flex-direction: row;
@@ -1156,16 +1834,17 @@ const peutGererPieces = computed(() =>
   .nd-hero__body { text-align: right; }
   .nd-hero__objet {
     color: var(--print-text, #111827) !important;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
     opacity: 0.85;
   }
   .nd-hero__montant {
     color: var(--print-text, #111827) !important;
-    font-size: 1.6rem;
+    font-size: 1.35rem;
     letter-spacing: -0.5px;
   }
+  .nd-hero__rendu { color: var(--print-text, #111827) !important; font-size: 0.66rem; opacity: 0.85; }
   .nd-badge {
     font-size: 0.62rem;
     padding: 2px 10px;
@@ -1179,9 +1858,9 @@ const peutGererPieces = computed(() =>
   /* ── Cartes de section ────────────────────────────────────── */
   .nd-card {
     break-inside: avoid;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    margin-bottom: 9px;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    margin-bottom: 6px;
   }
   /* Le circuit d'approbation peut compter de nombreuses etapes : on
      l'autorise a se repartir sur plusieurs pages plutot que de forcer toute
@@ -1191,32 +1870,32 @@ const peutGererPieces = computed(() =>
   .nd-card:has(.nd-timeline) { break-inside: auto; }
 
   .nd-card__section-title {
-    padding: 8px 14px 6px 27px;
-    font-size: 0.62rem;
+    padding: 6px 14px 4px 25px;
+    font-size: 0.6rem;
     position: relative;
   }
   .nd-card__section-title::before {
     content: '';
     position: absolute;
     left: 14px;
-    top: 11px;
-    width: 7px;
-    height: 7px;
+    top: 9px;
+    width: 6px;
+    height: 6px;
     border-radius: 2px;
-    background: #16a34a;
+    background: var(--color-primary);
   }
-  .nd-card__section-title--row { padding-bottom: 8px; }
+  .nd-card__section-title--row { padding-bottom: 6px; }
 
   .nd-info-grid { padding: 0; }
-  .nd-info-row { padding: 6px 14px; gap: 8px; }
+  .nd-info-row { padding: 4px 14px; gap: 8px; }
   .nd-info-row:hover { background: none; }
-  .nd-info-icon { width: 22px; height: 22px; background: #f3f4f6 !important; }
+  .nd-info-icon { width: 22px; height: 22px; background: var(--surface-2) !important; }
   .nd-info-label { font-size: 0.62rem; margin-bottom: 0; }
   .nd-info-val { font-size: 0.78rem; }
 
   /* ── Lignes de depense : presentation facture ─────────────── */
-  .nd-lignes { padding: 2px 14px; }
-  .nd-ligne { padding: 7px 0; gap: 2px 10px; }
+  .nd-lignes { padding: 0 14px; }
+  .nd-ligne { padding: 4px 0; gap: 2px 10px; }
   .nd-ligne__compte {
     font-size: 0.7rem;
     font-weight: 700;
@@ -1230,79 +1909,221 @@ const peutGererPieces = computed(() =>
   .nd-ligne__desc { font-size: 0.7rem; margin-top: 2px; }
   .nd-ligne__montant { font-size: 0.82rem; }
   .nd-lignes-total {
-    margin: 4px 14px 10px;
-    padding: 8px 12px;
-    background: #f0fdf4;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    color: #15803d;
+    margin: 2px 14px 6px;
+    padding: 5px 12px;
+    background: var(--color-primary-lighter);
+    border-radius: 7px;
+    font-size: 0.78rem;
+    color: var(--color-primary-dark);
   }
 
-  .nd-pieces { padding: 0 14px 8px; gap: 0; }
-  .nd-piece { padding: 5px 0; gap: 8px; }
-  .nd-piece__nom { font-size: 0.74rem; }
-  .nd-piece__meta { font-size: 0.62rem; }
+  .nd-pieces { padding: 0 14px 5px; gap: 0; }
+  .nd-piece { padding: 3px 0; gap: 8px; }
+  .nd-piece__nom { font-size: 0.72rem; }
+  .nd-piece__meta { font-size: 0.6rem; }
 
   /* ── Timeline ─────────────────────────────────────────────── */
-  .nd-timeline { padding: 3px 14px 10px; }
-  .nd-timeline-item { padding: 5px 0; gap: 10px; break-inside: avoid; }
-  .nd-timeline-item__dot { width: 9px; height: 9px; border-width: 2px; margin-top: 2px; }
-  .nd-timeline-item:not(:last-child)::after { top: 20px; background: #d1d5db; }
-  .nd-timeline-item__author { font-size: 0.76rem; }
-  .nd-timeline-item__date { font-size: 0.62rem; }
-  .nd-timeline-item__statut { font-size: 0.62rem; padding: 1px 8px; margin-bottom: 2px; }
-  .nd-timeline-item__comment { font-size: 0.76rem; }
+  .nd-timeline { padding: 1px 14px 6px; }
+  .nd-timeline-item { padding: 3px 0; gap: 10px; break-inside: avoid; }
+  .nd-timeline-item__dot { width: 8px; height: 8px; border-width: 2px; margin-top: 2px; }
+  .nd-timeline-item:not(:last-child)::after { top: 17px; background: #d1d5db; }
+  .nd-timeline-item__author { font-size: 0.74rem; }
+  .nd-timeline-item__date { font-size: 0.6rem; }
+  .nd-timeline-item__statut { font-size: 0.6rem; padding: 1px 8px; margin-bottom: 1px; }
+  .nd-timeline-item__comment { font-size: 0.74rem; }
 
   /* ── Signatures ───────────────────────────────────────────── */
+  /* Épinglées en pied de page (et non a la suite du contenu) : une note
+     signee doit presenter ses approbations au meme endroit quel que soit
+     son nombre de lignes. position:fixed est repris sur CHAQUE page si le
+     document en compte plusieurs — c'est le comportement natif de Chrome en
+     impression, il n'existe pas d'equivalent "derniere page seulement"
+     fiable en CSS ; sans consequence ici, une note tient presque toujours
+     sur une page. Le padding-bottom de .nd-page (plus bas) reserve la place
+     necessaire pour que le contenu qui defile ne passe jamais dessous. */
   .nd-print-signatures {
     display: block;
-    margin-top: 20px;
-    padding: 16px 18px 14px;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--surface);
+    padding: 10px 16px 9px;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
     break-inside: avoid;
   }
   .nd-print-signatures__title {
-    margin: 0 0 16px;
-    font-size: 0.62rem;
+    margin: 0 0 9px;
+    font-size: 0.6rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: #9ca3af;
+    color: var(--ink-faint);
   }
-  .nd-print-signatures__row { display: flex; justify-content: space-between; gap: 16px; }
+  /* wrap plutôt que d'écraser : 5 colonnes (Demandeur, Bénéficiaire, DFIN,
+     DA, Caissier) sur une feuille A4 restent lisibles, mais mieux vaut
+     passer sur deux lignes que les compresser sur un format plus étroit. */
+  .nd-print-signatures__row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 14px; }
   /* Colonne en flex avec le trait pousse en bas (margin-top:auto) : seul le
-     demandeur porte un nom pre-rempli, sans cela son trait de signature se
-     retrouvait plus bas que celui des autres approbateurs. */
+     demandeur et le beneficiaire portent un nom pre-rempli, sans cela leur
+     trait de signature se retrouvait plus bas que celui des approbateurs. */
   .nd-print-sign {
     flex: 1;
+    min-width: 90px;
     text-align: center;
     display: flex;
     flex-direction: column;
-    min-height: 58px;
+    min-height: 42px;
   }
   .nd-print-sign__label {
     display: block;
-    font-size: 0.66rem;
+    font-size: 0.64rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: #374151;
+    color: var(--ink-2);
   }
   .nd-print-sign__name {
     display: block;
-    font-size: 0.72rem;
-    color: #111827;
-    margin: auto 0 3px;
+    font-size: 0.7rem;
+    color: var(--ink);
+    margin: auto 0 2px;
   }
   .nd-print-sign__line { border-top: 1px solid #111827; margin-top: auto; }
   .nd-print-sign__name + .nd-print-sign__line { margin-top: 0; }
   .nd-print-sign__hint {
     display: block;
-    font-size: 0.58rem;
-    color: #9ca3af;
+    font-size: 0.56rem;
+    color: var(--ink-faint);
     font-style: italic;
-    margin-top: 4px;
+    margin-top: 3px;
   }
 }
+
+/* ── Contrôle budgétaire ───────────────────────────────────── */
+.nd-card--budget .nd-card__body { padding: 4px 20px 14px; }
+.nd-justif { margin-top: 6px; }
+.nd-justif--lecture p { margin: 4px 0 0; font-size: 0.85rem; color: var(--ink-2); white-space: pre-line; }
+.nd-hint-budget { font-size: 0.78rem; color: #b45309; margin: 0 0 6px; font-weight: 600; }
+.nd-hint-retour { font-size: 0.78rem; color: #0f766e; margin: 4px 0 0; }
+.nd-retours { padding: 8px 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+.nd-retour:not(:last-child) { padding-bottom: 12px; border-bottom: 1px solid var(--hairline); }
+.nd-lien-caisse { margin-left: 6px; font-weight: 600; color: inherit; }
+
+/* Actions faites sur la copie en ligne (V133) */
+.nd-action-en-ligne { font-size: 0.86rem; line-height: 1.5; }
+.nd-action-en-ligne__statut { display: inline-block; margin-right: 6px; padding: 0 8px; border-radius: 100px; font-size: 0.74rem; font-weight: 700; }
+.nd-action-en-ligne__statut--en_attente { background: #dbeafe; color: #1d4ed8; }
+.nd-action-en-ligne__statut--appliquee { background: #dcfce7; color: #15803d; }
+.nd-action-en-ligne__statut--refusee { background: #fee2e2; color: #b91c1c; }
+.nd-action-en-ligne__message { color: #475569; }
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+   Impression — document moderne (21/11/2026) : en-tête de marque avec filet en dégradé, bandeau objet / montant,
+   informations sur deux colonnes, dépenses en facture, barre de total, cases de signature. Ces règles viennent après
+   les règles d'impression d'origine et les remplacent là où elles diffèrent.
+   ════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+@media print {
+  .nd-page { font-size: 11px; color: #111827; padding: 0 0 118px; }
+
+  /* En-tête : marque à gauche, référence en grand à droite, filet de marque en dégradé dessous. */
+  .nd-print-header {
+    align-items: center;
+    border-bottom: 0;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .nd-print-header::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 55%, #0891b2), color-mix(in srgb, var(--color-primary) 30%, #6366f1));
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .nd-print-header__logo { width: 42px; height: 42px; border-radius: 12px; }
+  .nd-print-header__company { font-size: 1.3rem; letter-spacing: -0.3px; }
+  .nd-print-header__doc { font-size: 0.64rem; letter-spacing: 1.6px; color: #6b7280; }
+  .nd-print-header__meta { flex-direction: column; align-items: flex-end; gap: 4px; }
+  .nd-print-header__ref { font-size: 1.05rem; letter-spacing: 0.3px; }
+  .nd-print-header__date { font-size: 0.62rem; color: #6b7280; }
+  .nd-print-status-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Bandeau : objet à gauche, montant en grand à droite, sur un fond teinté du statut. */
+  .nd-hero {
+    flex-direction: row;
+    align-items: flex-end;
+    padding: 16px 20px !important;
+    margin-bottom: 14px;
+    border: 0 !important;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--print-accent, var(--color-primary)) 9%, #fff) !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .nd-hero::after { display: none; }
+  .nd-hero__top { display: none; }
+  .nd-hero__body { display: flex; width: 100%; align-items: flex-end; justify-content: space-between; gap: 20px; text-align: left; }
+  .nd-hero__objet { font-size: 0.98rem; font-weight: 700; opacity: 1; color: #111827 !important; margin: 0; }
+  .nd-hero__montant { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.8px; white-space: nowrap;
+    color: color-mix(in srgb, var(--print-accent, var(--color-primary)) 80%, #111827) !important; }
+
+  /* Sections : sans cadre, titre en petites capitales souligné d'un trait de marque. */
+  .nd-card { border: 0 !important; border-radius: 0; margin-bottom: 14px; background: transparent !important; }
+  .nd-card__section-title {
+    padding: 0 0 6px; margin: 0 0 8px; font-size: 0.62rem; letter-spacing: 1.2px; color: #374151;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .nd-card__section-title::before { display: none; }
+
+  /* Informations : grille de deux colonnes, libellé au-dessus de la valeur, sans icône. */
+  .nd-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; padding: 0; }
+  .nd-info-row { padding: 0; }
+  .nd-info-row--full { grid-column: 1 / -1; }
+  .nd-info-icon { display: none !important; }
+  .nd-info-label { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.8px; color: #6b7280; }
+  .nd-info-val { font-size: 0.82rem; font-weight: 600; color: #111827; }
+
+  /* Dépenses : lignes de facture séparées d'un filet pointillé ; compte en étiquette claire. */
+  .nd-lignes { padding: 0; }
+  .nd-ligne { padding: 7px 0; border-bottom: 1px dashed #e5e7eb; }
+  .nd-ligne__compte {
+    background: color-mix(in srgb, var(--color-primary) 10%, #fff); color: color-mix(in srgb, var(--color-primary) 85%, #111827);
+    font-size: 0.66rem; padding: 2px 8px; border-radius: 6px;
+    justify-self: start; align-self: center; width: max-content; max-width: 100%;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .nd-ligne__desc { color: #4b5563; }
+  .nd-ligne__montant { font-size: 0.86rem; font-weight: 700; color: #111827; }
+  .nd-lignes-total {
+    margin: 10px 0 0; padding: 9px 14px; border-radius: 10px; font-size: 0.9rem; font-weight: 800;
+    color: #fff;
+    background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 60%, #0891b2));
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .nd-lignes-total * { color: #fff !important; }
+
+  /* Contrôle budgétaire : sans roue de chargement ni fond coloré. */
+  .nd-card .v-progress-circular, :deep(.v-progress-circular) { display: none !important; }
+  :deep(.cb) { background: transparent !important; border-radius: 10px; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+  /* Signatures : cinq cases arrondies épinglées en pied de page. */
+  .nd-print-signatures { border: 0; border-radius: 0; padding: 0 0 4px; background: #fff; }
+  .nd-print-signatures__title { font-size: 0.6rem; letter-spacing: 1.2px; color: #374151; padding-bottom: 6px;
+    border-bottom: 1px solid #e5e7eb; margin-bottom: 8px; }
+  .nd-print-signatures__row { gap: 8px; flex-wrap: nowrap; }
+  .nd-print-sign {
+    min-height: 72px; padding: 7px 8px 6px; border: 1px solid #e5e7eb; border-radius: 10px; text-align: left;
+  }
+  .nd-print-sign__label { font-size: 0.56rem; letter-spacing: 0.8px; color: #6b7280; }
+  .nd-print-sign__name { margin: 2px 0 auto; font-size: 0.72rem; font-weight: 600; }
+  .nd-print-sign__line { border-top: 1px dashed #9ca3af; margin-top: auto; }
+  .nd-print-sign__name + .nd-print-sign__line { margin-top: auto; }
+  .nd-print-sign__hint { font-size: 0.52rem; font-style: normal; color: #9ca3af; }
+}
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .nd-action-en-ligne__statut--en_attente { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .nd-action-en-ligne__statut--appliquee { background: color-mix(in srgb, #7fd4a8 11%, var(--surface)) !important; color: #7fd4a8 !important; }
+html[data-theme='dark'] .nd-action-en-ligne__statut--refusee { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
 </style>

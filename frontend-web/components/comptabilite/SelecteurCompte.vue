@@ -20,6 +20,16 @@ const props = withDefaults(defineProps<{
    * comptes imputables et actifs doivent etre proposes.
    */
   seulementActifs?: boolean
+  /**
+   * Ne propose que les comptes dont le numero commence par ce prefixe (ex.
+   * '40' pour les fournisseurs), quand le serveur n'accepte rien d'autre.
+   */
+  prefixe?: string
+  /**
+   * Ecarte les comptes dont le numero commence par ce prefixe (ex. '5' pour
+   * la tresorerie, qui ne se saisit pas depuis les pieces comptables).
+   */
+  exclurePrefixe?: string
 }>(), {
   label: 'Compte OHADA',
   disabled: false,
@@ -54,6 +64,8 @@ onMounted(chargerComptes)
 const items = computed(() =>
   comptes.value
     .filter(c => !props.seulementActifs || (c.imputable && c.actif) || c.numero === props.modelValue)
+    .filter(c => !props.prefixe || c.numero.startsWith(props.prefixe) || c.numero === props.modelValue)
+    .filter(c => !props.exclurePrefixe || !c.numero.startsWith(props.exclurePrefixe) || c.numero === props.modelValue)
     .map(c => ({
       title: `${c.numero} — ${c.libelle}`,
       value: c.numero,

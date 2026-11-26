@@ -1,12 +1,26 @@
 package com.mbsc.finapp.dto.parametrage;
 
 import com.mbsc.finapp.domain.ParametresEntreprise;
+import com.mbsc.finapp.domain.enums.ModeleEntete;
 
 public record ParametresEntrepriseResponse(
     String nom,
     String nomComplet,
     String slogan,
-    String logoUrl
+    String adresse,
+    String telephone,
+    String email,
+    String rccm,
+    String idNat,
+    String nif,
+    String logoUrl,
+    String couleurPrimaire,
+    /** Modèle de papier à en-tête des documents imprimés et PDF. */
+    ModeleEntete modeleEntete,
+    /** Régime de TVA de l'entreprise (factures : mention « TVA non applicable » si non assujettie). */
+    boolean assujettiTva,
+    /** Adresse du serveur pour les applications Android : QR de la page « À propos ». */
+    String adresseServeur
 ) {
     public static ParametresEntrepriseResponse from(ParametresEntreprise p) {
         // Parametre de cache-busting (?v=...) : sans lui, le navigateur
@@ -15,6 +29,9 @@ public record ParametresEntrepriseResponse(
         String logoUrl = p.getLogoCheminStockage() != null
             ? "/parametres/logo?v=" + (p.getDateMaj() != null ? p.getDateMaj().toEpochMilli() : 0)
             : null;
-        return new ParametresEntrepriseResponse(p.getNom(), p.getNomComplet(), p.getSlogan(), logoUrl);
+        return new ParametresEntrepriseResponse(
+            p.getNom(), p.getNomComplet(), p.getSlogan(), p.getAdresse(), p.getTelephone(),
+            p.getEmail(), p.getRccm(), p.getIdNat(), p.getNif(), logoUrl, p.getCouleurPrimaire(), p.getModeleEntete(),
+            p.isAssujettiTva(), p.getAdresseServeur());
     }
 }

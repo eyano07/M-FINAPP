@@ -15,16 +15,23 @@ public record ArticleResponse(
     String libelle,
     String uniteMesure,
     TypeArticle type,
+    String categorie,
+    String societe,
     Long entrepotId,
     String entrepotNom,
     String compteStockNumero,
     String compteChargeNumero,
     String compteProduitNumero,
+    String compteAchatNumero,
     BigDecimal prixVente,
+    BigDecimal prixAchat,
+    boolean minerais,
     boolean soumisTva,
     BigDecimal stockMin,
     boolean actif,
-    boolean vendable
+    boolean vendable,
+    /** BOISSON seulement : sans consigne (pas de casier ni de vides, V134). */
+    boolean sansConsigne
 ) {
     public static ArticleResponse from(Article a) {
         var entrepot = a.getEntrepot();
@@ -34,16 +41,22 @@ public record ArticleResponse(
             a.getLibelle(),
             a.getUniteMesure(),
             a.getType(),
+            a.getCategorie(),
+            a.getSociete(),
             entrepot == null ? null : entrepot.getId(),
             entrepot == null ? null : entrepot.getNom(),
             a.getCompteStock() == null ? null : a.getCompteStock().getNumero(),
             a.getCompteCharge() == null ? null : a.getCompteCharge().getNumero(),
             a.getCompteProduit() == null ? null : a.getCompteProduit().getNumero(),
+            a.getCompteAchat() == null ? null : a.getCompteAchat().getNumero(),
             a.getPrixVente(),
+            a.getPrixAchat(),
+            a.isMinerais(),
             a.isSoumisTva(),
             a.getStockMin(),
             a.isActif(),
-            a.estVendable()
+            a.estVendable(),
+            a.isSansConsigne()
         );
     }
 }

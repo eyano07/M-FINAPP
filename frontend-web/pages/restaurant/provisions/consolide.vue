@@ -1,0 +1,219 @@
+<script setup lang="ts">
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN'] })
+
+/**
+ * État consolidé du stock des provisions : une ligne par provision, au coût
+ * moyen pondéré — sans tenir compte des lots (fournisseur, date d'achat,
+ * prix) qui le composent. Pour cette traçabilité par lot (et créer/modifier
+ * une provision), voir /restaurant/provisions.
+ *
+ * Lecture seule. La recherche (code, libellé, unité — insensible à la casse et aux
+ * accents, plusieurs mots cumulés) ne touche pas aux trois compteurs du haut.
+ */
+interface Provision {
+  id: number
+  code: string
+  libelle: string
+  uniteMesure?: string
+  actif: boolean
+}
+interface StockNiveau {
+  articleId: number
+  articleCode: string
+  articleLibelle: string
+  uniteMesure?: string
+  entrepotCode: string
+  quantite: number
+  valeurTotale: number
+  coutMoyen: number
+  /** Prix d'achat moyen HORS transport et manutention ; coutMoyen les inclut. */
+  prixAchatMoyen: number
+  stockMin: number
+  sousSeuil: boolean
+}
+
+const api = useApi()
+const parametres = useRestaurantParametresStore()
+const loading = ref(false)
+const erreur = ref('')
+const provisions = ref<Provision[]>([])
+const stock = ref<StockNiveau[]>([])
+const recherche = ref('')
+const page = ref(1)
+
+const valeurTotale = computed(() => stock.value.reduce((s, l) => s + (l.valeurTotale || 0), 0))
+const nbSousSeuil = computed(() => stock.value.filter(l => l.sousSeuil).length)
+
+async function charger() {
+  loading.value = true
+  erreur.value = ''
+  try {
+    const [provs, niveaux] = await Promise.all([
+      api<Provision[]>('/restaurant/provisions'),
+      api<StockNiveau[]>('/restaurant/provisions/stock'),
+      parametres.charger(),
+    ])
+    provisions.value = provs
+    stock.value = niveaux
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Impossible de charger les provisions.')
+  } finally {
+    loading.value = false
+  }
+}
+onMounted(charger)
+
+/** Fusionne la fiche article et son niveau de stock pour l'affichage. */
+const lignes = computed(() =>
+  provisions.value.map(p => {
+    const s = stock.value.find(x => x.articleId === p.id)
+    return {
+      ...p,
+      quantite: s?.quantite ?? 0,
+      prixAchatMoyen: s?.prixAchatMoyen ?? 0,
+      coutMoyen: s?.coutMoyen ?? 0,
+      valeurTotale: s?.valeurTotale ?? 0,
+      sousSeuil: s?.sousSeuil ?? false,
+    }
+  })
+)
+
+/** Ce que le tableau affiche : les provisions dont le code, le libellé ou l'unité correspondent. */
+const lignesAffichees = computed(() => lignes.value.filter(l =>
+  correspondRecherche([l.code, l.libelle, l.uniteMesure], recherche.value)))
+
+const rechercheActive = computed(() => !!recherche.value.trim())
+
+// Un filtre plus strict peut laisser moins de pages que celle affichée : retour à la première.
+watch(recherche, () => { page.value = 1 })
+
+const fmtQte = (q: number, u?: string) => `${parametres.fmtQuantite(q)}${u ? ' ' + u : ''}`
+
+/**
+ * Part de transport et manutention incorporée au coût moyen d'une unité
+ * (coutMoyen - prixAchatMoyen) : 0 si la provision n'en a reçu aucun (tout
+ * le stock antérieur à cette fonctionnalité).
+ */
+function fraisApproche(item: { coutMoyen: number; prixAchatMoyen: number }): number {
+  const f = (item.coutMoyen || 0) - (item.prixAchatMoyen || 0)
+  return f > 0.000001 ? f : 0
+}
+</script>
+
+<template>
+  <div>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Provisions — stock consolidé</h1>
+        <p class="page-sub">Une ligne par provision, quels que soient ses lots</p>
+      </div>
+      <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-format-list-bulleted" to="/restaurant/provisions">
+        Stock par lot
+      </v-btn>
+    </div>
+
+    <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
+      {{ erreur }}
+    </v-alert>
+
+    <div class="rst-stats mb-4">
+      <div class="rst-stat rst-stat--valeur">
+        <v-icon icon="mdi-cash-multiple" size="18" />
+        <span class="rst-stat__val">{{ parametres.fmtMontant(valeurTotale) }}</span>
+        <span class="rst-stat__lbl">Valeur du stock</span>
+      </div>
+      <div class="rst-stat rst-stat--lignes">
+        <v-icon icon="mdi-sack" size="18" />
+        <span class="rst-stat__val">{{ provisions.length }}</span>
+        <span class="rst-stat__lbl">Provisions référencées</span>
+      </div>
+      <div class="rst-stat" :class="nbSousSeuil ? 'rst-stat--alerte' : 'rst-stat--ok'">
+        <v-icon :icon="nbSousSeuil ? 'mdi-alert-outline' : 'mdi-check-circle-outline'" size="18" />
+        <span class="rst-stat__val">{{ nbSousSeuil }}</span>
+        <span class="rst-stat__lbl">Sous le seuil</span>
+      </div>
+    </div>
+
+    <p class="text-caption text-medium-emphasis mb-2">
+      Transport et manutention : part de ces frais incorporée à chaque unité — le coût moyen et la valeur du stock les incluent déjà.
+    </p>
+    <div class="d-flex flex-wrap align-center ga-3 mb-4">
+      <v-text-field
+        v-model="recherche"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="Rechercher : code, libellé, unité…"
+        aria-label="Rechercher une provision"
+        clearable
+        hide-details
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        class="flex-grow-1 rst-recherche"
+        style="max-width: 460px; min-width: 240px"
+      />
+      <span v-if="rechercheActive" class="text-body-2 text-medium-emphasis rst-recherche-compte">
+        {{ lignesAffichees.length }} sur {{ lignes.length }}
+      </span>
+    </div>
+    <v-card class="classroom-card">
+      <v-data-table
+        :headers="[
+          { title: 'Code', key: 'code' },
+          { title: 'Libellé', key: 'libelle' },
+          { title: 'Unité', key: 'uniteMesure' },
+          { title: 'Quantité en stock', key: 'quantite', align: 'end' },
+          { title: 'Transport et manutention', key: 'fraisApprocheUnitaire', align: 'end', sortable: false },
+          { title: 'Coût moyen', key: 'coutMoyen', align: 'end' },
+          { title: 'Valeur', key: 'valeurTotale', align: 'end' },
+          { title: 'Statut', key: 'actif' },
+        ]"
+        :items="lignesAffichees"
+        :loading="loading"
+        v-model:page="page"
+        items-per-page="15"
+      >
+        <template #item.uniteMesure="{ item }">{{ item.uniteMesure || '—' }}</template>
+        <template #item.quantite="{ item }">
+          <span :class="item.sousSeuil ? 'font-weight-bold text-error' : ''">{{ fmtQte(item.quantite, item.uniteMesure) }}</span>
+        </template>
+        <template #item.fraisApprocheUnitaire="{ item }">{{ fraisApproche(item) ? parametres.fmtMontant(fraisApproche(item)) : '—' }}</template>
+        <template #item.coutMoyen="{ item }">
+          <span :title="fraisApproche(item) ? 'Prix d\'achat + transport et manutention' : undefined">
+            {{ item.coutMoyen > 0 ? parametres.fmtMontant(item.coutMoyen) : '—' }}
+          </span>
+        </template>
+        <template #item.valeurTotale="{ item }">{{ parametres.fmtMontant(item.valeurTotale) }}</template>
+        <template #item.actif="{ item }">
+          <v-chip :color="item.actif ? 'success' : 'grey'" size="small" variant="tonal">{{ item.actif ? 'Actif' : 'Inactif' }}</v-chip>
+        </template>
+        <template #no-data>
+          <div class="pa-6 text-center text-medium-emphasis">
+            {{ rechercheActive ? `Aucune provision ne correspond à « ${recherche.trim()} ».` : 'Aucune provision référencée.' }}
+          </div>
+        </template>
+      </v-data-table>
+    </v-card>
+  </div>
+</template>
+
+<style scoped>
+.rst-stats { display: flex; gap: 12px; flex-wrap: wrap; }
+.rst-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+}
+.rst-stat--valeur { background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 62%, transparent), color-mix(in srgb, #dbeafe 55%, transparent)); color: #1d4ed8; }
+.rst-stat--lignes { background: linear-gradient(135deg, color-mix(in srgb, #fdf4ff 62%, transparent), color-mix(in srgb, #f3e8ff 55%, transparent)); color: #7e22ce; }
+.rst-stat--alerte { background: linear-gradient(135deg, color-mix(in srgb, #fef2f2 62%, transparent), color-mix(in srgb, #fee2e2 55%, transparent)); color: #b91c1c; }
+/* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
+:global(html[data-theme='dark'] .rst-stat--valeur) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }
+:global(html[data-theme='dark'] .rst-stat--lignes) { background: color-mix(in srgb, #c7a3ee 10%, var(--surface)); color: #c7a3ee; box-shadow: inset 0 0 0 1px color-mix(in srgb, #c7a3ee 22%, transparent); }
+:global(html[data-theme='dark'] .rst-stat--alerte) { background: color-mix(in srgb, #f19a9a 10%, var(--surface)); color: #f19a9a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f19a9a 22%, transparent); }
+.rst-stat--ok     { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
+.rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
+.rst-stat__lbl { font-weight: 500; opacity: 0.75; }
+</style>

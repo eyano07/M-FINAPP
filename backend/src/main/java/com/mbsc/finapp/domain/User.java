@@ -34,9 +34,54 @@ public class User {
     @Column(length = 100)
     private String prenom;
 
+    @Column(length = 30)
+    private String telephone;
+
+    /** Adresse recevant une copie e-mail de chaque notification (facultatif). */
+    @Column(name = "email_notification", length = 150)
+    private String emailNotification;
+
+    @Column(length = 100)
+    private String fonction;
+
+    @Column(length = 100)
+    private String affectation;
+
+    @Column(name = "photo_chemin_stockage")
+    private String photoCheminStockage;
+
+    @Column(name = "photo_type_mime", length = 100)
+    private String photoTypeMime;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean actif = true;
+
+    /**
+     * Vrai si le compte a ete desactive automatiquement parce que tous ses roles sont lies a des modules
+     * desactives (V125) : il est alors reactive avec le module. Une desactivation manuelle ne pose pas ce
+     * drapeau et n'est jamais annulee automatiquement. Voir {@code SynchronisationComptesModules}.
+     */
+    @Column(name = "desactive_par_module", nullable = false)
+    @Builder.Default
+    private boolean desactiveParModule = false;
+
+    /**
+     * Version des jetons JWT de l'utilisateur (claim « tv », voir JwtService) :
+     * l'augmenter rend inutilisables tous les jetons déjà émis (V96).
+     */
+    @Column(name = "version_jetons", nullable = false)
+    @Builder.Default
+    private int versionJetons = 0;
+
+    /**
+     * Vrai tant que l'utilisateur n'a pas remplace le mot de passe provisoire choisi par l'administrateur (creation du
+     * compte, ou mot de passe redefini) : seuls la connexion et le changement de mot de passe lui sont ouverts (V131,
+     * voir {@code MotDePasseProvisoireFilter}).
+     */
+    @Column(name = "doit_changer_mot_de_passe", nullable = false)
+    @Builder.Default
+    private boolean doitChangerMotDePasse = false;
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -56,4 +101,9 @@ public class User {
     @UpdateTimestamp
     @Column(name = "date_maj")
     private Instant dateMaj;
+
+    /** Rend inutilisables tous les jetons déjà émis pour cet utilisateur (voir {@link #versionJetons}). */
+    public void revoquerJetons() {
+        versionJetons++;
+    }
 }

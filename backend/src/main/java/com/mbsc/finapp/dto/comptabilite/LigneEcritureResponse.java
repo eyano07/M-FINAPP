@@ -1,6 +1,7 @@
 package com.mbsc.finapp.dto.comptabilite;
 
 import com.mbsc.finapp.domain.EcritureGrandLivre;
+import com.mbsc.finapp.domain.SoldeOuverture;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,6 +20,12 @@ public record LigneEcritureResponse(
     LocalDate dateEcriture,
     BigDecimal tauxApplique
 ) {
+    /** Copie de la ligne avec ses montants convertis (affichage dans une autre devise). */
+    public LigneEcritureResponse enDevise(java.util.function.UnaryOperator<BigDecimal> conversion) {
+        return new LigneEcritureResponse(id, compteNumero, compteLibelle, conversion.apply(debit), conversion.apply(credit),
+            libelle, dateEcriture, tauxApplique);
+    }
+
     public static LigneEcritureResponse from(EcritureGrandLivre e) {
         var compte = e.getCompte();
         return new LigneEcritureResponse(
@@ -27,7 +34,8 @@ public record LigneEcritureResponse(
             compte == null ? null : compte.getLibelle(),
             e.getDebit(),
             e.getCredit(),
-            e.getLibelle(),
+            // « … - Solde d'ouverture » pour une écriture de reprise des à-nouveaux (mention d'affichage).
+            SoldeOuverture.libelle(e),
             e.getDateEcriture(),
             e.getTauxApplique()
         );

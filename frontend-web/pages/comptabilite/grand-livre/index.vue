@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
-// uniquement) mais ne voit pas le GL par compte.
-definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
+import { useExerciceStore } from '~/stores/exercice'
+// DA exclu explicitement : voir NavigationDrawer.vue (comptabiliteItems).
+definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 interface LigneGrandLivre {
   id: number
@@ -32,8 +32,10 @@ const loading = ref(false)
 const erreur = ref('')
 const resultat = ref<GrandLivreCompte | null>(null)
 
-const debutAnnee = new Date().getFullYear() + '-01-01'
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
+const exerciceConsulte = useExerciceStore()
+const debutAnnee = exerciceConsulte.debut
+const aujourdhui = exerciceConsulte.fin
 
 // Pré-sélection depuis un lien entrant (ex. "Grand livre" depuis la page
 // Caisse, ?compte=571) : le compte est chargé directement sans que
@@ -204,9 +206,9 @@ function fmtDate(d: string) {
 </template>
 
 <style scoped>
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.1rem; font-weight: 700; color: #111827; margin-top: 4px; }
-.kpi-sub { font-size: 0.8rem; color: #6b7280; margin-top: 4px; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.1rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
+.kpi-sub { font-size: 0.8rem; color: var(--ink-soft); margin-top: 4px; }
 .gl-filtres { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .gl-filtres :deep(.v-input) { flex: 1 1 200px; }
 .gl-filtres__compte { flex: 1 1 260px; }

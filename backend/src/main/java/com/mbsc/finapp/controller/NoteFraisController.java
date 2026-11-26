@@ -1,23 +1,42 @@
 package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.domain.enums.StatutNote;
+import com.mbsc.finapp.dto.budget.ControleBudgetaireRequest;
+import com.mbsc.finapp.dto.budget.ControleBudgetaireResponse;
 import com.mbsc.finapp.dto.notes.ActionWorkflowRequest;
+import com.mbsc.finapp.dto.notes.JustificationBudgetRequest;
+import com.mbsc.finapp.dto.notes.CreerNoteReglementCamionsRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisDetailResponse;
 import com.mbsc.finapp.dto.notes.NoteFraisRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisResponse;
 import com.mbsc.finapp.dto.notes.ModifierComptesRequest;
+import com.mbsc.finapp.dto.notes.ModifierObjetRequest;
+import com.mbsc.finapp.dto.notes.ModifierServiceRequest;
+import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteRequest;
+import com.mbsc.finapp.dto.notes.ParametresPrioriteNoteResponse;
 import com.mbsc.finapp.dto.notes.PrioriteRequest;
+import com.mbsc.finapp.dto.notes.PreparationRetourFondsResponse;
+import com.mbsc.finapp.dto.notes.RegleVisibiliteResponse;
+import com.mbsc.finapp.dto.notes.RetourFondsRequest;
+import com.mbsc.finapp.dto.notes.RetourFondsResponse;
 import com.mbsc.finapp.service.NoteFraisService;
+import com.mbsc.finapp.service.ParametresPrioriteNoteService;
+import com.mbsc.finapp.service.RetourFondsService;
+import com.mbsc.finapp.domain.enums.TypeActionDistante;
+import com.mbsc.finapp.service.instance.ActionsDistantesService;
+import com.mbsc.finapp.service.instance.InstanceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -30,10 +49,77 @@ import java.util.List;
 public class NoteFraisController {
 
     private final NoteFraisService service;
+    private final ParametresPrioriteNoteService parametresPriorite;
+    private final RetourFondsService retourFonds;
+    /** Copie en ligne d'un serveur local (V133) : les actions du circuit y sont mises en attente, puis relayees. */
+    private final InstanceService instance;
+    private final ActionsDistantesService relais;
+
+    /** Sur la copie en ligne : action mise en attente (202), sinon executee ici. */
+    private ResponseEntity<NoteFraisDetailResponse> relayerOu(Long id, TypeActionDistante type, Object corps,
+                                                             java.util.function.Supplier<NoteFraisDetailResponse> ici) {
+        if (instance.estMiroir()) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(relais.enregistrerActionNote(id, type, corps));
+        }
+        return ResponseEntity.ok(ici.get());
+    }
+
+    /**
+     * Seuils de reserve de tresorerie par priorite (definis par le DA).
+     * Places sous /notes-frais volontairement : ce prefixe echappe au
+     * ModuleAccessFilter, ces seuils devant rester accessibles au DA quels
+     * que soient les modules de tresorerie actives.
+     */
+    @GetMapping("/parametres-priorite")
+    public ParametresPrioriteNoteResponse consulterParametresPriorite() {
+        return parametresPriorite.consulter();
+    }
+
+    @PutMapping("/parametres-priorite")
+    public ParametresPrioriteNoteResponse enregistrerParametresPriorite(
+            @Valid @RequestBody ParametresPrioriteNoteRequest req) {
+        return parametresPriorite.enregistrer(req);
+    }
 
     @GetMapping
-    public List<NoteFraisResponse> lister(@RequestParam(required = false) StatutNote statut) {
-        return statut == null ? service.lister() : service.listerParStatut(statut);
+    public List<NoteFraisResponse> lister(
+            @RequestParam(required = false) StatutNote statut,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate du,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate au,
+            // Recherche textuelle facultative : fragment de la reference, du libelle (objet) de la note,
+            // du nom du beneficiaire, ou nom / debut de numero d'un compte impute sur l'une de ses lignes.
+            @RequestParam(required = false) String reference,
+            @RequestParam(required = false) String libelle,
+            @RequestParam(required = false) String compte,
+            @RequestParam(required = false) String beneficiaire) {
+        return service.lister(statut, du, au, reference, libelle, compte, beneficiaire);
+    }
+
+    /**
+     * Explique a l'utilisateur courant quelles notes il voit : selon son role,
+     * certaines notes ne lui sont pas accessibles (voir {@code RegleVisibiliteNote}).
+     */
+    @GetMapping("/regle-visibilite")
+    public RegleVisibiliteResponse regleVisibilite() {
+        return service.expliquerVisibilite();
+    }
+
+    /** Controle budgetaire d'une note en cours de saisie : statut de chaque ligne, justification requise ou non. */
+    @PostMapping("/controle-budgetaire")
+    public ControleBudgetaireResponse controleBudgetaire(@Valid @RequestBody ControleBudgetaireRequest req) {
+        return service.controleBudgetaire(req);
+    }
+
+    /** Justification budgetaire d'une note pas encore soumise (depense hors budget ou en depassement). */
+    @PutMapping("/{id}/justification-budget")
+    public NoteFraisDetailResponse justificationBudget(@PathVariable Long id, @Valid @RequestBody JustificationBudgetRequest req) {
+        return service.definirJustificationBudget(id, req.justification());
+    }
+
+    /** Controle budgetaire a jour d'une note enregistree. */
+    @GetMapping("/{id}/controle-budgetaire")
+    public ControleBudgetaireResponse controleBudgetaireNote(@PathVariable Long id) {
+        return service.controleBudgetaireNote(id);
     }
 
     @GetMapping("/{id}")
@@ -53,6 +139,19 @@ public class NoteFraisController {
         return service.modifier(id, req);
     }
 
+    /**
+     * Cree et soumet directement au DFIN une ou deux notes de reglement
+     * (camions, frais connexes — voir {@code NoteFraisService
+     * .creerReglementCamionsMinerai}) pour des camions de minerais et/ou
+     * leurs frais accessoires (LOGISTIQUE).
+     */
+    @PostMapping("/reglement-camions-minerai")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<NoteFraisDetailResponse> creerReglementCamionsMinerai(
+            @Valid @RequestBody CreerNoteReglementCamionsRequest req) {
+        return service.creerReglementCamionsMinerai(req);
+    }
+
     /** Reaffectation des comptes d'imputation par le DFIN lors de la verification (note SOUMISE). */
     @PutMapping("/{id}/comptes")
     public NoteFraisDetailResponse modifierComptes(@PathVariable Long id,
@@ -60,48 +159,83 @@ public class NoteFraisController {
         return service.modifierComptesLignes(id, req);
     }
 
+    /**
+     * Rattachement de la note a un service budgetaire (ou detachement) : le createur avant la soumission, le DFIN
+     * pendant la verification (note SOUMISE).
+     */
+    @PutMapping("/{id}/service")
+    public NoteFraisDetailResponse modifierService(@PathVariable Long id, @RequestBody ModifierServiceRequest req) {
+        return service.modifierService(id, req == null ? null : req.serviceId());
+    }
+
+    // ── Retour de fonds : l'emetteur reduit sa note payee, le caissier recoit l'argent (voir CaisseController) ──
+
+    /** Ce qu'il faut a la boite de dialogue de reduction (lignes reductibles, stock restant, demande en attente). */
+    @GetMapping("/{id}/retours-fonds/preparation")
+    public PreparationRetourFondsResponse preparerRetourFonds(@PathVariable Long id) {
+        return retourFonds.preparer(id);
+    }
+
+    @PostMapping("/{id}/retours-fonds")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RetourFondsResponse demanderRetourFonds(@PathVariable Long id, @Valid @RequestBody RetourFondsRequest req) {
+        return retourFonds.demander(id, req);
+    }
+
+    @PostMapping("/retours-fonds/{retourId}/annuler")
+    public RetourFondsResponse annulerRetourFonds(@PathVariable Long retourId) {
+        return retourFonds.annuler(retourId);
+    }
+
+    /** Correction du libelle (objet) par le DFIN lors de la verification (note SOUMISE). */
+    @PutMapping("/{id}/objet")
+    public NoteFraisDetailResponse modifierObjet(@PathVariable Long id,
+                                                  @Valid @RequestBody ModifierObjetRequest req) {
+        return service.modifierObjet(id, req);
+    }
+
     // --- Transitions de workflow -----------------------------------------
 
     @PostMapping("/{id}/soumettre")
-    public NoteFraisDetailResponse soumettre(@PathVariable Long id,
-                                             @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
-        return service.soumettre(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> soumettre(@PathVariable Long id,
+            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.SOUMETTRE, action, () -> service.soumettre(id, action));
     }
 
     @PostMapping("/{id}/verifier")
-    public NoteFraisDetailResponse verifier(@PathVariable Long id,
-                                            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
-        return service.verifier(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> verifier(@PathVariable Long id,
+            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.VERIFIER, action, () -> service.verifier(id, action));
     }
 
     @PostMapping("/{id}/valider")
-    public NoteFraisDetailResponse valider(@PathVariable Long id,
-                                           @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
-        return service.valider(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> valider(@PathVariable Long id,
+            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.VALIDER, action, () -> service.valider(id, action));
     }
 
     @PostMapping("/{id}/rejeter")
-    public NoteFraisDetailResponse rejeter(@PathVariable Long id,
-                                           @Valid @RequestBody ActionWorkflowRequest action) {
-        return service.rejeter(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> rejeter(@PathVariable Long id,
+            @Valid @RequestBody ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.REJETER, action, () -> service.rejeter(id, action));
     }
 
     @PostMapping("/{id}/transmettre")
-    public NoteFraisDetailResponse transmettre(@PathVariable Long id,
-                                               @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
-        return service.transmettre(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> transmettre(@PathVariable Long id,
+            @Valid @RequestBody(required = false) ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.TRANSMETTRE, action, () -> service.transmettre(id, action));
     }
 
     @PostMapping("/{id}/priorite")
-    public NoteFraisDetailResponse definirPriorite(@PathVariable Long id,
-                                                   @Valid @RequestBody PrioriteRequest req) {
-        return service.definirPriorite(id, req);
+    public ResponseEntity<NoteFraisDetailResponse> definirPriorite(@PathVariable Long id,
+            @Valid @RequestBody PrioriteRequest req) {
+        return relayerOu(id, TypeActionDistante.PRIORITE, req, () -> service.definirPriorite(id, req));
     }
 
     @PostMapping("/{id}/observation")
-    public NoteFraisDetailResponse ajouterObservation(@PathVariable Long id,
-                                                      @Valid @RequestBody ActionWorkflowRequest action) {
-        return service.ajouterObservation(id, action);
+    public ResponseEntity<NoteFraisDetailResponse> ajouterObservation(@PathVariable Long id,
+            @Valid @RequestBody ActionWorkflowRequest action) {
+        return relayerOu(id, TypeActionDistante.OBSERVATION, action, () -> service.ajouterObservation(id, action));
     }
 
     @PostMapping("/{id}/annuler")

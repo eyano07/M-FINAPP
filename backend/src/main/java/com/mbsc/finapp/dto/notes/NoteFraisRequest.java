@@ -38,5 +38,18 @@ public record NoteFraisRequest(
 
     @NotEmpty(message = "La note doit comporter au moins une ligne de depense")
     @Valid
-    List<LigneNoteFraisRequest> lignes
+    List<LigneNoteFraisRequest> lignes,
+
+    /**
+     * Justification d'une depense non couverte par le budget en execution (hors budget, depassement du
+     * disponible, aucun budget) : exigee a la soumission dans ces cas (voir ControleBudgetaireService).
+     */
+    @Size(max = 1000)
+    String justificationBudget,
+
+    /**
+     * Service qui engage la depense (facultatif, decaissement seulement) : la note est controlee sur l'enveloppe de
+     * ce service et sa depense se suit sur son budget.
+     */
+    Long serviceId
 ) {}

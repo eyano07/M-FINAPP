@@ -1,5 +1,7 @@
 <script setup lang="ts">
-definePageMeta({ module: 'COMPTABILITE' })
+import { useExerciceStore } from '~/stores/exercice'
+// DA exclu explicitement : voir NavigationDrawer.vue (comptabiliteItems).
+definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 interface LigneEtat {
   numero: string
@@ -26,8 +28,10 @@ const exportEnCours = ref(false)
 const erreur = ref('')
 const etat = ref<CompteResultat | null>(null)
 
-const debutAnnee = new Date().getFullYear() + '-01-01'
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
+const exerciceConsulte = useExerciceStore()
+const debutAnnee = exerciceConsulte.debut
+const aujourdhui = exerciceConsulte.fin
 const filtres = reactive({ du: debutAnnee, au: aujourdhui })
 
 const peutExporter = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
@@ -83,7 +87,11 @@ const benefice = computed(() => (etat.value?.resultatNet ?? 0) >= 0)
     <div class="page-head no-print">
       <div>
         <h1 class="page-title">Compte de résultat</h1>
-        <p class="page-sub">Produits (classe 7) − Charges (classe 6) sur la période — devise de base : USD</p>
+        <!-- Le calcul retient tous les comptes de gestion (classes 6, 7 et 8) via leur
+             TYPE : la classe 8 H.A.O. porte aussi des charges et des produits, et
+             entre au resultat net comme les autres. Le sous-titre disait « classe 7 −
+             classe 6 », ce qui laissait croire que les H.A.O. en etaient exclus. -->
+        <p class="page-sub">Produits − Charges de la période, H.A.O. inclus (classes 6, 7 et 8) — devise de base : USD</p>
       </div>
       <div class="d-flex ga-2 flex-wrap">
         <v-btn
@@ -115,31 +123,31 @@ const benefice = computed(() => (etat.value?.resultatNet ?? 0) >= 0)
     <v-card class="classroom-card pa-6 mb-4 no-print">
       <v-row align="end">
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.du" label="Du" type="date" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.du" label="Du" type="date" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.au" label="Au" type="date" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.au" label="Au" type="date" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-btn color="primary" block :loading="loading" @click="charger">Actualiser</v-btn>
+          <v-btn color="primary" block height="48" :loading="loading" @click="charger">Actualiser</v-btn>
         </v-col>
       </v-row>
     </v-card>
 
     <template v-if="etat">
       <!-- En-tete d'impression (visible uniquement sur le document imprime) -->
-      <div class="etat-print-header">
-        <div class="etat-print-header__brand">
-          <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+      <div class="etat-print-header print-entete">
+        <div class="etat-print-header__brand print-entete__marque">
+          <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
             <v-icon v-else icon="mdi-finance" size="16" color="white" />
           </div>
           <div>
-            <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+            <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
             <span class="etat-print-header__doc">Compte de résultat</span>
           </div>
         </div>
-        <div class="etat-print-header__meta">
+        <div class="etat-print-header__meta print-entete__meta">
           <span>Période : <strong>{{ fmtDate(etat.du) }} au {{ fmtDate(etat.au) }}</strong></span>
           <span>Imprimé le : {{ dateImpression }}</span>
         </div>
@@ -234,9 +242,6 @@ const benefice = computed(() => (etat.value?.resultatNet ?? 0) >= 0)
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
 .kpi-value { font-size: 1.25rem; font-weight: 700; margin-top: 4px; }
 </style>

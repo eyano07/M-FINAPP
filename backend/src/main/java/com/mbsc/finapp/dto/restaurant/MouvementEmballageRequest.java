@@ -8,13 +8,13 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
 /**
- * Saisie manuelle d'un mouvement du stock de vides (casse, perime, ajustement
- * d'inventaire). Les types VENTE et RETOUR_VENTE sont refuses : ils sont
+ * Saisie manuelle d'un mouvement du stock de vides (casse, perime, cadeau,
+ * ajustement d'inventaire). Les types VENTE et RETOUR_VENTE sont refuses : ils sont
  * generes automatiquement par la validation ou l'annulation d'une vente.
  *
  * <p>La quantite est toujours POSITIVE : c'est le type qui porte le sens.</p>
  *
- * @param entrepotId obligatoire pour CASSE_PLEINE et PERIME : ces deux types
+ * @param entrepotId obligatoire pour CASSE_PLEINE, PERIME et CADEAU : ces trois types
  *        font aussi sortir la boisson de son propre stock (avec ecriture
  *        comptable), qui se tient par entrepot. Ignore pour les autres types.
  */

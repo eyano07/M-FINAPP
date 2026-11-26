@@ -10,6 +10,12 @@ export interface LigneEcritureForm {
 <script setup lang="ts">
 const props = defineProps<{
   modelValue: LigneEcritureForm[]
+  /**
+   * Ne propose aucun compte de tresorerie (classe 5) : une piece saisie a la
+   * main ne peut pas encaisser ni decaisser — voir
+   * ComptabiliteService.exigerHorsTresorerie.
+   */
+  horsTresorerie?: boolean
 }>()
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: LigneEcritureForm[]): void }>()
@@ -67,7 +73,11 @@ function fmt(v: number) {
 
     <div v-for="(ligne, index) in lignes" :key="index" class="lignes-ecriture__row">
       <div class="lignes-ecriture__compte">
-        <ComptabiliteSelecteurCompte v-model="ligne.compteNumero" :label="`Compte ligne ${index + 1}`" />
+        <ComptabiliteSelecteurCompte
+          v-model="ligne.compteNumero"
+          :label="`Compte ligne ${index + 1}`"
+          :exclure-prefixe="horsTresorerie ? '5' : undefined"
+        />
       </div>
       <v-text-field
         :model-value="ligne.debit"
@@ -141,7 +151,7 @@ function fmt(v: number) {
 }
 .lignes-ecriture__title {
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
 }
 .lignes-ecriture__row {
   display: grid;
@@ -149,9 +159,9 @@ function fmt(v: number) {
   gap: 10px;
   align-items: start;
   padding: 12px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
   border-radius: 12px;
-  background: #fafafa;
+  background: var(--surface-2);
 }
 .lignes-ecriture__totaux {
   display: flex;
@@ -160,17 +170,17 @@ function fmt(v: number) {
   gap: 20px;
   padding: 14px 16px;
   border-radius: 12px;
-  background: #f0fdf4;
-  border: 1px solid #dcfce7;
+  background: var(--color-primary-lighter);
+  border: 1px solid var(--color-primary-light);
 }
 .lignes-ecriture__totaux .label {
   display: block;
   font-size: 0.72rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.lignes-ecriture__totaux strong.ok { color: #16a34a; }
+.lignes-ecriture__totaux strong.ok { color: var(--color-primary); }
 .lignes-ecriture__totaux strong.ko { color: #dc2626; }
 
 @media (max-width: 960px) {

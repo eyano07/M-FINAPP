@@ -41,6 +41,19 @@ public class Client {
     @Column(length = 255)
     private String adresse;
 
+    /** Numero d'impot (NIF) : requis sur la facture normalisee d'un client assujetti. */
+    @Column(length = 40)
+    private String nif;
+
+    /** Compte propre du client sous 4111 (41111, 41112…), ouvert à la création de la fiche (V145). */
+    @Column(name = "compte_comptable", length = 20)
+    private String compteComptable;
+
+    /** PARTICULIER, ENTREPRISE ou ADMINISTRATION. */
+    @Column(name = "type_client", nullable = false, length = 20)
+    @Builder.Default
+    private String typeClient = "PARTICULIER";
+
     @Column(nullable = false)
     @Builder.Default
     private boolean actif = true;

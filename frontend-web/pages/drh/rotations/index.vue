@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'DRH_MISSIONS' })
 
 interface Employe { id: number; matricule: string; nomComplet: string; superviseur: boolean }
@@ -18,8 +19,10 @@ const parametresStore = useParametresStore()
 const canWrite = computed(() => auth.hasAnyRole(['RESP_DRH']))
 
 const aujourdhui = new Date()
-const mois = ref(aujourdhui.getMonth() + 1)
-const annee = ref(aujourdhui.getFullYear())
+// Ancien exercice choisi dans la barre du haut : son mois de décembre ; sinon le mois en cours.
+const exerciceConsulte = useExerciceStore()
+const mois = ref(exerciceConsulte.enConsultation ? 12 : aujourdhui.getMonth() + 1)
+const annee = ref(exerciceConsulte.enConsultation ? exerciceConsulte.anneeChoisie : aujourdhui.getFullYear())
 
 const loading = ref(false)
 const saving = ref(false)
@@ -30,6 +33,8 @@ const employes = ref<Employe[]>([])
 const sites = ref<Site[]>([])
 const dialog = ref(false)
 const editing = ref<Rotation | null>(null)
+const directeurDrh = ref('')
+const fonctionDirecteur = ref('Directeur des Ressources Humaines')
 
 const formVide = () => ({
   employeId: null as number | null, siteId: null as number | null,
@@ -45,14 +50,19 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [r, e, s] = await Promise.all([
+    const [r, e, s, p] = await Promise.all([
       api<Rotation[]>('/drh/rotations', { params: { mois: mois.value, annee: annee.value } }),
       employes.value.length ? Promise.resolve(employes.value) : api<Employe[]>('/drh/employes'),
       sites.value.length ? Promise.resolve(sites.value) : api<Site[]>('/drh/sites'),
+      // Meme source que la signature de fiche-manuelle.vue et des ordres de mission : un seul "signataire
+      // des documents DRH" configure dans Parametres de paie, pas un champ propre a chaque ecran.
+      api<{ directeurDrh: string | null; fonctionDirecteur: string | null }>('/drh/parametres-paie'),
     ])
     rotations.value = r
     employes.value = e
     sites.value = s
+    directeurDrh.value = p.directeurDrh ?? ''
+    fonctionDirecteur.value = p.fonctionDirecteur || 'Directeur des Ressources Humaines'
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les rotations.')
   } finally {
@@ -156,19 +166,23 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
         rounded="lg" hide-details style="max-width: 140px" />
     </div>
 
-    <div class="etat-print-header">
-      <div class="etat-print-header__brand">
-        <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+    <!-- Colonne flex, hauteur fixee a l'impression (rot-print-page) : pousse la signature (margin-top:auto)
+         tout en bas de la page plutot que de la laisser suivre directement le tableau — meme technique que
+         le bulletin de paie (bp-print-page). -->
+    <div class="rot-print-page">
+    <div class="etat-print-header print-entete">
+      <div class="etat-print-header__brand print-entete__marque">
+        <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
           <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
           <v-icon v-else icon="mdi-finance" size="16" color="white" />
         </div>
         <div>
-          <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+          <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
           <span class="etat-print-header__service">Direction des Ressources Humaines</span>
           <span class="etat-print-header__doc">Planning des superviseurs — {{ MOIS[mois - 1] }} {{ annee }}</span>
         </div>
       </div>
-      <div class="etat-print-header__meta">
+      <div class="etat-print-header__meta print-entete__meta">
         <span>Imprimé le : {{ dateImpression }}</span>
       </div>
     </div>
@@ -213,6 +227,14 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       </tbody>
     </table>
 
+    <div v-if="directeurDrh" class="rot-signature">
+      <span class="rot-signature__nom">{{ directeurDrh.toUpperCase() }}</span>
+      <span class="rot-signature__fonction">{{ fonctionDirecteur }}</span>
+      <div class="rot-signature__line" />
+      <span class="rot-signature__hint">Signature et cachet</span>
+    </div>
+    </div>
+
     <v-dialog v-model="dialog" max-width="640">
       <v-card>
         <v-card-title>{{ editing ? 'Modifier la rotation' : 'Nouvelle rotation' }}</v-card-title>
@@ -221,8 +243,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
           <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
           <v-row>
             <v-col cols="12" md="6">
-              <v-select v-model="form.employeId" :items="superviseurs.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
-                label="Superviseur *" variant="outlined" density="comfortable" />
+              <v-autocomplete v-model="form.employeId" :items="superviseurs.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
+                label="Superviseur *" variant="outlined" density="comfortable" clearable />
             </v-col>
             <v-col cols="12" md="6">
               <v-select v-model="form.siteId" :items="sites.map(s => ({ title: s.nom, value: s.id }))"
@@ -251,10 +273,28 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
 <style scoped>
 .print-only { display: none; }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-.etat-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--hairline); }
+.etat-table td { padding: 6px 8px; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
+
+/* ── Signature DRH, pied de page imprime uniquement ─────────────────────── */
+.rot-print-page { display: flex; flex-direction: column; }
+.rot-signature { display: none; }
 
 @media print {
   .print-only { display: table; }
+
+  /* Hauteur imprimable A4 (297mm) moins les marges @page (10mm haut/bas,
+     voir classroom.scss) : donne au conteneur de quoi pousser .rot-signature
+     jusqu'en bas via margin-top:auto, meme technique que le bulletin de
+     paie (bp-print-page). */
+  .rot-print-page { min-height: 260mm; }
+  .rot-signature {
+    display: flex; flex-direction: column; align-items: flex-end;
+    margin-top: auto; padding-top: 16px; width: 220px; align-self: flex-end;
+  }
+  .rot-signature__nom { font-size: 0.78rem; font-weight: 700; color: var(--ink); }
+  .rot-signature__fonction { font-size: 0.72rem; color: var(--ink-2); margin-top: 1px; }
+  .rot-signature__line { width: 100%; border-top: 1px solid #111827; margin-top: 28px; }
+  .rot-signature__hint { font-size: 0.62rem; color: var(--ink-faint); font-style: italic; margin-top: 4px; }
 }
 </style>

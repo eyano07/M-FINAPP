@@ -1,0 +1,17 @@
+# Construction
+.gradle/
+build/
+app/build/
+local.properties
+sortie/
+*.apk
+*.aab
+# Clé de signature : JAMAIS dans le dépôt (public). À sauvegarder à part.
+signature/
+signature.properties
+*.jks
+*.keystore
+
+# Configuration Firebase (projet propre à MBSC) : hors du dépôt public.
+app/google-services.json
+icone-512.png

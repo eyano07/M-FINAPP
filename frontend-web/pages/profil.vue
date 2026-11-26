@@ -1,0 +1,341 @@
+<script setup lang="ts">
+import { pontApplicationMobile } from '~/utils/applicationMobile'
+// Auto-service : chaque utilisateur connecte gere ses propres informations.
+// Accessible depuis le bouton engrenage et le menu du compte (AppBar.vue).
+definePageMeta({})
+
+const auth = useAuthStore()
+const api = useApi()
+
+const loading = ref(true)
+const saving = ref(false)
+const erreur = ref('')
+const succes = ref('')
+
+// ── Informations ───────────────────────────────────────────────────────
+const form = reactive({ nom: '', prenom: '', telephone: '', emailNotification: '' })
+
+// Widget « Trésorerie » de l'écran d'accueil Android (mini tableau de bord), activé par chacun pour son téléphone ;
+// réservé aux rôles qui suivent la trésorerie (même liste que WidgetService.ROLES_TRESORERIE côté serveur).
+const preferencesStore = usePreferencesStore()
+const ROLES_WIDGET_TRESORERIE = ['CAISSIER', 'DA', 'DFIN', 'COMPTABLE', 'DG', 'ADMIN']
+const peutWidgetTresorerie = computed(() => auth.hasAnyRole(ROLES_WIDGET_TRESORERIE))
+const widgetTresorerie = computed(() => preferencesStore.valeur('widget.tresorerie', 'INACTIF') === 'ACTIF')
+function basculerWidgetTresorerie(actif: boolean | null) {
+  void preferencesStore.definir('widget.tresorerie', actif ? 'ACTIF' : 'INACTIF')
+}
+
+// Application Android ≥ 2.9 : pose le widget directement sur l'écran d'accueil (certains lanceurs, comme HiOS sur les
+// téléphones Tecno, ne listent pas les widgets des applications installées à la main).
+const pont = pontApplicationMobile()
+const peutAjouterWidget = !!pont?.ajouterWidget
+const messageWidget = ref('')
+function ajouterWidget(type: 'notes' | 'tresorerie') {
+  const r = pont?.ajouterWidget?.(type)
+  messageWidget.value = r === 'ok'
+    ? "Confirmez sur le téléphone : le widget sera posé sur l'écran d'accueil."
+    : r === 'non-supporte'
+      ? "Ce téléphone ne permet pas d'ajouter un widget depuis l'application : appui long sur l'écran d'accueil › Widgets › MBSC Finapp."
+      : "Ajout du widget impossible."
+}
+
+async function charger() {
+  loading.value = true
+  erreur.value = ''
+  try {
+    const p = await api<{ nom: string; prenom: string; telephone: string | null; emailNotification: string | null }>('/profil')
+    form.nom = p.nom || ''
+    form.prenom = p.prenom || ''
+    form.telephone = p.telephone || ''
+    form.emailNotification = p.emailNotification || ''
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Impossible de charger le profil.')
+  } finally {
+    loading.value = false
+  }
+}
+onMounted(charger)
+
+async function enregistrer() {
+  if (!form.nom.trim() || !form.prenom.trim()) {
+    erreur.value = 'Nom et prénom sont obligatoires.'
+    return
+  }
+  saving.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    await api('/profil', {
+      method: 'PUT',
+      body: { nom: form.nom.trim(), prenom: form.prenom.trim(), telephone: form.telephone.trim() || null,
+        emailNotification: form.emailNotification.trim() || null },
+    })
+    // Rafraichit le store global : le nom/l'avatar dans l'App Bar et le menu
+    // laterale en dependent, pas seulement cette page.
+    await auth.verifierSession()
+    succes.value = 'Profil mis à jour.'
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Échec de l'enregistrement.")
+  } finally {
+    saving.value = false
+  }
+}
+
+// ── Photo ─────────────────────────────────────────────────────────────
+const TYPES_AUTORISES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+const TAILLE_MAX_OCTETS = 5 * 1024 * 1024
+const photoInput = ref<HTMLInputElement | null>(null)
+const uploadingPhoto = ref(false)
+
+function declencherChoixPhoto() {
+  photoInput.value?.click()
+}
+
+async function onPhotoChoisie(e: Event) {
+  const input = e.target as HTMLInputElement
+  const fichier = input.files?.[0]
+  input.value = ''
+  if (!fichier) return
+
+  if (!TYPES_AUTORISES.includes(fichier.type)) {
+    erreur.value = `Format non autorisé pour « ${fichier.name} ». Formats acceptés : JPEG, PNG, WEBP.`
+    return
+  }
+  if (fichier.size > TAILLE_MAX_OCTETS) {
+    erreur.value = `« ${fichier.name} » dépasse la taille maximale autorisée (5 Mo).`
+    return
+  }
+
+  uploadingPhoto.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    const formData = new FormData()
+    formData.append('fichier', fichier)
+    await api('/profil/photo', { method: 'POST', body: formData })
+    await auth.verifierSession()
+    succes.value = 'Photo de profil mise à jour.'
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Échec de l'envoi de la photo.")
+  } finally {
+    uploadingPhoto.value = false
+  }
+}
+
+// ── Mot de passe ──────────────────────────────────────────────────────
+const pwd = reactive({ ancien: '', nouveau: '', confirmation: '' })
+const pwdSaving = ref(false)
+const pwdErreur = ref('')
+const pwdSucces = ref('')
+const showAncien = ref(false)
+const showNouveau = ref(false)
+
+async function changerMotDePasse() {
+  pwdErreur.value = ''
+  pwdSucces.value = ''
+  if (!pwd.ancien || !pwd.nouveau) {
+    pwdErreur.value = 'Mot de passe actuel et nouveau mot de passe sont obligatoires.'
+    return
+  }
+  if (pwd.nouveau.length < 8) {
+    pwdErreur.value = 'Le nouveau mot de passe doit contenir au moins 8 caractères.'
+    return
+  }
+  if (pwd.nouveau !== pwd.confirmation) {
+    pwdErreur.value = 'La confirmation ne correspond pas au nouveau mot de passe.'
+    return
+  }
+  pwdSaving.value = true
+  try {
+    await api('/profil/mot-de-passe', {
+      method: 'PUT',
+      body: { ancienMotDePasse: pwd.ancien, nouveauMotDePasse: pwd.nouveau },
+    })
+    pwd.ancien = ''
+    pwd.nouveau = ''
+    pwd.confirmation = ''
+    // Le serveur ferme toutes les sessions, celle-ci comprise : on renvoie à la
+    // connexion avec le nouveau mot de passe.
+    pwdSucces.value = 'Mot de passe modifié. Reconnectez-vous avec le nouveau mot de passe…'
+    setTimeout(() => {
+      useAuthStore().logout()
+      navigateTo('/login')
+    }, 2000)
+  } catch (e: any) {
+    pwdErreur.value = messageErreurApi(e, 'Échec du changement de mot de passe.')
+  } finally {
+    pwdSaving.value = false
+  }
+}
+</script>
+
+<template>
+  <div class="profil-page">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Mon profil</h1>
+        <p class="page-sub">Informations personnelles, photo et mot de passe</p>
+      </div>
+    </div>
+
+    <v-alert v-if="erreur" type="error" variant="tonal" rounded="lg" class="mb-4" closable @click:close="erreur = ''">
+      {{ erreur }}
+    </v-alert>
+    <v-alert v-if="succes" type="success" variant="tonal" rounded="lg" class="mb-4" closable @click:close="succes = ''">
+      {{ succes }}
+    </v-alert>
+
+    <v-skeleton-loader v-if="loading" type="card, card" />
+
+    <template v-else>
+      <!-- ── Photo + informations ────────────────────────────────── -->
+      <v-card rounded="lg" border flat class="mb-5">
+        <v-card-text class="profil-hero">
+          <div class="profil-hero__photo">
+            <img v-if="auth.photoObjectUrl" :src="auth.photoObjectUrl" alt="Photo de profil">
+            <span v-else class="profil-hero__initials">{{ auth.initials }}</span>
+          </div>
+          <div class="profil-hero__meta">
+            <p class="profil-hero__name">{{ auth.fullName || auth.user?.email }}</p>
+            <p class="profil-hero__email">{{ auth.user?.email }}</p>
+            <div class="profil-hero__roles">
+              <span v-for="r in auth.roles" :key="r" class="profil-hero__role">{{ r }}</span>
+            </div>
+          </div>
+          <div class="profil-hero__action">
+            <v-btn variant="tonal" color="primary" rounded="lg" size="small" prepend-icon="mdi-camera-outline"
+              :loading="uploadingPhoto" @click="declencherChoixPhoto">
+              {{ auth.user?.photoUrl ? 'Changer la photo' : 'Ajouter une photo' }}
+            </v-btn>
+            <input ref="photoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="onPhotoChoisie">
+            <p class="profil-hero__hint">JPEG, PNG, WEBP (5 Mo max)</p>
+          </div>
+        </v-card-text>
+      </v-card>
+
+      <v-card rounded="lg" border flat class="mb-5">
+        <v-card-item>
+          <v-card-title class="text-subtitle-1">Informations personnelles</v-card-title>
+        </v-card-item>
+        <v-card-text>
+          <div class="profil-form">
+            <v-text-field v-model="form.nom" label="Nom" variant="outlined" density="comfortable" rounded="lg" hide-details="auto" />
+            <v-text-field v-model="form.prenom" label="Prénom" variant="outlined" density="comfortable" rounded="lg" hide-details="auto" />
+            <v-text-field :model-value="auth.user?.email" label="Identifiant de connexion" variant="outlined" density="comfortable" rounded="lg"
+              hide-details="auto" readonly disabled hint="L'identifiant de connexion n'est pas modifiable ici." persistent-hint />
+            <v-text-field v-model="form.telephone" label="Téléphone" variant="outlined" density="comfortable" rounded="lg"
+              hide-details="auto" prepend-inner-icon="mdi-phone-outline" placeholder="Ex: +243 999 123 456" />
+            <v-text-field v-model="form.emailNotification" label="Mail de notification" type="email" variant="outlined" density="comfortable"
+              rounded="lg" prepend-inner-icon="mdi-email-fast-outline" placeholder="Ex: prenom.nom@exemple.cd"
+              hint="Vos notifications vous seront aussi envoyées à cette adresse (laisser vide pour ne rien recevoir)." persistent-hint />
+          </div>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-spacer />
+          <v-btn color="primary" variant="flat" rounded="lg" prepend-icon="mdi-content-save-outline" :loading="saving" @click="enregistrer">
+            Enregistrer
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+
+      <!-- ── Widgets du téléphone (application Android) ─────────────── -->
+      <v-card v-if="peutAjouterWidget" rounded="lg" border flat class="mb-5">
+        <v-card-item>
+          <v-card-title class="text-subtitle-1">Widgets de l'écran d'accueil</v-card-title>
+          <v-card-subtitle>Vos notes de frais{{ peutWidgetTresorerie ? ' et la trésorerie' : '' }} d'un coup d'œil</v-card-subtitle>
+        </v-card-item>
+        <v-card-text>
+          <div class="d-flex flex-wrap ga-2">
+            <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-receipt-text-outline" @click="ajouterWidget('notes')">
+              Ajouter « Notes de frais »
+            </v-btn>
+            <v-btn v-if="peutWidgetTresorerie" color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-cash-multiple" @click="ajouterWidget('tresorerie')">
+              Ajouter « Trésorerie »
+            </v-btn>
+          </div>
+          <v-alert v-if="messageWidget" type="info" variant="tonal" rounded="lg" density="compact" class="mt-3">{{ messageWidget }}</v-alert>
+        </v-card-text>
+      </v-card>
+
+      <!-- ── Widget Trésorerie (téléphone) ────────────────────────── -->
+      <v-card v-if="peutWidgetTresorerie" rounded="lg" border flat class="mb-5">
+        <v-card-item>
+          <v-card-title class="text-subtitle-1">Widget Trésorerie</v-card-title>
+          <v-card-subtitle>Mini tableau de bord sur l'écran d'accueil de votre téléphone Android</v-card-subtitle>
+        </v-card-item>
+        <v-card-text>
+          <v-switch
+            :model-value="widgetTresorerie"
+            color="primary"
+            inset
+            hide-details
+            label="Afficher la trésorerie dans le widget"
+            @update:model-value="basculerWidgetTresorerie"
+          />
+          <p class="text-body-2 text-medium-emphasis mt-2 mb-0">
+            Solde total, caisse, banque, mobile money et mouvements du jour, mis à jour à chaque opération. Les soldes
+            sont lisibles par quiconque voit votre écran d'accueil : protégez votre téléphone par un code. Pour poser le
+            widget : appui long sur l'écran d'accueil › Widgets › MBSC Finapp › Trésorerie.
+          </p>
+        </v-card-text>
+      </v-card>
+
+      <!-- ── Mot de passe ────────────────────────────────────────── -->
+      <v-card rounded="lg" border flat>
+        <v-card-item>
+          <v-card-title class="text-subtitle-1">Mot de passe</v-card-title>
+          <v-card-subtitle>Modifiez votre mot de passe de connexion</v-card-subtitle>
+        </v-card-item>
+        <v-card-text>
+          <v-alert v-if="pwdErreur" type="error" variant="tonal" rounded="lg" density="compact" class="mb-3">{{ pwdErreur }}</v-alert>
+          <v-alert v-if="pwdSucces" type="success" variant="tonal" rounded="lg" density="compact" class="mb-3">{{ pwdSucces }}</v-alert>
+          <div class="profil-form">
+            <v-text-field v-model="pwd.ancien" label="Mot de passe actuel" :type="showAncien ? 'text' : 'password'"
+              variant="outlined" density="comfortable" rounded="lg" hide-details="auto"
+              :append-inner-icon="showAncien ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" @click:append-inner="showAncien = !showAncien" />
+            <v-text-field v-model="pwd.nouveau" label="Nouveau mot de passe" :type="showNouveau ? 'text' : 'password'"
+              variant="outlined" density="comfortable" rounded="lg" hide-details="auto"
+              hint="8 caractères minimum" persistent-hint
+              :append-inner-icon="showNouveau ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" @click:append-inner="showNouveau = !showNouveau" />
+            <v-text-field v-model="pwd.confirmation" label="Confirmer le nouveau mot de passe" :type="showNouveau ? 'text' : 'password'"
+              variant="outlined" density="comfortable" rounded="lg" hide-details="auto" />
+          </div>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-spacer />
+          <v-btn color="primary" variant="flat" rounded="lg" prepend-icon="mdi-lock-reset" :loading="pwdSaving" @click="changerMotDePasse">
+            Changer le mot de passe
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+
+      <!-- Double authentification (audit SYSCOHADA du 10/11/2026, C-23) -->
+      <v-card class="classroom-card mt-4 pa-4" rounded="lg">
+        <div class="text-subtitle-1 font-weight-bold mb-2">Double authentification</div>
+        <CommunDoubleAuthentification />
+      </v-card>
+    </template>
+  </div>
+</template>
+
+<style scoped>
+.profil-page { max-width: 760px; margin: 0 auto; padding-bottom: 48px; }
+
+.profil-hero { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.profil-hero__photo {
+  width: 76px; height: 76px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  display: flex; align-items: center; justify-content: center;
+}
+.profil-hero__photo img { width: 100%; height: 100%; object-fit: cover; }
+.profil-hero__initials { color: #fff; font-size: 1.4rem; font-weight: 700; }
+.profil-hero__meta { flex: 1; min-width: 180px; }
+.profil-hero__name { font-size: 1.05rem; font-weight: 700; color: var(--ink); margin: 0 0 2px; }
+.profil-hero__email { font-size: 0.82rem; color: var(--ink-faint); margin: 0 0 8px; }
+.profil-hero__roles { display: flex; flex-wrap: wrap; gap: 4px; }
+.profil-hero__role { font-size: 0.66rem; font-weight: 600; padding: 2px 8px; border-radius: 100px; background: var(--color-primary-light); color: var(--color-primary); }
+.profil-hero__action { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.profil-hero__hint { font-size: 0.7rem; color: var(--ink-faint); margin: 0; }
+
+.profil-form { display: flex; flex-direction: column; gap: 16px; }
+</style>

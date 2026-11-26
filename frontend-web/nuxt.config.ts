@@ -29,9 +29,11 @@ export default defineNuxtConfig({
   ],
 
   css: [
+    '@fontsource-variable/schibsted-grotesk',
     '@mdi/font/css/materialdesignicons.min.css',
     'vuetify/styles',
     '~/assets/styles/classroom.scss',
+    '~/assets/styles/responsive.scss',
   ],
 
   vite: {
@@ -42,18 +44,23 @@ export default defineNuxtConfig({
 
   app: {
     head: {
+      htmlAttrs: { lang: 'fr' },
       title: 'MBSC Finapp',
+      titleTemplate: (t?: string) => (t && t !== 'MBSC Finapp' ? `${t} — MBSC Finapp` : 'MBSC Finapp'),
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       ],
-      link: [{ rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }],
+      // Logo principal M-FINAPP (le logo de l'entreprise sert aux documents : en-têtes, factures, reçus).
+      link: [{ rel: 'icon', type: 'image/svg+xml', href: '/logo-mfinapp.svg' }],
     },
   },
 
   runtimeConfig: {
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
+      // Version affichée dans le pied du menu (modifiable sans recompiler : NUXT_PUBLIC_APP_VERSION).
+      appVersion: '2.8',
     },
   },
 })

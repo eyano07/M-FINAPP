@@ -41,17 +41,64 @@ public class ParametresPaie {
     @Column(name = "taux_cnss_ouvriere", nullable = false, precision = 6, scale = 4)
     private BigDecimal tauxCnssOuvriere;
 
-    /** CNSS part patronale (charge employeur, non déduite) = base H × ce taux. */
+    /**
+     * CNSS part patronale totale (charge employeur, non déduite) : somme des trois branches ci-dessous, recalculée à
+     * chaque enregistrement des paramètres (voir {@code ParametresPaieService}). Le calcul de la paie applique les
+     * taux par branche.
+     */
     @Column(name = "taux_cnss_patronale", nullable = false, precision = 6, scale = 4)
     private BigDecimal tauxCnssPatronale;
 
-    /** ONEM (charge employeur) = base H × ce taux. */
+    /** CNSS patronale, branche des pensions (décret n° 18/041 du 24/11/2018 : 5 %), créditée en 4313. */
+    @Column(name = "taux_cnss_pension_patronale", nullable = false, precision = 6, scale = 4)
+    @Builder.Default
+    private BigDecimal tauxCnssPensionPatronale = new BigDecimal("0.05");
+
+    /** CNSS patronale, branche des prestations familiales (décret n° 18/041 : 6,5 %), créditée en 4311. */
+    @Column(name = "taux_cnss_pf", nullable = false, precision = 6, scale = 4)
+    @Builder.Default
+    private BigDecimal tauxCnssPf = new BigDecimal("0.065");
+
+    /** CNSS patronale, branche des risques professionnels (décret n° 18/041 : 1,5 %), créditée en 4312. */
+    @Column(name = "taux_cnss_rp", nullable = false, precision = 6, scale = 4)
+    @Builder.Default
+    private BigDecimal tauxCnssRp = new BigDecimal("0.015");
+
+    /** ONEM (charge employeur) = base cotisable × ce taux (arrêté d'août 2025 : 0,5 %). */
     @Column(name = "taux_onem", nullable = false, precision = 6, scale = 4)
     private BigDecimal tauxOnem;
 
-    /** INPP (charge employeur) = base Q × ce taux. */
+    /** INPP (charge employeur) = base cotisable × ce taux, pour un effectif de 1 à 50 employés (3 %). */
     @Column(name = "taux_inpp", nullable = false, precision = 6, scale = 4)
     private BigDecimal tauxInpp;
+
+    /** INPP pour un effectif de 51 à 300 employés (2 %). Paramétrable : une réforme des taux est annoncée. */
+    @Column(name = "taux_inpp_51_300", nullable = false, precision = 6, scale = 4)
+    @Builder.Default
+    private BigDecimal tauxInpp51A300 = new BigDecimal("0.02");
+
+    /** INPP pour un effectif de plus de 300 employés (1 %). */
+    @Column(name = "taux_inpp_plus_300", nullable = false, precision = 6, scale = 4)
+    @Builder.Default
+    private BigDecimal tauxInppPlus300 = new BigDecimal("0.01");
+
+    /**
+     * Compter le conjoint d'un agent marié comme personne à charge dans la réduction familiale de l'IPR (pratique
+     * courante en RDC, d'où le paramètre).
+     */
+    @Column(name = "conjoint_a_charge", nullable = false)
+    @Builder.Default
+    private boolean conjointACharge = true;
+
+    /** Congé payé acquis par mois entier de service, en jours ouvrables (Code du travail : au moins 1). */
+    @Column(name = "jours_conge_par_mois", nullable = false, precision = 6, scale = 2)
+    @Builder.Default
+    private BigDecimal joursCongeParMois = BigDecimal.ONE;
+
+    /** Jours ouvrables de congé ajoutés par période de 5 ans d'ancienneté (Code du travail : 1). */
+    @Column(name = "jours_conge_par_tranche_5_ans", nullable = false, precision = 6, scale = 2)
+    @Builder.Default
+    private BigDecimal joursCongeParTranche5Ans = BigDecimal.ONE;
 
     /** Réduction IPR par enfant à charge (2 % = 0.02), plafonnée à {@link #plafondEnfantsIpr}. */
     @Column(name = "reduction_ipr_par_enfant", nullable = false, precision = 6, scale = 4)
@@ -60,6 +107,18 @@ public class ParametresPaie {
     /** Nombre maximal d'enfants pris en compte dans la réduction IPR. */
     @Column(name = "plafond_enfants_ipr", nullable = false)
     private Integer plafondEnfantsIpr;
+
+    /**
+     * Si vrai, le nombre d'enfants à charge réduit l'IPR (voir
+     * {@code PayrollCalculationService#calculerIpr}). Si faux, le DRH a
+     * désactivé cette réduction : l'IPR est calculé comme si aucun employé
+     * n'avait d'enfant, quels que soient {@link #reductionIprParEnfant} et
+     * {@link #plafondEnfantsIpr} ci-dessus, qui restent configurés en
+     * prévision d'une réactivation.
+     */
+    @Column(name = "calcul_enfants_actif", nullable = false)
+    @Builder.Default
+    private boolean calculEnfantsActif = true;
 
     /** Plancher IPR en francs congolais, appliqué après réduction familiale. */
     @Column(name = "plancher_ipr_fc", nullable = false, precision = 15, scale = 2)
@@ -71,19 +130,18 @@ public class ParametresPaie {
 
     // ------------------------------------------------------------------
     // Conformité au droit congolais (voir V47__drh_conformite_rdc.sql).
-    // Ces champs ne pilotent aucun calcul automatique hormis la base IPR :
-    // ils alimentent des contrôles purement consultatifs.
+    // Ces champs pilotent la base IPR et la part exonérée de l'allocation
+    // familiale (minimum légal) ; les autres alimentent des contrôles consultatifs.
     // ------------------------------------------------------------------
 
     /**
-     * Déduire la CNSS ouvrière de la base imposable IPR. {@code false} =
-     * comportement historique du classeur DEBOURS MBSC (base = H). Les
-     * sources fiscales consultées se contredisent sur ce point, d'où le
-     * paramétrage plutôt qu'un choix codé en dur.
+     * Déduire la CNSS salariale de la base imposable IPR. Vrai par défaut depuis V147 (PwC Tax Summaries RDC :
+     * seule la part salariale est déductible de la base IPR) ; {@code false} = comportement historique du classeur
+     * DEBOURS MBSC.
      */
     @Column(name = "cnss_deductible_ipr", nullable = false)
     @Builder.Default
-    private boolean cnssDeductibleIpr = false;
+    private boolean cnssDeductibleIpr = true;
 
     /** SMIG journalier du manœuvre ordinaire, en FC (Décret n° 25/22 du 30/05/2025). */
     @Column(name = "smig_journalier_fc", nullable = false, precision = 15, scale = 2)
@@ -124,6 +182,20 @@ public class ParametresPaie {
     @Column(name = "taux_majoration_hs_ferie", nullable = false, precision = 6, scale = 4)
     @Builder.Default
     private BigDecimal tauxMajorationHsFerie = BigDecimal.ONE;
+
+    /**
+     * Mode de comptabilisation de la paie (audit DRH du 15/11/2026, D-01).
+     * Vrai (mode AUTOMATIQUE) : la clôture du mois par le DFIN écrit aussitôt
+     * la pièce de constatation de la paie au journal PAIE, datée du dernier jour
+     * du mois (voir {@code PaieNoteService.constaterALaCloture}). Faux (mode
+     * MANUEL) : la clôture verrouille seulement les bulletins ; le DFIN
+     * comptabilise ensuite le mois par l'action « Comptabiliser la paie »
+     * ({@code BulletinPaieService.comptabiliserPeriode}). À défaut, le paiement
+     * de la note de paie écrit la constatation ({@code PaieNoteService.apresPaiementInterne}).
+     */
+    @Column(name = "comptabiliser_paie", nullable = false)
+    @Builder.Default
+    private boolean comptabiliserPaie = true;
 
     @Column(name = "directeur_drh", length = 150)
     private String directeurDrh;

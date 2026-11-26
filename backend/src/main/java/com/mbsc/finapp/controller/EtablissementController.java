@@ -35,6 +35,11 @@ public class EtablissementController {
         return service.creer(req);
     }
 
+    @PutMapping("/{id}/devise")
+    public EtablissementResponse changerDevise(@PathVariable Long id, @RequestParam com.mbsc.finapp.domain.enums.Devise devise) {
+        return service.changerDevise(id, devise);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void supprimer(@PathVariable Long id) {

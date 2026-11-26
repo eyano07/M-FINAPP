@@ -2,6 +2,7 @@ package com.mbsc.finapp.controller;
 
 import com.mbsc.finapp.dto.drh.EmployeRequest;
 import com.mbsc.finapp.dto.drh.EmployeResponse;
+import com.mbsc.finapp.service.AvanceSalaireService;
 import com.mbsc.finapp.service.DrhExcelService;
 import com.mbsc.finapp.service.EmployeService;
 import jakarta.validation.Valid;
@@ -25,6 +26,7 @@ public class EmployeController {
 
     private final EmployeService service;
     private final DrhExcelService excelService;
+    private final AvanceSalaireService avanceService;
 
     @GetMapping
     public List<EmployeResponse> lister(@RequestParam(required = false) String q) {
@@ -34,6 +36,15 @@ public class EmployeController {
     @GetMapping("/{id}")
     public EmployeResponse consulter(@PathVariable Long id) {
         return service.consulter(id);
+    }
+
+    /**
+     * Avance ouverte de l'agent (audit DRH du 15/11/2026, D-06) : solde débiteur de son compte d'avances, moins les
+     * avances déjà retenues sur ses bulletins non comptabilisés. Préremplit l'avance du formulaire de bulletin.
+     */
+    @GetMapping("/{id}/avance-ouverte")
+    public AvanceSalaireService.AvanceOuverte avanceOuverte(@PathVariable Long id) {
+        return avanceService.consulter(id);
     }
 
     @PostMapping

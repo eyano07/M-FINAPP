@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+// Comptabilisation, annulation, restauration d'une pièce : les soldes de trésorerie peuvent changer (MouvementsTresorerie).
+@EntityListeners(com.mbsc.finapp.service.widget.MouvementsTresorerie.EcoutePiece.class)
 @Table(name = "pieces_comptables")
 @Getter
 @Setter
@@ -37,6 +39,10 @@ public class PieceComptable {
 
     @Column(length = 255)
     private String libelle;
+
+    /** Personne ou entité payée ou servie (V143, 15/11/2026) ; facultatif. */
+    @Column(length = 255)
+    private String beneficiaire;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -71,6 +77,32 @@ public class PieceComptable {
     @Builder.Default
     private boolean reevaluationDevise = false;
 
+    /**
+     * true pour la pièce de clôture de l'exercice, qui solde les classes 6, 7 et 8 vers le compte 13 : elle
+     * est exclue du compte de résultat, des soldes intermédiaires, du tableau des flux et de la colonne N-1
+     * (audit SYSCOHADA du 10/11/2026, C-04).
+     */
+    @Column(name = "cloture_exercice", nullable = false)
+    @Builder.Default
+    private boolean clotureExercice = false;
+
+    /**
+     * true pour une extourne passée au premier jour de l'exercice suivant (régularisation de clôture,
+     * réévaluation des soldes en devise) : C-11, C-12.
+     */
+    @Column(name = "extourne_ouverture", nullable = false)
+    @Builder.Default
+    private boolean extourneOuverture = false;
+
+    /** Qui a validé la pièce (C-06) : différent de son auteur pour une pièce saisie à la main. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "comptabilisee_par_id")
+    @ToString.Exclude
+    private User comptabiliseePar;
+
+    @Column(name = "comptabilisee_le")
+    private Instant comptabiliseeLe;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id")
     @ToString.Exclude
@@ -79,6 +111,15 @@ public class PieceComptable {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    /**
+     * Pièce annulée par erreur dont celle-ci est la restauration : une pièce identique, en brouillon (restaurée par le
+     * comptable) ou déjà comptabilisée (comptabilisation rétablie par le DFIN ou l'administrateur).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "piece_restauree_id")
+    @ToString.Exclude
+    private PieceComptable pieceRestauree;
 
     /** Pièce d'origine en cas d'extourne. */
     @ManyToOne(fetch = FetchType.LAZY)

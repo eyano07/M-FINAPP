@@ -29,15 +29,22 @@ import java.util.List;
  * de la depense et son reglement, l'ecart etait absorbe silencieusement dans
  * le compte de charge : la perte de change existait bel et bien, mais aucune
  * ligne du grand livre ne permettait de la voir, de la chiffrer, ni de la
- * suivre dans le temps. Les comptes 676 « Pertes de change » et 776 « Gains
- * de change » existaient au plan comptable sans jamais etre mouvementes.</p>
+ * suivre dans le temps. Les comptes de pertes et gains de change existaient
+ * au plan comptable sans jamais etre mouvementes.</p>
  *
  * <p><b>Le principe retenu.</b> Le taux est fige lors de la transmission de la
  * note en tresorerie ({@code notes_frais.taux_engagement}) : c'est le taux
  * auquel l'entreprise s'est engagee. Au reglement, la tresorerie sort au taux
  * du jour — c'est la sortie de caisse reelle, elle n'est pas modifiee. Une
  * piece distincte reclasse ensuite la difference : la charge est ramenee au
- * taux d'engagement, et l'ecart est porte en 676 ou 776.</p>
+ * taux d'engagement, et l'ecart est porte en 656 ou 756.</p>
+ *
+ * <p><b>656/756 et non 676/776.</b> Une note de frais est une dette
+ * d'exploitation (achat, mission, carburant...) : en SYSCOHADA revise,
+ * l'ecart de change sur une creance ou une dette commerciale releve du
+ * resultat d'exploitation (656 « Pertes de change sur creances et dettes
+ * commerciales », 756 « Gains... »). 676/776 sont reserves aux operations
+ * financieres (emprunts, placements). Comptes ajoutes par V95.</p>
  *
  * <p><b>Pourquoi une piece separee.</b> Les trois canaux de reglement (caisse,
  * banque, mobile money) construisent leurs ecritures par des chemins
@@ -58,8 +65,8 @@ public class EcartChangeService {
     private static final Logger log = LoggerFactory.getLogger(EcartChangeService.class);
 
     /** Comptes SYSCOHADA imputables, verifies presents et actifs au plan comptable. */
-    private static final String COMPTE_PERTE_CHANGE = "676";
-    private static final String COMPTE_GAIN_CHANGE = "776";
+    private static final String COMPTE_PERTE_CHANGE = "656";
+    private static final String COMPTE_GAIN_CHANGE = "756";
 
     private static final BigDecimal CENT = BigDecimal.valueOf(100);
 
@@ -68,8 +75,6 @@ public class EcartChangeService {
     /** Porte {@code compteChargesDiversesParDefaut()}, compte de repli 6588. */
     private final EcritureComptableService ecritures;
     private final ConversionDeviseService conversionDevise;
-    /** Tient le niveau de stock (CMP) en phase quand l'ecart touche un compte de stock. */
-    private final StockService stockService;
 
     /**
      * Comptabilise l'ecart de change realise sur le reglement d'une note, s'il
@@ -138,18 +143,23 @@ public class EcartChangeService {
         // prorata de son poids, afin que chaque compte revienne exactement au
         // taux d'engagement. La derniere ligne absorbe le residu d'arrondi,
         // comme le fait deja la ventilation des paiements.
+        //
+        // Pour une ligne "achat de marchandise", ce compte est celui de
+        // l'ACHAT (601x/602x — voir NoteFraisService.creerLignes), jamais
+        // celui du STOCK : le stock, lui, a deja ete valorise au taux de
+        // REGLEMENT (celui du jour du paiement, voir
+        // RegleTresorerieService.construireLignesDebitDepuisNote et
+        // StockService.entreesDepuisNoteFraisInterne), exactement le meme
+        // taux que celui utilise ici pour "baseReglement" — il n'y a donc
+        // RIEN a corriger sur le stock : une version anterieure appelait ici
+        // StockService.ajusterValeurStockInterne, qui modifiait
+        // stock_niveaux sans qu'aucune ecriture de CETTE piece ne touche le
+        // compte de stock (311x/331x) — les deux divergeaient alors
+        // durablement l'un de l'autre.
         List<LigneDetail> repartition = repartir(note, ecartAbsolu);
         for (LigneDetail d : repartition) {
             lignes.add(ligne(d.compte(), perte ? BigDecimal.ZERO : d.montant(),
                 perte ? d.montant() : BigDecimal.ZERO, libelle, dateOperation));
-            // Le compte de stock d'une ligne "achat de marchandise" vient
-            // d'etre corrige au meme titre qu'un compte de charge : le niveau
-            // de stock (CMP) doit suivre exactement, sinon sa valorisation
-            // diverge durablement de celle du grand livre.
-            if (d.estStock() && d.ligne() != null && d.ligne().getArticle() != null && d.ligne().getEntrepot() != null) {
-                BigDecimal delta = perte ? d.montant().negate() : d.montant();
-                stockService.ajusterValeurStockInterne(d.ligne().getArticle(), d.ligne().getEntrepot(), delta, dateOperation);
-            }
         }
         // Ligne d'ecart : debit si perte (charge constatee), credit si gain.
         lignes.add(ligne(compteEcart, perte ? ecartAbsolu : BigDecimal.ZERO,
@@ -170,11 +180,7 @@ public class EcartChangeService {
         }
     }
 
-    /**
-     * @param ligne    ligne d'origine (pour retrouver article/entrepot si estStock), {@code null} si repli générique
-     * @param estStock true si ce compte est le compte de stock d'une ligne "achat de marchandise"
-     */
-    private record LigneDetail(CompteOHADA compte, BigDecimal montant, LigneNoteFrais ligne, boolean estStock) {}
+    private record LigneDetail(CompteOHADA compte, BigDecimal montant) {}
 
     /**
      * Repartit l'ecart sur les comptes mouvementes par chaque ligne, au
@@ -193,7 +199,7 @@ public class EcartChangeService {
         List<LigneDetail> resultat = new ArrayList<>();
 
         if (lignesNote == null || lignesNote.isEmpty()) {
-            resultat.add(new LigneDetail(ecritures.compteChargesDiversesParDefaut(), ecartAbsolu, null, false));
+            resultat.add(new LigneDetail(ecritures.compteChargesDiversesParDefaut(), ecartAbsolu));
             return resultat;
         }
 
@@ -205,7 +211,7 @@ public class EcartChangeService {
             .map(LigneNoteFrais::montantTtc)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (total.signum() <= 0) {
-            resultat.add(new LigneDetail(ecritures.compteChargesDiversesParDefaut(), ecartAbsolu, null, false));
+            resultat.add(new LigneDetail(ecritures.compteChargesDiversesParDefaut(), ecartAbsolu));
             return resultat;
         }
 
@@ -232,13 +238,13 @@ public class EcartChangeService {
                     .divide(CENT.add(tauxTva), 2, RoundingMode.HALF_UP);
                 BigDecimal partHt = partLigne.subtract(partTva);
                 if (partHt.signum() != 0) {
-                    resultat.add(new LigneDetail(compte, partHt, l, l.isAchatMarchandise()));
+                    resultat.add(new LigneDetail(compte, partHt));
                 }
                 if (partTva.signum() != 0) {
-                    resultat.add(new LigneDetail(l.getCompteTva(), partTva, l, false));
+                    resultat.add(new LigneDetail(l.getCompteTva(), partTva));
                 }
             } else {
-                resultat.add(new LigneDetail(compte, partLigne, l, l.isAchatMarchandise()));
+                resultat.add(new LigneDetail(compte, partLigne));
             }
         }
         return resultat;

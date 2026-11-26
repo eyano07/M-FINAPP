@@ -11,5 +11,7 @@ import jakarta.validation.constraints.Size;
 public record CompteRequest(
     @NotBlank @Size(max = 20) String parentNumero,
     @NotBlank @Size(max = 10) String suffixe,
-    @NotBlank @Size(max = 200) String libelle
+    @NotBlank @Size(max = 200) String libelle,
+    /** Facultatif : ce qui est propre à ce compte, ajouté à sa fiche de documentation (rédigée automatiquement). */
+    @Size(max = 1000) String note
 ) {}

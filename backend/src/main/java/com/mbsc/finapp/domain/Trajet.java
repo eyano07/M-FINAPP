@@ -43,6 +43,10 @@ public class Trajet {
     @Column(length = 200)
     private String destination;
 
+    /** Pourquoi le véhicule s'est déplacé (V144, 15/11/2026) ; facultatif. */
+    @Column(length = 255)
+    private String motif;
+
     @Column(name = "distance_km", nullable = false, precision = 12, scale = 2)
     @Builder.Default
     private BigDecimal distanceKm = BigDecimal.ZERO;

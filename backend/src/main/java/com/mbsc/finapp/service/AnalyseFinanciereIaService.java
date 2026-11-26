@@ -93,7 +93,7 @@ public class AnalyseFinanciereIaService {
                 // LIMITE_LIGNES), et le thinking etant desactive, tout le budget va au
                 // contenu — une reponse detaillee (comptes cites, plusieurs recommandations)
                 // peut depasser 1600 tokens et se faire tronquer en plein milieu d'une chaine.
-                String contenu = chatGptClient.json(SYSTEME, prompt, 4000, SCHEMA_REPONSE);
+                String contenu = chatGptClient.jsonAnalyse(SYSTEME, prompt, 4000, SCHEMA_REPONSE);
                 AnalyseIaJson json = objectMapper.readValue(nettoyerJson(contenu), AnalyseIaJson.class);
                 if (StringUtils.hasText(json.synthese())) {
                     return new AnalyseFinanciereResponse(debut, fin, json.synthese(),

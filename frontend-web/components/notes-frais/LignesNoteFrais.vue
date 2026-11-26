@@ -8,7 +8,12 @@ export interface LigneNoteFraisForm {
   articleId: number | null
   articleNom: string | null
   soumisTva: boolean
+  /** Compte d'immobilisation (21 à 24) : le bien s'amortit-il ? Oui par défaut ; null hors immobilisation. */
+  amortissable?: boolean | null
 }
+
+/** Compte d'immobilisation corporelle ou incorporelle (21 à 24) : le paiement crée la fiche du bien. */
+export const estCompteImmobilisation = (numero?: string | null) => !!numero && /^2[1-4]/.test(numero)
 </script>
 
 <script setup lang="ts">
@@ -34,7 +39,12 @@ const api = useApi()
 // L'entrepôt et le compte de TVA récupérable ne sont plus choisis par
 // l'utilisateur : l'entrepôt actif et le compte 4452 sont retenus
 // automatiquement côté serveur (voir NoteFraisService.creerLignes).
-interface ArticleOption { id: number; code: string; libelle: string; type: 'MARCHANDISE' | 'SERVICE' }
+interface ArticleOption {
+  id: number
+  code: string
+  libelle: string
+  type: 'MARCHANDISE' | 'SERVICE' | 'CONSOMMABLE' | 'PLAT' | 'BOISSON' | 'PROVISION'
+}
 const articlesDispo = ref<ArticleOption[]>([])
 const chargementRef = ref(false)
 let refsChargees = false
@@ -44,7 +54,12 @@ async function chargerReferentielStock() {
   chargementRef.value = true
   try {
     const arts = await api<ArticleOption[]>('/logistique/articles')
-    articlesDispo.value = arts.filter(a => a.type === 'MARCHANDISE')
+    // Tout article stocke peut faire l'objet d'un achat de marchandise — pas
+    // seulement MARCHANDISE au sens strict : une boisson ou une provision du
+    // module Restaurant, par exemple, sont ici au meme titre (voir
+    // TypeArticle.estStocke cote serveur, dont ce filtre est le pendant
+    // client). Seul SERVICE n'a jamais de stock a alimenter.
+    articlesDispo.value = arts.filter(a => a.type !== 'SERVICE')
     refsChargees = true
   } catch {
     // L'utilisateur reste bloqué sur le toggle si le référentiel est indisponible ;
@@ -58,17 +73,26 @@ async function chargerReferentielStock() {
 // (l'engagement comptable réel est calculé côté serveur, au taux en vigueur
 // à la date effective du paiement — cet aperçu est purement indicatif).
 const tauxTva = ref<number | null>(null)
+/**
+ * Régime de TVA de l'entreprise. Non assujettie : pas de case « Soumis à la TVA »,
+ * le montant saisi est le montant payé, TVA comprise (le serveur ignore d'ailleurs
+ * toute TVA sur la note dans ce cas).
+ */
+const assujettiTva = ref(true)
 let tauxTvaCharge = false
 async function chargerTauxTva() {
   if (tauxTvaCharge) return
   tauxTvaCharge = true
   try {
-    const res = await api<{ taux: number }>('/admin/taux-tva')
+    const res = await api<{ taux: number; assujetti?: boolean }>('/admin/taux-tva')
     tauxTva.value = res.taux || null
+    assujettiTva.value = res.assujetti !== false
   } catch {
     tauxTva.value = null
   }
 }
+// Dès l'affichage : la case « Soumis à la TVA » dépend du régime de l'entreprise.
+onMounted(chargerTauxTva)
 
 const articlesOptions = computed(() =>
   articlesDispo.value.map(a => `${a.libelle}`))
@@ -181,6 +205,10 @@ async function suggererCompte(index: number) {
 
 function onCompteChange(index: number, val: string | null) {
   majChamp(index, 'compteImputation', val)
+  // Compte d'immobilisation : amortissable par défaut ; autre compte : la question ne se pose pas.
+  const immo = estCompteImmobilisation(val)
+  if (immo && lignes.value[index]?.amortissable == null) majChamp(index, 'amortissable', true)
+  if (!immo) majChamp(index, 'amortissable', null)
   const appliquee = iaAppliquee.value[index]
   if (appliquee && val !== appliquee.compteNumero) {
     delete iaAppliquee.value[index]
@@ -284,6 +312,22 @@ function fmt(v: number) {
       />
 
       <div class="lignes-note__options">
+        <div v-if="!ligne.achatMarchandise && estCompteImmobilisation(ligne.compteImputation)" class="lignes-note__toggle-row">
+          <v-switch
+            :model-value="ligne.amortissable !== false"
+            label="Bien amortissable"
+            color="primary"
+            density="compact"
+            hide-details
+            @update:model-value="majChamp(index, 'amortissable', !!$event)"
+          />
+          <span class="lignes-note__compte-auto">
+            <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
+            {{ ligne.amortissable !== false
+              ? 'Au paiement, la fiche du bien et son plan d\'amortissement sont créés automatiquement.'
+              : 'Bien non amortissable (terrain, œuvre d\'art…) : inscrit au bilan sans dotation.' }}
+          </span>
+        </div>
         <div class="lignes-note__toggle-row">
           <v-switch
             :model-value="ligne.achatMarchandise"
@@ -331,7 +375,11 @@ function fmt(v: number) {
           <v-icon icon="mdi-calculator-variant-outline" size="14" class="mr-1" />
           {{ fmt(ligne.montant) }} {{ deviseLabel }} × {{ ligne.quantiteMarchandise }} = HT {{ fmt(montantHtTotal(ligne)) }} {{ deviseLabel }}
         </div>
-        <div class="lignes-note__toggle-row">
+        <div v-if="!assujettiTva" class="lignes-note__compte-auto">
+          <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
+          Entreprise non assujettie à la TVA : saisissez le montant payé, TVA comprise (elle fait partie de la charge).
+        </div>
+        <div v-else class="lignes-note__toggle-row">
           <v-switch
             :model-value="ligne.soumisTva"
             label="Soumis à la TVA"
@@ -376,7 +424,7 @@ function fmt(v: number) {
 }
 .lignes-note__title {
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   font-size: 0.9rem;
 }
 .lignes-note__row {
@@ -389,9 +437,9 @@ function fmt(v: number) {
   gap: 10px;
   align-items: start;
   padding: 12px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
   border-radius: 12px;
-  background: #fafafa;
+  background: var(--surface-2);
 }
 .lignes-note__montant { grid-area: montant; }
 .lignes-note__compte { grid-area: compte; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -409,7 +457,7 @@ function fmt(v: number) {
   flex-direction: column;
   gap: 8px;
   padding-top: 4px;
-  border-top: 1px dashed #e5e7eb;
+  border-top: 1px dashed var(--hairline);
 }
 .lignes-note__toggle-row {
   display: flex;
@@ -423,17 +471,17 @@ function fmt(v: number) {
   display: flex;
   align-items: center;
   font-size: 0.78rem;
-  color: #6b7280;
-  background: #f3f4f6;
+  color: var(--ink-soft);
+  background: var(--surface-2);
   border: 1px dashed #d1d5db;
   border-radius: 8px;
   padding: 8px 10px;
 }
 .lignes-note__tva-apercu {
   font-size: 0.78rem;
-  color: #166534;
-  background: #f0fdf4;
-  border: 1px dashed #bbf7d0;
+  color: var(--color-primary-darkest);
+  background: var(--color-primary-lighter);
+  border: 1px dashed var(--color-primary-mid);
   border-radius: 8px;
   padding: 6px 10px;
   flex: 1 1 260px;
@@ -450,14 +498,14 @@ function fmt(v: number) {
   border-radius: 8px;
   padding: 5px 8px;
 }
-.lignes-note__ia--loading { color: #6b7280; background: #f9fafb; border-color: #f0f0f0; }
+.lignes-note__ia--loading { color: var(--ink-soft); background: var(--surface-2); border-color: var(--hairline); }
 .lignes-note__ia-dismiss {
   display: inline-flex;
   align-items: center;
   margin-left: auto;
   background: none;
   border: none;
-  color: #9ca3af;
+  color: var(--ink-faint);
   cursor: pointer;
   padding: 0;
 }
@@ -468,19 +516,19 @@ function fmt(v: number) {
   gap: 12px;
   padding: 12px 16px;
   border-radius: 12px;
-  background: #f0fdf4;
-  border: 1px solid #dcfce7;
+  background: var(--color-primary-lighter);
+  border: 1px solid var(--color-primary-light);
 }
 .lignes-note__total .label {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #166534;
+  color: var(--color-primary-darkest);
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
 .lignes-note__total strong {
   font-size: 1.05rem;
-  color: #15803d;
+  color: var(--color-primary-dark);
 }
 
 @media (max-width: 720px) {

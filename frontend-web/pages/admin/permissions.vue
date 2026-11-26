@@ -8,6 +8,7 @@ interface Cellule {
 }
 
 const api = useApi()
+const rolesStore = useRolesStore()
 const loading = ref(true)
 const erreur = ref('')
 const enregistrement = ref<string | null>(null)
@@ -21,6 +22,12 @@ const ROLES: { role: string; label: string }[] = [
   { role: 'GEST_PATRIMOINE', label: 'Gestionnaire patrimoine' },
   { role: 'RESP_DRH', label: 'Responsable DRH' },
   { role: 'RESP_RESTAURANT', label: 'Responsable restaurant' },
+  { role: 'RESP_CUISINE', label: 'Responsable cuisine' },
+  { role: 'RESP_BAR', label: 'Responsable bar' },
+  { role: 'RECEPTIONNISTE', label: 'Réceptionniste' },
+  { role: 'GOUVERNANTE', label: 'Gouvernante (ménage)' },
+  { role: 'TECHNICIEN', label: 'Technicien de maintenance' },
+  { role: 'DIR_HEBERGEMENT', label: "Directeur de l'hébergement" },
   { role: 'DFIN', label: 'DFIN' },
   { role: 'DA', label: 'DA' },
   { role: 'DG', label: 'DG' },
@@ -34,13 +41,17 @@ const MODULES: { module: string; label: string }[] = [
   { module: 'BANQUE', label: 'Banque' },
   { module: 'MOBILE_MONEY', label: 'Mobile Money' },
   { module: 'COMPTABILITE', label: 'Comptabilité' },
+  { module: 'BUDGET', label: 'Budget' },
+  { module: 'RAPPROCHEMENT', label: 'Rapprochement' },
   { module: 'VENTES', label: 'Ventes' },
   { module: 'LOGISTIQUE', label: 'Logistique' },
+  { module: 'MINE', label: 'Mine' },
   { module: 'TRANSPORT', label: 'Transport' },
   { module: 'PATRIMOINE', label: 'Patrimoine' },
   // Insere AVANT le bloc DRH : ses 4 colonnes doivent rester contigues pour
   // que leur en-tete groupe (colspan 4) reste aligne.
   { module: 'RESTAURANT', label: 'Restaurant' },
+  { module: 'HOTELLERIE', label: 'Hôtellerie' },
   { module: 'DRH_PERSONNEL', label: 'Personnel' },
   { module: 'DRH_PRESENCES', label: 'Présences' },
   { module: 'DRH_PAIE', label: 'Paie' },
@@ -58,6 +69,11 @@ const entetesGroupes = computed<EnteteGroupe[]>(() => MODULES.map((m) => {
   if (m.module === 'DRH_PRESENCES' || m.module === 'DRH_PAIE' || m.module === 'DRH_MISSIONS') return { type: 'skip' }
   return { type: 'aucun' }
 }))
+// Téléphone et tablette : un rôle à la fois (la grille de ~16 colonnes n'y est pas lisible).
+const roleChoisi = ref('')
+const rolesChoix = computed(() => ROLES.map(r => ({ title: rolesStore.libelle(r.role), value: r.role })))
+watchEffect(() => { if (!roleChoisi.value && ROLES.length) roleChoisi.value = ROLES[0].role })
+
 const NIVEAUX = [
   { value: 'AUCUN', label: 'Aucun accès' },
   { value: 'LECTURE', label: 'Lecture seule' },
@@ -76,6 +92,38 @@ async function charger() {
   }
 }
 onMounted(charger)
+
+// ── Noms affichés des rôles (cosmétique : les droits restent liés au rôle) ──
+const TOUS_ROLES = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'LOGISTIQUE', 'GEST_PATRIMOINE', 'RESP_DRH', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'RECEPTIONNISTE', 'GOUVERNANTE', 'TECHNICIEN', 'DIR_HEBERGEMENT']
+const brouillons = reactive<Record<string, string>>({})
+const enregistrementLibelle = ref<string | null>(null)
+const succesLibelle = ref('')
+
+async function chargerLibelles() {
+  await rolesStore.charger()
+  for (const r of TOUS_ROLES) brouillons[r] = rolesStore.libelle(r)
+}
+onMounted(chargerLibelles)
+
+async function enregistrerLibelle(role: string) {
+  enregistrementLibelle.value = role
+  erreur.value = ''
+  succesLibelle.value = ''
+  try {
+    await rolesStore.definir(role, (brouillons[role] || '').trim())
+    brouillons[role] = rolesStore.libelle(role)
+    succesLibelle.value = 'Nom du rôle enregistré.'
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Impossible d'enregistrer le nom du rôle.")
+  } finally {
+    enregistrementLibelle.value = null
+  }
+}
+
+async function reinitialiserLibelle(role: string) {
+  brouillons[role] = ''
+  await enregistrerLibelle(role)
+}
 
 function cellule(role: string, module: string): Cellule | undefined {
   return grille.value.find((c) => c.role === role && c.module === module)
@@ -115,9 +163,60 @@ async function modifier(role: string, module: string, niveau: string) {
       Le rôle <strong>ADMIN</strong> dispose toujours d'un accès complet à tous les modules et n'apparaît pas dans cette grille (pour éviter qu'un administrateur ne se verrouille lui-même hors de l'application).
     </v-alert>
 
+    <v-card class="pa-4 mb-4" variant="outlined">
+      <h3 class="text-subtitle-1 font-weight-bold mb-1">Noms affichés des rôles</h3>
+      <p class="text-caption mb-3">
+        Change uniquement le nom montré dans l'interface (ex. « DA » → « DAF »).
+        Les droits et le fonctionnement du rôle ne changent pas. Laisser vide pour revenir au nom par défaut.
+      </p>
+      <v-alert v-if="succesLibelle" type="success" density="compact" class="mb-3" closable @click:close="succesLibelle = ''">{{ succesLibelle }}</v-alert>
+      <v-row dense>
+        <v-col v-for="r in TOUS_ROLES" :key="r" cols="12" sm="6" md="4">
+          <v-text-field
+            v-model="brouillons[r]"
+            :label="r"
+            maxlength="60"
+            density="compact"
+            variant="outlined"
+            hide-details
+            :loading="enregistrementLibelle === r"
+            @keyup.enter="enregistrerLibelle(r)"
+            @blur="enregistrerLibelle(r)"
+          >
+            <template #append-inner>
+              <v-btn icon="mdi-restore" size="x-small" variant="text" title="Nom par défaut" @click.stop="reinitialiserLibelle(r)" />
+            </template>
+          </v-text-field>
+        </v-col>
+      </v-row>
+    </v-card>
+
     <v-skeleton-loader v-if="loading" type="table" />
 
-    <div v-else class="perm-scroll">
+    <!-- Téléphone et tablette : le rôle choisi, puis une ligne par module avec son niveau d'accès -->
+    <div v-if="!loading" class="perm-mobile">
+      <v-select
+        v-model="roleChoisi" :items="rolesChoix" label="Rôle" variant="outlined" density="comfortable" rounded="lg" hide-details
+        prepend-inner-icon="mdi-account-key-outline"
+      />
+      <ul class="perm-liste">
+        <li v-for="m in MODULES" :key="m.module" class="perm-ligne">
+          <span class="perm-ligne__module">{{ m.label }}</span>
+          <select
+            class="perm-select"
+            :class="`perm-select--${(cellule(roleChoisi, m.module)?.niveau ?? 'AUCUN').toLowerCase()}`"
+            :value="cellule(roleChoisi, m.module)?.niveau ?? 'AUCUN'"
+            :disabled="enregistrement === `${roleChoisi}|${m.module}`"
+            :aria-label="`${m.label} : niveau d'accès du rôle`"
+            @change="modifier(roleChoisi, m.module, ($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="n in NIVEAUX" :key="n.value" :value="n.value">{{ n.label }}</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+
+    <div v-if="!loading" class="perm-scroll">
       <table class="perm-grid">
         <thead>
           <tr>
@@ -133,7 +232,7 @@ async function modifier(role: string, module: string, niveau: string) {
         </thead>
         <tbody>
           <tr v-for="r in ROLES" :key="r.role">
-            <td class="perm-grid__role">{{ r.label }}</td>
+            <td class="perm-grid__role">{{ rolesStore.libelle(r.role) }}</td>
             <td v-for="m in MODULES" :key="m.module">
               <select
                 class="perm-select"
@@ -157,12 +256,12 @@ async function modifier(role: string, module: string, niveau: string) {
 
 .perm-scroll {
   overflow-x: auto;
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: 16px;
 }
 .perm-grid { width: 100%; min-width: 860px; border-collapse: collapse; font-size: 0.85rem; }
-.perm-grid thead tr { border-bottom: 1px solid #f3f4f6; }
+.perm-grid thead tr { border-bottom: 1px solid var(--hairline); }
 .perm-grid th {
   text-align: left;
   padding: 14px 12px;
@@ -170,13 +269,13 @@ async function modifier(role: string, module: string, niveau: string) {
   font-weight: 700;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: var(--ink-faint);
   white-space: nowrap;
 }
-.perm-grid__role-head { position: sticky; left: 0; background: #fff; }
+.perm-grid__role-head { position: sticky; left: 0; background: var(--surface); }
 .perm-grid__groupe {
   text-align: center;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--hairline);
   color: #0d9488;
 }
 .perm-grid__groupe--vide { border-bottom: none; }
@@ -185,11 +284,11 @@ async function modifier(role: string, module: string, niveau: string) {
 .perm-grid td { padding: 8px 12px; vertical-align: middle; }
 .perm-grid__role {
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   white-space: nowrap;
   position: sticky;
   left: 0;
-  background: #fff;
+  background: var(--surface);
 }
 
 .perm-select {
@@ -199,12 +298,34 @@ async function modifier(role: string, module: string, niveau: string) {
   font-weight: 600;
   padding: 7px 10px;
   border-radius: 8px;
-  border: 1.5px solid #e5e7eb;
-  background: #fff;
-  color: #374151;
+  border: 1.5px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-2);
   cursor: pointer;
 }
-.perm-select--aucun { color: #9ca3af; border-color: #f0f0f0; }
+.perm-select--aucun { color: var(--ink-faint); border-color: var(--hairline); }
 .perm-select--lecture { color: #0891b2; border-color: #cffafe; background: #ecfeff; }
-.perm-select--ecriture { color: #16a34a; border-color: #dcfce7; background: #f0fdf4; }
+.perm-select--ecriture { color: var(--color-primary); border-color: var(--color-primary-light); background: var(--color-primary-lighter); }
+
+.perm-mobile { display: none; }
+@media screen and (max-width: 959px) {
+  .perm-scroll { display: none; }
+  .perm-mobile { display: block; }
+  .perm-liste { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+  .perm-ligne {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 12px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
+  }
+  .perm-ligne__module { flex: 1 1 auto; min-width: 0; font-size: 0.9rem; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+  .perm-ligne .perm-select { flex: 0 0 168px; width: 168px; min-width: 0; min-height: 44px; font-size: 16px; }
+}
+@media screen and (max-width: 599px) {
+  .perm-ligne { flex-wrap: wrap; }
+  .perm-ligne .perm-select { flex: 1 1 100%; width: 100%; }
+}
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .perm-select--lecture { background: color-mix(in srgb, #7cc9d8 11%, var(--surface)) !important; color: #7cc9d8 !important; border-color: color-mix(in srgb, #7cc9d8 28%, transparent) !important; }
 </style>

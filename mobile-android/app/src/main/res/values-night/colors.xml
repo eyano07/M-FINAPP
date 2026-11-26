@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_fond">#E60E1A15</color>
+    <color name="widget_fond_fin">#E6172446</color>
+    <color name="widget_bord">#26FFFFFF</color>
+    <color name="widget_encre">#E7F0EA</color>
+    <color name="widget_doux">#9FB2A9</color>
+    <color name="widget_ligne">#1FFFFFFF</color>
+    <color name="widget_accent">#7FB2FF</color>
+    <color name="widget_alerte">#FDBA74</color>
+    <color name="widget_ok">#34D399</color>
+    <color name="etape_avenir">#33423B</color>
+</resources>

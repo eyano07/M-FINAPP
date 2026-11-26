@@ -1,5 +1,6 @@
 package com.mbsc.desktop.service;
 
+import com.mbsc.desktop.config.RoleLabels;
 import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
@@ -161,7 +162,7 @@ public final class PrintService {
             double totCredit = ecritures.stream().mapToDouble(e -> e.getCredit() != null ? e.getCredit().doubleValue() : 0).sum();
 
             float[] cols    = {28f, 60f, 48f, 170f, 80f, 80f, 80f};
-            String[] headers= {"N°", "Date", "Compte", "Libellé", "Caissier", "Débit ($)", "Crédit ($)"};
+            String[] headers= {"N°", "Date", "Compte", "Libellé", RoleLabels.caissier(), "Débit ($)", "Crédit ($)"};
 
             int rowsPerPage = (int) ((PAGE_H - HDR_H - 110) / ROW_H);
             int totalPages  = Math.max(1, (int) Math.ceil((double) ecritures.size() / rowsPerPage));

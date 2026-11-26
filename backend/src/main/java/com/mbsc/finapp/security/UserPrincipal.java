@@ -29,6 +29,11 @@ public class UserPrincipal implements UserDetails {
         return user;
     }
 
+    /** Version courante des jetons de l'utilisateur (claim « tv », voir JwtService). */
+    public int getVersionJetons() {
+        return user.getVersionJetons();
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return user.getRoles().stream()

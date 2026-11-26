@@ -50,6 +50,27 @@ public class MouvementStock {
     @ToString.Exclude
     private PieceComptable piece;
 
+    /**
+     * Pièce d'achat (D 602x / C fournisseur) d'une réception directe de
+     * provision, distincte de la pièce de stock {@link #piece} : extournée
+     * avec elle à l'annulation du mouvement. {@code null} pour tout autre
+     * mouvement.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "piece_achat_id")
+    @ToString.Exclude
+    private PieceComptable pieceAchat;
+
+    /**
+     * Pièce constatant l'écart de valorisation apparu à l'annulation de ce
+     * mouvement (voir {@code StockService.sortie}), {@code null} s'il n'y en
+     * a pas eu.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "piece_ecart_annulation_id")
+    @ToString.Exclude
+    private PieceComptable pieceEcartAnnulation;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id")
     @ToString.Exclude

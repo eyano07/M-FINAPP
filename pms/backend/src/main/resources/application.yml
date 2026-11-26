@@ -1,0 +1,34 @@
+# M-FINAPP Hôtellerie : réglages par variables d'environnement (docker-compose, profil « pms »).
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: hotellerie
+  datasource:
+    url: ${PMS_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mbsc_pms}
+    username: ${PMS_DATASOURCE_USERNAME:mbsc}
+    password: ${PMS_DATASOURCE_PASSWORD:mbsc_secret}
+  flyway:
+    enabled: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: ${PMS_FUSEAU_HORAIRE:Africa/Lubumbashi}
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+
+app:
+  # Adresse de M-FINAPP vue depuis ce conteneur (même réseau Docker : le service « backend »).
+  finapp-url: ${PMS_FINAPP_URL:http://backend:8080}
+  # Clé de chiffrement de la clé d'appairage enregistrée en base (openssl rand -base64 32). Obligatoire.
+  secrets-key: ${PMS_SECRETS_KEY:}
+  uploads-dir: ${PMS_UPLOADS_DIR:/app/data/uploads}
+  audit-dir: ${PMS_AUDIT_DIR:/app/data/logs}
+  version: 1.0

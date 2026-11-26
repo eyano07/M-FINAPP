@@ -12,6 +12,8 @@ export interface LigneMouvementForm {
 const props = defineProps<{
   modelValue: LigneMouvementForm[]
   type: 'ENTREE' | 'SORTIE' | 'TRANSFERT'
+  /** Écarte les plats, boissons et provisions, que le serveur refuse hors de l'administrateur. */
+  horsModuleRestaurant?: boolean
 }>()
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: LigneMouvementForm[]): void }>()
@@ -55,7 +57,11 @@ function fmt(v: number) {
     </div>
 
     <div v-for="(ligne, index) in lignes" :key="index" class="lignes-mvt__row">
-      <LogistiqueSelecteurArticle v-model="ligne.articleId" :label="`Article ${index + 1}`" />
+      <LogistiqueSelecteurArticle
+        v-model="ligne.articleId"
+        :label="`Article ${index + 1}`"
+        :hors-module-restaurant="horsModuleRestaurant"
+      />
       <LogistiqueSelecteurEntrepot v-if="montreSource" v-model="ligne.entrepotSourceId" label="Source" />
       <LogistiqueSelecteurEntrepot v-if="montreCible" v-model="ligne.entrepotCibleId" label="Cible" />
       <v-text-field
@@ -109,7 +115,7 @@ function fmt(v: number) {
 }
 .lignes-mvt__title {
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
 }
 .lignes-mvt__row {
   display: grid;
@@ -117,9 +123,9 @@ function fmt(v: number) {
   gap: 10px;
   align-items: start;
   padding: 12px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
   border-radius: 12px;
-  background: #fafafa;
+  background: var(--surface-2);
 }
 .lignes-mvt__total {
   display: flex;
@@ -127,12 +133,12 @@ function fmt(v: number) {
   gap: 16px;
   padding: 14px 16px;
   border-radius: 12px;
-  background: #f0fdf4;
-  border: 1px solid #dcfce7;
+  background: var(--color-primary-lighter);
+  border: 1px solid var(--color-primary-light);
 }
 .lignes-mvt__total .label {
   font-size: 0.72rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }

@@ -10,6 +10,8 @@ interface Etablissement {
   actif: boolean
   solde: number
   supprimable: boolean
+  /** Devise de tenue du compte et de ses relevés (rapprochement bancaire). */
+  devise: 'USD' | 'CDF'
 }
 
 const api = useApi()
@@ -26,6 +28,7 @@ const erreurEnvoi = ref('')
 const form = reactive({
   nom: '',
   type: 'BANQUE' as 'BANQUE' | 'MOBILE_MONEY',
+  devise: 'USD' as 'USD' | 'CDF',
 })
 const rules = {
   nom: [(v: any) => !!v?.trim() || 'Nom obligatoire'],
@@ -56,6 +59,7 @@ const operateurs = computed(() => etablissements.value.filter((e) => e.type === 
 function ouvrirDialog(type: 'BANQUE' | 'MOBILE_MONEY') {
   form.nom = ''
   form.type = type
+  form.devise = 'USD'
   erreurEnvoi.value = ''
   dialogOuvert.value = true
 }
@@ -68,7 +72,7 @@ async function creer() {
   try {
     await api('/etablissements', {
       method: 'POST',
-      body: { nom: form.nom.trim(), type: form.type },
+      body: { nom: form.nom.trim(), type: form.type, devise: form.devise },
     })
     dialogOuvert.value = false
     await charger()
@@ -154,7 +158,7 @@ const fmtUSD = (usd: number) =>
             <v-progress-circular indeterminate color="primary" size="28" />
           </div>
           <div v-else-if="banques.length === 0" class="etab-empty">
-            <v-icon icon="mdi-bank-outline" size="28" color="#d1d5db" />
+            <v-icon icon="mdi-bank-outline" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <p>Aucune banque configurée.</p>
           </div>
           <div v-else class="etab-liste">
@@ -162,6 +166,7 @@ const fmtUSD = (usd: number) =>
               <div class="etab__main">
                 <p class="etab__nom">{{ e.nom }}</p>
                 <code class="etab__compte">{{ e.compteNumero }}</code>
+                <span class="etab__devise">{{ e.devise }}</span>
               </div>
               <div class="etab__solde" :class="e.solde === 0 ? 'etab__solde--nul' : ''">
                 {{ fmtUSD(e.solde) }}
@@ -216,7 +221,7 @@ const fmtUSD = (usd: number) =>
             <v-progress-circular indeterminate color="primary" size="28" />
           </div>
           <div v-else-if="operateurs.length === 0" class="etab-empty">
-            <v-icon icon="mdi-cellphone-off" size="28" color="#d1d5db" />
+            <v-icon icon="mdi-cellphone-off" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
             <p>Aucun opérateur configuré.</p>
           </div>
           <div v-else class="etab-liste">
@@ -224,6 +229,7 @@ const fmtUSD = (usd: number) =>
               <div class="etab__main">
                 <p class="etab__nom">{{ e.nom }}</p>
                 <code class="etab__compte etab__compte--mm">{{ e.compteNumero }}</code>
+                <span class="etab__devise">{{ e.devise }}</span>
               </div>
               <div class="etab__solde" :class="e.solde === 0 ? 'etab__solde--nul' : ''">
                 {{ fmtUSD(e.solde) }}
@@ -289,6 +295,11 @@ const fmtUSD = (usd: number) =>
               rounded="lg"
               :rules="rules.nom"
             />
+            <v-btn-toggle v-model="form.devise" mandatory density="comfortable" variant="outlined" color="primary" class="mt-1">
+              <v-btn value="USD">Compte en USD</v-btn>
+              <v-btn value="CDF">Compte en CDF</v-btn>
+            </v-btn-toggle>
+            <p class="text-caption text-medium-emphasis mt-2 mb-0">Devise de tenue du compte : celle de ses relevés, utilisée pour le rapprochement bancaire.</p>
           </v-form>
         </v-card-text>
 
@@ -336,17 +347,8 @@ const fmtUSD = (usd: number) =>
 </template>
 
 <style scoped>
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
+.etab__devise { display: inline-block; margin-left: 6px; font-size: 0.7rem; font-weight: 700; color: var(--ink-soft); background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 
 .etab-empty {
   display: flex;
@@ -354,7 +356,7 @@ const fmtUSD = (usd: number) =>
   align-items: center;
   gap: 8px;
   padding: 32px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -366,13 +368,13 @@ const fmtUSD = (usd: number) =>
   align-items: center;
   gap: 14px;
   padding: 12px 20px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
 }
 .etab__main { flex: 1; min-width: 0; }
 .etab__nom {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink);
   margin: 0 0 2px;
 }
 .etab__compte {
@@ -387,14 +389,20 @@ const fmtUSD = (usd: number) =>
 .etab__solde {
   font-size: 0.9rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.etab__solde--nul { color: #9ca3af; font-weight: 500; }
+.etab__solde--nul { color: var(--ink-faint); font-weight: 500; }
 
 .dialog-card { overflow: hidden; }
 .dialog-header { padding: 26px 26px 20px; text-align: center; }
 .dialog-header--banque { background: linear-gradient(140deg, #60a5fa 0%, #2563eb 50%, #1e3a8a 100%); }
 .dialog-header--mm { background: linear-gradient(140deg, #fb923c 0%, #ea580c 50%, #7c2d12 100%); }
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .etab__compte { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .etab__compte--mm { background: color-mix(in srgb, #f0a77a 11%, var(--surface)) !important; color: #f0a77a !important; }
 </style>

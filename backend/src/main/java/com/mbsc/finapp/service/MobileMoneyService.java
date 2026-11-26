@@ -61,12 +61,14 @@ public class MobileMoneyService {
     private final EtablissementTresorerieService etablissements;
     /** Constate l'ecart de change realise entre engagement et reglement. */
     private final EcartChangeService ecartChange;
+    private final PaieNoteService paieNoteService;
+    private final com.mbsc.finapp.service.patrimoine.AcquisitionNoteService acquisitionNote;
 
     // ---------------------------------------------------------------------
     // Saisie directe
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionMobileMoneyResponse enregistrer(TransactionMobileMoneyRequest req) {
         User operateur = currentUser.requireUser();
@@ -104,18 +106,21 @@ public class MobileMoneyService {
     }
 
     /**
-     * Un achat de boissons du module Restaurant doit être réglé par la
-     * caisse : c'est ce canal, et lui seul, qui déclenche l'échange de
-     * consigne (voir CaisseService.payerNote). Le payer par un autre canal
-     * laisserait le stock de bouteilles vides désynchronisé du stock réel.
+     * Un achat de boissons avec échange de consigne doit être réglé par la
+     * caisse : c'est ce canal, et lui seul, qui rend les bouteilles vides
+     * (voir CaisseService.payerNote). Le payer par un autre canal laisserait
+     * le stock de vides désynchronisé du stock réel. Sans échange de
+     * consigne, rien ne l'impose : un gros achat peut se régler par virement
+     * — l'entrée en stock, elle, suit n'importe quel canal.
      */
     private void exigerAbsenceAchatBoisson(NoteFrais note, String libelleCanal) {
-        boolean achatBoisson = note.getLignes().stream()
-            .anyMatch(l -> l.isAchatMarchandise() && l.getArticle() != null
+        boolean echangeConsigne = note.getLignes().stream()
+            .anyMatch(l -> l.isAchatMarchandise() && l.isEchangeConsigne() && l.getArticle() != null
                 && l.getArticle().getType() == TypeArticle.BOISSON);
-        if (achatBoisson) {
+        if (echangeConsigne) {
             throw new TransitionInvalideException(
-                "Un achat de boissons doit être réglé par la caisse, pas par " + libelleCanal);
+                "Un achat de boissons avec échange de consigne doit être réglé par la caisse, qui rend "
+                + "les bouteilles vides — pas par " + libelleCanal + ".");
         }
     }
 
@@ -123,7 +128,7 @@ public class MobileMoneyService {
     // Paiement d'une note de frais (TRANSMISE_CAISSE -> PAYEE)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionMobileMoneyResponse payerNote(Long noteId, Long etablissementId) {
         User operateur = currentUser.requireUser();
@@ -196,16 +201,21 @@ public class MobileMoneyService {
         if (!ventilation.entreesStock().isEmpty()) {
             PieceComptable piece = saved.getEcritures().get(0).getPiece();
             stockService.entreesDepuisNoteFraisInterne(
-                saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(),
+                saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate(),
                 libellePaiement, ventilation.entreesStock(), piece, operateur);
         }
         // Ecart de change realise : la note a ete engagee a un taux fige lors
         // de sa transmission, elle est reglee au taux du jour. La difference
-        // est reclassee en 676/776 par une piece dediee, au lieu de rester
+        // est reclassee en 656/756 par une piece dediee, au lieu de rester
         // invisible dans le compte de charge.
         ecartChange.comptabiliserEcart(note, tauxOperation,
-            saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(), operateur);
+            saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate(), operateur);
 
+        // Note de paie (module DRH) : écrit la constatation de la paie du mois dans la même transaction
+        // que son règlement — sans effet sur toute autre note (voir PaieNoteService).
+        paieNoteService.apresPaiementInterne(note, operateur);
+        // Acquisition d'immobilisation : la fiche du bien amortissable est créée au paiement.
+        acquisitionNote.apresPaiementInterne(note, operateur, tauxOperation);
         note.setStatut(StatutNote.PAYEE);
         note.addObservation(com.mbsc.finapp.domain.ObservationNote.builder()
             .noteFrais(note)

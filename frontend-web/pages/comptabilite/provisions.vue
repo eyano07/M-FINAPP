@@ -1,9 +1,8 @@
 <script setup lang="ts">
 // Constitution/reprise reservees au DFIN cote serveur (ProvisionService) ;
-// la consultation est ouverte a DA/DG/COMPTABLE. CAISSIER a COMPTABILITE en
-// LECTURE (pour Balance/Compte de resultat uniquement) mais ne voit pas les
-// Provisions.
-definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
+// la consultation est ouverte a DG/COMPTABLE. DA exclu explicitement : voir
+// NavigationDrawer.vue (comptabiliteItems).
+definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 interface Reprise {
   id: number
@@ -273,9 +272,6 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.5rem; font-weight: 700; color: #111827; margin-top: 4px; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
 </style>

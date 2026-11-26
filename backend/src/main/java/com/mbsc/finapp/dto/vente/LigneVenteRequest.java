@@ -11,6 +11,10 @@ import java.math.BigDecimal;
  *                     toujours fourni par le client (article.prixVente est en
  *                     FC, une convention independante de la devise de base,
  *                     donc le backend ne peut pas le reconvertir lui-meme).
+ * @param camionId     chargement cede, obligatoire pour un minerais et interdit
+ *                     ailleurs : chaque camion se vend entier, a son propre
+ *                     prix (voir MineraiService). La quantite est alors
+ *                     forcee a 1 — un camion vaut une unite de l'article.
  */
 public record LigneVenteRequest(
 
@@ -23,5 +27,7 @@ public record LigneVenteRequest(
 
     @NotNull(message = "Le prix unitaire est obligatoire")
     @PositiveOrZero(message = "Le prix unitaire ne peut pas etre negatif")
-    BigDecimal prixUnitaire
+    BigDecimal prixUnitaire,
+
+    Long camionId
 ) {}

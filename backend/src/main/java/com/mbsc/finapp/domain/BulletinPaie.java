@@ -66,6 +66,14 @@ public class BulletinPaie {
     @Builder.Default
     private Integer nombreEnfants = 0;
 
+    /**
+     * Personnes à charge retenues pour la réduction familiale de l'IPR : enfants, plus le conjoint d'un agent marié
+     * si {@code ParametresPaie.conjointACharge}. Figé à la création comme {@link #nombreEnfants} et réutilisé aux
+     * recalculs ; nul pour un bulletin antérieur à V147, qui retombe sur {@link #nombreEnfants}.
+     */
+    @Column(name = "personnes_a_charge")
+    private Integer personnesACharge;
+
     @Column(nullable = false, precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal conge = BigDecimal.ZERO;
@@ -121,8 +129,21 @@ public class BulletinPaie {
     @Column(name = "cnss_ouvriere", precision = 15, scale = 2)
     private BigDecimal cnssOuvriere;
 
+    /** CNSS patronale totale (somme des trois branches ci-dessous pour un bulletin calculé depuis V147). */
     @Column(name = "cnss_patronale", precision = 15, scale = 2)
     private BigDecimal cnssPatronale;
+
+    /** CNSS patronale, branche pensions (créditée en 4313 avec la part salariale) ; nulle avant V147. */
+    @Column(name = "cnss_patronale_pension", precision = 15, scale = 2)
+    private BigDecimal cnssPatronalePension;
+
+    /** CNSS patronale, prestations familiales (créditée en 4311) ; nulle avant V147. */
+    @Column(name = "cnss_patronale_pf", precision = 15, scale = 2)
+    private BigDecimal cnssPatronalePf;
+
+    /** CNSS patronale, risques professionnels (créditée en 4312) ; nulle avant V147. */
+    @Column(name = "cnss_patronale_rp", precision = 15, scale = 2)
+    private BigDecimal cnssPatronaleRp;
 
     @Column(precision = 15, scale = 2)
     private BigDecimal onem;
@@ -150,16 +171,60 @@ public class BulletinPaie {
     @Column(name = "date_paiement", nullable = false)
     private LocalDate datePaiement;
 
+    /**
+     * Antidate la mention "Imprimé le" du document (voir la page d'impression
+     * du bulletin) : sans elle, ce serait toujours la date réelle du clic sur
+     * "Imprimer", ce qui trahit une saisie tardive pour un bulletin reconstitué
+     * a posteriori. Nulle = comportement historique (date réelle d'impression).
+     */
+    @Column(name = "date_impression")
+    private LocalDate dateImpression;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
     private StatutBulletin statut = StatutBulletin.BROUILLON;
 
-    /** Renseignée à la clôture (transition VALIDE -> pièce postée) ; l'état "comptabilisé" se lit sur piece.statut. */
+    /**
+     * Renseignée à la clôture du mois : verrouille le bulletin (voir
+     * {@code BulletinPaieService.exigerModifiable}). Remise à null par la
+     * réouverture du mois, tant qu'aucune note de paie active ne le couvre.
+     */
+    @Column(name = "date_cloture")
+    private Instant dateCloture;
+
+    /**
+     * Note de frais de paie qui règle ce bulletin (voir {@code PaieNoteService}) ; null tant qu'aucune
+     * note active ne le couvre (libérée si la note est annulée).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "note_frais_paie_id")
+    @ToString.Exclude
+    private NoteFrais noteFraisPaie;
+
+    /**
+     * Pièce de constatation de la paie : la pièce groupée du mois, écrite au paiement de la note de paie
+     * (voir {@code PaieNoteService.apresPaiementInterne}) ; une pièce par bulletin pour les mois clôturés
+     * avant ce circuit ; null tant que la paie n'est pas comptabilisée.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "piece_comptable_id")
     @ToString.Exclude
     private PieceComptable pieceComptable;
+
+    /**
+     * true si la paie a été constatée à la clôture du mois (comptabilité d'engagement, audit SYSCOHADA du
+     * 10/11/2026, C-14) : le paiement de la note de paie ne fait plus alors que solder les salaires nets.
+     */
+    @Column(name = "constatee_a_la_cloture", nullable = false)
+    @Builder.Default
+    private boolean constateeALaCloture = false;
+
+    /** Qui a clôturé la paie du mois (le DFIN, jamais la DRH qui saisit et valide les bulletins). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cloture_par_id")
+    @ToString.Exclude
+    private User cloturePar;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id")

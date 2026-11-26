@@ -1,4 +1,5 @@
 import { useAuthStore } from '~/stores/auth'
+import { useExerciceStore } from '~/stores/exercice'
 
 /** Promesse partagée : un seul rafraîchissement simultané pour toute l'app. */
 let refreshEnCours: Promise<boolean> | null = null
@@ -26,8 +27,27 @@ export function useApi() {
         options.headers = new Headers(options.headers as HeadersInit)
         options.headers.set('Authorization', `Bearer ${auth.accessToken}`)
       }
+      // Autre exercice que l'exercice en cours, choisi dans la barre du haut : le serveur refuse les saisies s'il est
+      // clôturé (ExerciceConsulteFilter, 423).
+      const exercice = useExerciceStore()
+      if (exercice.enConsultation) {
+        options.headers = new Headers(options.headers as HeadersInit)
+        options.headers.set('X-Exercice', String(exercice.anneeChoisie))
+      }
     },
     async onResponseError({ response }) {
+      // Mot de passe provisoire : le serveur n'ouvre que le changement de mot de passe (MotDePasseProvisoireFilter).
+      if (response.status === 403 && import.meta.client && (response._data as { code?: string } | undefined)?.code === 'MOT_DE_PASSE_A_CHANGER') {
+        if (auth.user) auth.user = { ...auth.user, doitChangerMotDePasse: true }
+        await navigateTo('/changer-mot-de-passe')
+        return
+      }
+      // Double authentification obligatoire pas encore activée (DoubleAuthObligatoireFilter).
+      if (response.status === 403 && import.meta.client && (response._data as { code?: string } | undefined)?.code === 'DOUBLE_AUTH_A_ACTIVER') {
+        if (auth.user) auth.user = { ...auth.user, doitActiverDoubleAuth: true }
+        await navigateTo('/double-authentification')
+        return
+      }
       if (response.status !== 401 || !import.meta.client) {
         return
       }
@@ -50,9 +70,33 @@ export function useApi() {
 
 /** Message d'erreur lisible pour l'utilisateur à partir d'une erreur API. */
 export function messageErreurApi(e: unknown, fallback = 'Une erreur est survenue'): string {
-  const err = e as { response?: { status?: number }, data?: { message?: string } }
-  if (err?.response?.status === 403) {
+  const err = e as { name?: string, response?: { status?: number }, data?: { message?: string, fieldErrors?: Record<string, string> } }
+  const statut = err?.response?.status
+  if (statut === 403) {
     return "Accès refusé : vous n'avez pas les droits nécessaires pour cette action."
+  }
+  // Serveur injoignable derrière le proxy (redémarrage lors d'une mise à
+  // jour, arrêt) : la demande ne l'a pas atteint, rien n'a été enregistré.
+  // Sans ce cas, l'utilisateur ne voyait que le message générique de l'écran
+  // (« Erreur lors de l'enregistrement… ») et cherchait une faute de saisie.
+  if (statut === 502 || statut === 503) {
+    return "Le serveur est momentanément indisponible (redémarrage en cours ?) : rien n'a été enregistré. Réessayez dans une minute."
+  }
+  // Ici en revanche le serveur a pu traiter la demande après que le proxy a
+  // cessé d'attendre, ou la connexion a pu tomber en chemin.
+  if (statut === 504) {
+    return "Le serveur a mis trop de temps à répondre. Vérifiez si l'opération a bien été enregistrée avant de réessayer."
+  }
+  if (!statut && err?.name === 'FetchError') {
+    return "Impossible de joindre le serveur (connexion interrompue ?). Vérifiez si l'opération a bien été enregistrée avant de réessayer."
+  }
+  // Erreur de validation Bean Validation (@Valid) : le message générique
+  // "Validation echouee" ne dit rien d'exploitable, le détail utile est dans
+  // fieldErrors (voir GlobalExceptionHandler.handleValidation) — sans ça,
+  // l'utilisateur voit une erreur sans savoir quel champ corriger.
+  const champs = err?.data?.fieldErrors
+  if (champs && Object.keys(champs).length > 0) {
+    return Object.values(champs).join(' · ')
   }
   return err?.data?.message ?? fallback
 }

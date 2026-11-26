@@ -47,6 +47,10 @@ public class Employe {
     @Column(length = 30)
     private String categorie;
 
+    /** Intitule du poste occupe (ex. "Chef de chantier"), distinct de la categorie CNSS. */
+    @Column(length = 100)
+    private String poste;
+
     @Column(length = 100)
     private String affectation;
 
@@ -58,6 +62,9 @@ public class Employe {
 
     @Column(name = "date_embauche")
     private LocalDate dateEmbauche;
+
+    @Column(name = "date_naissance")
+    private LocalDate dateNaissance;
 
     @Column(name = "salaire_base_usd", nullable = false, precision = 15, scale = 2)
     @Builder.Default
@@ -97,6 +104,29 @@ public class Employe {
     @Column(nullable = false)
     @Builder.Default
     private boolean actif = true;
+
+    /**
+     * Compte propre de l'agent sous 42211 « Personnel, rémunérations dues » (422111, 422112…), ouvert à la
+     * création de la fiche (audit DRH du 15/11/2026, D-02) : la paie y crédite son net à payer, la note de paie
+     * l'y débite. Nul pour une fiche sans compte : la paie retombe alors sur le collectif 42211.
+     */
+    @Column(name = "compte_remuneration", length = 20, unique = true)
+    private String compteRemuneration;
+
+    /**
+     * Compte du prêt consenti à l'agent (272…, choisi sur la fiche), crédité par la retenue de prêt de ses
+     * bulletins (audit DRH du 15/11/2026, D-03). Facultatif : à défaut, la retenue va en 2728.
+     */
+    @Column(name = "compte_pret", length = 20)
+    private String comptePret;
+
+    /**
+     * Compte d'avances de l'agent sous 4211 « Personnel, avances » (42111, 42112…), ouvert à la création de la
+     * fiche (audit DRH du 15/11/2026, D-06) : débité par la note de frais qui lui verse une avance, crédité par la
+     * retenue de l'avance sur son bulletin. Nul pour une fiche sans compte : la retenue retombe sur 4211.
+     */
+    @Column(name = "compte_avance", length = 20, unique = true)
+    private String compteAvance;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

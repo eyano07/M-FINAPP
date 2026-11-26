@@ -1,17 +1,27 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.Article;
+import com.mbsc.finapp.domain.CamionMinerai;
+import com.mbsc.finapp.domain.ChargeCamionMinerai;
 import com.mbsc.finapp.domain.CompteOHADA;
+import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.LigneNoteFrais;
 import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.TransactionCaisse;
 import com.mbsc.finapp.domain.User;
+import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.JournalComptable;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
+import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.domain.enums.SensTransaction;
+import com.mbsc.finapp.domain.enums.StatutCamionMinerai;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeCompte;
+import com.mbsc.finapp.domain.enums.TypeNotification;
+import com.mbsc.finapp.dto.caisse.AchatMarchandiseRequest;
+import com.mbsc.finapp.dto.caisse.ReglementCamionsRequest;
 import com.mbsc.finapp.dto.caisse.EcritureResponse;
 import com.mbsc.finapp.dto.caisse.LigneBalanceResponse;
 import com.mbsc.finapp.dto.caisse.TransactionCaisseRequest;
@@ -32,6 +42,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -53,6 +64,9 @@ public class CaisseService {
 
     private static final Logger log = LoggerFactory.getLogger(CaisseService.class);
 
+    /** TVA recuperable sur achats — meme compte que la note de frais (NoteFraisService). */
+    private static final String COMPTE_TVA_RECUPERABLE = "4452";
+
     private final TransactionCaisseRepository transactionRepository;
     private final EcritureGrandLivreRepository ecritureRepository;
     private final NoteFraisRepository noteRepository;
@@ -65,6 +79,8 @@ public class CaisseService {
     private final NotificationService notificationService;
     /** Constate l'ecart de change realise entre engagement et reglement. */
     private final EcartChangeService ecartChange;
+    private final PaieNoteService paieNoteService;
+    private final com.mbsc.finapp.service.patrimoine.AcquisitionNoteService acquisitionNote;
     /**
      * Regles de tresorerie partagees avec la banque et le mobile money.
      * Ces regles etaient auparavant dupliquees ici : une correction apportee
@@ -75,12 +91,16 @@ public class CaisseService {
     private final StockService stockService;
     /** Échange de consigne des achats de boissons du module Restaurant, déclenché au paiement. */
     private final RestaurantService restaurantService;
+    /** Camions de minerais : reglement de la dette fournisseur nee a la reception. */
+    private final MineraiService mineraiService;
+    /** Taux de TVA en vigueur a la date de l'achat. */
+    private final TauxTvaService tauxTvaService;
 
     // ---------------------------------------------------------------------
     // Saisie directe
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse enregistrer(TransactionCaisseRequest req) {
         User caissier = currentUser.requireUser();
@@ -101,6 +121,216 @@ public class CaisseService {
 
         TransactionCaisse saved = comptabilite.enregistrer(transaction, contrepartie, req.libelle());
         log.info("Operation de caisse saisie [ref={}, par={}]", saved.getReference(), caissier.getEmail());
+        if (saved.getSens() == SensTransaction.ENCAISSEMENT) {
+            notifierEncaissement(saved);
+        }
+        return TransactionCaisseResponse.from(saved);
+    }
+
+    // ---------------------------------------------------------------------
+    // Achat de marchandise au comptant
+    // ---------------------------------------------------------------------
+
+    /**
+     * Achat d'une marchandise regle en especes, saisi par le caissier.
+     *
+     * <p><b>Deux ecritures indissociables, conformes a l'inventaire permanent
+     * du SYSCOHADA revise :</b></p>
+     * <ol>
+     *   <li><b>D 601x Achats hors taxes (+ D 4452 TVA recuperable si
+     *       l'article y est soumis) / C 571 Caisse toutes taxes comprises</b>
+     *       — l'achat et la sortie de tresorerie. C'est une transaction de
+     *       caisse ordinaire (journal CAISSE), qui apparait donc dans
+     *       l'historique des operations comme n'importe quel decaissement.
+     *       Le prix saisi est HORS TAXES, comme sur une note de frais.</li>
+     *   <li><b>D 311x Marchandises / C 6031 Variations des stocks</b> —
+     *       l'entree en stock (journal STOCK) pour le seul montant hors
+     *       taxes, portee par
+     *       {@code StockService.enregistrerEntreeAchatInterne}. La TVA
+     *       recuperable est une creance sur l'Etat, jamais un element du
+     *       cout d'acquisition.</li>
+     * </ol>
+     *
+     * <p>Imputer directement le compte de stock au decaissement (D 311 /
+     * C 571) aurait produit un bilan juste mais un compte de resultat faux :
+     * ni l'achat (601) ni sa variation de stock (6031) n'apparaitraient, or
+     * c'est precisement leur difference qui forme le « cout d'achat des
+     * marchandises vendues » du compte de resultat SYSCOHADA. Le couple
+     * 601/6031 est donc obligatoire, meme si le net sur le stock est le
+     * meme.</p>
+     *
+     * <p>Symetrie avec la vente : celle-ci deconstate le stock par
+     * <b>D 6031 / C 311</b> puis enregistre le produit <b>D 571 / C 70x</b>
+     * (voir {@code VenteService.valider}). 6031 recoit ainsi les entrees au
+     * credit et les sorties au debit, et se solde en cout des marchandises
+     * vendues.</p>
+     */
+    @PreAuthorize("hasRole('CAISSIER')")
+    @Transactional
+    public TransactionCaisseResponse acheterMarchandise(AchatMarchandiseRequest req) {
+        User caissier = currentUser.requireUser();
+
+        Article article = stockService.articleParIdInterne(req.articleId());
+        if (article.getType() == TypeArticle.SERVICE) {
+            throw new IllegalArgumentException(
+                "\"" + article.getLibelle() + "\" est un service : il ne peut pas entrer en stock.");
+        }
+        Entrepot entrepot = stockService.entrepotParIdInterne(req.entrepotId());
+
+        CompteOHADA compteAchat = comptabilite.compteParNumero(req.compteAchatNumero());
+        CompteOHADA compteStock = comptabilite.compteParNumero(req.compteStockNumero());
+        CompteOHADA compteVariation = comptabilite.compteParNumero(req.compteVariationNumero());
+        // Un achat est un decaissement : la contrepartie doit etre une charge
+        // (601x). La regle partagee refuserait par exemple un compte de produit.
+        regleTresorerie.validerSensContrepartie(SensTransaction.DECAISSEMENT, compteAchat);
+
+        // Le prix saisi est HORS TAXES, comme sur une note de frais : la TVA
+        // s'ajoute par-dessus (voir LigneNoteFrais.montantTtc). Le stock entre
+        // au HT — la TVA recuperable est une creance sur l'Etat, pas un
+        // element du cout d'acquisition.
+        BigDecimal montantHt = req.prixUnitaire()
+            .multiply(req.quantite())
+            .setScale(2, RoundingMode.HALF_UP);
+        if (montantHt.signum() <= 0) {
+            throw new IllegalArgumentException("Le montant de l'achat doit etre strictement positif.");
+        }
+        BigDecimal tva = article.isSoumisTva()
+            ? montantHt.multiply(tauxTvaService.tauxALaDate(LocalDate.now()))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+            : BigDecimal.ZERO;
+        BigDecimal montantTtc = montantHt.add(tva);
+
+        String libelle = StringUtils.hasText(req.libelle())
+            ? req.libelle()
+            : "Achat " + article.getLibelle() + " x" + req.quantite().stripTrailingZeros().toPlainString();
+
+        // 1. Achat au comptant : D 601x HT + D 4452 TVA / C 571 TTC
+        TransactionCaisse transaction = TransactionCaisse.builder()
+            .uuid(UUID.randomUUID())
+            .reference(referenceGenerator.pourTransaction())
+            .montant(montantTtc)
+            .sens(SensTransaction.DECAISSEMENT)
+            .libelle(libelle)
+            .caissier(caissier)
+            .numeroRecu(referenceGenerator.pourRecu())
+            .dateOperation(Instant.now())
+            .tauxJournalier(conversionDevise.tauxCourant())
+            .build();
+        List<EcritureComptableService.Ventilation> contreparties = new ArrayList<>();
+        contreparties.add(new EcritureComptableService.Ventilation(compteAchat, montantHt));
+        if (tva.signum() > 0) {
+            contreparties.add(new EcritureComptableService.Ventilation(
+                comptabilite.compteParNumero(COMPTE_TVA_RECUPERABLE), tva));
+        }
+        TransactionCaisse saved = comptabilite.enregistrerVentile(transaction, contreparties, libelle);
+
+        // 2. Entree en stock au HT : D 311x / C 6031
+        stockService.enregistrerEntreeAchatInterne(
+            LocalDate.now(), libelle,
+            new StockService.AchatMarchandise(article, entrepot, req.quantite(), montantHt,
+                compteStock, compteVariation),
+            caissier);
+
+        log.info("Achat de marchandise a la caisse [ref={}, article={}, ht={}, tva={}, par={}]",
+            saved.getReference(), article.getCode(), montantHt, tva, caissier.getEmail());
+        return TransactionCaisseResponse.from(saved);
+    }
+
+    // ---------------------------------------------------------------------
+    // Reglement des camions de minerais receptionnes
+    // ---------------------------------------------------------------------
+
+    /**
+     * Solde en especes la dette fournisseur d'un ou plusieurs camions de
+     * minerais deja valides (achat constate) : <b>D 4011 Fournisseurs /
+     * C 571 Caisse</b>.
+     *
+     * <p>Reglement direct, hors circuit DFIN/DA — pour un camion encore
+     * A_VALIDER, c'est {@code NoteFraisService.creerReglementCamionsMinerai}
+     * qui constate l'achat en meme temps que le paiement, au bout de ce
+     * circuit. Ni le stock ni le resultat ne bougent ici : la marchandise
+     * est deja entree (D 311x / C 6031) et l'achat deja constate (D 601x /
+     * C 4011). Ce decaissement ne fait que solder la dette, ce qui explique
+     * qu'il soit independant de la vente : un camion peut etre paye avant ou
+     * apres avoir ete revendu.</p>
+     */
+    @PreAuthorize("hasRole('CAISSIER')")
+    @Transactional
+    public TransactionCaisseResponse reglerCamionsMinerai(ReglementCamionsRequest req) {
+        User caissier = currentUser.requireUser();
+        CompteOHADA fournisseurs = comptabilite.compteParNumero(MineraiService.COMPTE_FOURNISSEURS);
+
+        List<CamionMinerai> camions = new ArrayList<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (Long id : req.camionIds()) {
+            CamionMinerai camion = mineraiService.charger(id);
+            if (camion.getStatut() == StatutCamionMinerai.A_VALIDER) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.designation() + " n'est pas encore valide : aucune dette a solder."
+                    + " Utilisez une note de reglement, qui validera l'achat a son paiement.");
+            }
+            if (camion.isRegle()) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.designation() + " est deja regle.");
+            }
+            if (camion.getNoteFraisReglement() != null) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.designation() + " a une note de reglement en cours ("
+                    + camion.getNoteFraisReglement().getReference()
+                    + ") : le regler ici aussi paierait la dette deux fois.");
+            }
+            camions.add(camion);
+            // La dette est le TTC (prix hors taxes + TVA recuperable) : c'est
+            // ce que le fournisseur reclame. Les frais accessoires portent leur
+            // propre dette, soldee via chargeIds — les additionner ici les
+            // paierait deux fois.
+            total = total.add(camion.detteFournisseur());
+        }
+        List<ChargeCamionMinerai> charges = new ArrayList<>();
+        for (Long id : req.chargeIds()) {
+            ChargeCamionMinerai charge = mineraiService.chargerCharge(id);
+            if (charge.isRegle()) {
+                throw new IllegalArgumentException(
+                    "La charge « " + charge.getLibelle() + " » du camion "
+                    + charge.getCamion().getPlaque() + " est deja reglee.");
+            }
+            charges.add(charge);
+            total = total.add(charge.getMontant());
+        }
+        if (camions.isEmpty() && charges.isEmpty()) {
+            throw new IllegalArgumentException("Aucun camion ni frais a regler.");
+        }
+        total = total.setScale(2, RoundingMode.HALF_UP);
+
+        String libelle = StringUtils.hasText(req.libelle())
+            ? req.libelle()
+            : "Reglement minerais - " + camions.size() + " camion(s), " + charges.size() + " frais";
+
+        TransactionCaisse transaction = TransactionCaisse.builder()
+            .uuid(UUID.randomUUID())
+            .reference(referenceGenerator.pourTransaction())
+            .montant(total)
+            .sens(SensTransaction.DECAISSEMENT)
+            .libelle(libelle)
+            .caissier(caissier)
+            .numeroRecu(referenceGenerator.pourRecu())
+            .dateOperation(Instant.now())
+            .tauxJournalier(conversionDevise.tauxCourant())
+            .build();
+        TransactionCaisse saved = comptabilite.enregistrer(transaction, fournisseurs, libelle);
+
+        for (CamionMinerai camion : camions) {
+            camion.setRegle(true);
+            camion.setTransactionReglement(saved);
+        }
+        for (ChargeCamionMinerai charge : charges) {
+            charge.setRegle(true);
+            charge.setTransactionReglement(saved);
+        }
+        mineraiService.marquerReglesInterne(camions, charges);
+
+        log.info("Reglement minerais [camions={}, frais={}, ref={}, montant={}, par={}]",
+            camions.size(), charges.size(), saved.getReference(), total, caissier.getEmail());
         return TransactionCaisseResponse.from(saved);
     }
 
@@ -108,13 +338,38 @@ public class CaisseService {
     // Paiement d'une note de frais (TRANSMISE_CAISSE -> PAYEE)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse payerNote(Long noteId) {
         User caissier = currentUser.requireUser();
         NoteFrais note = noteRepository.findById(noteId)
             .orElseThrow(() -> RessourceIntrouvableException.of("NoteFrais", noteId));
+        TransactionCaisse saved = executerPaiementNote(note, caissier, UUID.randomUUID(),
+            referenceGenerator.pourTransaction(), referenceGenerator.pourRecu(),
+            Instant.now(), conversionDevise.tauxCourant());
+        return TransactionCaisseResponse.from(saved);
+    }
 
+    /**
+     * Paiement d'une note remonté par la synchronisation du poste de caisse hors
+     * ligne : exactement le même traitement que {@link #payerNote} — montant tiré
+     * de la note, règle de priorité, ventilation des écritures, entrée en stock,
+     * échange de consigne, écart de change. Le poste ne fournit plus ni le montant
+     * ni les comptes (audit sécurité du 05/10/2026, S-03). Le contrôle de rôle
+     * est fait à l'entrée de la synchronisation (SyncController).
+     */
+    @Transactional
+    public TransactionCaisse payerNoteDepuisSyncInterne(NoteFrais note, User caissier, UUID uuid,
+                                                        String reference, String numeroRecu,
+                                                        Instant dateOperation, BigDecimal tauxOperation) {
+        String recu = numeroRecu != null && !numeroRecu.isBlank() ? numeroRecu : referenceGenerator.pourRecu();
+        return executerPaiementNote(note, caissier, uuid, reference, recu, dateOperation, tauxOperation);
+    }
+
+    /** Paiement d'une note TRANSMISE_CAISSE, commun au guichet et à la synchronisation. */
+    private TransactionCaisse executerPaiementNote(NoteFrais note, User caissier, UUID uuid, String reference,
+                                                   String numeroRecu, Instant dateOperation,
+                                                   BigDecimal tauxOperation) {
         if (note.getStatut() != StatutNote.TRANSMISE_CAISSE) {
             throw new TransitionInvalideException(
                 "Seule une note TRANSMISE_CAISSE peut etre payee (etat actuel : " + note.getStatut() + ")");
@@ -133,7 +388,6 @@ public class CaisseService {
         // résolutions séparées pourraient encadrer un changement de taux et
         // faire diverger transactions_caisse.taux_journalier de
         // grand_livre.taux_applique pour un même mouvement.
-        BigDecimal tauxOperation = conversionDevise.tauxCourant();
         ConversionDeviseService.Conversion conversion =
             conversionDevise.enDeviseBase(note.getMontant(), note.getDevise(), tauxOperation);
 
@@ -162,15 +416,15 @@ public class CaisseService {
                     + conversion.deviseOrigine() + " @ " + conversion.tauxApplique().toPlainString() + ")"
                 : "");
         TransactionCaisse transaction = TransactionCaisse.builder()
-            .uuid(UUID.randomUUID())
-            .reference(referenceGenerator.pourTransaction())
+            .uuid(uuid)
+            .reference(reference)
             .noteFrais(note)
             .montant(conversion.montantBase())
             .sens(SensTransaction.DECAISSEMENT)
             .libelle(libellePaiement)
             .caissier(caissier)
-            .numeroRecu(referenceGenerator.pourRecu())
-            .dateOperation(Instant.now())
+            .numeroRecu(numeroRecu)
+            .dateOperation(dateOperation)
             .tauxJournalier(tauxOperation)
             .build();
 
@@ -188,7 +442,7 @@ public class CaisseService {
         // Entree en stock des lignes "achat de marchandise" : rattachee a la
         // piece qui vient d'etre generee, sans nouvelle ecriture (voir
         // StockService.entreesDepuisNoteFraisInterne).
-        LocalDate dateReglement = saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        LocalDate dateReglement = saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         if (!ventilation.entreesStock().isEmpty()) {
             PieceComptable piece = saved.getEcritures().get(0).getPiece();
             stockService.entreesDepuisNoteFraisInterne(
@@ -198,21 +452,34 @@ public class CaisseService {
         // les bouteilles vides equivalentes, au meme moment que l'entree en
         // stock de la boisson elle-meme — voir
         // RestaurantService.enregistrerAchatVidesDepuisNoteFraisInterne.
-        for (LigneNoteFrais ligne : note.getLignes()) {
-            if (ligne.isAchatMarchandise() && ligne.isEchangeConsigne()
-                && ligne.getArticle() != null && ligne.getArticle().getType() == TypeArticle.BOISSON) {
-                restaurantService.enregistrerAchatVidesDepuisNoteFraisInterne(
-                    ligne.getArticle(), RestaurantService.bouteilles(ligne.getQuantiteMarchandise()),
-                    dateReglement, "Échange de consigne — " + note.getReference(), caissier);
-            }
+        //
+        // Lignes triees par article : chacune verrouille le conditionnement
+        // de sa boisson jusqu'a la fin de la transaction, et une vente
+        // simultanee verrouille les siens dans ce meme ordre (voir
+        // RestaurantService.lignesBoissonOrdonnees). Dans l'ordre de saisie,
+        // les deux pouvaient s'attendre mutuellement.
+        List<LigneNoteFrais> lignesConsigne = note.getLignes().stream()
+            .filter(l -> l.isAchatMarchandise() && l.isEchangeConsigne()
+                && l.getArticle() != null && l.getArticle().getType() == TypeArticle.BOISSON)
+            .sorted(java.util.Comparator.comparing((LigneNoteFrais l) -> l.getArticle().getId()))
+            .toList();
+        for (LigneNoteFrais ligne : lignesConsigne) {
+            restaurantService.enregistrerAchatVidesDepuisNoteFraisInterne(
+                ligne.getArticle(), RestaurantService.bouteilles(ligne.getQuantiteMarchandise()),
+                dateReglement, "Échange de consigne — " + note.getReference(), caissier);
         }
         // Ecart de change realise : la note a ete engagee a un taux fige lors
         // de sa transmission, elle est reglee au taux du jour. La difference
-        // est reclassee en 676/776 par une piece dediee, au lieu de rester
+        // est reclassee en 656/756 par une piece dediee, au lieu de rester
         // invisible dans le compte de charge.
         ecartChange.comptabiliserEcart(note, tauxOperation,
-            saved.getDateOperation().atZone(java.time.ZoneOffset.UTC).toLocalDate(), caissier);
+            saved.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate(), caissier);
 
+        // Note de paie (module DRH) : écrit la constatation de la paie du mois dans la même transaction
+        // que son règlement — sans effet sur toute autre note (voir PaieNoteService).
+        paieNoteService.apresPaiementInterne(note, caissier);
+        // Acquisition d'immobilisation : la fiche du bien amortissable est créée au paiement.
+        acquisitionNote.apresPaiementInterne(note, caissier, tauxOperation);
         note.setStatut(StatutNote.PAYEE);
         note.addObservation(com.mbsc.finapp.domain.ObservationNote.builder()
             .noteFrais(note)
@@ -221,13 +488,20 @@ public class CaisseService {
             .commentaire("Paiement execute, recu " + saved.getNumeroRecu())
             .build());
 
+        // Note de reglement de camions minerais (circuit DFIN/DA/Tresorerie,
+        // voir NoteFraisService.creerReglementCamionsMinerai) : sans effet
+        // sur toute autre note, qui ne rattache jamais de camion. Un camion
+        // encore A_VALIDER voit son achat constate ici meme, avant d'etre
+        // solde — validation et paiement n'y font plus qu'un.
+        mineraiService.finaliserReglementNoteInterne(note.getId(), saved, caissier);
+
         log.info("Note {} payee par {} [recu={}]",
             note.getReference(), caissier.getEmail(), saved.getNumeroRecu());
         notificationService.notifierUtilisateur(note.getCreateur(),
             com.mbsc.finapp.domain.enums.TypeNotification.NOTE_PAYEE,
             "Note payée", note.getReference() + " — reçu " + saved.getNumeroRecu(),
             "/notes-frais/" + note.getId(), note);
-        return TransactionCaisseResponse.from(saved);
+        return saved;
     }
 
     // ---------------------------------------------------------------------
@@ -241,7 +515,7 @@ public class CaisseService {
      * peut néanmoins être enregistrée en brouillon d'abord, le temps de
      * composer ses lignes, puis encaissée séparément).
      */
-    @PreAuthorize("hasAnyRole('CAISSIER', 'ADMIN')")
+    @PreAuthorize("hasRole('CAISSIER')")
     @Transactional
     public TransactionCaisseResponse encaisserNote(Long noteId) {
         User caissier = currentUser.requireUser();
@@ -303,13 +577,46 @@ public class CaisseService {
 
         log.info("Note d'encaissement {} executee par {} [recu={}]",
             note.getReference(), caissier.getEmail(), saved.getNumeroRecu());
+        notifierEncaissement(saved);
         return TransactionCaisseResponse.from(saved);
+    }
+
+    /**
+     * Alerte DA, DFIN et COMPTABLE a chaque encaissement en caisse — saisie
+     * libre ({@link #enregistrer}) ou encaissement direct d'une note ({@link
+     * #encaisserNote}) — pour un suivi de tresorerie en temps reel sans
+     * attendre la consultation manuelle du journal de caisse.
+     */
+    private static final RoleType[] ROLES_A_ALERTER_ENCAISSEMENT = {RoleType.DA, RoleType.DFIN, RoleType.COMPTABLE};
+
+    private void notifierEncaissement(TransactionCaisse transaction) {
+        String titre = "Encaissement en caisse";
+        String message = transaction.getReference() + " — "
+            + transaction.getMontant().setScale(2, RoundingMode.HALF_UP) + " " + ConversionDeviseService.DEVISE_BASE
+            + " — " + transaction.getLibelle();
+        for (RoleType role : ROLES_A_ALERTER_ENCAISSEMENT) {
+            notificationService.notifierRole(role, TypeNotification.ENCAISSEMENT_CAISSE,
+                titre, message, "/caisse/journal", null);
+        }
     }
 
     /**
      * Construit une ligne de credit par ligne de recette de la note, chacune
      * imputee a son propre compte (ou au compte de produits divers 758 par
-     * defaut). Symetrique de {@link #construireLignesDebit}.
+     * defaut). Symetrique de {@code RegleTresorerieService
+     * .construireLignesDebitDepuisNote} — y compris pour la TVA : une ligne
+     * soumise a la TVA est ventilee entre son compte de produit (HT) et son
+     * compte de TVA, plutot que de crediter le compte de produit pour la
+     * totalite TTC (ce qui declarait a tort la TVA comme un produit).
+     *
+     * <p>Le poids de chaque ligne dans le montant total converti est son
+     * montant TTC ({@link LigneNoteFrais#montantTtc()} — HT × quantite pour
+     * une ligne d'achat/vente de marchandise, plus la TVA), jamais le seul
+     * {@link LigneNoteFrais#getMontant()} (le prix unitaire brut, sans
+     * quantite ni TVA) : sur une note a plusieurs lignes, ce dernier sous-
+     * evaluait le poids de toute ligne quantifiee ou soumise a la TVA,
+     * faisant absorber l'ecart par la derniere ligne plutot que de refleter
+     * la ventilation reellement encaissee.</p>
      */
     private List<EcritureComptableService.LigneCredit> construireLignesCredit(
             NoteFrais note, ConversionDeviseService.Conversion conversionTotale) {
@@ -322,18 +629,42 @@ public class CaisseService {
                 ? ligne.getCompteImputation()
                 : comptabilite.compteProduitsDiversParDefaut();
 
-            BigDecimal montantCDF;
+            // Montant de la ligne dans la devise DE BASE du grand livre (USD),
+            // jamais dans celle de la note : une ligne d'une note en CDF est
+            // déjà exprimée en CDF (montantTtc()), donc convertie comme le
+            // montant total (versBase, qui DIVISE par le taux — voir
+            // ConversionDeviseService) — jamais multipliée par lui, ce qui
+            // inflaterait chaque ligne d'un facteur égal au taux. Diviser
+            // ad hoc ici reproduirait le même risque d'erreur de sens que la
+            // classe met en garde contre : on délègue donc à enDeviseBase,
+            // qui porte la règle une seule fois. Bogue resté invisible tant
+            // qu'une note n'avait qu'une seule ligne (toujours "dernière
+            // ligne", jamais cette branche) — jusqu'au panier à plusieurs
+            // produits, qui l'a exposé (note CDF à 3 lignes, 2026-09-27).
+            BigDecimal montantBase;
             boolean derniereLigne = (i == lignes.size() - 1);
             if (derniereLigne) {
-                montantCDF = conversionTotale.montantBase().subtract(sommeConvertie);
-            } else if (conversionTotale.estConvertie()) {
-                montantCDF = ligne.getMontant().multiply(conversionTotale.tauxApplique())
-                    .setScale(2, RoundingMode.HALF_UP);
+                montantBase = conversionTotale.montantBase().subtract(sommeConvertie);
             } else {
-                montantCDF = ligne.getMontant();
+                montantBase = conversionDevise.enDeviseBase(
+                    ligne.montantTtc(), note.getDevise(), conversionTotale.tauxApplique()).montantBase();
             }
-            sommeConvertie = sommeConvertie.add(montantCDF);
-            resultat.add(new EcritureComptableService.LigneCredit(compte, montantCDF));
+            sommeConvertie = sommeConvertie.add(montantBase);
+
+            BigDecimal taux = ligne.getTauxTvaApplique();
+            if (ligne.isSoumisTva() && taux != null && taux.signum() > 0) {
+                BigDecimal montantTva = montantBase.multiply(taux)
+                    .divide(BigDecimal.valueOf(100).add(taux), 2, RoundingMode.HALF_UP);
+                BigDecimal montantHt = montantBase.subtract(montantTva);
+                resultat.add(new EcritureComptableService.LigneCredit(compte, montantHt));
+                // Toujours la TVA collectee, jamais ligne.getCompteTva() : une
+                // note d'encaissement saisie avant que ce compte ne depende du
+                // sens de la note porte encore 4452 (TVA recuperable).
+                resultat.add(new EcritureComptableService.LigneCredit(
+                    comptabilite.compteParNumero(VenteService.COMPTE_TVA_FACTUREE), montantTva));
+            } else {
+                resultat.add(new EcritureComptableService.LigneCredit(compte, montantBase));
+            }
         }
         return resultat;
     }
@@ -356,7 +687,12 @@ public class CaisseService {
             .toList();
     }
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    /**
+     * Grand livre et balance : consultation comptable, fermée au caissier (il opère la caisse, il ne la contrôle pas).
+     * Un compte qui cumule CAISSIER et l'un de ces rôles garde l'accès. Le caissier lit les soldes de ses comptes de
+     * trésorerie par {@link #soldesTresorerie()}.
+     */
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<EcritureResponse> grandLivre() {
         return ecritureRepository.listerAvecDetails().stream()
@@ -364,9 +700,37 @@ public class CaisseService {
             .toList();
     }
 
-    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<LigneBalanceResponse> balance() {
+        return calculerBalance();
+    }
+
+    /**
+     * Soldes des seuls comptes de trésorerie (classe 5 : caisse 571, banques 521x, mobile money 552x) : ce dont l'écran
+     * Caisse et le tableau de bord du caissier ont besoin, sans lui ouvrir la balance générale.
+     */
+    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @Transactional(readOnly = true)
+    public List<LigneBalanceResponse> soldesTresorerie() {
+        return calculerBalance().stream()
+            .filter(l -> l.compteNumero() != null && l.compteNumero().startsWith("5"))
+            .toList();
+    }
+
+    /** Mêmes soldes, arrêtés au jour donné (exercice passé consulté) ; sans date, à ce jour. */
+    @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
+    @Transactional(readOnly = true)
+    public List<LigneBalanceResponse> soldesTresorerie(java.time.LocalDate au) {
+        if (au == null) return soldesTresorerie();
+        return ecritureRepository.calculerBalanceAu(au).stream()
+            .map(row -> LigneBalanceResponse.of((String) row[0], (String) row[1], (TypeCompte) row[2],
+                (BigDecimal) row[3], (BigDecimal) row[4]))
+            .filter(l -> l.compteNumero() != null && l.compteNumero().startsWith("5"))
+            .toList();
+    }
+
+    private List<LigneBalanceResponse> calculerBalance() {
         return ecritureRepository.calculerBalance().stream()
             .map(row -> LigneBalanceResponse.of(
                 (String) row[0],
@@ -388,16 +752,24 @@ public class CaisseService {
      * journal : une pièce issue d'un import ou saisie manuellement peut
      * mouvementer la caisse sans jamais porter le journal CAISSE — elle
      * doit tout de même apparaître ici.</p>
+     *
+     * <p>Affiché dans la devise demandée : USD (devise de base) par défaut, ou CDF. La conversion est faite ici, une fois,
+     * au taux du dernier jour de la période ({@link ConversionDeviseService#affichage}) : chaque ligne est arrondie, puis
+     * les totaux des pièces et du journal sont recalculés sur les lignes converties.</p>
+     *
+     * <p>Une seule méthode porte ce nom : {@code SeparationDesTachesTest} relit sa règle {@code @PreAuthorize} par son nom.</p>
      */
     @PreAuthorize("hasAnyRole('CAISSIER', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')")
     @Transactional(readOnly = true)
-    public LivreJournalResponse journal(LocalDate du, LocalDate au) {
+    public LivreJournalResponse journal(LocalDate du, LocalDate au, Devise devise) {
         LocalDate debut = du != null ? du : LocalDate.of(2000, 1, 1);
         LocalDate fin = au != null ? au : LocalDate.now();
+        ConversionDeviseService.Affichage affichage = conversionDevise.affichage(devise, fin);
 
         List<PieceResponse> pieces = pieceRepository.livreJournalParCompte(EcritureComptableService.COMPTE_CAISSE, debut, fin)
             .stream()
             .map(PieceResponse::from)
+            .map(p -> affichage.estConvertie() ? p.enDevise(affichage::convertir) : p)
             .toList();
 
         BigDecimal totalDebit = BigDecimal.ZERO;
@@ -406,7 +778,7 @@ public class CaisseService {
             totalDebit = totalDebit.add(p.totalDebit() != null ? p.totalDebit() : BigDecimal.ZERO);
             totalCredit = totalCredit.add(p.totalCredit() != null ? p.totalCredit() : BigDecimal.ZERO);
         }
-        return new LivreJournalResponse(debut, fin, pieces, totalDebit, totalCredit);
+        return new LivreJournalResponse(debut, fin, pieces, totalDebit, totalCredit, affichage.devise(), affichage.taux());
     }
 
     // ---------------------------------------------------------------------

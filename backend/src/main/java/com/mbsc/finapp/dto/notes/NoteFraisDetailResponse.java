@@ -26,12 +26,31 @@ public record NoteFraisDetailResponse(
     SensTransaction sens,
     PrioriteNote priorite,
     String demandeurNom,
+    String demandeurFonction,
     String demandeurEmail,
     List<LigneNoteFraisResponse> lignes,
     List<PieceJointeResponse> piecesJointes,
     Instant dateCreation,
     Instant dateMaj,
-    List<ObservationResponse> observations
+    List<ObservationResponse> observations,
+    /** Controle budgetaire releve a la soumission (null avant) ; le controle a jour : GET /notes-frais/{id}/controle-budgetaire. */
+    com.mbsc.finapp.domain.enums.StatutControleBudget statutBudget,
+    String justificationBudget,
+    String budgetReference,
+    /** STANDARD, PAIE ou IMPOT_PAIE (notes du module DRH, comptes imposés). */
+    com.mbsc.finapp.domain.enums.CategorieNote categorie,
+    Integer paieMois,
+    Integer paieAnnee,
+    com.mbsc.finapp.domain.enums.OrganismePaie organismePaie,
+    /** Service qui engage la depense (null : aucun), et son responsable. */
+    Long serviceId,
+    String serviceNom,
+    String serviceResponsable,
+    boolean serviceActif,
+    /** Retours de fonds demandes apres paiement (reductions de la note), du plus ancien au plus recent. */
+    List<RetourFondsResponse> retoursFonds,
+    /** true si une demande attend l'argent a la caisse. */
+    boolean retourEnAttente
 ) {
     public static NoteFraisDetailResponse from(NoteFrais n) {
         var createur = n.getCreateur();
@@ -61,12 +80,26 @@ public record NoteFraisDetailResponse(
             n.getSens(),
             n.getPriorite(),
             createurNom,
+            ObservationResponse.fonctionDe(createur),
             createur == null ? null : createur.getEmail(),
             lignes,
             pieces,
             n.getDateCreation(),
             n.getDateMaj(),
-            timeline
+            timeline,
+            n.getStatutBudget(),
+            n.getJustificationBudget(),
+            n.getBudget() == null ? null : n.getBudget().getReference(),
+            n.getCategorie(),
+            n.getPaieMois(),
+            n.getPaieAnnee(),
+            n.getOrganismePaie(),
+            n.getService() == null ? null : n.getService().getId(),
+            n.getService() == null ? null : n.getService().getNom(),
+            n.getService() == null ? null : n.getService().getResponsable(),
+            n.getService() != null && n.getService().isActif(),
+            n.getRetoursFonds().stream().map(RetourFondsResponse::from).toList(),
+            n.getRetoursFonds().stream().anyMatch(r -> r.getStatut() == com.mbsc.finapp.domain.enums.StatutRetourFonds.EN_ATTENTE)
         );
     }
 }

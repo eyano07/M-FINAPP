@@ -3,6 +3,16 @@ import { defineStore } from 'pinia'
 export type NiveauPermission = 'AUCUN' | 'LECTURE' | 'ECRITURE'
 export type ModuleMetier =
   | 'CAISSE' | 'BANQUE' | 'MOBILE_MONEY' | 'COMPTABILITE' | 'VENTES' | 'LOGISTIQUE' | 'TRANSPORT'
+  // Mine (19/11/2026) : minerais camion par camion, sous-module de LOGISTIQUE.
+  | 'MINE'
+  // Hôtellerie (V152) : application PMS reliée à M-FINAPP.
+  | 'HOTELLERIE'
+  // Budgets et contrôle budgétaire des notes : sous-module de COMPTABILITE, activable par l'administrateur.
+  | 'BUDGET'
+  // Rapprochement bancaire (relevés banque / mobile money), sous-module de COMPTABILITE.
+  | 'RAPPROCHEMENT'
+  // Facture normalisée DGI, sous-module de VENTES : interrupteur dans Administration › Modules.
+  | 'FACTURATION_NORMALISEE'
   | 'PATRIMOINE'
   // Restaurant : module plat (pas de sous-modules), comme PATRIMOINE.
   | 'RESTAURANT'

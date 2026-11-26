@@ -1,16 +1,20 @@
 <script setup lang="ts">
 definePageMeta({ module: 'DRH_MISSIONS' })
 
-interface AgentMission { id: number; employeId: number; employeNomComplet: string; fonctionMission: string | null; civilite: string | null }
+interface AgentMission {
+  id: number; employeId: number | null; employeNomComplet: string | null; nomLibre: string | null
+  nomAffiche: string; nationalite: string | null; numeroPasseport: string | null
+  fonctionMission: string | null; civilite: string | null
+}
 interface Mission {
   id: number; numero: string; lieuMission: string; distanceVille: number | null; province: string | null
+  territoire: string | null; superviseurNomComplet: string | null; superviseurCivilite: string | null
   butMission: string; dureeMission: string | null; dateDepart: string; dateRetour: string
   moyenTransport: string | null; fraisMission: string | null; collective: boolean; agents: AgentMission[]
 }
 
 const route = useRoute()
 const api = useApi()
-const parametresStore = useParametresStore()
 
 const loading = ref(true)
 const erreur = ref('')
@@ -27,12 +31,41 @@ async function charger() {
     loading.value = false
   }
 }
-onMounted(() => { charger(); parametresStore.charger() })
+onMounted(charger)
 
-const dateImpression = ref('')
-function imprimer() {
-  dateImpression.value = new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
-  nextTick(() => window.print())
+/**
+ * "Imprimer" ouvre le PDF officiel (papier à en-tête) dans un nouvel onglet
+ * plutôt que d'imprimer l'aperçu HTML de cette page : l'aperçu ne reprend
+ * qu'un résumé des champs, alors que le PDF est le document réel, déjà
+ * calé sur le papier à en-tête de l'entreprise (texte, signature, pied de
+ * page) — dupliquer sa mise en forme en HTML aurait tôt ou tard divergé du
+ * PDF, comme n'importe quel contenu maintenu à deux endroits.
+ */
+const impression = ref(false)
+async function imprimer() {
+  if (!mission.value) return
+  // Ouverture synchrone de l'onglet, avant tout await : un window.open()
+  // déclenché après une attente asynchrone — même née du même clic — est
+  // bloqué comme popup par plusieurs navigateurs.
+  const onglet = window.open('', '_blank')
+  impression.value = true
+  erreur.value = ''
+  try {
+    const reponse = await api.raw<Blob>(`/drh/missions/${mission.value.id}/pdf`, { responseType: 'blob' })
+    const url = URL.createObjectURL(reponse._data as Blob)
+    if (onglet) {
+      onglet.location.href = url
+    } else {
+      // Bloqueur de popup malgré l'ouverture synchrone (rare) : lien direct,
+      // que l'utilisateur ouvre lui-même.
+      window.open(url, '_blank')
+    }
+  } catch (e: any) {
+    onglet?.close()
+    erreur.value = messageErreurApi(e, 'Impossible de générer le PDF.')
+  } finally {
+    impression.value = false
+  }
 }
 
 const telechargementPdf = ref(false)
@@ -61,7 +94,8 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       </div>
       <div class="d-flex ga-2">
         <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/drh/missions">Retour</v-btn>
-        <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-printer-outline" :disabled="!mission" @click="imprimer">
+        <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-printer-outline"
+          :loading="impression" :disabled="!mission" @click="imprimer">
           Imprimer
         </v-btn>
         <v-btn color="primary" variant="flat" rounded="lg" prepend-icon="mdi-file-pdf-box"
@@ -74,28 +108,19 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4 no-print">{{ erreur }}</v-alert>
     <v-skeleton-loader v-if="loading" type="article" />
 
+    <!-- Aperçu à l'écran uniquement : le document imprimable est le PDF sur
+         papier à en-tête (bouton Imprimer, voir imprimer() ci-dessus), pas
+         cette page — inutile donc de lui donner un habillage d'impression. -->
     <template v-else-if="mission">
-      <div class="etat-print-header">
-        <div class="etat-print-header__brand">
-          <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
-            <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
-            <v-icon v-else icon="mdi-finance" size="16" color="white" />
-          </div>
-          <div>
-            <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
-            <span class="etat-print-header__service">Direction des Ressources Humaines</span>
-            <span class="etat-print-header__doc">Ordre de mission {{ mission.numero }}</span>
-          </div>
-        </div>
-        <div class="etat-print-header__meta">
-          <span>Imprimé le : {{ dateImpression }}</span>
-        </div>
-      </div>
-
       <v-card class="classroom-card pa-6 mb-4">
         <v-row>
-          <v-col cols="12" md="6"><span class="calc-label">Lieu de mission</span><br><strong>{{ mission.lieuMission }}</strong></v-col>
-          <v-col cols="12" md="3"><span class="calc-label">Province</span><br><strong>{{ mission.province ?? '—' }}</strong></v-col>
+          <v-col cols="12" md="4"><span class="calc-label">Site de la mission</span><br><strong>{{ mission.lieuMission }}</strong></v-col>
+          <v-col cols="12" md="4"><span class="calc-label">Territoire</span><br><strong>{{ mission.territoire ?? '—' }}</strong></v-col>
+          <v-col cols="12" md="4"><span class="calc-label">Province</span><br><strong>{{ mission.province ?? '—' }}</strong></v-col>
+          <v-col v-if="mission.collective" cols="12" md="6">
+            <span class="calc-label">Superviseur de la mission</span><br>
+            <strong>{{ mission.superviseurCivilite }} {{ mission.superviseurNomComplet ?? '—' }}</strong>
+          </v-col>
           <v-col cols="12" md="3"><span class="calc-label">Distance</span><br><strong>{{ mission.distanceVille ?? '—' }} km</strong></v-col>
           <v-col cols="12" md="3"><span class="calc-label">Date de départ</span><br><strong>{{ fmtDate(mission.dateDepart) }}</strong></v-col>
           <v-col cols="12" md="3"><span class="calc-label">Date de retour</span><br><strong>{{ fmtDate(mission.dateRetour) }}</strong></v-col>
@@ -109,10 +134,12 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
       <section class="etat-bloc">
         <h2 class="etat-titre">Agents en mission</h2>
         <table class="etat-table">
-          <thead><tr><th>Civilité</th><th>Nom complet</th><th>Fonction en mission</th></tr></thead>
+          <thead><tr><th>Civilité</th><th>Nom complet</th><th>Nationalité</th><th>N° Passeport</th><th>Fonction en mission</th></tr></thead>
           <tbody>
             <tr v-for="a in mission.agents" :key="a.id">
-              <td>{{ a.civilite ?? '—' }}</td><td>{{ a.employeNomComplet }}</td><td>{{ a.fonctionMission ?? '—' }}</td>
+              <td>{{ a.civilite ?? '—' }}</td><td>{{ a.nomAffiche }}</td>
+              <td>{{ a.nationalite ?? '—' }}</td><td>{{ a.numeroPasseport ?? '—' }}</td>
+              <td>{{ a.fonctionMission ?? '—' }}</td>
             </tr>
           </tbody>
         </table>
@@ -122,13 +149,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
-.calc-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
+.calc-label { font-size: 0.7rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.4px; }
 .etat-bloc { margin-bottom: 20px; }
-.etat-titre { font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid #16a34a; }
+.etat-titre { font-size: 1.05rem; font-weight: 700; color: var(--ink); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary); }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-.etat-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--hairline); }
+.etat-table td { padding: 6px 8px; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
 </style>

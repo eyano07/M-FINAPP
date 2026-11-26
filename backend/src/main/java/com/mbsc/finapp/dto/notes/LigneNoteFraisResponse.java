@@ -28,7 +28,8 @@ public record LigneNoteFraisResponse(
     boolean soumisTva,
     String compteTva,
     String compteTvaLibelle,
-    boolean echangeConsigne
+    boolean echangeConsigne,
+    boolean fraisApproche
 ) {
     public static LigneNoteFraisResponse from(LigneNoteFrais l) {
         var compte = l.getCompteImputation();
@@ -54,7 +55,8 @@ public record LigneNoteFraisResponse(
             l.isSoumisTva(),
             compteTva == null ? null : compteTva.getNumero(),
             compteTva == null ? null : compteTva.getLibelle(),
-            l.isEchangeConsigne()
+            l.isEchangeConsigne(),
+            l.isFraisApproche()
         );
     }
 }

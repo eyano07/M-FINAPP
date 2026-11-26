@@ -3,17 +3,83 @@
    ============================================================ */
 
 :root {
-  --mbsc-radius: 16px;
-  --mbsc-border: #f0f0f0;
-  --mbsc-text-secondary: #6b7280;
+  --mbsc-radius: 10px;
+  --mbsc-border: #dde5e1;
+  --mbsc-text-secondary: #55645c;
+  /* « Malachite » : surfaces teintées de la couleur de marque (papier vert très pâle), encre quasi noire verte. */
+  --canvas: color-mix(in srgb, var(--color-primary) 5%, #eef2f0);
+  --ink: #0d1a15;
+  --ink-soft: #55645c;
+  --hairline: #dde5e1;
+  --font-ui: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --surface: #ffffff;
+  --surface-2: #f7faf8;
+  --ink-2: #2b3a33;
+  --ink-faint: #7b8a82;
+  --color-primary-nuit: #3fbf7f;
+  /* Barre latérale et panneau de trésorerie (sombres dans les deux thèmes). */
+  --nav-bg: color-mix(in srgb, var(--color-primary) 38%, #04120c);
+  --hero-bg: color-mix(in srgb, var(--color-primary) 40%, #04120c);
   --mbsc-appbar-h: 60px;
+  /* Couleur de marque personnalisable (admin > paramètres) — valeur de
+     repli pour le tout premier rendu (SSR/avant hydratation), avant que
+     stores/parametres.ts n'applique la couleur réellement configurée.
+     Les teintes derivees se recalculent automatiquement via color-mix() a
+     chaque changement de --color-primary : aucune ne se redefinit en JS. */
+  --color-primary: #15803d;
+  --color-primary-dark: color-mix(in srgb, var(--color-primary) 85%, black);
+  --color-primary-darker: color-mix(in srgb, var(--color-primary) 65%, black);
+  --color-primary-darkest: color-mix(in srgb, var(--color-primary) 45%, black);
+  --color-primary-light: color-mix(in srgb, var(--color-primary) 12%, white);
+  --color-primary-lighter: color-mix(in srgb, var(--color-primary) 6%, white);
+  --color-primary-mid: color-mix(in srgb, var(--color-primary) 45%, white);
+}
+
+/* ── Thème nuit « Malachite nuit » ─────────────────────────────
+   Écran seulement : une impression reste toujours en noir sur blanc. Le vert de marque est remplacé par sa version
+   éclaircie (calculée par stores/parametres.ts) ; !important car la couleur de marque est posée en style en ligne. */
+@media screen {
+  html[data-theme='dark'] {
+    --color-primary: var(--color-primary-nuit) !important;
+    --color-primary-dark: color-mix(in srgb, var(--color-primary) 80%, white);
+    --color-primary-darker: color-mix(in srgb, var(--color-primary) 55%, #07110d);
+    --color-primary-darkest: color-mix(in srgb, var(--color-primary) 30%, #07110d);
+    --color-primary-light: color-mix(in srgb, var(--color-primary) 16%, var(--nuit-surface, #0d1a14));
+    --color-primary-lighter: color-mix(in srgb, var(--color-primary) 9%, var(--nuit-surface, #0d1a14));
+    --color-primary-mid: color-mix(in srgb, var(--color-primary) 50%, var(--nuit-surface, #0d1a14));
+    --canvas: var(--nuit-canvas, #07110d);
+    --surface: var(--nuit-surface, #0d1a14);
+    --surface-2: var(--nuit-surface-2, #12221a);
+    --hairline: var(--nuit-hairline, #1f3329);
+    --mbsc-border: var(--nuit-hairline, #1f3329);
+    --ink: #e7f0ea;
+    --ink-2: #c9d6ce;
+    --ink-soft: #97aa9f;
+    --ink-faint: #6c8075;
+    --mbsc-text-secondary: #97aa9f;
+    --nav-bg: var(--nuit-nav, #050c09);
+    --hero-bg: color-mix(in srgb, var(--color-primary) 22%, #08140f);
+    color-scheme: dark;
+  }
+  html[data-theme='dark'] .classroom-card:hover { box-shadow: 0 0 0 1px var(--hairline) !important; }
+  html[data-theme='dark'] img:not([src*='.svg']) { filter: brightness(0.92); }
 }
 
 html,
 body {
-  font-family: 'Inter', 'Roboto', Arial, sans-serif;
-  background-color: #f8f9fa;
+  font-family: var(--font-ui);
+  background-color: var(--canvas);
+  color: var(--ink);
 }
+/* Vuetify impose Roboto sur .v-application et sur les classes typographiques : on reprend la main. */
+.v-application,
+.v-application [class*='text-'],
+.v-application .v-btn,
+.v-application .v-field,
+.v-application .v-label {
+  font-family: var(--font-ui) !important;
+}
+.v-application { background: var(--canvas) !important; color: var(--ink); }
 
 /* Shared surface card */
 .classroom-card {
@@ -38,15 +104,25 @@ body {
 .page-title {
   font-size: clamp(1.4rem, 2.6vw, 1.85rem);
   font-weight: 700;
-  letter-spacing: -0.5px;
-  color: #111827;
+  letter-spacing: -0.025em;
+  color: var(--ink);
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 .page-sub {
-  font-size: 0.875rem;
-  color: #6b7280;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
   margin: 4px 0 0;
+}
+
+/* ── Champs date Vuetify ───────────────────────────────────── */
+/* Le contenu natif d'un <input type="date"> (Chrome, Edge, Safari) ajoute 2 px de marge interne : le champ
+   mesure alors 50 px au lieu des 48 px d'un champ « comfortable », et se decale de ses voisins (liste, bouton
+   d'action) dans une barre de filtres. On retire cette marge pour que tous les champs aient la meme hauteur. */
+.v-field__input[type="date"]::-webkit-datetime-edit,
+.v-field__input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* ── Data table modern styling ─────────────────────────────── */
@@ -54,102 +130,16 @@ body {
   border-radius: var(--mbsc-radius);
 }
 .v-data-table .v-data-table__th {
-  font-size: 0.72rem !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: #9ca3af !important;
-  background: #fafafa !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  color: var(--ink-soft) !important;
+  background: var(--surface-2) !important;
 }
 .v-data-table .v-data-table__td {
   font-size: 0.875rem !important;
 }
 
-/* ── Data table mobile cards (sous 600px, mode "mobile" natif de
-   Vuetify : chaque <tr> devient une carte, chaque <td> une paire
-   libelle/valeur — voir mobile-breakpoint:'sm' dans plugins/vuetify.ts).
-   Regle globale et unique : s'applique aux 17 v-data-table de l'appli
-   sans repeter le style dans chaque page. ─────────────────────────── */
-@media (max-width: 599px) {
-  .v-table__wrapper { overflow-x: hidden; background: transparent; }
-
-  .v-data-table__tr--mobile {
-    display: block;
-    background: #fff;
-    border: 1px solid #eef0f2;
-    border-left: 3px solid #16a34a;
-    border-radius: 16px;
-    margin: 0 0 14px;
-    padding: 0;
-    overflow: hidden;
-    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
-  }
-  .v-data-table__tr--mobile:last-child { margin-bottom: 0; }
-
-  .v-data-table__tr--mobile > .v-data-table__td {
-    display: flex !important;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    height: auto !important;
-    padding: 12px 16px !important;
-    border-bottom: 1px solid #f4f5f6;
-  }
-  .v-data-table__tr--mobile > .v-data-table__td:last-child { border-bottom: none; }
-  .v-data-table__tr--mobile > .v-data-table__td:nth-child(even) { background: #fafbfc; }
-
-  /* Premier champ = en-tete de la carte (identifiant principal de la ligne) */
-  .v-data-table__tr--mobile > .v-data-table__td:first-child {
-    background: linear-gradient(180deg, #f5faf7 0%, #ffffff 100%);
-    padding: 14px 16px 13px !important;
-    border-bottom: 1px solid #eef2f0;
-  }
-  .v-data-table__tr--mobile > .v-data-table__td:first-child .v-data-table__td-title {
-    color: #16a34a;
-  }
-  .v-data-table__tr--mobile > .v-data-table__td:first-child .v-data-table__td-value {
-    font-size: 1rem;
-    font-weight: 800;
-    color: #0f172a;
-  }
-
-  /* Colonne d'actions (boutons) : pleine largeur, alignes en ligne, sans etiquette repetee */
-  .v-data-table__tr--mobile > .v-data-table__td:has(.v-btn) {
-    background: #fafbfc;
-  }
-  .v-data-table__tr--mobile > .v-data-table__td:has(.v-btn) .v-data-table__td-title {
-    display: none;
-  }
-  .v-data-table__tr--mobile > .v-data-table__td:has(.v-btn) .v-data-table__td-value {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    width: 100%;
-    justify-content: flex-end;
-  }
-
-  .v-data-table__tr--mobile .v-data-table__td-title {
-    font-size: 0.66rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: #9ca3af;
-    flex-shrink: 0;
-  }
-  .v-data-table__tr--mobile .v-data-table__td-value {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #111827;
-    text-align: right;
-    overflow-wrap: anywhere;
-    min-width: 0;
-  }
-
-  /* Ligne de tri mobile (remplace les en-tetes de colonnes cliquables) */
-  .v-data-table .v-data-table__mobile-sort {
-    padding: 0 4px 12px !important;
-  }
-}
+/* Cartes mobiles des tableaux (< 960 px) et en-tête fixe des tableaux (PC) : voir responsive.scss. */
 
 /* ── Pastel chips (status) ─────────────────────────────────── */
 .chip-soft {
@@ -186,10 +176,38 @@ body {
    balance-verification}). */
 .etat-print-header { display: none; }
 
+/* @page doit rester une regle de premier niveau : imbriquee dans @media
+   print (comme c'etait le cas ici), certains moteurs de rendu l'ignorent
+   silencieusement au moment de l'impression — le navigateur retombe alors
+   sur l'orientation par defaut de la boite de dialogue (souvent paysage),
+   sans qu'aucune erreur ne le signale. @page n'a de toute facon d'effet
+   qu'a l'impression : l'envelopper dans @media print n'apportait rien. */
+@page {
+  size: A4 portrait;
+  margin: 10mm 12mm;
+}
+
+/* Page nommee, reservee aux impressions qui doivent etre en paysage (grilles
+   larges : fiche de presence). Seuls les documents qui portent la classe
+   `print-paysage` sur <html> (ajoutee/retiree par le composant concerne via
+   onMounted/onUnmounted — voir pages/drh/presences/index.vue) basculent sur
+   cette page — contrairement a une regle @page anonyme, qui s'appliquerait a
+   toute impression suivante et peut "fuiter" d'une page a l'autre lors d'une
+   navigation cote client dans la SPA (incident deja rencontre et corrige sur
+   fiche-manuelle.vue : @page anonyme retire au profit de cette approche
+   nommee). La classe est portee par <html> plutot que par un element scope
+   profondement imbrique dans l'arbre flex de Vuetify (.v-application >
+   .v-application__wrap > .v-main) : appliquer `page` via un selecteur scope
+   sur un tel element faisait deraper le calcul de pagination de Chromium
+   (grand espace vide puis 2e feuille quasi blanche). */
+@page fiche-paysage {
+  size: A4 landscape;
+  margin: 10mm 12mm;
+}
+
 @media print {
-  @page {
-    size: A4 portrait;
-    margin: 10mm 12mm;
+  html.print-paysage {
+    page: fiche-paysage;
   }
 
   html,
@@ -197,7 +215,8 @@ body {
     background: #fff !important;
   }
 
-  .v-application {
+  .v-application,
+  .v-main {
     background: #fff !important;
   }
 
@@ -206,6 +225,23 @@ body {
   .v-overlay__scrim,
   .v-overlay-container {
     display: none !important;
+  }
+
+  /* L'app-shell Vuetify (.v-application > .v-application__wrap > .v-main)
+     est en display:flex avec .v-main en flex:1 0 auto, pour occuper l'espace
+     restant a cote de la barre d'appli/du menu lateral a l'ecran — deux
+     elements deja masques ci-dessus a l'impression. Sans ce reset, ce
+     flex-grow peut fausser la hauteur budgetee par Chromium pour la
+     pagination (meme symptome que ci-dessus : grand vide puis page
+     supplementaire quasi blanche). Aucune page imprimee n'a besoin de ce
+     comportement flex : le contenu doit simplement occuper sa hauteur
+     naturelle. */
+  .v-application,
+  .v-application__wrap,
+  .v-main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
 
   .v-main {
@@ -224,6 +260,17 @@ body {
   .no-print,
   .v-data-table-footer { display: none !important; }
 
+  /* Tableau dense imprime (grand livre de stock, etat du stock) : lignes compactes et pas de
+     defilement interne, pour que toutes les colonnes tiennent dans la largeur de la page et que le
+     document tienne sur moins de feuilles. A poser via class="table-impression-compacte". */
+  .table-impression-compacte .v-table__wrapper { overflow: visible !important; }
+  .table-impression-compacte .v-table__wrapper > table > tbody > tr > td,
+  .table-impression-compacte .v-table__wrapper > table > thead > tr > th {
+    padding: 0 8px !important;
+    height: 30px !important;
+    font-size: 0.78rem !important;
+  }
+
   * { box-shadow: none !important; }
 
   .etat-print-header {
@@ -233,7 +280,7 @@ body {
     gap: 16px;
     padding-bottom: 12px;
     margin-bottom: 16px;
-    border-bottom: 3px solid #16a34a;
+    border-bottom: 3px solid var(--color-primary);
   }
   .etat-print-header__brand { display: flex; align-items: center; gap: 10px; }
   .etat-print-header__logo {
@@ -243,7 +290,7 @@ body {
     width: 34px;
     height: 34px;
     border-radius: 9px;
-    background: #16a34a;
+    background: var(--color-primary);
     flex-shrink: 0;
     overflow: hidden;
   }
@@ -256,7 +303,7 @@ body {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: #16a34a;
+    color: var(--color-primary);
     margin-top: 1px;
   }
   .etat-print-header__service {
@@ -276,3 +323,445 @@ body {
   }
   .etat-print-header__meta strong { color: #111827; }
 }
+
+/* ============================================================
+   Modele de papier a en-tete choisi par l'administrateur (Parametres) :
+   habille l'en-tete de toutes les impressions (classe print-entete posee
+   sur l'en-tete imprime de chaque page). Le modele est porte par
+   <html data-entete="..."> (stores/parametres.ts), la couleur par
+   --color-primary et --color-on-primary (texte lisible sur cette couleur).
+   CLASSIQUE = style propre a chaque page (filet epais).
+   Memes cinq modeles que les PDF du serveur (EnteteDocumentRendu) : bandeau
+   en degrade avec cercles translucides, epure a trait d'accent, institutionnel
+   centre a ornement, lateral a rail de couleur, encadre en carte arrondie.
+   ============================================================ */
+@media print {
+  html[data-entete] .print-entete {
+    position: relative;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ---------- Bandeau : degrade de la couleur du theme, cercles translucides ---------- */
+  html[data-entete="BANDEAU"] .print-entete {
+    padding: 16px 22px !important;
+    gap: 24px !important;
+    border: 0 !important;
+    border-radius: 14px;
+    color: var(--color-on-primary, #fff);
+    background:
+      radial-gradient(circle at 94% -30%, rgba(255, 255, 255, 0.17) 0 84px, transparent 85px),
+      radial-gradient(circle at 80% 140%, rgba(255, 255, 255, 0.1) 0 62px, transparent 63px),
+      linear-gradient(105deg, var(--color-primary-darker), var(--color-primary)) !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__logo {
+    width: 46px !important;
+    height: 46px !important;
+    border-radius: 13px !important;
+    background: #fff !important;
+    border: 0 !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__logo img { padding: 5px; }
+  html[data-entete="BANDEAU"] .print-entete__logo .v-icon { color: var(--color-primary) !important; }
+  html[data-entete="BANDEAU"] .print-entete__marque { gap: 14px !important; }
+  html[data-entete="BANDEAU"] .print-entete__nom {
+    color: var(--color-on-primary, #fff) !important;
+    font-size: 1.25rem !important;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  html[data-entete="BANDEAU"] .etat-print-header__doc,
+  html[data-entete="BANDEAU"] .etat-print-header__service {
+    color: color-mix(in srgb, var(--color-on-primary, #fff) 80%, var(--color-primary)) !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__meta {
+    color: var(--color-on-primary, #fff) !important;
+    padding-left: 18px;
+    border-left: 1px solid color-mix(in srgb, var(--color-on-primary, #fff) 38%, transparent);
+    font-size: 0.72rem !important;
+  }
+  html[data-entete="BANDEAU"] .print-entete__meta strong { color: var(--color-on-primary, #fff) !important; }
+
+  /* ---------- Epure : blanc, trait d'accent, texte noir ---------- */
+  html[data-entete="EPURE"] .print-entete {
+    padding: 14px 0 14px !important;
+    border-bottom: 1px solid #e5e7eb !important;
+  }
+  html[data-entete="EPURE"] .print-entete::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 30px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--color-primary);
+  }
+  html[data-entete="EPURE"] .print-entete__marque { padding-top: 8px; }
+  html[data-entete="EPURE"] .print-entete__meta { padding-top: 8px; }
+  html[data-entete="EPURE"] .print-entete__nom {
+    color: #111827 !important;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  html[data-entete="EPURE"] .etat-print-header__doc { color: var(--color-primary-dark) !important; }
+  html[data-entete="EPURE"] .print-entete__meta { color: #6b7280 !important; font-size: 0.72rem !important; }
+
+  /* ---------- Institutionnel : tout centre, nom espace, ornement a losange ---------- */
+  html[data-entete="CENTRE"] .print-entete {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 9px !important;
+    padding-bottom: 22px !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-primary) 42%, white) !important;
+  }
+  html[data-entete="CENTRE"] .print-entete::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -4px;
+    width: 7px;
+    height: 7px;
+    margin-left: -3.5px;
+    transform: rotate(45deg);
+    background: var(--color-primary);
+    outline: 5px solid #fff;
+  }
+  html[data-entete="CENTRE"] .print-entete__marque { flex-direction: column !important; text-align: center; gap: 8px !important; }
+  html[data-entete="CENTRE"] .print-entete__logo { width: 44px !important; height: 44px !important; border-radius: 50% !important; }
+  html[data-entete="CENTRE"] .print-entete__nom {
+    color: var(--color-primary-darker) !important;
+    font-size: 1.1rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+  }
+  html[data-entete="CENTRE"] .etat-print-header__doc { letter-spacing: 0.2em !important; }
+  html[data-entete="CENTRE"] .print-entete__meta {
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 3px 0 !important;
+    font-size: 0.72rem !important;
+    color: #6b7280 !important;
+  }
+  html[data-entete="CENTRE"] .print-entete__meta span + span {
+    margin-left: 11px;
+    padding-left: 11px;
+    border-left: 1px solid #d1d5db;
+  }
+
+  /* ---------- Lateral : rail de couleur le long de l'en-tete, filet signe ----------
+     (Chrome ne peint pas dans les marges de la page : le rail longe l'en-tete, dans la zone imprimable.) */
+  html[data-entete="LATERAL"] .print-entete {
+    padding: 4px 0 16px 22px !important;
+    border-bottom: 1px solid #e5e7eb !important;
+  }
+  html[data-entete="LATERAL"] .print-entete::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 16px;
+    width: 7px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--color-primary), var(--color-primary-darker));
+  }
+  html[data-entete="LATERAL"] .print-entete::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -2px;
+    width: 46px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--color-primary);
+  }
+  html[data-entete="LATERAL"] .print-entete__nom { color: var(--color-primary-darker) !important; letter-spacing: 0.02em; }
+  html[data-entete="LATERAL"] .print-entete__meta {
+    padding-left: 13px;
+    border-left: 2.5px solid var(--color-primary);
+    font-size: 0.72rem !important;
+  }
+
+  /* ---------- Encadre : carte arrondie teintee, pastilles ---------- */
+  html[data-entete="ENCADRE"] .print-entete {
+    padding: 15px 20px !important;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 26%, white) !important;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--color-primary) 5%, white) !important;
+    outline: 3px solid color-mix(in srgb, var(--color-primary) 6%, white);
+  }
+  html[data-entete="ENCADRE"] .print-entete__logo {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 12px !important;
+    background: #fff !important;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, white) !important;
+  }
+  html[data-entete="ENCADRE"] .print-entete__logo .v-icon { color: var(--color-primary) !important; }
+  html[data-entete="ENCADRE"] .print-entete__nom {
+    color: var(--color-primary-darker) !important;
+    font-size: 1.2rem !important;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  html[data-entete="ENCADRE"] .print-entete__meta { align-items: flex-end; gap: 4px !important; }
+  html[data-entete="ENCADRE"] .print-entete__meta > span {
+    display: inline-block;
+    padding: 2px 11px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 11%, white);
+    color: var(--color-primary-darker) !important;
+    font-size: 0.7rem !important;
+  }
+  html[data-entete="ENCADRE"] .print-entete__meta strong { color: var(--color-primary-darker) !important; }
+}
+
+/* Thème nuit : un bouton plein désactivé (« Produire » tant que le formulaire est incomplet) ne doit pas briller en vert
+   menthe ; il devient une surface à peine teintée, texte estompé (17/11). */
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-flat,
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated {
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 12%, var(--surface)) !important;
+  color: color-mix(in srgb, var(--ink) 40%, transparent) !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-flat .v-btn__overlay,
+html[data-theme='dark'] .v-btn--disabled.v-btn--variant-elevated .v-btn__overlay { opacity: 0 !important; }
+
+/* Logo principal M-FINAPP (18/11/2026), monochrome (composant LogoMfinapp, couleur = currentColor) : celui de
+   l'application, sur le site et l'application mobile (barre, menu, connexion). Couleur de marque sur fond clair, blanc
+   sur les fonds sombres (menu latéral, visuels). Le logo de l'entreprise (Paramètres) reste celui des documents :
+   en-têtes, factures, reçus, états. */
+.logo-principal {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 3px !important;
+  overflow: visible !important;
+  color: var(--color-primary);
+}
+.modern-drawer .logo-principal,
+.visuel .logo-principal,
+.acces__banniere .logo-principal,
+.apropos__logo {
+  color: #ffffff;
+}
+
+
+/* ============================================================
+   Verre dépoli (21/11/2026) : fond d'aurore coloré et surfaces translucides floutées, à la manière d'iOS.
+   Le fond est posé une fois par la mise en page (layouts/default.vue, .fond-aurore) ; cartes, tableaux, fenêtres,
+   menus, barre latérale et barre du haut le laissent transparaître.
+   ============================================================ */
+:root {
+  --verre: rgba(255, 255, 255, 0.50);
+  --verre-fort: rgba(255, 255, 255, 0.80);
+  --verre-bord: rgba(255, 255, 255, 0.72);
+  --verre-ombre: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 10px 30px -14px rgba(15, 40, 30, 0.22);
+  --flou: blur(22px) saturate(170%);
+  --aurore-opacite: 0.5;
+}
+@media screen {
+  html[data-theme='dark'] {
+    --verre: rgba(20, 30, 26, 0.58);
+    --verre-fort: rgba(22, 33, 28, 0.86);
+    --verre-bord: rgba(255, 255, 255, 0.09);
+    --verre-ombre: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 14px 34px -16px rgba(0, 0, 0, 0.65);
+    --aurore-opacite: 0.28;
+  }
+}
+
+.app-verre { isolation: isolate; }
+.fond-aurore { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+  filter: blur(80px); opacity: var(--aurore-opacite); }
+.fond-aurore span { position: absolute; border-radius: 50%; }
+.fond-aurore span:nth-child(1) { width: 46vw; height: 46vw; left: -10vw; top: -12vw; background: var(--color-primary); }
+.fond-aurore span:nth-child(2) { width: 40vw; height: 40vw; right: -8vw; top: -10vw; background: #38bdf8; }
+.fond-aurore span:nth-child(3) { width: 34vw; height: 34vw; right: 18vw; top: 38vh; background: #a855f7; opacity: 0.7; }
+.fond-aurore span:nth-child(4) { width: 32vw; height: 32vw; left: 22vw; bottom: -12vw; background: #f59e0b; opacity: 0.6; }
+.fond-aurore span:nth-child(5) { width: 30vw; height: 30vw; right: -6vw; bottom: -10vw; background: #6366f1; opacity: 0.6; }
+@media (prefers-reduced-transparency: reduce) { .fond-aurore { display: none; } }
+
+@media screen {
+  /* Cartes, tableaux et panneaux des pages. */
+  .v-main .v-card:not(.v-card--variant-tonal):not(.v-card--variant-text):not(.v-card--variant-plain),
+  .v-main .v-table,
+  .v-main .v-expansion-panel,
+  .v-main .v-list:not(.v-list--nav) {
+    background: var(--verre) !important;
+    -webkit-backdrop-filter: var(--flou);
+    backdrop-filter: var(--flou);
+  }
+  .v-main .v-card:not(.v-card--variant-tonal):not(.v-card--variant-text):not(.v-card--variant-plain) {
+    border: 1px solid var(--verre-bord) !important;
+    border-radius: 18px !important;
+    box-shadow: var(--verre-ombre) !important;
+  }
+  /* Accordéons : chaque panneau est une carte de verre ; le groupe n'a ni cadre ni ombre (il dessinait un contour
+     autour de toute la liste). Les ombres et filets de Vuetify entre panneaux sont retirés au profit d'un écart. */
+  .v-main .v-expansion-panels { border: 0 !important; box-shadow: none !important; background: transparent !important; gap: 8px; }
+  .v-main .v-expansion-panel {
+    border: 1px solid var(--verre-bord) !important;
+    border-radius: 16px !important;
+    box-shadow: var(--verre-ombre) !important;
+    margin: 0 !important;
+  }
+  .v-main .v-expansion-panel::after { display: none !important; }
+  .v-main .v-expansion-panel__shadow { display: none !important; }
+  .classroom-card { border-color: var(--verre-bord) !important; border-radius: 18px !important; }
+  .classroom-card:hover { box-shadow: var(--verre-ombre), 0 16px 34px -18px rgba(16, 120, 90, 0.35) !important; }
+  /* Une carte en verre dans une carte : la seconde reste transparente (pas de double flou). */
+  .v-main .v-card .v-card,
+  .v-main .v-card .v-table,
+  .v-main .v-card .v-list { background: transparent !important; -webkit-backdrop-filter: none; backdrop-filter: none;
+    box-shadow: none !important; }
+  .v-main .v-card .v-card { border-color: color-mix(in srgb, var(--hairline) 70%, transparent) !important; }
+  .v-data-table .v-data-table__th { background: color-mix(in srgb, var(--surface-2) 55%, transparent) !important; }
+  .v-data-table tbody tr:hover > td { background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
+
+  /* Fenêtres, menus déroulants, listes de choix et bulles : verre plus opaque, lisible au-dessus de la page. */
+  .v-overlay__content > .v-card,
+  .v-overlay__content > .v-sheet,
+  .v-overlay__content > .v-list,
+  .v-menu > .v-overlay__content > .v-list,
+  .v-autocomplete__content .v-list,
+  .v-select__content .v-list {
+    background: var(--verre-fort) !important;
+    -webkit-backdrop-filter: var(--flou);
+    backdrop-filter: var(--flou);
+    border: 1px solid var(--verre-bord);
+    border-radius: 18px !important;
+    box-shadow: var(--verre-ombre), 0 24px 60px -24px rgba(0, 0, 0, 0.35) !important;
+  }
+  .v-overlay__scrim { -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+
+  /* Champs de saisie pleins : translucides eux aussi. */
+  .v-main .v-field--variant-solo,
+  .v-main .v-field--variant-solo-filled,
+  .v-main .v-field--variant-filled { background: color-mix(in srgb, var(--verre-fort) 80%, transparent) !important; }
+  .v-main .v-field--variant-outlined { background: color-mix(in srgb, var(--verre) 60%, transparent); }
+
+  /* Étiquettes pastel : un peu plus vives sur le verre. */
+  .chip-soft { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+}
+
+
+/* ── Pages à cartes maison (logistique, restaurant, ventes, administration, aide, à propos…) ───────────────────────
+   Leurs cartes prennent var(--surface) : dans la zone des pages, cette surface devient du verre translucide, les
+   filets s'éclaircissent ; les blocs ci-dessous reçoivent en plus le flou, le liseré et l'ombre du verre. */
+@media screen {
+  .v-main {
+    --surface: var(--verre);
+    --surface-2: color-mix(in srgb, var(--verre) 55%, transparent);
+    --hairline: color-mix(in srgb, var(--mbsc-border) 60%, transparent);
+  }
+  .v-main .aide__fiche,
+  .v-main .analyse-ia__card,
+  .v-main .apropos__carte,
+  .v-main .av-kpi,
+  .v-main .bp-info-card,
+  .v-main .bs-kpi,
+  .v-main .caisse-stat,
+  .v-main .cmp-carte,
+  .v-main .ldb-card,
+  .v-main .ldb__empty,
+  .v-main .lel__carte,
+  .v-main .nd-action-card,
+  .v-main .nd-card,
+  .v-main .nf-empty,
+  .v-main .notif-panel,
+  .v-main .param-card,
+  .v-main .pc-card,
+  .v-main .pc-fiche,
+  .v-main .pc-inherit-card,
+  .v-main .rb-carte,
+  .v-main .rdb-ia__card,
+  .v-main .rdb-kpi,
+  .v-main .recu-card,
+  .v-main .stat-card,
+  .v-main .tc-card,
+  .v-main .tva-card,
+  .v-main .usr-card,
+  .v-main .vte-stat,
+  .v-main .rdb-card,
+  .v-main .av-card {
+    -webkit-backdrop-filter: var(--flou);
+    backdrop-filter: var(--flou);
+    border-color: var(--verre-bord) !important;
+    box-shadow: var(--verre-ombre);
+  }
+}
+
+/* Téléphones et application Android : flou plus léger, aurore moins coûteuse (défilement fluide sur un appareil modeste). */
+@media screen and (max-width: 959px) {
+  :root { --flou: blur(14px) saturate(160%); }
+  .fond-aurore { filter: blur(56px); }
+}
+
+/* ── En-tête de tableau fixe en verre opaque (21/11/2026) ──────────────────────────────────────────────────────────
+   Les lignes défilent sous l'en-tête : il doit les masquer, pas les laisser transparaître. Verre presque opaque, flou
+   et liseré bas ; mêmes sélecteurs que l'en-tête fixe de responsive.scss, en dernier pour l'emporter. */
+@media screen {
+  /* `html body` : plus précis que l'en-tête fixe de responsive.scss, chargé après cette feuille. */
+  html body .v-main .v-table > .v-table__wrapper > table > thead > tr > th,
+  html body .v-main .v-data-table .v-data-table__th,
+  html body .v-main div.tableau-fixe table > thead > tr > th {
+    background: color-mix(in srgb, var(--canvas) 70%, rgba(255, 255, 255, 0.9)) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    backdrop-filter: blur(18px) saturate(170%);
+    box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--color-primary) 18%, var(--mbsc-border)) !important;
+  }
+  html[data-theme='dark'] body .v-main .v-table > .v-table__wrapper > table > thead > tr > th,
+  html[data-theme='dark'] body .v-main .v-data-table .v-data-table__th,
+  html[data-theme='dark'] body .v-main div.tableau-fixe table > thead > tr > th {
+    background: color-mix(in srgb, var(--surface-2, #12221a) 30%, rgba(14, 24, 20, 0.92)) !important;
+  }
+}
+
+/* ── Ascenseurs (21/11/2026) : fins, arrondis, translucides, couleur de marque au survol ──────────────────────────── */
+@media screen and (pointer: fine) {
+  /* Firefox seulement : Chrome et Edge ignorent leurs pseudo-éléments ::-webkit-scrollbar dès que scrollbar-width
+     est posé ; ils prennent donc le style ci-dessous, qui permet de commencer le rail sous l'en-tête d'un tableau. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--color-primary) 35%, rgba(120, 130, 125, 0.45)) transparent;
+    }
+  }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-corner { background: transparent; }
+  *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  *::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    background-color: color-mix(in srgb, var(--color-primary) 30%, rgba(120, 130, 125, 0.45));
+  }
+  *::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--color-primary) 70%, transparent); }
+}
+
+/* Tableaux à en-tête fixe : le rail de l'ascenseur commence sous la ligne d'en-tête (hauteur mesurée par
+   plugins/hauteur-entete-tableaux.client.ts) et s'arrête un peu avant le coin arrondi du bas. */
+@media screen and (pointer: fine) {
+  .v-table__wrapper::-webkit-scrollbar-track,
+  div.tableau-fixe::-webkit-scrollbar-track { margin-top: var(--entete-h, 0px); margin-bottom: 8px; }
+}
+
+/* Impression : jamais de fond coloré ni de verre, une page blanche (21/11/2026). */
+@media print {
+  .fond-aurore { display: none !important; }
+  .v-main .v-card, .v-main .v-table, .classroom-card { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+}
+
+/* Champs arrondis à 12 px (21/11/2026), plus doux que le « lg » de Vuetify (8 px), comme le reste du design en verre. */
+/* Tous les champs (même sans `rounded`), sauf ceux voulus en pilule ou carrés. */
+.v-field:not(.rounded-pill):not(.rounded-0) { border-radius: 12px !important; }
+.v-field:not(.rounded-pill):not(.rounded-0) .v-field__outline__start { border-radius: 12px 0 0 12px !important; }
+.v-field:not(.rounded-pill):not(.rounded-0) .v-field__outline__end { border-radius: 0 12px 12px 0 !important; }
+/* Variante « souligné » (underlined) : pas de coins à arrondir. */
+.v-field.v-field--variant-underlined, .v-field.v-field--variant-plain { border-radius: 0 !important; }

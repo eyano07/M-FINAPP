@@ -7,5 +7,6 @@ import java.util.List;
 
 public interface ClientRepository extends JpaRepository<Client, Long> {
     boolean existsByCodeIgnoreCase(String code);
+    boolean existsByCompteComptable(String compteComptable);
     List<Client> findAllByOrderByNomAsc();
 }

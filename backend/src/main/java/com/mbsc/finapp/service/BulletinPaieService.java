@@ -3,9 +3,8 @@ package com.mbsc.finapp.service;
 import com.mbsc.finapp.domain.BulletinPaie;
 import com.mbsc.finapp.domain.Employe;
 import com.mbsc.finapp.domain.ParametresPaie;
-import com.mbsc.finapp.domain.PieceComptable;
-import com.mbsc.finapp.domain.User;
-import com.mbsc.finapp.domain.enums.JournalComptable;
+import com.mbsc.finapp.domain.enums.RoleType;
+import com.mbsc.finapp.domain.enums.SituationFamiliale;
 import com.mbsc.finapp.domain.enums.StatutBulletin;
 import com.mbsc.finapp.dto.drh.BulletinPaieRequest;
 import com.mbsc.finapp.dto.drh.BulletinPaieResponse;
@@ -15,6 +14,7 @@ import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.BulletinPaieRepository;
 import com.mbsc.finapp.repository.EmployeRepository;
+import com.mbsc.finapp.repository.UserRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -23,18 +23,19 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
 /**
  * Bulletins de paie (module DRH_PAIE) : calcul, workflow BROUILLON -&gt; VALIDE
- * -&gt; clôture (une pièce comptable BROUILLON par bulletin, voir
- * {@code PaieComptabilisationService}), annulation.
+ * -&gt; clôture du mois, annulation. Le règlement et la comptabilisation de la
+ * paie passent ensuite par la note de paie du mois et les notes fiscales (voir
+ * {@code PaieNoteService}).
  *
- * <p>Un bulletin déjà clôturé (pièce liée non nulle) ne peut plus être
- * modifié ni redevenir BROUILLON : sa pièce suit désormais son propre cycle
- * de vie dans {@code ComptabiliteService} (comptabiliser/annuler), écran
- * Pièces comptables — pas de logique dupliquée ici.</p>
+ * <p>Un bulletin clôturé ({@code dateCloture} non nulle) ne peut plus être
+ * modifié ni redevenir BROUILLON, sauf réouverture du mois tant qu'aucune note
+ * de paie active ne le couvre ({@link #rouvrirPeriode}).</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -44,23 +45,25 @@ public class BulletinPaieService {
 
     private final BulletinPaieRepository repository;
     private final EmployeRepository employeRepository;
+    private final UserRepository userRepository;
     private final ParametresPaieService parametresPaieService;
     private final PayrollCalculationService calculationService;
     private final ConversionDeviseService conversionDevise;
-    private final PaieComptabilisationService comptabilisationService;
-    private final ComptabiliteService comptabiliteService;
     private final CurrentUserProvider currentUser;
+    private final PaieNoteService paieNotes;
+    private final AvanceSalaireService avances;
 
     @PreAuthorize("hasAnyRole('RESP_DRH', 'DFIN', 'ADMIN')")
     @Transactional(readOnly = true)
     public List<BulletinPaieResponse> listerParPeriode(Integer mois, Integer annee) {
-        return repository.findByPeriode(mois, annee).stream().map(BulletinPaieResponse::from).toList();
+        String drh = nomDrh();
+        return repository.findByPeriode(mois, annee).stream().map(b -> BulletinPaieResponse.from(b, drh)).toList();
     }
 
     @PreAuthorize("hasAnyRole('RESP_DRH', 'DFIN', 'ADMIN')")
     @Transactional(readOnly = true)
     public BulletinPaieResponse consulter(Long id) {
-        return BulletinPaieResponse.from(charger(id));
+        return BulletinPaieResponse.from(charger(id), nomDrh());
     }
 
     /** Calcule sans persister : aperçu utilisé par le formulaire avant enregistrement. */
@@ -68,33 +71,42 @@ public class BulletinPaieService {
     @Transactional(readOnly = true)
     public ResultatCalculPaie simuler(BulletinPaieRequest req) {
         Employe employe = chargerEmploye(req.employeId());
-        return calculer(req, employe);
+        return calculer(req, employe, null, req.mois(), req.annee(), req.datePaiement());
     }
 
     @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
     @Transactional
     public BulletinPaieResponse creer(BulletinPaieRequest req) {
         Employe employe = chargerEmploye(req.employeId());
+        if (!employe.isActif()) {
+            throw new TransitionInvalideException(employe.getNomComplet()
+                + " est désactivé : réactivez sa fiche avant de lui établir un bulletin.");
+        }
         repository.findByEmployeIdAndMoisAndAnnee(employe.getId(), req.mois(), req.annee()).ifPresent(existant -> {
             throw new TransitionInvalideException(
                 "Un bulletin existe déjà pour " + employe.getNomComplet() + " sur " + req.mois() + "/" + req.annee()
                 + " (référence interne #" + existant.getId() + ") : modifiez-le au lieu d'en créer un nouveau.");
         });
 
-        ResultatCalculPaie resultat = calculer(req, employe);
+        // Audit DRH du 15/11/2026, D-06 : seule une avance versée (compte d'avances de l'agent débité) se retient.
+        avances.verifier(employe, req.avanceSalaire(), null);
+
+        ResultatCalculPaie resultat = calculer(req, employe, null, req.mois(), req.annee(), req.datePaiement());
         BulletinPaie b = BulletinPaie.builder()
             .employe(employe)
             .mois(req.mois())
             .annee(req.annee())
-            .nombreEnfants(employe.getNombreEnfants() != null ? employe.getNombreEnfants() : 0)
+            .nombreEnfants(enfants(employe))
+            .personnesACharge(resultat.personnesACharge())
             .datePaiement(req.datePaiement() != null ? req.datePaiement() : LocalDate.of(req.annee(), req.mois(), 28))
+            .dateImpression(req.dateImpression())
             .createdBy(currentUser.requireUser())
             .build();
         appliquerSaisies(b, req);
         appliquerResultat(b, resultat);
         b = repository.save(b);
         log.info("Bulletin de paie créé [employe={}, periode={}/{}]", employe.getMatricule(), req.mois(), req.annee());
-        return BulletinPaieResponse.from(b);
+        return BulletinPaieResponse.from(b, nomDrh());
     }
 
     @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
@@ -102,12 +114,21 @@ public class BulletinPaieService {
     public BulletinPaieResponse modifier(Long id, BulletinPaieRequest req) {
         BulletinPaie b = charger(id);
         exigerModifiable(b);
-        ResultatCalculPaie resultat = calculer(req, b.getEmploye());
+        if (b.getStatut() != StatutBulletin.BROUILLON) {
+            throw new TransitionInvalideException("Seul un bulletin BROUILLON peut être modifié (état actuel : "
+                + b.getStatut() + ") : repassez-le d'abord en brouillon.");
+        }
+        // Employé, mois et année d'un bulletin ne changent pas ; le nombre d'enfants et de personnes à charge reste
+        // celui figé à sa création, pour qu'un recalcul donne le même résultat que le bulletin d'origine.
+        avances.verifier(b.getEmploye(), req.avanceSalaire(), b.getId());
+        LocalDate datePaiement = req.datePaiement() != null ? req.datePaiement() : b.getDatePaiement();
+        ResultatCalculPaie resultat = calculer(req, b.getEmploye(), b, b.getMois(), b.getAnnee(), datePaiement);
         appliquerSaisies(b, req);
-        b.setDatePaiement(req.datePaiement() != null ? req.datePaiement() : b.getDatePaiement());
+        b.setDatePaiement(datePaiement);
+        b.setDateImpression(req.dateImpression());
         appliquerResultat(b, resultat);
         log.info("Bulletin de paie modifié [id={}]", id);
-        return BulletinPaieResponse.from(b);
+        return BulletinPaieResponse.from(b, nomDrh());
     }
 
     @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
@@ -118,9 +139,13 @@ public class BulletinPaieService {
             throw new TransitionInvalideException(
                 "Seul un bulletin BROUILLON peut être validé (état actuel : " + b.getStatut() + ")");
         }
+        if (b.getSalaireNet() == null || b.getSalaireNet().signum() <= 0) {
+            throw new TransitionInvalideException("Le net à payer de ce bulletin est nul ou négatif : les retenues "
+                + "(avance, prêt) dépassent la rémunération. Corrigez-les avant de valider.");
+        }
         b.setStatut(StatutBulletin.VALIDE);
         log.info("Bulletin de paie validé [id={}]", id);
-        return BulletinPaieResponse.from(b);
+        return BulletinPaieResponse.from(b, nomDrh());
     }
 
     @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
@@ -134,7 +159,7 @@ public class BulletinPaieService {
         }
         b.setStatut(StatutBulletin.BROUILLON);
         log.info("Bulletin de paie repassé en brouillon [id={}]", id);
-        return BulletinPaieResponse.from(b);
+        return BulletinPaieResponse.from(b, nomDrh());
     }
 
     @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
@@ -144,52 +169,173 @@ public class BulletinPaieService {
         exigerModifiable(b);
         b.setStatut(StatutBulletin.ANNULE);
         log.info("Bulletin de paie annulé [id={}]", id);
-        return BulletinPaieResponse.from(b);
+        return BulletinPaieResponse.from(b, nomDrh());
     }
 
     /**
-     * Clôture la paie d'une période : pour chaque bulletin VALIDE de
-     * {@code (mois, annee)}, construit ses écritures et poste sa propre
-     * pièce BROUILLON (une pièce par employé, jamais agrégée — le DFIN les
-     * comptabilise ensuite une à une dans l'écran Pièces comptables
-     * existant, sans nouvel écran de validation).
-     *
-     * @return les bulletins effectivement clôturés
+     * Supprime définitivement un bulletin annulé. Réservé à l'état ANNULE
+     * (jamais clôturé, voir {@link #annuler}, donc jamais de pièce comptable
+     * liée) : un bulletin clôturé/comptabilisé n'est jamais détruit, seule sa
+     * pièce peut être extournée depuis Pièces comptables.
      */
     @PreAuthorize("hasAnyRole('RESP_DRH', 'ADMIN')")
     @Transactional
+    public void supprimer(Long id) {
+        BulletinPaie b = charger(id);
+        if (b.getStatut() != StatutBulletin.ANNULE) {
+            throw new TransitionInvalideException(
+                "Seul un bulletin annulé peut être supprimé définitivement (état actuel : " + b.getStatut() + ").");
+        }
+        if (b.getPieceComptable() != null) {
+            throw new TransitionInvalideException(
+                "Ce bulletin est lié à la pièce comptable " + b.getPieceComptable().getReference()
+                + " : suppression impossible.");
+        }
+        log.info("Bulletin de paie supprimé définitivement [id={}, employe={}, periode={}/{}]",
+            id, b.getEmploye().getMatricule(), b.getMois(), b.getAnnee());
+        repository.delete(b);
+    }
+
+    /**
+     * Clôture la paie d'un mois : verrouille les bulletins VALIDE (marque {@code dateCloture}). Refusée tant
+     * qu'un bulletin du mois est en brouillon. En mode de comptabilisation automatique
+     * ({@code ParametresPaie.comptabiliserPaie}), la clôture écrit aussi la constatation de la paie au journal
+     * PAIE ; en mode manuel, le DFIN la déclenche ensuite par {@link #comptabiliserPeriode}.
+     *
+     * @return les bulletins effectivement clôturés
+     */
+    @PreAuthorize("hasRole('DFIN')")
+    @Transactional
     public List<BulletinPaieResponse> cloturerPeriode(Integer mois, Integer annee) {
-        List<BulletinPaie> aClotures = repository.findByPeriodeAndStatut(mois, annee, StatutBulletin.VALIDE);
+        List<BulletinPaie> bulletins = repository.findByPeriode(mois, annee);
+        long brouillons = bulletins.stream().filter(b -> b.getStatut() == StatutBulletin.BROUILLON).count();
+        if (brouillons > 0) {
+            throw new TransitionInvalideException(brouillons + " bulletin(s) de " + mois + "/" + annee
+                + " sont encore en brouillon : validez-les ou annulez-les avant de clôturer la paie.");
+        }
+        List<BulletinPaie> aClotures = bulletins.stream()
+            .filter(b -> b.getStatut() == StatutBulletin.VALIDE && b.getDateCloture() == null)
+            .toList();
         if (aClotures.isEmpty()) {
             throw new TransitionInvalideException(
                 "Aucun bulletin VALIDE à clôturer pour " + mois + "/" + annee
-                + " (validez d'abord chaque bulletin avant de clôturer la période).");
+                + " (validez d'abord chaque bulletin, ou la période est déjà clôturée).");
         }
-        User auteur = currentUser.requireUser();
-        for (BulletinPaie b : aClotures) {
-            PieceComptable piece = comptabiliteService.creerPieceInterneBrouillon(
-                JournalComptable.OPERATIONS_DIVERSES,
-                "Paie " + mois + "/" + annee + " — " + b.getEmploye().getNomComplet(),
-                b.getDatePaiement(),
-                comptabilisationService.construireLignes(b),
-                auteur);
-            b.setPieceComptable(piece);
+        Instant maintenant = Instant.now();
+        com.mbsc.finapp.domain.User dfin = currentUser.requireUser();
+        aClotures.forEach(b -> {
+            b.setDateCloture(maintenant);
+            b.setCloturePar(dfin);
+        });
+        // Audit SYSCOHADA du 10/11/2026, C-14 : la clôture du mois constate la paie (charges et dettes sociales et
+        // fiscales), au journal de paie, dès ce moment ; la DRH qui saisit et valide les bulletins ne clôture pas.
+        // Audit DRH du 15/11/2026, D-01 : seulement en mode automatique ; en mode manuel, la clôture verrouille
+        // les bulletins et le DFIN comptabilise ensuite le mois ({@link #comptabiliserPeriode}).
+        boolean automatique = parametresPaieService.get().isComptabiliserPaie();
+        if (automatique) {
+            paieNotes.constaterALaCloture(aClotures, mois, annee, dfin);
         }
-        log.info("Paie clôturée [periode={}/{}, bulletins={}]", mois, annee, aClotures.size());
-        return aClotures.stream().map(BulletinPaieResponse::from).toList();
+        log.info("Paie clôturée [periode={}/{}, bulletins={}, comptabilisation={}]", mois, annee, aClotures.size(),
+            automatique ? "automatique" : "manuelle");
+        String drh = nomDrh();
+        return aClotures.stream().map(b -> BulletinPaieResponse.from(b, drh)).toList();
+    }
+
+    /**
+     * Comptabilise la paie d'un mois clôturé en mode manuel (audit DRH du 15/11/2026, D-01) : écrit la pièce de
+     * constatation au journal PAIE pour les bulletins clôturés du mois qui n'ont encore aucune pièce, comme la
+     * clôture le fait en mode automatique. Refusée si le mois n'est pas clôturé ou s'il est déjà comptabilisé.
+     *
+     * @return les bulletins comptabilisés
+     */
+    @PreAuthorize("hasRole('DFIN')")
+    @Transactional
+    public List<BulletinPaieResponse> comptabiliserPeriode(Integer mois, Integer annee) {
+        List<BulletinPaie> valides = repository.findByPeriode(mois, annee).stream()
+            .filter(b -> b.getStatut() == StatutBulletin.VALIDE)
+            .toList();
+        if (valides.isEmpty() || valides.stream().anyMatch(b -> b.getDateCloture() == null)) {
+            throw new TransitionInvalideException("La paie de " + mois + "/" + annee + " n'est pas clôturée : "
+                + "clôturez d'abord le mois, puis comptabilisez-le.");
+        }
+        List<BulletinPaie> aComptabiliser = valides.stream().filter(b -> b.getPieceComptable() == null).toList();
+        if (aComptabiliser.isEmpty()) {
+            throw new TransitionInvalideException("La paie de " + mois + "/" + annee + " est déjà comptabilisée (pièce "
+                + valides.get(0).getPieceComptable().getReference() + ").");
+        }
+        paieNotes.constaterALaCloture(aComptabiliser, mois, annee, currentUser.requireUser());
+        log.info("Paie comptabilisée manuellement [periode={}/{}, bulletins={}]", mois, annee, aComptabiliser.size());
+        String drh = nomDrh();
+        return aComptabiliser.stream().map(b -> BulletinPaieResponse.from(b, drh)).toList();
+    }
+
+    /**
+     * Rouvre la paie d'un mois clôturé pour corriger des bulletins : possible tant qu'aucune note de paie
+     * active ne couvre ses bulletins et qu'aucun n'est comptabilisé.
+     */
+    @PreAuthorize("hasRole('DFIN')")
+    @Transactional
+    public List<BulletinPaieResponse> rouvrirPeriode(Integer mois, Integer annee) {
+        List<BulletinPaie> clotures = repository.findByPeriode(mois, annee).stream()
+            .filter(b -> b.getDateCloture() != null)
+            .toList();
+        if (clotures.isEmpty()) {
+            throw new TransitionInvalideException("La paie de " + mois + "/" + annee + " n'est pas clôturée.");
+        }
+        for (BulletinPaie b : clotures) {
+            if (b.getPieceComptable() != null && !b.isConstateeALaCloture()) {
+                throw new TransitionInvalideException("La paie de " + mois + "/" + annee + " est comptabilisée (pièce "
+                    + b.getPieceComptable().getReference() + ") : elle ne peut plus être rouverte.");
+            }
+            if (b.getNoteFraisPaie() != null) {
+                throw new TransitionInvalideException("La note de paie " + b.getNoteFraisPaie().getReference()
+                    + " couvre ce mois : annulez-la avant de rouvrir la paie.");
+            }
+        }
+        // La constatation faite à la clôture est extournée : la paie corrigée sera constatée à nouveau.
+        paieNotes.annulerConstatation(clotures.stream().filter(BulletinPaie::isConstateeALaCloture).toList(),
+            currentUser.requireUser());
+        clotures.forEach(b -> {
+            b.setDateCloture(null);
+            b.setCloturePar(null);
+        });
+        log.info("Paie rouverte [periode={}/{}, bulletins={}]", mois, annee, clotures.size());
+        String drh = nomDrh();
+        return clotures.stream().map(b -> BulletinPaieResponse.from(b, drh)).toList();
     }
 
     // ---------------------------------------------------------------------
 
-    private ResultatCalculPaie calculer(BulletinPaieRequest req, Employe employe) {
+    /**
+     * Calcule un bulletin. {@code existant} non nul (modification) : nombre d'enfants et personnes à charge figés sur
+     * le bulletin (à défaut de personnes à charge, bulletin antérieur à V147 : ses enfants). Sinon, ceux de la fiche,
+     * conjoint compris pour un agent marié. L'effectif (employés actifs) fixe la tranche INPP.
+     */
+    private ResultatCalculPaie calculer(BulletinPaieRequest req, Employe employe, BulletinPaie existant, int mois,
+                                        int annee, LocalDate datePaiementSaisie) {
         ParametresPaie params = parametresPaieService.get();
-        LocalDate datePaiement = req.datePaiement() != null ? req.datePaiement() : LocalDate.of(req.annee(), req.mois(), 28);
+        LocalDate datePaiement = datePaiementSaisie != null ? datePaiementSaisie : LocalDate.of(annee, mois, 28);
         java.math.BigDecimal tauxFC = conversionDevise.tauxALaDate(datePaiement);
+        if (tauxFC == null || tauxFC.signum() <= 0) {
+            // Sans taux, l'IPR (barème en francs congolais) vaudrait 0 sans que rien ne le signale.
+            throw new TransitionInvalideException("Aucun taux de change USD/CDF n'est défini au " + datePaiement
+                + " : saisissez-le (Administration > Taux de change) avant de calculer la paie.");
+        }
+        int nombreEnfants;
+        Integer personnesACharge;
+        if (existant != null) {
+            nombreEnfants = existant.getNombreEnfants() != null ? existant.getNombreEnfants() : 0;
+            personnesACharge = existant.getPersonnesACharge() != null ? existant.getPersonnesACharge() : nombreEnfants;
+        } else {
+            nombreEnfants = enfants(employe);
+            personnesACharge = null;
+        }
+        boolean marie = employe.getSituationFamiliale() == SituationFamiliale.MARIE;
+        int effectif = (int) Math.max(1, employeRepository.countByActifTrue());
         EntreesCalculPaie entrees = new EntreesCalculPaie(
             req.salaireBaseUsd(), req.presencePct(), req.conge(), req.heuresSupplementaires(),
             req.allocationFamiliale(), req.primeDiplome(), req.primeAnciennete(), req.primeRendement(),
-            req.avanceSalaire(), req.pret(),
-            employe.getNombreEnfants() != null ? employe.getNombreEnfants() : 0);
+            req.avanceSalaire(), req.pret(), nombreEnfants, marie, personnesACharge, effectif);
         return calculationService.calculer(entrees, params, tauxFC);
     }
 
@@ -215,6 +361,10 @@ public class BulletinPaieService {
         b.setBaseImposableIpr(r.baseImposableIpr());
         b.setCnssOuvriere(r.cnssOuvriere());
         b.setCnssPatronale(r.cnssPatronale());
+        b.setCnssPatronalePension(r.cnssPatronalePension());
+        b.setCnssPatronalePf(r.cnssPatronalePf());
+        b.setCnssPatronaleRp(r.cnssPatronaleRp());
+        b.setPersonnesACharge(r.personnesACharge());
         b.setOnem(r.onem());
         b.setTotalInss(r.totalInss());
         b.setInpp(r.inpp());
@@ -225,11 +375,39 @@ public class BulletinPaieService {
     }
 
     private void exigerModifiable(BulletinPaie b) {
-        if (b.getPieceComptable() != null) {
-            throw new TransitionInvalideException(
-                "Ce bulletin est déjà clôturé (pièce " + b.getPieceComptable().getReference() + ") : "
-                + "annulez la pièce depuis Pièces comptables pour le rouvrir.");
+        if (b.getDateCloture() == null) {
+            return;
         }
+        String precision = b.getPieceComptable() != null
+            ? "comptabilisé, pièce " + b.getPieceComptable().getReference()
+            : b.getNoteFraisPaie() != null
+                ? "couvert par la note de paie " + b.getNoteFraisPaie().getReference()
+                    + " — annulez-la puis rouvrez le mois pour le corriger"
+                : "rouvrez le mois pour le corriger";
+        throw new TransitionInvalideException("Ce bulletin est déjà clôturé (" + precision + ").");
+    }
+
+    private static int enfants(Employe e) {
+        return e.getNombreEnfants() != null ? e.getNombreEnfants() : 0;
+    }
+
+    /**
+     * Nom complet du titulaire actuel du role RESP_DRH, pour la signature du
+     * bulletin imprime. Calcule une seule fois par appel de service (pas par
+     * bulletin) : c'est une information sur l'entite, pas sur chaque
+     * bulletin individuellement. Plusieurs titulaires actifs : le premier
+     * trouve fait foi, faute d'un unique "DRH en titre" modelise ailleurs.
+     */
+    private String nomDrh() {
+        return userRepository.findByRoles_NomAndActifTrue(RoleType.RESP_DRH).stream()
+            .findFirst()
+            .map(u -> (nz(u.getPrenom()) + " " + nz(u.getNom())).trim())
+            .filter(s -> !s.isEmpty())
+            .orElse(null);
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
     }
 
     private BulletinPaie charger(Long id) {

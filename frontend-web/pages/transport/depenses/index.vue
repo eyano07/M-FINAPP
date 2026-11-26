@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'TRANSPORT' })
 
 interface Depense {
@@ -41,7 +42,7 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    depenses.value = await api<Depense[]>('/transport/depenses')
+    depenses.value = (await api<Depense[]>('/transport/depenses')).filter(d => useExerciceStore().dansExercice(d.dateDepense))
     vehicules.value = await api<Vehicule[]>('/transport/vehicules')
   } catch (e: any) {
     erreur.value = e?.data?.message || 'Impossible de charger les dépenses.'

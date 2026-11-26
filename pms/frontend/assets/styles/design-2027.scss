@@ -1,0 +1,280 @@
+/* ============================================================================================================
+   M-FINAPP Hôtellerie — « Design 2027 »
+   Épuré et lumineux : toile chaude à aurores très douces, surfaces blanches à filet presque invisible, ombres en
+   couches, grands rayons, chiffres tabulaires. La couleur de marque (--color-primary, réglée dans M-FINAPP) reste
+   la seule couleur forte ; tout le reste en découle par color-mix(), en clair comme en nuit.
+   Chargé en dernier : ses jetons remplacent ceux de classroom.scss sans toucher aux pages.
+   ============================================================================================================ */
+
+:root {
+  --d-canvas: color-mix(in srgb, var(--color-primary) 2%, #f4f5f2);
+  --d-surface: #ffffff;
+  --d-surface-2: color-mix(in srgb, var(--color-primary) 2%, #f8f9f7);
+  --d-surface-3: color-mix(in srgb, var(--color-primary) 4%, #f1f3f0);
+  --d-ink: #0e1512;
+  --d-ink-2: #29322e;
+  --d-ink-soft: #5c6762;
+  --d-ink-faint: #8b9590;
+  --d-line: rgba(14, 21, 18, 0.075);
+  --d-line-strong: rgba(14, 21, 18, 0.13);
+  --d-shadow-1: 0 1px 2px rgba(14, 21, 18, 0.04), 0 1px 1px rgba(14, 21, 18, 0.02);
+  --d-shadow-2: 0 1px 2px rgba(14, 21, 18, 0.04), 0 14px 34px -18px rgba(14, 21, 18, 0.22);
+  --d-shadow-3: 0 2px 6px rgba(14, 21, 18, 0.05), 0 28px 60px -28px rgba(14, 21, 18, 0.35);
+  --d-r-sm: 10px;
+  --d-r: 14px;
+  --d-r-lg: 20px;
+  --d-r-xl: 28px;
+  --d-accent-2: color-mix(in srgb, var(--color-primary) 55%, #0d9488);
+  --d-gold: #c99a2e;
+  --d-grad: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 92%, white) 0%, var(--d-accent-2) 100%);
+  --d-grad-hero:
+    radial-gradient(760px 380px at 88% -30%, color-mix(in srgb, var(--color-primary) 70%, #6ee7b7) 0%, transparent 62%),
+    radial-gradient(620px 340px at -12% 130%, color-mix(in srgb, var(--color-primary) 45%, #38bdf8) 0%, transparent 60%),
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 62%, #03160f) 0%, color-mix(in srgb, var(--color-primary) 34%, #020b07) 100%);
+  --d-aurore:
+    radial-gradient(1100px 560px at -8% -14%, color-mix(in srgb, var(--color-primary) 10%, transparent) 0%, transparent 62%),
+    radial-gradient(900px 520px at 108% -6%, color-mix(in srgb, #f59e0b 7%, transparent) 0%, transparent 58%);
+
+  /* Les jetons de classroom.scss suivent : toutes les pages existantes prennent le nouveau style. */
+  --canvas: var(--d-canvas);
+  --surface: var(--d-surface);
+  --surface-2: var(--d-surface-2);
+  --hairline: var(--d-line);
+  --mbsc-border: var(--d-line);
+  --mbsc-radius: var(--d-r-lg);
+  --ink: var(--d-ink);
+  --ink-2: var(--d-ink-2);
+  --ink-soft: var(--d-ink-soft);
+  --ink-faint: var(--d-ink-faint);
+
+  /* Couleurs d'état, un peu plus profondes et accordées entre elles. */
+  --res-option: #8b5cf6;
+  --res-confirmee: #2563eb;
+  --res-arrivee: color-mix(in srgb, var(--color-primary) 88%, #000);
+  --res-partie: #64748b;
+  --res-annulee: #e11d48;
+  --menage-propre: #16a34a;
+  --menage-sale: #e11d48;
+  --menage-encours: #d97706;
+  --menage-inspecter: #2563eb;
+  --d-hs: #64748b;
+}
+
+@media screen {
+  html[data-theme='dark'] {
+    --d-canvas: color-mix(in srgb, var(--color-primary) 4%, #080c0a);
+    --d-surface: color-mix(in srgb, var(--color-primary) 3%, #101614);
+    --d-surface-2: color-mix(in srgb, var(--color-primary) 4%, #141b18);
+    --d-surface-3: color-mix(in srgb, var(--color-primary) 6%, #18211d);
+    --d-ink: #eef3f0;
+    --d-ink-2: #d2dbd6;
+    --d-ink-soft: #9ba9a2;
+    --d-ink-faint: #6e7c75;
+    --d-line: rgba(255, 255, 255, 0.07);
+    --d-line-strong: rgba(255, 255, 255, 0.12);
+    --d-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --d-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.45), 0 18px 40px -22px rgba(0, 0, 0, 0.7);
+    --d-shadow-3: 0 2px 6px rgba(0, 0, 0, 0.5), 0 30px 64px -30px rgba(0, 0, 0, 0.85);
+    /* En nuit, la marque est éclaircie : le bandeau reprend des teintes profondes pour ne pas éblouir. */
+    --d-grad-hero:
+      radial-gradient(760px 380px at 88% -30%, color-mix(in srgb, var(--color-primary) 45%, #065f46) 0%, transparent 62%),
+      radial-gradient(620px 340px at -12% 130%, color-mix(in srgb, var(--color-primary) 30%, #0c4a6e) 0%, transparent 60%),
+      linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 32%, #03160f) 0%, color-mix(in srgb, var(--color-primary) 16%, #020b07) 100%);
+    --d-aurore:
+      radial-gradient(1100px 560px at -8% -14%, color-mix(in srgb, var(--color-primary) 12%, transparent) 0%, transparent 62%),
+      radial-gradient(900px 520px at 108% -6%, color-mix(in srgb, #38bdf8 6%, transparent) 0%, transparent 58%);
+    --canvas: var(--d-canvas);
+    --surface: var(--d-surface);
+    --surface-2: var(--d-surface-2);
+    --hairline: var(--d-line);
+    --mbsc-border: var(--d-line);
+    --ink: var(--d-ink);
+    --ink-2: var(--d-ink-2);
+    --ink-soft: var(--d-ink-soft);
+    --ink-faint: var(--d-ink-faint);
+    --res-option: #a78bfa;
+    --res-confirmee: #7aa7ff;
+    --res-partie: #94a3b8;
+    --res-annulee: #fb7185;
+    --menage-propre: #4ade80;
+    --menage-sale: #fb7185;
+    --menage-encours: #fbbf24;
+    --menage-inspecter: #7aa7ff;
+    --d-hs: #94a3b8;
+  }
+}
+
+/* ── Toile ─────────────────────────────────────────────────────────────────────────────────────────────────── */
+html, body { background: var(--d-canvas); }
+.v-application {
+  background: var(--d-aurore), var(--d-canvas) !important;
+  background-attachment: fixed !important;
+  color: var(--d-ink);
+  font-feature-settings: 'ss01', 'cv11';
+  -webkit-font-smoothing: antialiased;
+}
+.chiffre, .kpi-value, .v-data-table__td, .tnum { font-variant-numeric: tabular-nums; }
+::selection { background: color-mix(in srgb, var(--color-primary) 22%, transparent); }
+
+/* ── En-tête de page ───────────────────────────────────────────────────────────────────────────────────────── */
+.page-head { margin-bottom: 26px; align-items: flex-end; }
+.page-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  font-size: 0.72rem; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; color: var(--d-ink-faint);
+}
+.page-eyebrow::before { content: ''; width: 18px; height: 2px; border-radius: 2px; background: var(--d-grad); }
+.page-title { font-size: clamp(1.6rem, 2.8vw, 2.15rem) !important; font-weight: 760 !important; letter-spacing: -0.035em !important; }
+.page-sub { font-size: 0.95rem !important; color: var(--d-ink-soft) !important; margin-top: 6px !important; }
+
+/* ── Cartes ────────────────────────────────────────────────────────────────────────────────────────────────── */
+.v-card {
+  background: var(--d-surface);
+  border-color: var(--d-line) !important;
+}
+.classroom-card, .d-carte {
+  border: 1px solid var(--d-line) !important;
+  border-radius: var(--d-r-lg) !important;
+  background: var(--d-surface) !important;
+  box-shadow: var(--d-shadow-1) !important;
+  transition: box-shadow 0.22s ease, transform 0.22s ease, border-color 0.22s ease;
+}
+.classroom-card:hover { box-shadow: var(--d-shadow-2) !important; }
+.classroom-card.v-card--link:hover, .d-carte--lien:hover { transform: translateY(-2px); box-shadow: var(--d-shadow-3) !important; }
+.v-card-title { letter-spacing: -0.01em; }
+.v-dialog > .v-overlay__content > .v-card {
+  border-radius: var(--d-r-xl) !important;
+  box-shadow: var(--d-shadow-3) !important;
+  border: 1px solid var(--d-line) !important;
+}
+.v-overlay__scrim { background: color-mix(in srgb, #06100c 70%, transparent) !important; backdrop-filter: blur(3px); }
+.v-menu > .v-overlay__content > .v-card, .v-menu > .v-overlay__content > .v-list {
+  border-radius: var(--d-r) !important; box-shadow: var(--d-shadow-3) !important; border: 1px solid var(--d-line) !important;
+}
+
+/* ── Boutons ───────────────────────────────────────────────────────────────────────────────────────────────── */
+.v-btn { font-weight: 620 !important; letter-spacing: -0.005em !important; }
+.v-btn--variant-flat.bg-primary, .v-btn--variant-elevated.bg-primary {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 60%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 8px 18px -10px color-mix(in srgb, var(--color-primary) 80%, transparent) !important;
+}
+.v-btn--variant-tonal { --v-activated-opacity: 0.1; }
+
+/* ── Champs ────────────────────────────────────────────────────────────────────────────────────────────────── */
+.v-field--variant-outlined .v-field__outline { --v-field-border-opacity: 0.16; }
+.v-field--variant-outlined.v-field--focused .v-field__outline { --v-field-border-opacity: 1; }
+.v-field--variant-outlined { background: var(--d-surface); }
+
+/* ── Bandeaux ──────────────────────────────────────────────────────────────────────────────────────────────── */
+.v-alert {
+  border-radius: var(--d-r) !important;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent) !important;
+}
+.v-alert--variant-tonal .v-alert__underlay { opacity: 0.07 !important; }
+
+/* ── Tableaux ──────────────────────────────────────────────────────────────────────────────────────────────── */
+.v-table { background: transparent !important; }
+.v-data-table .v-data-table__th, .v-table > .v-table__wrapper > table > thead > tr > th {
+  background: transparent !important;
+  font-size: 0.7rem !important; font-weight: 650 !important; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--d-ink-faint) !important; border-bottom: 1px solid var(--d-line) !important;
+}
+.v-table > .v-table__wrapper > table > tbody > tr > td { border-bottom: 1px solid var(--d-line) !important; }
+.v-table > .v-table__wrapper > table > tbody > tr:hover > td { background: color-mix(in srgb, var(--color-primary) 3.5%, transparent); }
+.v-table > .v-table__wrapper > table > tbody > tr:last-child > td { border-bottom: 0 !important; }
+
+/* ── Puces ─────────────────────────────────────────────────────────────────────────────────────────────────── */
+.v-chip { font-weight: 600; letter-spacing: -0.005em; }
+.pastille {
+  padding: 3px 10px 3px 8px; font-size: 0.74rem; font-weight: 650; letter-spacing: -0.005em;
+  background: color-mix(in srgb, var(--c) 11%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 16%, transparent);
+}
+.pastille::before { width: 6px; height: 6px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 18%, transparent); }
+
+/* ── Interrupteurs ─────────────────────────────────────────────────────────────────────────────────────────── */
+.v-switch .v-switch__track { opacity: 1; background: var(--d-surface-3); box-shadow: inset 0 0 0 1px var(--d-line-strong); }
+.v-switch .v-selection-control--dirty .v-switch__track { background: var(--color-primary); box-shadow: none; }
+
+/* ── Briques communes ──────────────────────────────────────────────────────────────────────────────────────── */
+/* Pastille d'icône : carré arrondi teinté de la couleur --c (marque par défaut). */
+.d-icone {
+  --c: var(--color-primary);
+  display: inline-grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px;
+  color: var(--c); background: color-mix(in srgb, var(--c) 11%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 14%, transparent);
+}
+.d-icone--plein { color: #fff; background: var(--d-grad); box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--color-primary) 85%, transparent); }
+.d-icone--sm { width: 32px; height: 32px; border-radius: 10px; }
+.d-icone--lg { width: 52px; height: 52px; border-radius: 16px; }
+
+/* Tuile d'indicateur. */
+.d-kpi { padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 14px; height: 100%; }
+.d-kpi__tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.d-kpi__libelle { font-size: 0.82rem; font-weight: 600; color: var(--d-ink-soft); }
+.d-kpi__valeur { font-size: clamp(1.7rem, 2.6vw, 2.1rem); font-weight: 760; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.d-kpi__note { font-size: 0.78rem; color: var(--d-ink-faint); }
+
+/* Titre de section dans une carte. */
+.d-section { display: flex; align-items: center; gap: 12px; padding: 18px 20px 6px; }
+.d-section__titre { font-weight: 700; font-size: 1rem; letter-spacing: -0.015em; }
+.d-section__sous { font-size: 0.8rem; color: var(--d-ink-faint); }
+.d-compteur {
+  min-width: 26px; height: 26px; padding: 0 8px; border-radius: 999px; display: inline-grid; place-items: center;
+  font-size: 0.75rem; font-weight: 700; color: var(--d-ink-soft); background: var(--d-surface-3); font-variant-numeric: tabular-nums;
+}
+
+/* État vide illustré. */
+.d-vide { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 34px 20px 38px; color: var(--d-ink-soft); }
+.d-vide__icone {
+  width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; margin-bottom: 8px; color: var(--color-primary);
+  background: radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--color-primary) 18%, transparent), color-mix(in srgb, var(--color-primary) 6%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+.d-vide__titre { font-weight: 700; color: var(--d-ink-2); }
+.d-vide__texte { font-size: 0.85rem; max-width: 360px; }
+
+/* Filtres en pilules. */
+.d-filtres { display: flex; flex-wrap: wrap; gap: 8px; }
+.d-filtre {
+  --c: var(--d-ink-soft);
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px 0 12px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--d-ink-2);
+  background: var(--d-surface); border: 1px solid var(--d-line); box-shadow: var(--d-shadow-1);
+  transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.18s;
+}
+.d-filtre:hover { border-color: var(--d-line-strong); transform: translateY(-1px); }
+.d-filtre__point { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.d-filtre__nb { font-variant-numeric: tabular-nums; color: var(--d-ink-faint); font-weight: 700; }
+.d-filtre--actif {
+  color: var(--d-ink); border-color: color-mix(in srgb, var(--c) 45%, transparent);
+  background: color-mix(in srgb, var(--c) 9%, var(--d-surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 12%, transparent);
+}
+.d-filtre--actif .d-filtre__nb { color: var(--c); }
+
+/* Point « en direct ». */
+.d-direct { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; font-weight: 600; color: var(--d-ink-soft); }
+.d-direct::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); animation: d-pouls 2s infinite;
+}
+@keyframes d-pouls {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }
+  70% { box-shadow: 0 0 0 9px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+/* Apparition douce des blocs d'une page. « backwards » et non « both » : une fois finie, l'animation ne garde pas
+   « transform: none », qui écraserait le décalage d'un volet ou d'un menu (ils restaient visibles fermés). */
+@media (prefers-reduced-motion: no-preference) {
+  .d-apparait > :not(.v-navigation-drawer):not(.v-overlay) { animation: d-monte 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+  .d-apparait > *:nth-child(2) { animation-delay: 0.05s; }
+  .d-apparait > *:nth-child(3) { animation-delay: 0.1s; }
+  .d-apparait > *:nth-child(4) { animation-delay: 0.15s; }
+  .d-apparait > *:nth-child(5) { animation-delay: 0.2s; }
+  .d-apparait > *:nth-child(n + 6) { animation-delay: 0.25s; }
+}
+@keyframes d-monte { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* Barre de défilement discrète. */
+* { scrollbar-width: thin; scrollbar-color: var(--d-line-strong) transparent; }

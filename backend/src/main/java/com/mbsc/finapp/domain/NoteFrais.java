@@ -1,8 +1,11 @@
 package com.mbsc.finapp.domain;
 
+import com.mbsc.finapp.domain.enums.CategorieNote;
 import com.mbsc.finapp.domain.enums.Devise;
+import com.mbsc.finapp.domain.enums.OrganismePaie;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
 import com.mbsc.finapp.domain.enums.SensTransaction;
+import com.mbsc.finapp.domain.enums.StatutControleBudget;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import jakarta.persistence.*;
 import lombok.*;
@@ -16,6 +19,8 @@ import java.util.List;
 
 @Entity
 @Table(name = "notes_frais")
+// Widget « Notes de frais » : chaque changement d'étape met à jour les téléphones (MouvementsTresorerie.EcouteNote).
+@EntityListeners(com.mbsc.finapp.service.widget.MouvementsTresorerie.EcouteNote.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -52,7 +57,7 @@ public class NoteFrais {
     /**
      * Taux FC/USD fige au moment de la transmission en tresorerie : c'est le
      * taux auquel la depense a ete engagee. Compare au taux du jour du
-     * reglement, il permet de constater l'ecart de change reel en 676/776
+     * reglement, il permet de constater l'ecart de change reel en 656/756
      * plutot que de le noyer dans le compte de charge
      * (voir {@code EcartChangeService}).
      *
@@ -83,6 +88,51 @@ public class NoteFrais {
     @Column(length = 20)
     private PrioriteNote priorite;
 
+    /** PAIE / IMPOT_PAIE : note créée par le module DRH, comptes imposés (voir {@code PaieNoteService}). */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private CategorieNote categorie = CategorieNote.STANDARD;
+
+    /** Mois et année de paie réglés (notes PAIE et IMPOT_PAIE uniquement). */
+    @Column(name = "paie_mois")
+    private Integer paieMois;
+
+    @Column(name = "paie_annee")
+    private Integer paieAnnee;
+
+    /** Impôt ou cotisation réglé (notes IMPOT_PAIE uniquement). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "organisme_paie", length = 10)
+    private OrganismePaie organismePaie;
+
+    /**
+     * Resultat du controle budgetaire releve a la soumission (le plus defavorable de ses lignes) ; null tant
+     * que la note n'a pas ete soumise. Le controle a jour se consulte par GET /notes-frais/{id}/controle-budgetaire.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "statut_budget", length = 20)
+    private StatutControleBudget statutBudget;
+
+    /** Justification exigee quand une depense n'est pas couverte par le budget (hors budget, depassement, aucun budget). */
+    @Column(name = "justification_budget", length = 1000)
+    private String justificationBudget;
+
+    /** Budget en execution contre lequel la note a ete controlee a sa soumission. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "budget_id")
+    @ToString.Exclude
+    private Budget budget;
+
+    /**
+     * Service qui engage la depense (facultatif) : la note est controlee sur l'enveloppe de ce service et sa
+     * depense se suit sur son budget (V122). Choisi par le demandeur, corrigeable par le DFIN a la verification.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "service_id")
+    @ToString.Exclude
+    private ServiceBudgetaire service;
+
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "createur_id")
     private User createur;   // Directeur (ou Caissier en urgence)
@@ -109,6 +159,13 @@ public class NoteFrais {
     @Builder.Default
     @ToString.Exclude
     private List<ObservationNote> observations = new ArrayList<>();
+
+    /** Retours de fonds demandes apres paiement (reductions de la note), du plus ancien au plus recent. */
+    @OneToMany(mappedBy = "note")
+    @OrderBy("dateDemande ASC, id ASC")
+    @Builder.Default
+    @ToString.Exclude
+    private List<RetourFondsNote> retoursFonds = new ArrayList<>();
 
     @OneToOne(mappedBy = "noteFrais", fetch = FetchType.LAZY)
     @ToString.Exclude

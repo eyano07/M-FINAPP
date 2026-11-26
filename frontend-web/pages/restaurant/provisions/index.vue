@@ -1,11 +1,22 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN'] })
 
 /**
  * Provisions de cuisine : vivres, épices, charbon...
  *
  * Stockées et consommées en interne (préparation des plats), jamais vendues —
  * contrairement à la carte, pas de prix de vente ni de compte produit.
+ *
+ * Le tableau affiche une ligne par LOT actif (date d'achat, fournisseur,
+ * prix) plutôt qu'une ligne par provision : une même provision peut avoir
+ * été reçue à plusieurs dates, fournisseurs ou prix — voir
+ * /restaurant/provisions/consolide pour la vue agrégée (une ligne par
+ * provision, sans tenir compte des lots). Suivi de gestion, sans effet sur
+ * la comptabilité (toujours au coût moyen pondéré).
+ *
+ * La recherche (code, libellé, unité, fournisseur, date d'achat — insensible à la
+ * casse et aux accents, plusieurs mots cumulés) ne touche pas aux trois compteurs
+ * du haut : ils restent ceux du stock entier.
  */
 interface Provision {
   id: number
@@ -14,6 +25,7 @@ interface Provision {
   uniteMesure?: string
   compteStockNumero?: string
   compteChargeNumero?: string
+  compteAchatNumero?: string
   stockMin: number
   actif: boolean
 }
@@ -26,8 +38,21 @@ interface StockNiveau {
   quantite: number
   valeurTotale: number
   coutMoyen: number
+  /** Prix d'achat moyen HORS transport et manutention ; coutMoyen les inclut. */
+  prixAchatMoyen: number
   stockMin: number
   sousSeuil: boolean
+}
+interface LotProvision {
+  id: number
+  articleId: number
+  dateEntree: string
+  fournisseur?: string | null
+  quantiteRestante: number
+  prixAchatUnitaire: number
+  prixTransportUnitaire: number
+  coutUnitaire: number
+  valeur: number
 }
 
 const api = useApi()
@@ -38,14 +63,25 @@ const saving = ref(false)
 const erreur = ref('')
 const provisions = ref<Provision[]>([])
 const stock = ref<StockNiveau[]>([])
+const lots = ref<LotProvision[]>([])
 const dialog = ref(false)
 const editId = ref<number | null>(null)
+const recherche = ref('')
+const page = ref(1)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'ADMIN']))
 
-/** 331 Matières consommables / 6033 Variations des stocks d'autres approvisionnements — vérifiés actifs et imputables. */
+/**
+ * Racines des comptes d'une provision, les mêmes que celles sous lesquelles
+ * le serveur crée ses comptes dédiés (RestaurantService.creerProvision) :
+ * 331 Matières consommables / 6032 Variations des stocks de matières
+ * premières / 6021 Achats de matières premières. Une provision n'est pas
+ * une marchandise revendue : ni 6011 ni 6033 — vérifiés actifs et
+ * imputables. Ne sert qu'à compléter une ancienne provision sans compte.
+ */
 const COMPTE_STOCK_DEFAUT = '331'
-const COMPTE_CHARGE_DEFAUT = '6033'
+const COMPTE_CHARGE_DEFAUT = '6032'
+const COMPTE_ACHAT_DEFAUT = '6021'
 
 const form = reactive({
   code: '',
@@ -53,6 +89,7 @@ const form = reactive({
   uniteMesure: '',
   compteStockNumero: COMPTE_STOCK_DEFAUT as string | null,
   compteChargeNumero: COMPTE_CHARGE_DEFAUT as string | null,
+  compteAchatNumero: COMPTE_ACHAT_DEFAUT as string | null,
   stockMin: 0,
   actif: true,
 })
@@ -64,13 +101,15 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [provs, niveaux] = await Promise.all([
+    const [provs, niveaux, lotsProv] = await Promise.all([
       api<Provision[]>('/restaurant/provisions'),
       api<StockNiveau[]>('/restaurant/provisions/stock'),
+      api<LotProvision[]>('/restaurant/provisions/lots'),
       parametres.charger(),
     ])
     provisions.value = provs
     stock.value = niveaux
+    lots.value = lotsProv
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les provisions.')
   } finally {
@@ -79,19 +118,52 @@ async function charger() {
 }
 onMounted(charger)
 
-/** Fusionne la fiche article et son niveau de stock pour l'affichage. */
-const lignes = computed(() =>
-  provisions.value.map(p => {
-    const s = stock.value.find(x => x.articleId === p.id)
-    return { ...p, quantite: s?.quantite ?? 0, coutMoyen: s?.coutMoyen ?? 0, valeurTotale: s?.valeurTotale ?? 0, sousSeuil: s?.sousSeuil ?? false }
+/**
+ * Une ligne par lot actif d'une provision (date d'achat, fournisseur, prix) ;
+ * une ligne unique avec tirets si elle n'en a aucun (jamais reçue, ou stock
+ * épuisé) — pour que le catalogue reste complet même sans lot.
+ */
+const lignes = computed(() => {
+  const parProvision = new Map<number, LotProvision[]>()
+  for (const l of lots.value) {
+    const arr = parProvision.get(l.articleId)
+    if (arr) arr.push(l)
+    else parProvision.set(l.articleId, [l])
+  }
+  return provisions.value.flatMap(p => {
+    const sousSeuil = stock.value.find(s => s.articleId === p.id)?.sousSeuil ?? false
+    const lotsDeP = parProvision.get(p.id) ?? []
+    if (lotsDeP.length === 0) {
+      return [{
+        ...p, sousSeuil, rowKey: `p${p.id}`,
+        dateEntree: null as string | null, fournisseur: null as string | null,
+        quantite: 0, prixAchatUnitaire: 0, prixTransportUnitaire: 0, coutUnitaire: 0, valeur: 0,
+      }]
+    }
+    return lotsDeP.map(l => ({
+      ...p, sousSeuil, rowKey: `l${l.id}`,
+      dateEntree: l.dateEntree, fournisseur: l.fournisseur ?? null,
+      quantite: l.quantiteRestante, prixAchatUnitaire: l.prixAchatUnitaire,
+      prixTransportUnitaire: l.prixTransportUnitaire, coutUnitaire: l.coutUnitaire, valeur: l.valeur,
+    }))
   })
-)
+})
+
+/** Ce que le tableau affiche : les lignes dont le code, le libellé, l'unité, le fournisseur ou la date d'achat (telle qu'affichée) correspondent. */
+const lignesAffichees = computed(() => lignes.value.filter(l =>
+  correspondRecherche([l.code, l.libelle, l.uniteMesure, l.fournisseur, l.dateEntree ? fmtDate(l.dateEntree) : null], recherche.value)))
+
+const rechercheActive = computed(() => !!recherche.value.trim())
+
+// Un filtre plus strict peut laisser moins de pages que celle affichée : retour à la première.
+watch(recherche, () => { page.value = 1 })
 
 function ouvrirCreation() {
   editId.value = null
   Object.assign(form, {
     code: '', libelle: '', uniteMesure: '',
     compteStockNumero: COMPTE_STOCK_DEFAUT, compteChargeNumero: COMPTE_CHARGE_DEFAUT,
+    compteAchatNumero: COMPTE_ACHAT_DEFAUT,
     stockMin: 0, actif: true,
   })
   erreur.value = ''
@@ -106,6 +178,7 @@ function ouvrirEdition(p: Provision) {
     uniteMesure: p.uniteMesure || '',
     compteStockNumero: p.compteStockNumero || COMPTE_STOCK_DEFAUT,
     compteChargeNumero: p.compteChargeNumero || COMPTE_CHARGE_DEFAUT,
+    compteAchatNumero: p.compteAchatNumero || COMPTE_ACHAT_DEFAUT,
     stockMin: p.stockMin,
     actif: p.actif,
   })
@@ -113,9 +186,61 @@ function ouvrirEdition(p: Provision) {
   dialog.value = true
 }
 
+// ── Code d'une nouvelle provision ─────────────────────────────────────────────────────
+// Il n'est pas saisi : le serveur le compose d'après le libellé (préfixe PROV : « Riz » donne PROV-RIZ,
+// « Farine de blé » donne PROV-FARI-BLE) et s'assure qu'il est libre. Une provision déjà créée garde un
+// code modifiable à la main.
+const codeAutomatique = computed(() => editId.value === null)
+const codeEnCours = ref(false)
+let numeroSuggestion = 0
+let minuterieCode: ReturnType<typeof setTimeout> | undefined
+
+async function suggererCode() {
+  const numero = ++numeroSuggestion
+  if (!form.libelle.trim()) {
+    form.code = ''
+    codeEnCours.value = false
+    return
+  }
+  codeEnCours.value = true
+  try {
+    const reponse = await api<{ code: string }>('/restaurant/provisions/code-suggere', { query: { libelle: form.libelle.trim() } })
+    // Une saisie plus récente a pu relancer la demande entre-temps : seule la dernière compte.
+    if (numero === numeroSuggestion) form.code = reponse.code || ''
+  } catch {
+    if (numero === numeroSuggestion) form.code = ''
+  } finally {
+    if (numero === numeroSuggestion) codeEnCours.value = false
+  }
+}
+
+// Après une courte pause dans la frappe, pour ne pas interroger le serveur à chaque lettre.
+watch([() => form.libelle, dialog, editId], () => {
+  clearTimeout(minuterieCode)
+  if (!dialog.value || !codeAutomatique.value) return
+  if (!form.libelle.trim()) {
+    numeroSuggestion++
+    form.code = ''
+    codeEnCours.value = false
+    return
+  }
+  codeEnCours.value = true
+  minuterieCode = setTimeout(suggererCode, 300)
+})
+onBeforeUnmount(() => clearTimeout(minuterieCode))
+
 async function enregistrer() {
+  if (codeAutomatique.value) {
+    // Code redemandé au dernier moment : il tient compte de tout ce qui a été créé entre-temps.
+    clearTimeout(minuterieCode)
+    await suggererCode()
+  }
   if (!form.code.trim() || !form.libelle.trim()) {
-    erreur.value = 'Code et libellé sont obligatoires.'
+    erreur.value = codeAutomatique.value
+      ? (form.libelle.trim()
+        ? "Le code n'a pas pu être généré : réessayez."
+        : 'Le libellé est obligatoire : le code en est déduit.')
+      : 'Code et libellé sont obligatoires.'
     return
   }
   saving.value = true
@@ -128,6 +253,7 @@ async function enregistrer() {
       type: 'PROVISION',
       compteStockNumero: form.compteStockNumero,
       compteChargeNumero: form.compteChargeNumero,
+      compteAchatNumero: form.compteAchatNumero,
       compteProduitNumero: null,
       prixVente: null,
       soumisTva: false,
@@ -148,7 +274,8 @@ async function enregistrer() {
   }
 }
 
-const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(q || 0)}${u ? ' ' + u : ''}`
+const fmtQte = (q: number, u?: string) => `${parametres.fmtQuantite(q)}${u ? ' ' + u : ''}`
+const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—')
 </script>
 
 <template>
@@ -159,7 +286,11 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
         <p class="page-sub">Vivres, épices, charbon — stockés et consommés en interne</p>
       </div>
       <div class="d-flex ga-2">
-        <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-swap-horizontal-bold" to="/restaurant/provisions/mouvements">
+        <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-view-list-outline" to="/restaurant/provisions/consolide">
+          Stock consolidé
+        </v-btn>
+        <!-- Les entrées et sorties ne sont pas une page du caissier (voir NavigationDrawer) : pas de lien mort. -->
+        <v-btn v-if="auth.restaurantCuisine" variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-swap-horizontal-bold" to="/restaurant/provisions/mouvements">
           Entrées / sorties
         </v-btn>
         <v-btn v-if="canWrite" color="success" variant="flat" rounded="lg" prepend-icon="mdi-plus" @click="ouvrirCreation">
@@ -190,28 +321,67 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
       </div>
     </div>
 
+    <p class="text-caption text-medium-emphasis mb-2">
+      Une ligne par lot actif (date d'achat, fournisseur, prix).
+      <strong>Sortie des lots : CMP</strong> — chaque sortie prélève sur tous les lots au prorata, d'où des quantités parfois décimales.
+      Suivi de gestion, sans effet sur la comptabilité, qui reste au coût moyen pondéré.
+    </p>
+    <div class="d-flex flex-wrap align-center ga-3 mb-4">
+      <v-text-field
+        v-model="recherche"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="Rechercher : code, libellé, fournisseur, date d'achat…"
+        aria-label="Rechercher une provision"
+        clearable
+        hide-details
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        class="flex-grow-1 rst-recherche"
+        style="max-width: 460px; min-width: 240px"
+      />
+      <span v-if="rechercheActive" class="text-body-2 text-medium-emphasis rst-recherche-compte">
+        {{ lignesAffichees.length }} sur {{ lignes.length }}
+      </span>
+    </div>
     <v-card class="classroom-card">
       <v-data-table
         :headers="[
           { title: 'Code', key: 'code' },
           { title: 'Libellé', key: 'libelle' },
           { title: 'Unité', key: 'uniteMesure' },
-          { title: 'Quantité en stock', key: 'quantite', align: 'end' },
-          { title: 'Coût moyen', key: 'coutMoyen', align: 'end' },
-          { title: 'Valeur', key: 'valeurTotale', align: 'end' },
+          { title: 'Date d\'achat', key: 'dateEntree' },
+          { title: 'Fournisseur', key: 'fournisseur' },
+          { title: 'Quantité', key: 'quantite', align: 'end' },
+          { title: 'Prix d\'achat', key: 'prixAchatUnitaire', align: 'end' },
+          { title: 'Transport et manutention', key: 'prixTransportUnitaire', align: 'end' },
+          { title: 'Coût unitaire', key: 'coutUnitaire', align: 'end' },
+          { title: 'Valeur', key: 'valeur', align: 'end' },
           { title: 'Statut', key: 'actif' },
           { title: 'Actions', key: 'actions', sortable: false, align: 'end' },
         ]"
-        :items="lignes"
+        :items="lignesAffichees"
+        item-value="rowKey"
         :loading="loading"
+        v-model:page="page"
         items-per-page="15"
       >
         <template #item.uniteMesure="{ item }">{{ item.uniteMesure || '—' }}</template>
+        <template #item.dateEntree="{ item }">{{ fmtDate(item.dateEntree) }}</template>
+        <template #item.fournisseur="{ item }">
+          <span v-if="!item.fournisseur" class="text-medium-emphasis">—</span>
+          <span v-else>{{ item.fournisseur }}</span>
+        </template>
         <template #item.quantite="{ item }">
           <span :class="item.sousSeuil ? 'font-weight-bold text-error' : ''">{{ fmtQte(item.quantite, item.uniteMesure) }}</span>
         </template>
-        <template #item.coutMoyen="{ item }">{{ item.coutMoyen > 0 ? parametres.fmtMontant(item.coutMoyen) : '—' }}</template>
-        <template #item.valeurTotale="{ item }">{{ parametres.fmtMontant(item.valeurTotale) }}</template>
+        <template #item.prixAchatUnitaire="{ item }">{{ item.prixAchatUnitaire > 0 ? parametres.fmtMontant(item.prixAchatUnitaire) : '—' }}</template>
+        <template #item.prixTransportUnitaire="{ item }">
+          <span v-if="!(item.prixTransportUnitaire > 0.000001)" class="text-medium-emphasis">—</span>
+          <span v-else>{{ parametres.fmtMontant(item.prixTransportUnitaire) }}</span>
+        </template>
+        <template #item.coutUnitaire="{ item }">{{ item.coutUnitaire > 0 ? parametres.fmtMontant(item.coutUnitaire) : '—' }}</template>
+        <template #item.valeur="{ item }">{{ item.valeur > 0 ? parametres.fmtMontant(item.valeur) : '—' }}</template>
         <template #item.actif="{ item }">
           <v-chip :color="item.actif ? 'success' : 'grey'" size="small" variant="tonal">{{ item.actif ? 'Actif' : 'Inactif' }}</v-chip>
         </template>
@@ -220,7 +390,9 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
         </template>
         <template #no-data>
           <div class="pa-6 text-center text-medium-emphasis">
-            Aucune provision référencée. Créez-en une pour commencer le suivi (riz, tomates, sel, charbon...).
+            {{ rechercheActive
+              ? `Aucune provision ne correspond à « ${recherche.trim()} ».`
+              : 'Aucune provision référencée. Créez-en une pour commencer le suivi (riz, tomates, sel, charbon...).' }}
           </div>
         </template>
       </v-data-table>
@@ -230,19 +402,42 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
       <v-card class="pa-6">
         <h2 class="text-h6 mb-4">{{ editId ? 'Modifier la' : 'Nouvelle' }} provision</h2>
 
+        <v-card-text class="pa-0">
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-4">{{ erreur }}</v-alert>
 
-        <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
-        <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
+        <!-- Nouvelle provision : le code se déduit du libellé, il vient donc après lui. -->
+        <template v-if="codeAutomatique">
+          <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
+          <v-text-field
+            :model-value="form.code" label="Code" readonly :loading="codeEnCours"
+            prepend-inner-icon="mdi-auto-fix" bg-color="grey-lighten-5"
+            placeholder="Généré à partir du libellé"
+            hint="Généré automatiquement à partir du libellé (préfixe PROV)"
+            persistent-hint
+            variant="outlined" density="comfortable" class="mb-3"
+          />
+        </template>
+        <template v-else>
+          <v-text-field v-model="form.code" label="Code" variant="outlined" density="comfortable" class="mb-3" />
+          <v-text-field v-model="form.libelle" label="Libellé" variant="outlined" density="comfortable" class="mb-3" />
+        </template>
         <v-text-field v-model="form.uniteMesure" label="Unité (kg, sac, litre...)" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field v-model.number="form.stockMin" type="number" label="Seuil de réapprovisionnement" variant="outlined" density="comfortable" class="mb-3" />
 
-        <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock" class="mb-3" />
-        <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de charge (sortie)" class="mb-3" />
+        <v-alert v-if="!editId" type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
+          <v-icon icon="mdi-information-outline" size="14" class="mr-1" />
+          Un compte d'achat, de stock et de charge dédié à cette provision sera créé automatiquement.
+        </v-alert>
+        <template v-else>
+          <ComptabiliteSelecteurCompte v-model="form.compteAchatNumero" label="Compte d'achat (602x)" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteStockNumero" label="Compte de stock (33x)" class="mb-3" />
+          <ComptabiliteSelecteurCompte v-model="form.compteChargeNumero" label="Compte de variation de stock (603x)" class="mb-3" />
+        </template>
 
         <v-switch v-model="form.actif" label="Actif" color="success" density="compact" hide-details class="mb-4" />
+        </v-card-text>
 
-        <div class="d-flex justify-end ga-2">
+        <div class="d-flex justify-end ga-2 mt-4">
           <v-btn variant="text" :disabled="saving" @click="dialog = false">Annuler</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving" @click="enregistrer">Enregistrer</v-btn>
         </div>
@@ -261,10 +456,14 @@ const fmtQte = (q: number, u?: string) => `${new Intl.NumberFormat('fr-FR', { ma
   border-radius: 12px;
   font-size: 0.875rem;
 }
-.rst-stat--valeur { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
-.rst-stat--lignes { background: linear-gradient(135deg,#fdf4ff,#f3e8ff); color: #7e22ce; }
-.rst-stat--alerte { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
-.rst-stat--ok     { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rst-stat--valeur { background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 62%, transparent), color-mix(in srgb, #dbeafe 55%, transparent)); color: #1d4ed8; }
+.rst-stat--lignes { background: linear-gradient(135deg, color-mix(in srgb, #fdf4ff 62%, transparent), color-mix(in srgb, #f3e8ff 55%, transparent)); color: #7e22ce; }
+.rst-stat--alerte { background: linear-gradient(135deg, color-mix(in srgb, #fef2f2 62%, transparent), color-mix(in srgb, #fee2e2 55%, transparent)); color: #b91c1c; }
+/* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
+:global(html[data-theme='dark'] .rst-stat--valeur) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }
+:global(html[data-theme='dark'] .rst-stat--lignes) { background: color-mix(in srgb, #c7a3ee 10%, var(--surface)); color: #c7a3ee; box-shadow: inset 0 0 0 1px color-mix(in srgb, #c7a3ee 22%, transparent); }
+:global(html[data-theme='dark'] .rst-stat--alerte) { background: color-mix(in srgb, #f19a9a 10%, var(--surface)); color: #f19a9a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f19a9a 22%, transparent); }
+.rst-stat--ok     { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
 </style>

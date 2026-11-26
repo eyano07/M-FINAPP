@@ -1,11 +1,17 @@
 <script setup lang="ts">
+import { usePermissionsStore } from '~/stores/permissions'
 import type { LigneMouvementForm } from '~/components/logistique/LignesMouvement.vue'
 
-// Creation d'un mouvement : reservee a LOGISTIQUE (ADMIN ne modifie que les
-// pages dediees a l'administration).
-definePageMeta({ module: 'LOGISTIQUE', niveau: 'ECRITURE', roles: ['LOGISTIQUE'] })
+// Creation d'un mouvement : LOGISTIQUE, et l'administrateur en dernier
+// recours pour les articles du module Restaurant (plats, boissons,
+// provisions), que ce module ne sait pas toujours corriger lui-meme — voir
+// StockService.exigerHorsModuleDedie. Pour tout autre role, ces articles ne
+// sont pas proposes : le serveur les refuserait.
+definePageMeta({ module: 'LOGISTIQUE', niveau: 'ECRITURE', roles: ['LOGISTIQUE', 'ADMIN'] })
 
 const api = useApi()
+const auth = useAuthStore()
+const estAdmin = computed(() => auth.hasRole('ADMIN'))
 const router = useRouter()
 const saving = ref(false)
 const erreur = ref('')
@@ -76,6 +82,11 @@ async function enregistrer() {
     </div>
 
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4">{{ erreur }}</v-alert>
+    <!-- Seulement avec le module Restaurant actif : coupé, ses plats, boissons et provisions ne sont plus proposés. -->
+    <v-alert v-if="estAdmin && usePermissionsStore().peutVoir('RESTAURANT')" type="info" variant="tonal" density="compact" class="mb-4">
+      Vous pouvez aussi corriger ici les plats, boissons et provisions du restaurant. Un tel mouvement ne met pas
+      à jour le compteur de bouteilles vides : ajustez-le au besoin depuis les mouvements de vides.
+    </v-alert>
 
     <v-card class="classroom-card pa-6 mb-4">
       <v-row>
@@ -95,7 +106,7 @@ async function enregistrer() {
     </v-card>
 
     <v-card class="classroom-card pa-6 mb-4">
-      <LogistiqueLignesMouvement v-model="form.lignes" :type="form.type" />
+      <LogistiqueLignesMouvement v-model="form.lignes" :type="form.type" :hors-module-restaurant="!estAdmin" />
     </v-card>
 
     <div class="d-flex justify-end ga-3">

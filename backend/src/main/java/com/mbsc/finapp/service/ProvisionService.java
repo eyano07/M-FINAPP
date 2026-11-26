@@ -72,6 +72,10 @@ public class ProvisionService {
         User auteur = currentUser.requireUser();
         CompteOHADA compteProvision = compteParNumero(req.compteProvisionNumero());
         CompteOHADA compteDotation = compteParNumero(req.compteDotationNumero());
+        // Audit SYSCOHADA du 10/11/2026, C-08 : une provision ne déplace pas d'argent ; les dépréciations de
+        // trésorerie (59x) restent permises, pas la caisse, la banque ni le mobile money.
+        ComptabiliteService.exigerContrepartieHorsTresorerie(compteProvision.getNumero(), "compte de provision");
+        ComptabiliteService.exigerContrepartieHorsTresorerie(compteDotation.getNumero(), "compte de dotation");
 
         Provision provision = Provision.builder()
             .reference(referenceGenerator.pourProvision())
@@ -123,6 +127,7 @@ public class ProvisionService {
         }
 
         CompteOHADA compteReprise = compteParNumero(req.compteRepriseNumero());
+        ComptabiliteService.exigerContrepartieHorsTresorerie(compteReprise.getNumero(), "compte de reprise");
         String libelle = "Reprise provision " + provision.getReference()
             + (req.motif() == null || req.motif().isBlank() ? "" : " - " + req.motif());
 

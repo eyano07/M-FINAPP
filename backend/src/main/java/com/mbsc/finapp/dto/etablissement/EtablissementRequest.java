@@ -13,5 +13,8 @@ public record EtablissementRequest(
     String nom,
 
     @NotNull(message = "Le type est obligatoire")
-    TypeEtablissement type
+    TypeEtablissement type,
+
+    /** Devise de tenue du compte et de ses relevés (USD par défaut). */
+    com.mbsc.finapp.domain.enums.Devise devise
 ) {}

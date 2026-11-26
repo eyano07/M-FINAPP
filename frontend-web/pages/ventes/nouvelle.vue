@@ -1,11 +1,15 @@
 <script setup lang="ts">
-definePageMeta({ module: 'VENTES', niveau: 'ECRITURE' })
+definePageMeta({ module: 'VENTES', niveau: 'ECRITURE', roles: ['CAISSIER'] })
 
 interface Article {
   id: number
   code: string
   libelle: string
-  type: 'MARCHANDISE' | 'SERVICE'
+  // Tout sauf SERVICE est stocke (voir TypeArticle.estStocke cote serveur) :
+  // PLAT/BOISSON (module Restaurant) et CONSOMMABLE/PROVISION sont aussi
+  // concernes, pas seulement MARCHANDISE au sens strict.
+  type: 'MARCHANDISE' | 'SERVICE' | 'PLAT' | 'BOISSON' | 'CONSOMMABLE' | 'PROVISION'
+  minerais?: boolean
   prixVente?: number
   soumisTva: boolean
   actif: boolean
@@ -15,6 +19,8 @@ interface Client { id: number; nom: string; actif: boolean }
 interface Etablissement { id: number; nom: string; actif: boolean }
 interface Entrepot { id: number; code: string; nom: string; actif: boolean }
 interface StockNiveau { articleId: number; entrepotId: number; quantite: number }
+interface TableRestau { id: number; numero: string }
+interface SalleAvecTables { id: number; nom: string; tables: TableRestau[]; majorationPourcentage?: number }
 
 interface LigneForm {
   articleId: number | null
@@ -22,10 +28,23 @@ interface LigneForm {
   // Prix saisi dans la devise de la vente (form.devise), jamais converti ici :
   // c'est le serveur qui ramène la vente en devise de base.
   prixUnitaire: number | null
+  /** Minerais uniquement : chargement cédé, chacun ayant son propre prix. */
+  camionId: number | null
+}
+
+interface CamionDispo { id: number; plaque: string; dateAchat: string; prixAchat: number }
+
+/** Une ligne de billets identiques remis par le client (ex. 2 × 20$). */
+interface BilletRecu { devise: 'CDF' | 'USD'; coupure: number | null; quantite: number | null }
+/** Coupures reellement en circulation en RDC — pas une saisie totalement libre, pour eviter les fautes de frappe (ex. 5000 au lieu de 500). */
+const COUPURES: Record<'CDF' | 'USD', number[]> = {
+  USD: [1, 2, 5, 10, 20, 50, 100],
+  CDF: [50, 100, 200, 500, 1000, 5000, 10000, 20000],
 }
 
 const api = useApi()
 const router = useRouter()
+const permissions = usePermissionsStore()
 
 const loading = ref(false)
 const envoi = ref(false)
@@ -38,8 +57,26 @@ const clients = ref<Client[]>([])
 const banques = ref<Etablissement[]>([])
 const operateurs = ref<Etablissement[]>([])
 const entrepots = ref<Entrepot[]>([])
+const salles = ref<SalleAvecTables[]>([])
 const tauxChange = ref(1)
 const tauxTva = ref(0)
+/** Régime de TVA de l'entreprise : non assujettie => ni TVA ni total HT affichés. */
+const assujettiTva = ref(true)
+
+/** Table du restaurant, plate et prefixee par sa salle — vide si le module Restaurant n'est pas actif ou sans salle configuree. */
+const tablesOptions = computed(() =>
+  salles.value.flatMap(s => s.tables.map(t => ({ title: `${s.nom} — Table ${t.numero}`, value: t.id }))))
+
+/** Majoration (%) de la salle de chaque table, ex. 15 pour une salle VIP a +15% — voir SalleRestaurant.majorationPourcentage. */
+const majorationParTable = computed(() => {
+  const m: Record<number, number> = {}
+  for (const s of salles.value) {
+    for (const t of s.tables) m[t.id] = s.majorationPourcentage || 0
+  }
+  return m
+})
+const majorationActuelle = computed(() =>
+  form.tableId != null ? (majorationParTable.value[form.tableId] || 0) : 0)
 
 // Le client peut venir du répertoire ou être saisi librement.
 const modeClient = ref<'REPERTOIRE' | 'LIBRE'>('REPERTOIRE')
@@ -52,14 +89,77 @@ const form = reactive({
   devise: 'CDF' as 'CDF' | 'USD',
   etablissementId: null as number | null,
   entrepotId: null as number | null,
-  lignes: [{ articleId: null, quantite: 1, prixUnitaire: null }] as LigneForm[],
+  tableId: null as number | null,
+  lignes: [{ articleId: null, quantite: 1, prixUnitaire: null, camionId: null }] as LigneForm[],
+  // Rendu de monnaie (paiement Caisse uniquement) : le client peut payer avec
+  // plusieurs billets, dans une devise differente de celle de la vente
+  // (courant en RDC, ex. 2 billets de 20$ + 1 billet de 5000 FC).
+  billetsRecus: [] as BilletRecu[],
+})
+
+// ── Pavé numérique (tablette tactile) ────────────────────────────
+// Le pavé écrit dans le champ quantité / prix actif. `saisie` garde le texte
+// brut pour conserver un point final ("12.") que le nombre ne peut pas porter.
+type ChampLigne = 'quantite' | 'prixUnitaire'
+const champActif = ref<{ i: number; champ: ChampLigne } | null>(null)
+const saisie = ref('')
+// Sur écran tactile, le clavier du système est masqué : le pavé le remplace.
+const tactile = ref(false)
+// Le pavé ne s'affiche que sur tablette (600 px de large au moins) ou en paysage (21/11/2026) : sur un téléphone tenu en
+// portrait, il prenait toute la hauteur ; c'est alors le clavier numérique du téléphone qui sert.
+const paveVisible = ref(true)
+let requetePave: MediaQueryList | null = null
+const majPave = () => { paveVisible.value = requetePave?.matches ?? true }
+onMounted(() => {
+  tactile.value = window.matchMedia?.('(pointer: coarse)').matches ?? false
+  requetePave = window.matchMedia?.('(min-width: 600px), (orientation: landscape)') ?? null
+  majPave()
+  requetePave?.addEventListener('change', majPave)
+})
+onBeforeUnmount(() => requetePave?.removeEventListener('change', majPave))
+/** Clavier du système masqué seulement quand le pavé le remplace ; sinon clavier numérique du téléphone. */
+const modeSaisie = computed(() => (tactile.value && paveVisible.value ? 'none' : 'decimal'))
+
+function activerChamp(i: number, champ: ChampLigne) {
+  champActif.value = { i, champ }
+  const v = form.lignes[i][champ]
+  saisie.value = v == null ? '' : String(v)
+}
+function appliquerSaisie() {
+  const c = champActif.value
+  if (!c) return
+  form.lignes[c.i][c.champ] = saisie.value === '' || saisie.value === '.' ? null : Number(saisie.value)
+}
+function toucheNumerique(k: string) {
+  const c = champActif.value
+  if (!c) return
+  if (k === 'suivant') {
+    // quantité -> prix de la même ligne -> quantité de la ligne suivante
+    if (c.champ === 'quantite') activerChamp(c.i, 'prixUnitaire')
+    else if (c.i + 1 < form.lignes.length) activerChamp(c.i + 1, 'quantite')
+    else champActif.value = null
+    return
+  }
+  if (k === 'clear') saisie.value = ''
+  else if (k === 'back') saisie.value = saisie.value.slice(0, -1)
+  else if (k === '.') {
+    if (!saisie.value.includes('.')) saisie.value = (saisie.value || '0') + '.'
+  } else if (saisie.value === '0' && k !== '00') saisie.value = k
+  else if (saisie.value !== '' && saisie.value !== '0' || k !== '00') saisie.value += k
+  appliquerSaisie()
+}
+const libelleChamp = computed(() => {
+  const c = champActif.value
+  if (!c) return ''
+  const nom = c.champ === 'quantite' ? 'Quantité' : `Prix (${form.devise === 'USD' ? 'USD' : 'FC'})`
+  return `${nom} · ligne ${c.i + 1}`
 })
 
 async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    const [arts, cls, bqs, ops, ents, stk, taux, tva] = await Promise.all([
+    const [arts, cls, bqs, ops, ents, stk, taux, tva, sls] = await Promise.all([
       api<Article[]>('/logistique/articles'),
       api<Client[]>('/clients').catch(() => []),
       api<Etablissement[]>('/etablissements?type=BANQUE').catch(() => []),
@@ -71,17 +171,29 @@ async function charger() {
         egal au taux, ~2800x) sans que rien ne le signale. A 0, les
         convertisseurs (tous gardes par `taux > 0`) renvoient 0, valeur
         manifestement fausse plutot que plausible. */,
-      api<{ taux: number }>('/admin/taux-tva').catch(() => ({ taux: 0 })),
+      api<{ taux: number; assujetti?: boolean }>('/admin/taux-tva').catch(() => ({ taux: 0, assujetti: true })),
+      // Le module Restaurant peut etre desactive pour ce compte : l'appel
+      // echouerait alors en 403, sans consequence puisque tablesOptions
+      // reste simplement vide (le selecteur de table ne s'affiche pas).
+      permissions.peutVoir('RESTAURANT')
+        ? api<SalleAvecTables[]>('/restaurant/salles').catch(() => [])
+        : Promise.resolve([] as SalleAvecTables[]),
     ])
     catalogueComplet.value = arts
-    articles.value = arts.filter((a) => a.vendable)
+    // Module Mine coupé : les minerais ne se vendent plus d'ici.
+    articles.value = arts.filter((a) => a.vendable && (!a.minerais || permissions.peutVoir('MINE')))
     clients.value = cls.filter((c) => c.actif)
     banques.value = bqs.filter((b) => b.actif)
     operateurs.value = ops.filter((o) => o.actif)
     entrepots.value = ents.filter((e) => e.actif)
+    // Pre-selection quand un seul entrepot existe : evite une saisie
+    // obligatoire pour un choix qui n'en est pas un (voir receptions.vue).
+    if (entrepots.value.length === 1) form.entrepotId = entrepots.value[0].id
     stock.value = stk
+    salles.value = sls
     tauxChange.value = taux.taux || 0
     tauxTva.value = tva.taux || 0
+    assujettiTva.value = tva.assujetti !== false
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les données.')
   } finally {
@@ -107,10 +219,13 @@ const besoinEtablissement = computed(() =>
   form.modeReglement === 'BANQUE' || form.modeReglement === 'MOBILE_MONEY')
 const articleDe = (id: number | null) => articles.value.find((a) => a.id === id) || null
 const contientMarchandise = computed(() =>
-  form.lignes.some((l) => articleDe(l.articleId)?.type === 'MARCHANDISE'))
+  form.lignes.some((l) => {
+    const t = articleDe(l.articleId)?.type
+    return !!t && t !== 'SERVICE'
+  }))
 
 function ajouterLigne() {
-  form.lignes.push({ articleId: null, quantite: 1, prixUnitaire: null })
+  form.lignes.push({ articleId: null, quantite: 1, prixUnitaire: null, camionId: null })
 }
 function supprimerLigne(i: number) {
   if (form.lignes.length <= 1) return
@@ -119,20 +234,85 @@ function supprimerLigne(i: number) {
 
 // Le prix catalogue de l'article est tenu en FC — un choix independant de
 // la devise de base du grand livre (article.prixVente n'est jamais touche
-// par ConversionDeviseService), gere ici cote client de bout en bout.
+// par ConversionDeviseService), gere ici cote client de bout en bout. La
+// majoration de la salle (table choisie) s'applique avant toute conversion :
+// une proposition de prix, jamais imposee — le caissier reste libre de la
+// corriger, comme pour tout prix sur cet ecran.
 const prixCatalogue = (article: Article | null) => {
   if (article?.prixVente == null) return null
-  if (form.devise === 'CDF') return article.prixVente
-  return tauxChange.value > 0 ? arrondi(article.prixVente / tauxChange.value) : null
+  const prixMajore = article.prixVente * (1 + majorationActuelle.value / 100)
+  if (form.devise === 'CDF') return arrondi(prixMajore)
+  return tauxChange.value > 0 ? arrondi(prixMajore / tauxChange.value) : null
 }
 
 /** Reprend le prix catalogue quand on choisit un article. */
 function onArticleSelect(i: number, articleId: number | null) {
   const article = articleDe(articleId)
   form.lignes[i].articleId = articleId
+  form.lignes[i].camionId = null
   const prix = prixCatalogue(article)
   if (prix != null) form.lignes[i].prixUnitaire = prix
+  // Minerais : un camion se vend entier, la quantité n'est pas saisissable.
+  if (article?.minerais) {
+    form.lignes[i].quantite = 1
+    chargerCamions(articleId!)
+  }
+  if (articleId != null) actualiserPrix(i, articleId, prix)
 }
+
+/**
+ * Le catalogue est chargé à l'ouverture de l'écran, qui peut rester ouvert
+ * toute la journée à la caisse : un prix de vente modifié entre-temps ne s'y
+ * verrait pas. L'article choisi est donc relu, et la proposition corrigée si
+ * elle a changé — sauf si le caissier a déjà modifié le prix de la ligne.
+ * Une vente enregistrée garde toujours son propre prix, quoi qu'il arrive
+ * ensuite au catalogue.
+ */
+async function actualiserPrix(i: number, articleId: number, prixPropose: number | null) {
+  try {
+    const frais = await api<Article>(`/logistique/articles/${articleId}`)
+    for (const liste of [articles.value, catalogueComplet.value]) {
+      const k = liste.findIndex((a) => a.id === articleId)
+      if (k >= 0) liste[k] = { ...liste[k], ...frais }
+    }
+    const ligne = form.lignes[i]
+    const prix = prixCatalogue(articleDe(articleId))
+    if (ligne && ligne.articleId === articleId && prix != null
+      && (prixPropose == null || ligne.prixUnitaire === prixPropose)) {
+      ligne.prixUnitaire = prix
+    }
+  } catch {
+    // Relecture impossible (réseau) : la proposition du catalogue chargé reste.
+  }
+}
+
+/**
+ * Camions encore en stock d'un minerais, chargés à la demande et mis en cache
+ * par article : la liste ne dépend pas de la ligne, et une vente peut porter
+ * plusieurs camions du même minerais.
+ */
+const camionsParArticle = ref<Record<number, CamionDispo[]>>({})
+async function chargerCamions(articleId: number) {
+  if (camionsParArticle.value[articleId]) return
+  try {
+    camionsParArticle.value[articleId] =
+      await api<CamionDispo[]>(`/logistique/minerais/camions/disponibles?articleId=${articleId}`)
+  } catch {
+    camionsParArticle.value[articleId] = []
+  }
+}
+
+/** Camions proposables sur la ligne i : ceux en stock, moins ceux déjà pris par une autre ligne. */
+function camionsDisponibles(i: number): CamionDispo[] {
+  const l = form.lignes[i]
+  if (!l.articleId) return []
+  const tous = camionsParArticle.value[l.articleId] || []
+  const prisAilleurs = new Set(
+    form.lignes.filter((autre, j) => j !== i && autre.camionId).map(autre => autre.camionId))
+  return tous.filter(c => !prisAilleurs.has(c.id))
+}
+
+const estMinerais = (articleId: number | null) => !!articleDe(articleId)?.minerais
 
 // Changer de devise en cours de saisie reconvertit les prix déjà tapés, pour
 // que le caissier retrouve le même montant réel dans l'autre unité.
@@ -165,13 +345,54 @@ const totaux = computed(() => {
 
 const arrondi = (v: number) => Math.round(v * 100) / 100
 
+// ── Rendu de monnaie (paiement Caisse) ──────────────────────────────────
+// Somme de tous les billets remis, chacun ramené dans la devise de la vente —
+// le client peut mélanger les devises (ex. 2 billets de 20$ + 1 de 5000 FC).
+function ajouterBillet() {
+  form.billetsRecus.push({ devise: form.devise, coupure: null, quantite: 1 })
+}
+function supprimerBillet(i: number) {
+  form.billetsRecus.splice(i, 1)
+}
+const montantRecuTotal = computed(() => {
+  let total = 0
+  let saisi = false
+  for (const b of form.billetsRecus) {
+    if (!b.coupure || !b.quantite || b.quantite <= 0) continue
+    saisi = true
+    const montantLigne = b.coupure * b.quantite
+    if (b.devise === form.devise) {
+      total += montantLigne
+    } else if (tauxChange.value > 0) {
+      total += b.devise === 'USD' ? montantLigne * tauxChange.value : montantLigne / tauxChange.value
+    }
+  }
+  return saisi ? arrondi(total) : null
+})
+const monnaieARendre = computed(() => {
+  if (montantRecuTotal.value == null) return null
+  return arrondi(montantRecuTotal.value - totaux.value.ttc)
+})
+const fmtBillet = (montant: number, devise: 'CDF' | 'USD') =>
+  devise === 'USD'
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(montant || 0)
+    : `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(montant || 0)} FC`
+// Équivalent indicatif de la monnaie à rendre dans l'autre devise — utile
+// pour rendre en espèces dans la devise que le caissier a sous la main.
+const monnaieARendreEquivalent = computed(() => {
+  if (monnaieARendre.value == null || monnaieARendre.value < 0 || tauxChange.value <= 0) return ''
+  return form.devise === 'USD'
+    ? `≈ ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(monnaieARendre.value * tauxChange.value)} FC`
+    : `≈ ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(monnaieARendre.value / tauxChange.value)}`
+})
+
 // Cumule les quantités par article (une même marchandise peut apparaître
 // sur plusieurs lignes) pour comparer au stock réellement disponible.
 const quantiteDemandeeParArticle = computed(() => {
   const totaux = new Map<number, number>()
   for (const l of form.lignes) {
     if (!l.articleId || !l.quantite || l.quantite <= 0) continue
-    if (articleDe(l.articleId)?.type !== 'MARCHANDISE') continue
+    if (articleDe(l.articleId)?.type === 'SERVICE') continue
     totaux.set(l.articleId, (totaux.get(l.articleId) || 0) + l.quantite)
   }
   return totaux
@@ -193,14 +414,25 @@ const raisonsBlocage = computed(() => {
     raisons.push('Ajoutez au moins un article à la vente.')
   }
   for (const l of lignesRemplies) {
-    if (!l.quantite || l.quantite <= 0) {
-      raisons.push(`Renseignez une quantité valide pour « ${articleDe(l.articleId)?.libelle ?? "l'article"} ».`)
+    const nom = articleDe(l.articleId)?.libelle ?? "l'article"
+    // Un minerais se vend camion par camion : la quantité vaut toujours 1,
+    // c'est le camion qui doit être désigné.
+    if (estMinerais(l.articleId)) {
+      if (!l.camionId) {
+        raisons.push(`Choisissez le camion vendu pour « ${nom} ».`)
+      }
+    } else if (!l.quantite || l.quantite <= 0) {
+      raisons.push(`Renseignez une quantité valide pour « ${nom} ».`)
     }
   }
 
   if (form.devise === 'USD' && tauxChange.value <= 0) {
     raisons.push("Aucun taux de change n'est défini : une vente en USD ne peut pas être convertie. "
       + 'Vendez en FC ou demandez à un administrateur le taux du jour.')
+  }
+
+  if (form.modeReglement === 'CAISSE' && montantRecuTotal.value != null && monnaieARendre.value != null && monnaieARendre.value < 0) {
+    raisons.push(`Montant reçu insuffisant : il manque ${fmtMontant(-monnaieARendre.value)}.`)
   }
 
   if (besoinEtablissement.value && !form.etablissementId) {
@@ -228,6 +460,26 @@ const raisonsBlocage = computed(() => {
 
 const peutEnregistrer = computed(() => raisonsBlocage.value.length === 0)
 
+// ── Confirmation avant « Créer et valider » ───────────────────────────────
+// Valider comptabilise la vente et sort les articles du stock : un clic par
+// erreur ne doit pas suffire. Le brouillon, lui, reste modifiable et n'en a
+// pas besoin.
+const confirmationValidation = ref(false)
+const LIBELLES_REGLEMENT: Record<string, string> = {
+  CAISSE: 'Au comptant — Caisse',
+  BANQUE: 'Au comptant — Banque',
+  MOBILE_MONEY: 'Au comptant — Mobile Money',
+  CREDIT: 'À crédit (créance client)',
+}
+const nomClientChoisi = computed(() =>
+  modeClient.value === 'REPERTOIRE'
+    ? (clients.value.find((c) => c.id === form.clientId)?.nom ?? '-')
+    : ((form.clientNom || '').trim() || '-'))
+async function confirmerCreationValidation() {
+  await enregistrer(true)
+  confirmationValidation.value = false
+}
+
 async function enregistrer(validerEnsuite: boolean) {
   if (!peutEnregistrer.value) {
     erreur.value = raisonsBlocage.value[0] || 'Complétez au moins une ligne et les informations de règlement.'
@@ -235,6 +487,7 @@ async function enregistrer(validerEnsuite: boolean) {
   }
   envoi.value = true
   erreur.value = ''
+  let venteCreee: { id: number } | null = null
   try {
     const body = {
       dateVente: form.dateVente,
@@ -244,23 +497,35 @@ async function enregistrer(validerEnsuite: boolean) {
       devise: form.devise,
       etablissementId: besoinEtablissement.value ? form.etablissementId : null,
       entrepotId: contientMarchandise.value ? form.entrepotId : null,
+      tableId: form.tableId,
       // Les prix partent tels quels dans la devise de la vente : c'est le
       // serveur qui les convertit, au taux qu'il fige sur la vente.
       lignes: form.lignes
         .filter((l) => l.articleId && l.quantite)
         .map((l) => ({
           articleId: l.articleId,
-          quantite: l.quantite,
+          quantite: estMinerais(l.articleId) ? 1 : l.quantite,
           prixUnitaire: l.prixUnitaire ?? 0,
+          camionId: l.camionId,
         })),
     }
-    const vente = await api<{ id: number }>('/ventes', { method: 'POST', body })
+    venteCreee = await api<{ id: number }>('/ventes', { method: 'POST', body })
 
     if (validerEnsuite) {
-      await api(`/ventes/${vente.id}/valider`, { method: 'POST' })
+      await api(`/ventes/${venteCreee.id}/valider`, { method: 'POST' })
     }
-    await router.push(`/ventes/${vente.id}`)
+    await router.push(`/ventes/${venteCreee.id}`)
   } catch (e: any) {
+    if (venteCreee) {
+      // Créée mais pas validée : rester sur ce formulaire inviterait à
+      // recommencer, ce qui créerait une seconde vente. On ouvre donc le
+      // brouillon, qui affiche l'erreur et se valide de là une fois corrigé.
+      await router.push({
+        path: `/ventes/${venteCreee.id}`,
+        query: { erreurValidation: messageErreurApi(e, 'La validation a échoué.') },
+      })
+      return
+    }
     erreur.value = messageErreurApi(e, "Erreur lors de l'enregistrement de la vente.")
   } finally {
     envoi.value = false
@@ -288,8 +553,9 @@ const contreValeur = computed(() => {
       <div>
         <h1 class="page-title">Nouvelle vente</h1>
         <p class="page-sub">
-          Marchandises et services · TVA
-          <span class="vn-taux">{{ tauxTva }} %</span>
+          Marchandises et services ·
+          <span v-if="assujettiTva" class="vn-taux">TVA {{ tauxTva }} %</span>
+          <span v-else class="vn-taux">TVA non applicable</span>
         </p>
       </div>
       <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/ventes">Retour</v-btn>
@@ -322,7 +588,7 @@ const contreValeur = computed(() => {
         density="comfortable"
         rounded="lg"
         clearable
-        hint="Facultatif : laissez vide pour une vente au comptoir"
+        hint="Facultatif : laissez vide pour une vente au comptoir (client « - »)"
         persistent-hint
         class="mb-4"
       />
@@ -330,11 +596,31 @@ const contreValeur = computed(() => {
         v-else
         v-model="form.clientNom"
         label="Nom du client"
-        placeholder="ex : Client comptoir"
+        placeholder="ex : Jean Mukendi"
+        hint="Facultatif : laissez vide, la vente portera « - »"
+        persistent-hint
         prepend-inner-icon="mdi-account-outline"
         variant="outlined"
         density="comfortable"
         rounded="lg"
+        class="mb-4"
+      />
+
+      <v-autocomplete
+        v-if="tablesOptions.length"
+        v-model="form.tableId"
+        :items="tablesOptions"
+        label="Table"
+        prepend-inner-icon="mdi-table-furniture"
+        no-data-text="Aucune table configurée"
+        variant="outlined"
+        density="comfortable"
+        rounded="lg"
+        clearable
+        :hint="majorationActuelle > 0
+          ? `Majoration de salle : +${majorationActuelle}% appliquée aux prix proposés ci-dessous`
+          : 'Facultatif : rattache cette vente à une table du restaurant'"
+        persistent-hint
         class="mb-4"
       />
 
@@ -424,8 +710,9 @@ const contreValeur = computed(() => {
       </template>
     </v-card>
 
-    <!-- ── Lignes ──────────────────────────────────────────── -->
-    <v-card class="classroom-card pa-6 mb-4">
+    <!-- ── Lignes + pavé numérique ─────────────────────────── -->
+    <div :class="['vn-saisie', { 'vn-saisie--sans-pave': !paveVisible }]">
+    <v-card class="classroom-card pa-6 mb-4 vn-saisie__lignes">
       <div class="d-flex align-center mb-3">
         <p class="vn-section mb-0">Articles vendus</p>
         <v-spacer />
@@ -435,7 +722,7 @@ const contreValeur = computed(() => {
       </div>
 
       <div v-if="articles.length === 0 && !loading" class="vn-empty">
-        <v-icon icon="mdi-package-variant" size="28" color="#d1d5db" />
+        <v-icon icon="mdi-package-variant" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucun article vendable. Renseignez un prix de vente et un compte de produit sur vos articles.</p>
       </div>
 
@@ -451,10 +738,30 @@ const contreValeur = computed(() => {
           class="vn-ligne__article"
           @update:model-value="(v: number | null) => onArticleSelect(i, v)"
         />
+        <!-- Minerais : on ne saisit pas une quantité mais LE camion cédé,
+             puisque chaque chargement se revend à son propre prix. -->
+        <v-select
+          v-if="estMinerais(ligne.articleId)"
+          v-model="ligne.camionId"
+          :items="camionsDisponibles(i).map(c => ({
+            title: `${c.plaque} — ${new Date(c.dateAchat).toLocaleDateString('fr-FR')}`,
+            value: c.id,
+          }))"
+          label="Camion"
+          variant="outlined"
+          density="comfortable"
+          rounded="lg"
+          hide-details="auto"
+          no-data-text="Aucun camion en stock"
+          class="vn-ligne__qte"
+        />
         <v-text-field
+          v-else
           v-model.number="ligne.quantite"
           label="Quantité"
           type="number"
+          :inputmode="modeSaisie"
+          @focus="activerChamp(i, 'quantite')"
           min="0.001"
           step="1"
           variant="outlined"
@@ -467,6 +774,8 @@ const contreValeur = computed(() => {
           v-model.number="ligne.prixUnitaire"
           :label="form.devise === 'USD' ? 'P.U. HT (USD)' : 'P.U. HT (FC)'"
           type="number"
+          :inputmode="modeSaisie"
+          @focus="activerChamp(i, 'prixUnitaire')"
           min="0"
           :step="form.devise === 'USD' ? '0.01' : '1'"
           :prepend-inner-icon="form.devise === 'USD' ? 'mdi-currency-usd' : 'mdi-cash'"
@@ -501,21 +810,98 @@ const contreValeur = computed(() => {
 
       <!-- ── Totaux ────────────────────────────────────────── -->
       <div class="vn-totaux">
-        <div class="vn-total-row">
-          <span>Total HT</span>
-          <strong>{{ fmtMontant(totaux.ht) }}</strong>
-        </div>
-        <div class="vn-total-row">
-          <span>TVA ({{ tauxTva }} %)</span>
-          <strong>{{ fmtMontant(totaux.tva) }}</strong>
+        <template v-if="assujettiTva">
+          <div class="vn-total-row">
+            <span>Total HT</span>
+            <strong>{{ fmtMontant(totaux.ht) }}</strong>
+          </div>
+          <div class="vn-total-row">
+            <span>TVA ({{ tauxTva }} %)</span>
+            <strong>{{ fmtMontant(totaux.tva) }}</strong>
+          </div>
+        </template>
+        <div v-else class="vn-total-row">
+          <span>TVA non applicable — entreprise non assujettie</span>
         </div>
         <div class="vn-total-row vn-total-row--ttc">
-          <span>Total TTC</span>
+          <span>{{ assujettiTva ? 'Total TTC' : 'Total' }}</span>
           <strong>{{ fmtMontant(totaux.ttc) }}</strong>
         </div>
         <div v-if="contreValeur && totaux.ttc" class="vn-contre-valeur">{{ contreValeur }}</div>
       </div>
+
+      <!-- ── Rendu de monnaie (paiement au comptant en caisse) ────── -->
+      <div v-if="form.modeReglement === 'CAISSE' && totaux.ttc > 0" class="vn-rendu-monnaie">
+        <div class="vn-rendu-monnaie__head">
+          <span class="vn-section" style="margin: 0">Billets reçus du client</span>
+          <v-btn size="small" variant="text" color="primary" prepend-icon="mdi-plus" @click="ajouterBillet">
+            Ajouter un billet
+          </v-btn>
+        </div>
+        <p v-if="!form.billetsRecus.length" class="text-caption text-medium-emphasis mb-2">
+          Optionnel — précisez les billets remis pour calculer automatiquement la monnaie à rendre
+          (ex. 2 billets de 20$ + 1 billet de 5000 FC).
+        </p>
+
+        <div v-for="(b, i) in form.billetsRecus" :key="i" class="vn-billet-ligne">
+          <v-btn-toggle
+            v-model="b.devise"
+            mandatory
+            density="comfortable"
+            variant="outlined"
+            rounded="lg"
+            @update:model-value="b.coupure = null"
+          >
+            <v-btn value="CDF" size="small">FC</v-btn>
+            <v-btn value="USD" size="small">$US</v-btn>
+          </v-btn-toggle>
+          <v-select
+            v-model.number="b.coupure"
+            :items="COUPURES[b.devise]"
+            label="Coupure"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            class="vn-billet-coupure"
+          />
+          <span class="vn-billet-x">×</span>
+          <v-text-field
+            v-model.number="b.quantite"
+            type="number"
+            min="1"
+            label="Qté"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            class="vn-billet-qte"
+          />
+          <span class="vn-billet-total">{{ fmtBillet((b.coupure || 0) * (b.quantite || 0), b.devise) }}</span>
+          <v-btn icon="mdi-close" size="x-small" variant="text" color="grey" @click="supprimerBillet(i)" />
+        </div>
+
+        <template v-if="montantRecuTotal != null">
+          <div class="vn-total-row" style="margin-top: 8px">
+            <span>Total reçu</span>
+            <strong>{{ fmtMontant(montantRecuTotal) }}</strong>
+          </div>
+          <div class="vn-total-row vn-total-row--ttc" :class="{ 'vn-rendu-monnaie--negatif': monnaieARendre < 0 }">
+            <span>{{ monnaieARendre >= 0 ? 'Monnaie à rendre' : 'Montant manquant' }}</span>
+            <strong>{{ fmtMontant(Math.abs(monnaieARendre)) }}</strong>
+          </div>
+          <div v-if="monnaieARendreEquivalent" class="vn-contre-valeur">{{ monnaieARendreEquivalent }}</div>
+        </template>
+      </div>
     </v-card>
+
+    <aside v-if="paveVisible" class="vn-saisie__pave">
+      <VentesPaveNumerique
+        :titre="libelleChamp || 'Saisie du montant'"
+        :valeur="saisie"
+        :actif="!!champActif"
+        @touche="toucheNumerique"
+      />
+    </aside>
+    </div>
 
     <v-alert
       v-if="raisonsBlocage.length"
@@ -552,19 +938,49 @@ const contreValeur = computed(() => {
         prepend-icon="mdi-check-circle-outline"
         :loading="envoi"
         :disabled="!peutEnregistrer"
-        @click="enregistrer(true)"
+        @click="confirmationValidation = true"
       >
         Créer et valider
       </v-btn>
     </div>
+
+    <v-dialog
+      :model-value="confirmationValidation"
+      max-width="500"
+      :persistent="envoi"
+      @update:model-value="v => { if (!v && !envoi) confirmationValidation = false }"
+    >
+      <v-card rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold">Créer et valider cette vente ?</v-card-title>
+        <v-card-text>
+          <p class="mb-1">Client : <strong>{{ nomClientChoisi }}</strong></p>
+          <p class="mb-1">Règlement : <strong>{{ LIBELLES_REGLEMENT[form.modeReglement] || form.modeReglement }}</strong></p>
+          <p class="mb-1">Net à payer : <strong>{{ fmtMontant(totaux.ttc) }}</strong></p>
+          <p v-if="form.modeReglement === 'CAISSE' && monnaieARendre != null && monnaieARendre >= 0" class="mb-1">
+            Monnaie à rendre : <strong>{{ fmtMontant(monnaieARendre) }}</strong>
+          </p>
+          <p class="text-medium-emphasis mt-3 mb-0">
+            La vente sera comptabilisée et les articles sortiront du stock<template
+              v-if="form.modeReglement === 'CAISSE'">, le montant entrera en caisse</template><template
+              v-else-if="form.modeReglement === 'CREDIT'">, une créance sera ouverte au nom du client</template>.
+            Elle ne pourra plus être modifiée, seulement annulée par un administrateur.
+            Pour pouvoir encore la corriger, enregistrez-la plutôt en brouillon.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="envoi" @click="confirmationValidation = false">Retour</v-btn>
+          <v-btn color="primary" variant="flat" :loading="envoi" @click="confirmerCreationValidation">
+            Oui, créer et valider
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <style scoped>
 .vn-page { max-width: 1100px; margin: 0 auto; padding-bottom: 48px; }
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .vn-taux {
   font-size: 0.78rem;
   background: #ede9fe;
@@ -578,19 +994,26 @@ const contreValeur = computed(() => {
 .vn-section {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #9ca3af;
+  color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 12px;
 }
 
+.vn-saisie { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+.vn-saisie__pave { position: sticky; top: 76px; }
+.vn-saisie--sans-pave { grid-template-columns: 1fr; }
+@media (max-width: 700px) {
+  .vn-saisie { grid-template-columns: 1fr; }
+  .vn-saisie__pave { position: static; }
+}
 .vn-ligne {
   display: grid;
   grid-template-columns: 3fr 1fr 1.2fr 1.3fr auto;
   gap: 12px;
   align-items: start;
   padding: 12px 0;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
 }
 @media (max-width: 860px) {
   .vn-ligne { grid-template-columns: 1fr 1fr; }
@@ -604,7 +1027,7 @@ const contreValeur = computed(() => {
   padding-top: 6px;
   font-variant-numeric: tabular-nums;
 }
-.vn-ligne__total-label { font-size: 0.7rem; color: #9ca3af; }
+.vn-ligne__total-label { font-size: 0.7rem; color: var(--ink-faint); }
 
 .vn-empty {
   display: flex;
@@ -612,7 +1035,7 @@ const contreValeur = computed(() => {
   align-items: center;
   gap: 8px;
   padding: 24px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -621,8 +1044,8 @@ const contreValeur = computed(() => {
 .vn-totaux {
   margin-top: 16px;
   padding: 16px 20px;
-  background: #f9fafb;
-  border: 1px solid #f0f0f0;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
   border-radius: 14px;
   max-width: 380px;
   margin-left: auto;
@@ -633,20 +1056,52 @@ const contreValeur = computed(() => {
   justify-content: space-between;
   gap: 16px;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--ink-soft);
   padding: 4px 0;
   font-variant-numeric: tabular-nums;
 }
-.vn-total-row strong { color: #111827; }
+.vn-total-row strong { color: var(--ink); }
 .vn-total-row--ttc {
   margin-top: 8px;
   padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--hairline);
   font-size: 1rem;
 }
-.vn-total-row--ttc strong { font-size: 1.15rem; color: #16a34a; }
-.vn-contre-valeur { text-align: right; font-size: 0.75rem; color: #9ca3af; padding-top: 4px; }
-.vn-hint { font-size: 0.75rem; color: #6b7280; margin: 4px 0 0 16px; }
+.vn-total-row--ttc strong { font-size: 1.15rem; color: var(--color-primary); }
+.vn-contre-valeur { text-align: right; font-size: 0.75rem; color: var(--ink-faint); padding-top: 4px; }
+
+.vn-rendu-monnaie {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--hairline);
+}
+.vn-rendu-monnaie__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.vn-rendu-monnaie--negatif strong { color: #dc2626 !important; }
+.vn-rendu-monnaie .vn-total-row, .vn-rendu-monnaie .vn-contre-valeur { max-width: 380px; margin-left: auto; }
+
+.vn-billet-ligne {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.vn-billet-coupure { max-width: 110px; }
+.vn-billet-qte { max-width: 72px; }
+.vn-billet-x { color: var(--ink-faint); font-size: 0.85rem; }
+.vn-billet-total {
+  flex: 1;
+  text-align: right;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+@media screen and (max-width: 599px) {
+  .vn-billet-ligne { flex-wrap: wrap; }
+  .vn-billet-ligne .vn-billet-total { flex: 1 1 100%; text-align: right; }
+}
+.vn-hint { font-size: 0.75rem; color: var(--ink-soft); margin: 4px 0 0 16px; }
 
 .vn-blocage-titre { font-weight: 700; margin-bottom: 4px; }
 .vn-blocage-liste { margin: 0; padding-left: 18px; }

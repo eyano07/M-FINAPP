@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // COMPTABLE, DA et DG exclus explicitement.
 definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN'] })
 
@@ -29,8 +30,10 @@ const api = useApi()
 const auth = useAuthStore()
 const parametresStore = useParametresStore()
 
-const debutAnnee = new Date().getFullYear() + '-01-01'
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
+const exerciceConsulte = useExerciceStore()
+const debutAnnee = exerciceConsulte.debut
+const aujourdhui = exerciceConsulte.fin
 const filtres = reactive({ du: debutAnnee, au: aujourdhui })
 
 const loading = ref(false)
@@ -82,6 +85,23 @@ async function exporterExcel() {
   }
 }
 
+// Bouton PDF (15/11/2026) : le classeur Excel entier (page de garde, fiches, états, notes, graphiques)
+// converti en PDF par le serveur. Une centaine de pages : compter jusqu'à une minute.
+const pdfEnCours = ref(false)
+async function telechargerPdf() {
+  pdfEnCours.value = true
+  erreur.value = ''
+  try {
+    const p = new URLSearchParams({ du: filtres.du, au: filtres.au })
+    await telechargerFichier(api, `/comptabilite/etats-financiers/export-pdf?${p}`,
+      `Etats_financiers_${filtres.au}.pdf`)
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, 'Impossible de générer le PDF.')
+  } finally {
+    pdfEnCours.value = false
+  }
+}
+
 const fmt = (v: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v || 0)
 const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '')
 </script>
@@ -98,6 +118,10 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
           prepend-icon="mdi-file-excel-outline" :loading="exportEnCours" @click="exporterExcel">
           Classeur Excel
         </v-btn>
+        <v-btn v-if="peutExporter" color="error" variant="flat" rounded="lg" prepend-icon="mdi-file-pdf-box"
+          :loading="pdfEnCours" @click="telechargerPdf">
+          PDF
+        </v-btn>
         <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-printer-outline"
           :disabled="!bilan" @click="imprimer">
           Imprimer la liasse
@@ -110,13 +134,13 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
     <v-card class="classroom-card pa-6 mb-4 no-print">
       <v-row align="end">
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.du" type="date" label="Du" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.du" type="date" label="Du" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.au" type="date" label="Au" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.au" type="date" label="Au" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-btn color="primary" block :loading="loading" @click="charger">Actualiser</v-btn>
+          <v-btn color="primary" block height="48" :loading="loading" @click="charger">Actualiser</v-btn>
         </v-col>
       </v-row>
     </v-card>
@@ -125,19 +149,19 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 
     <template v-else-if="bilan && resultat && balance">
       <!-- En-tete d'impression, une seule fois en tete de liasse -->
-      <div class="etat-print-header">
-        <div class="etat-print-header__brand">
-          <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+      <div class="etat-print-header print-entete">
+        <div class="etat-print-header__brand print-entete__marque">
+          <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
             <v-icon v-else icon="mdi-finance" size="16" color="white" />
           </div>
           <div>
-            <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+            <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
             <span class="etat-print-header__service">Direction Financière</span>
             <span class="etat-print-header__doc">États financiers</span>
           </div>
         </div>
-        <div class="etat-print-header__meta">
+        <div class="etat-print-header__meta print-entete__meta">
           <span>Exercice : <strong>{{ fmtDate(filtres.du) }} au {{ fmtDate(filtres.au) }}</strong></span>
           <span>Imprimé le : {{ dateImpression }}</span>
         </div>
@@ -185,6 +209,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
                   <td>{{ l.numero }}</td><td>{{ l.libelle }}</td><td class="num">{{ fmt(l.montant) }}</td>
                 </tr>
               </tbody>
+              <tfoot><tr><td colspan="2">Total produits</td><td class="num">{{ fmt(resultat.totalProduits) }}</td></tr></tfoot>
             </table>
           </v-col>
           <v-col cols="12" md="6">
@@ -195,6 +220,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
                   <td>{{ l.numero }}</td><td>{{ l.libelle }}</td><td class="num">{{ fmt(l.montant) }}</td>
                 </tr>
               </tbody>
+              <tfoot><tr><td colspan="2">Total charges</td><td class="num">{{ fmt(resultat.totalCharges) }}</td></tr></tfoot>
             </table>
           </v-col>
         </v-row>
@@ -207,7 +233,9 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
       <!-- ── BALANCE ───────────────────────────────────────── -->
       <section class="etat-bloc">
         <h2 class="etat-titre">Balance de vérification</h2>
-        <table class="etat-table">
+        <!-- Sous 960 px : une carte par compte (classe table-cartes) ; sur PC, en-tête fixe (tableau-fixe) : voir assets/styles/responsive.scss. -->
+        <div class="tableau-fixe">
+        <table class="etat-table table-cartes">
           <thead>
             <tr>
               <th>Compte</th><th>Libellé</th>
@@ -217,22 +245,24 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
           </thead>
           <tbody>
             <tr v-for="l in balance.lignes" :key="'b'+l.compteNumero">
-              <td>{{ l.compteNumero }}</td><td>{{ l.compteLibelle }}</td>
-              <td class="num">{{ fmt(l.totalDebit) }}</td><td class="num">{{ fmt(l.totalCredit) }}</td>
-              <td class="num">{{ l.soldeDebiteur ? fmt(l.soldeDebiteur) : '—' }}</td>
-              <td class="num">{{ l.soldeCrediteur ? fmt(l.soldeCrediteur) : '—' }}</td>
+              <td>{{ l.compteNumero }}</td><td class="cellule-titre">{{ l.compteLibelle }}</td>
+              <td class="num" data-label="Débit">{{ fmt(l.totalDebit) }}</td>
+              <td class="num" data-label="Crédit">{{ fmt(l.totalCredit) }}</td>
+              <td class="num" data-label="Solde débiteur">{{ l.soldeDebiteur ? fmt(l.soldeDebiteur) : '—' }}</td>
+              <td class="num" data-label="Solde créditeur">{{ l.soldeCrediteur ? fmt(l.soldeCrediteur) : '—' }}</td>
             </tr>
           </tbody>
           <tfoot>
             <tr>
-              <td colspan="2">Totaux</td>
-              <td class="num">{{ fmt(balance.totalDebit) }}</td>
-              <td class="num">{{ fmt(balance.totalCredit) }}</td>
-              <td class="num">{{ fmt(balance.totalSoldeDebiteur) }}</td>
-              <td class="num">{{ fmt(balance.totalSoldeCrediteur) }}</td>
+              <td colspan="2" class="cellule-titre">Totaux</td>
+              <td class="num" data-label="Débit">{{ fmt(balance.totalDebit) }}</td>
+              <td class="num" data-label="Crédit">{{ fmt(balance.totalCredit) }}</td>
+              <td class="num" data-label="Solde débiteur">{{ fmt(balance.totalSoldeDebiteur) }}</td>
+              <td class="num" data-label="Solde créditeur">{{ fmt(balance.totalSoldeCrediteur) }}</td>
             </tr>
           </tfoot>
         </table>
+        </div>
       </section>
 
       <!-- ── ANALYSE IA ────────────────────────────────────── -->
@@ -244,25 +274,22 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 
 .etat-bloc { margin-bottom: 28px; }
 .etat-titre {
-  font-size: 1.05rem; font-weight: 700; color: #111827;
-  margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid #16a34a;
+  font-size: 1.05rem; font-weight: 700; color: var(--ink);
+  margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--color-primary);
 }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .etat-table th {
   text-align: left; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.4px; color: #6b7280; background: #fafafa;
-  padding: 7px 8px; border-bottom: 1px solid #e5e7eb;
+  letter-spacing: 0.4px; color: var(--ink-soft); background: var(--surface-2);
+  padding: 7px 8px; border-bottom: 1px solid var(--hairline);
 }
-.etat-table td { padding: 5px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
-.etat-table tfoot td { font-weight: 700; color: #111827; border-top: 2px solid #e5e7eb; background: #fafafa; }
+.etat-table td { padding: 5px 8px; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
+.etat-table tfoot td { font-weight: 700; color: var(--ink); border-top: 2px solid var(--hairline); background: var(--surface-2); }
 .etat-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.etat-resultat { margin: 10px 0 0; font-size: 0.9rem; color: #111827; }
+.etat-resultat { margin: 10px 0 0; font-size: 0.9rem; color: var(--ink); }
 
 @media print {
   /* Chaque etat demarre sur une page neuve : une liasse se lit et s'archive

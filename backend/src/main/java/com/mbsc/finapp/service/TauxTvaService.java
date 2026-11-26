@@ -1,9 +1,11 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.ParametresEntreprise;
 import com.mbsc.finapp.domain.TauxTva;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.dto.admin.TauxTvaRequest;
 import com.mbsc.finapp.dto.admin.TauxTvaResponse;
+import com.mbsc.finapp.repository.ParametresEntrepriseRepository;
 import com.mbsc.finapp.repository.TauxTvaRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
@@ -34,10 +36,23 @@ public class TauxTvaService {
 
     private final TauxTvaRepository tauxTvaRepository;
     private final CurrentUserProvider currentUser;
+    /** Régime de TVA de l'entreprise (lecture) — voir {@link #estAssujetti()}. */
+    private final ParametresEntrepriseRepository parametresRepository;
+    /** Création de la ligne des paramètres si elle manque (écriture du régime). */
+    private final ParametresEntrepriseService parametresEntreprise;
 
-    /** Taux en vigueur a la date donnee, ou zero si aucun taux n'a ete defini. */
+    /**
+     * Taux appliqué aux opérations à la date donnée : zéro si l'entreprise n'est pas
+     * assujettie à la TVA, sinon le taux légal en vigueur à cette date (zéro si aucun
+     * n'a été défini). Tout calcul de TVA de l'application passe par ici (ventes, notes
+     * de frais, achats au comptant, minerais) : le régime choisi par l'administrateur
+     * s'applique donc partout d'un coup.
+     */
     @Transactional(readOnly = true)
     public BigDecimal tauxALaDate(LocalDate date) {
+        if (!estAssujetti()) {
+            return BigDecimal.ZERO;
+        }
         LocalDate reference = date == null ? LocalDate.now() : date;
         return tauxTvaRepository
             .findFirstByDateEffetLessThanEqualOrderByDateEffetDescCreatedAtDesc(reference)
@@ -54,10 +69,41 @@ public class TauxTvaService {
             .findFirstByDateEffetLessThanEqualOrderByDateEffetDescCreatedAtDesc(aujourdhui)
             .orElse(null);
 
+        BigDecimal tauxLegal = enVigueur == null ? BigDecimal.ZERO : enVigueur.getTaux();
+        boolean assujetti = estAssujetti();
         return new TauxTvaResponse(
-            enVigueur == null ? BigDecimal.ZERO : enVigueur.getTaux(),
+            assujetti ? tauxLegal : BigDecimal.ZERO,
             enVigueur == null ? aujourdhui : enVigueur.getDateEffet(),
-            historique.stream().map(TauxTvaResponse.HistoriqueEntry::from).toList());
+            historique.stream().map(TauxTvaResponse.HistoriqueEntry::from).toList(),
+            assujetti,
+            tauxLegal);
+    }
+
+    /** Régime de TVA de l'entreprise ; assujettie tant que l'administrateur n'a rien défini. */
+    @Transactional(readOnly = true)
+    public boolean estAssujetti() {
+        return parametresRepository.findAll().stream().findFirst()
+            .map(ParametresEntreprise::isAssujettiTva)
+            .orElse(true);
+    }
+
+    /**
+     * Définit le régime de TVA de l'entreprise (ADMIN). S'applique aux opérations
+     * enregistrées ensuite ; les ventes et notes déjà saisies gardent la TVA (ou
+     * l'absence de TVA) de leur date.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public TauxTvaResponse definirAssujettissement(boolean assujetti) {
+        User auteur = currentUser.requireUser();
+        ParametresEntreprise p = parametresEntreprise.obtenirEntite();
+        if (p.isAssujettiTva() != assujetti) {
+            p.setAssujettiTva(assujetti);
+            parametresRepository.save(p);
+            log.info("Regime de TVA : entreprise {} a la TVA, defini par {}",
+                assujetti ? "assujettie" : "non assujettie", auteur.getEmail());
+        }
+        return consulter();
     }
 
     /** Enregistre un nouveau taux (ADMIN). L'historique n'est jamais modifie. */

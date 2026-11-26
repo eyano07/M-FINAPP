@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 definePageMeta({ module: 'DRH_PRESENCES' })
 
 interface Employe { id: number; matricule: string; nomComplet: string }
@@ -14,8 +15,10 @@ const parametresStore = useParametresStore()
 const canWrite = computed(() => auth.hasAnyRole(['RESP_DRH']))
 
 const aujourdhui = new Date()
-const mois = ref(aujourdhui.getMonth() + 1)
-const annee = ref(aujourdhui.getFullYear())
+// Ancien exercice choisi dans la barre du haut : son mois de décembre ; sinon le mois en cours.
+const exerciceConsulte = useExerciceStore()
+const mois = ref(exerciceConsulte.enConsultation ? 12 : aujourdhui.getMonth() + 1)
+const annee = ref(exerciceConsulte.enConsultation ? exerciceConsulte.anneeChoisie : aujourdhui.getFullYear())
 const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
 const loading = ref(false)
@@ -144,19 +147,19 @@ const fmtDuree = (m: number | null) => (m === null || m === undefined ? '—' : 
         rounded="lg" hide-details style="max-width: 140px" />
     </div>
 
-    <div class="etat-print-header">
-      <div class="etat-print-header__brand">
-        <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+    <div class="etat-print-header print-entete">
+      <div class="etat-print-header__brand print-entete__marque">
+        <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
           <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
           <v-icon v-else icon="mdi-finance" size="16" color="white" />
         </div>
         <div>
-          <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+          <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
           <span class="etat-print-header__service">Direction des Ressources Humaines</span>
           <span class="etat-print-header__doc">Rapport de sorties — {{ MOIS[mois - 1] }} {{ annee }}</span>
         </div>
       </div>
-      <div class="etat-print-header__meta">
+      <div class="etat-print-header__meta print-entete__meta">
         <span>Imprimé le : {{ dateImpression }}</span>
       </div>
     </div>
@@ -212,8 +215,8 @@ const fmtDuree = (m: number | null) => (m === null || m === undefined ? '—' : 
           <v-alert v-if="erreur" type="error" variant="tonal" density="compact" class="mb-3">{{ erreur }}</v-alert>
           <v-row>
             <v-col cols="12">
-              <v-select v-model="form.employeId" :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
-                label="Employé *" variant="outlined" density="comfortable" />
+              <v-autocomplete v-model="form.employeId" :items="employes.map(e => ({ title: `${e.matricule} — ${e.nomComplet}`, value: e.id }))"
+                label="Employé *" variant="outlined" density="comfortable" clearable />
             </v-col>
             <v-col cols="12" md="4"><v-text-field v-model="form.dateSortie" type="date" label="Date *" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="12" md="4"><v-text-field v-model="form.heureSortie" type="time" label="Heure de sortie *" variant="outlined" density="comfortable" /></v-col>
@@ -236,8 +239,8 @@ const fmtDuree = (m: number | null) => (m === null || m === undefined ? '—' : 
 <style scoped>
 .print-only { display: none; }
 .etat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-.etat-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+.etat-table th { text-align: left; padding: 7px 8px; font-size: 0.68rem; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--hairline); }
+.etat-table td { padding: 6px 8px; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
 
 @media print {
   .print-only { display: table; }

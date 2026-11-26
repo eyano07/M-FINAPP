@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.Year;
 
 /**
@@ -21,6 +22,9 @@ import java.time.Year;
 @Service
 @RequiredArgsConstructor
 public class ReferenceGenerator {
+
+    private static final String PREFIXE_PIECE = "PC";
+    private static final String PREFIXE_BROUILLON = "BR-";
 
     @PersistenceContext
     private EntityManager em;
@@ -49,10 +53,39 @@ public class ReferenceGenerator {
         return format("BUD", "seq_budget");
     }
 
-    /** Reference d'une piece comptable : PC-AAAA-NNNNNN. */
+    /**
+     * Numero definitif d'une piece comptable : PC-AAAA-NNNNNN, ou AAAA est l'annee de la DATE DE LA PIECE (son
+     * exercice) et NNNNNN le rang de sa validation dans cet exercice (audit SYSCOHADA du 10/11/2026, C-05).
+     *
+     * <p>Contrairement aux autres references, le compteur avance dans la transaction de l'appelant
+     * ({@link Propagation#MANDATORY}) : si la comptabilisation echoue, le numero n'est pas consomme, et la suite des
+     * numeros d'un exercice reste continue, sans blanc. La ligne du compteur est verrouillee jusqu'a la fin de la
+     * transaction : deux validations simultanees se suivent.</p>
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public String pourPieceDefinitive(LocalDate datePiece) {
+        int annee = datePiece.getYear();
+        Number valeur = (Number) em.createNativeQuery(
+                "insert into compteurs_pieces (annee, dernier) values (?1, 1) "
+                + "on conflict (annee) do update set dernier = compteurs_pieces.dernier + 1 returning dernier")
+            .setParameter(1, annee)
+            .getSingleResult();
+        return "%s-%d-%06d".formatted(PREFIXE_PIECE, annee, valeur.longValue());
+    }
+
+    /**
+     * Numero provisoire d'un brouillon : BR-NNNNNN. Un brouillon supprime ou abandonne ne laisse ainsi aucun blanc
+     * dans la numerotation definitive, attribuee a la validation ({@link #pourPieceDefinitive}).
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public String pourPiece() {
-        return format("PC", "seq_piece_comptable");
+    public String pourBrouillon() {
+        Number valeur = (Number) em.createNativeQuery("SELECT nextval('seq_piece_brouillon')").getSingleResult();
+        return "%s%06d".formatted(PREFIXE_BROUILLON, valeur.longValue());
+    }
+
+    /** true si la reference est un numero provisoire de brouillon. */
+    public static boolean estProvisoire(String reference) {
+        return reference != null && reference.startsWith(PREFIXE_BROUILLON);
     }
 
     /** Reference d'un mouvement de stock : MS-AAAA-NNNNNN. */
@@ -108,10 +141,22 @@ public class ReferenceGenerator {
         return format("VTE", "seq_vente");
     }
 
+    /** Reference d'un retour de vente rembourse : RV-AAAA-NNNNNN (V134). */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public String pourRetourVente() {
+        return format("RV", "seq_retour_vente");
+    }
+
     /** Reference d'une provision : PROV-AAAA-NNNNNN. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public String pourProvision() {
         return format("PROV", "seq_provision");
+    }
+
+    /** Reference d'une production de plats : PRD-AAAA-NNNNNN. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public String pourProduction() {
+        return format("PRD", "seq_production");
     }
 
     private String format(String prefixe, String sequence) {

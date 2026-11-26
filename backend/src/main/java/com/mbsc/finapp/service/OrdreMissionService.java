@@ -113,10 +113,20 @@ public class OrdreMissionService {
             throw erreur("La date de retour (" + req.dateRetour() + ") ne peut pas être antérieure à la date de "
                 + "départ (" + req.dateDepart() + ").");
         }
+        if (req.agents().size() > 1 && req.superviseurEmployeId() == null) {
+            throw erreur("Le superviseur de la mission est obligatoire pour un ordre de mission collectif "
+                + "(plus d'un agent).");
+        }
         Set<Long> vus = new HashSet<>();
         for (AgentOrdreMissionInput a : req.agents()) {
-            if (!vus.add(a.employeId())) {
-                throw erreur("Un même agent ne peut pas être ajouté deux fois à cet ordre de mission.");
+            boolean employeRenseigne = a.employeId() != null;
+            boolean nomLibreRenseigne = StringUtils.hasText(a.nomLibre());
+            if (!employeRenseigne && !nomLibreRenseigne) {
+                throw erreur("Chaque agent doit être soit un employé enregistré, soit une personne externe "
+                    + "identifiée par un nom.");
+            }
+            if (employeRenseigne && !vus.add(a.employeId())) {
+                throw erreur("Un même employé ne peut pas être ajouté deux fois à cet ordre de mission.");
             }
         }
     }
@@ -125,6 +135,7 @@ public class OrdreMissionService {
         o.setLieuMission(req.lieuMission());
         o.setDistanceVille(req.distanceVille());
         o.setProvince(req.province());
+        o.setTerritoire(req.territoire());
         o.setButMission(req.butMission());
         o.setDureeMission(req.dureeMission());
         o.setDateDepart(req.dateDepart());
@@ -132,12 +143,28 @@ public class OrdreMissionService {
         o.setMoyenTransport(req.moyenTransport());
         o.setFraisMission(req.fraisMission());
 
+        // Superviseur pertinent uniquement en mission collective (voir valider()) : une mission individuelle
+        // n'en a pas, meme si le champ a ete renseigne par erreur cote formulaire.
+        if (req.agents().size() > 1 && req.superviseurEmployeId() != null) {
+            o.setSuperviseur(employeRepository.findById(req.superviseurEmployeId())
+                .orElseThrow(() -> RessourceIntrouvableException.of("Employe", req.superviseurEmployeId())));
+            o.setSuperviseurCivilite(StringUtils.hasText(req.superviseurCivilite()) ? req.superviseurCivilite() : "Monsieur");
+        } else {
+            o.setSuperviseur(null);
+            o.setSuperviseurCivilite(null);
+        }
+
         o.getAgents().clear();
         for (AgentOrdreMissionInput a : req.agents()) {
-            Employe employe = employeRepository.findById(a.employeId())
-                .orElseThrow(() -> RessourceIntrouvableException.of("Employe", a.employeId()));
+            Employe employe = a.employeId() != null
+                ? employeRepository.findById(a.employeId())
+                    .orElseThrow(() -> RessourceIntrouvableException.of("Employe", a.employeId()))
+                : null;
             o.addAgent(AgentOrdreMission.builder()
                 .employe(employe)
+                .nomLibre(employe == null ? a.nomLibre() : null)
+                .nationalite(a.nationalite())
+                .numeroPasseport(a.numeroPasseport())
                 .fonctionMission(a.fonctionMission())
                 .civilite(StringUtils.hasText(a.civilite()) ? a.civilite() : "Monsieur")
                 .build());

@@ -9,6 +9,12 @@ import java.time.LocalDate;
 /**
  * @param delta          variation signee appliquee au stock de vides (+ ou -)
  * @param venteReference vente a l'origine du mouvement, pour les mouvements automatiques
+ * @param annule         true si ce mouvement a ete annule
+ * @param annulationDeId mouvement que celui-ci annule, pour le mouvement inverse d'une annulation
+ * @param annulable      true si ce mouvement peut etre annule depuis l'ecran des mouvements —
+ *                       un ajustement d'inventaire exige en plus le role administrateur
+ * @param pieceReference piece comptable de la perte de boisson (casse d'une pleine, peremption, cadeau),
+ *                       null pour un mouvement qui ne touche que les vides
  */
 public record MouvementEmballageResponse(
     Long id,
@@ -23,7 +29,11 @@ public record MouvementEmballageResponse(
     Long venteId,
     String venteReference,
     String createdByNom,
-    Instant createdAt
+    Instant createdAt,
+    boolean annule,
+    Long annulationDeId,
+    boolean annulable,
+    String pieceReference
 ) {
     public static MouvementEmballageResponse from(MouvementEmballage m) {
         var e = m.getEmballage();
@@ -32,6 +42,12 @@ public record MouvementEmballageResponse(
         String nom = auteur == null ? null
             : ((auteur.getPrenom() == null ? "" : auteur.getPrenom()) + " "
              + (auteur.getNom() == null ? "" : auteur.getNom())).trim();
+        var annulationDe = m.getAnnulationDe();
+        // Une perte de boisson saisie avant d'etre reliee a sa sortie de
+        // stock ne peut pas retablir ce stock : elle n'est pas proposee.
+        boolean annulable = !m.isAnnule() && annulationDe == null
+            && m.getType().estSaisieManuelle()
+            && (!m.getType().sortDuStockDeBoisson() || m.getMouvementStock() != null);
         return new MouvementEmballageResponse(
             m.getId(),
             e.getId(),
@@ -45,7 +61,12 @@ public record MouvementEmballageResponse(
             vente == null ? null : vente.getId(),
             vente == null ? null : vente.getReference(),
             nom,
-            m.getCreatedAt()
+            m.getCreatedAt(),
+            m.isAnnule(),
+            annulationDe == null ? null : annulationDe.getId(),
+            annulable,
+            m.getMouvementStock() == null || m.getMouvementStock().getPiece() == null
+                ? null : m.getMouvementStock().getPiece().getReference()
         );
     }
 }

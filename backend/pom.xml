@@ -22,6 +22,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <mapstruct.version>1.6.2</mapstruct.version>
         <openai.version>4.52.0</openai.version>
+        <anthropic.version>2.34.0</anthropic.version>
     </properties>
 
     <dependencies>
@@ -50,6 +51,17 @@
         </dependency>
 
         <!-- WebSocket (temps reel dashboards) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <!-- Notifications push (Firebase Cloud Messaging, API HTTP v1) : jeton d'acces du compte de service. -->
+        <dependency>
+            <groupId>com.google.auth</groupId>
+            <artifactId>google-auth-library-oauth2-http</artifactId>
+            <version>1.23.0</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
@@ -111,6 +123,12 @@
             <artifactId>openai-java</artifactId>
             <version>${openai.version}</version>
         </dependency>
+        <!-- IA : SDK officiel Anthropic (Claude), utilisé pour les analyses ; voir service/ia/AnthropicFournisseur -->
+        <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
+            <version>${anthropic.version}</version>
+        </dependency>
 
         <!-- Export des etats financiers en Excel -->
         <dependency>
@@ -121,6 +139,12 @@
 
         <!-- Generation de l'ordre de mission DRH sur papier entete (Apache-2.0,
              prefere a iText qui est AGPL/commercial pour cet usage) -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>

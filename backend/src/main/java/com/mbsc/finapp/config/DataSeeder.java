@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
+import com.mbsc.finapp.service.instance.InstanceService;
 
 /**
  * Cree les comptes par defaut (un par role) si la base est vide,
@@ -24,29 +25,46 @@ import java.util.Set;
  * (apres que les users existent) plutot que dans un script Flyway qui
  * s'execute avant le demarrage de l'application.</p>
  *
- * <p>Desactivable via {@code APP_SEED_ENABLED=false} en production.</p>
+ * <p>Desactive par defaut. Pour amorcer une base de demonstration :
+ * {@code APP_SEED_ENABLED=true} ET {@code APP_SEED_PASSWORD} (12 caracteres au
+ * moins). Aucun mot de passe n'est plus ecrit dans le code : l'ancien, publie
+ * avec le depot, doit etre considere comme compromis (audit securite du
+ * 05/10/2026, S-01).</p>
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class DataSeeder implements CommandLineRunner {
 
-    private static final String DEFAULT_PASSWORD = "Mbsc@2026";
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbc;
+    private final InstanceService instance;
 
-    @Value("${app.seed.enabled:true}")
+    @Value("${app.seed.enabled:false}")
     private boolean seedEnabled;
+
+    /** Mot de passe des comptes de demonstration ; obligatoire si l'amorcage est actif. */
+    @Value("${app.seed.password:}")
+    private String seedPassword;
 
     @Override
     @Transactional
     public void run(String... args) {
+        // Copie en ligne (ou ancien serveur local) : rien n'est ecrit ici, les donnees viennent du serveur principal (V132).
+        if (instance.lectureSeule()) {
+            return;
+        }
         if (!seedEnabled) {
             log.info("Seeder desactive (app.seed.enabled=false)");
             return;
+        }
+        if (seedPassword == null || seedPassword.length() < 12) {
+            throw new IllegalStateException(
+                "APP_SEED_ENABLED=true exige APP_SEED_PASSWORD (12 caracteres au moins) : "
+                + "aucun mot de passe par defaut n'est plus fourni.");
         }
         log.warn("=== Seeder actif : comptes de demonstration. Definissez APP_SEED_ENABLED=false en production. ===");
 
@@ -74,7 +92,7 @@ public class DataSeeder implements CommandLineRunner {
 
         userRepository.save(User.builder()
             .email(email)
-            .motDePasse(passwordEncoder.encode(DEFAULT_PASSWORD))
+            .motDePasse(passwordEncoder.encode(seedPassword))
             .nom(nom)
             .prenom(prenom)
             .actif(true)
@@ -100,11 +118,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, priorite, date_creation, date_maj)
+                 createur_id, beneficiaire, priorite, date_creation, date_maj)
             SELECT 'NF-2026-000001', 'Achat fournitures bureau',
                    'Stylos, ramettes papier A4 et enveloppes pour le departement administratif.',
                    45000.00, 'CDF', 'PAYEE',
-                   u.id, 'HAUTE',
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')), 'HAUTE',
                    NOW() - INTERVAL '12 days', NOW() - INTERVAL '2 days'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
@@ -114,11 +132,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, priorite, date_creation, date_maj)
+                 createur_id, beneficiaire, priorite, date_creation, date_maj)
             SELECT 'NF-2026-000002', 'Transport mission terrain Kinshasa',
                    'Frais de deplacement pour supervision des chantiers — 3 jours.',
                    120000.00, 'CDF', 'TRANSMISE_CAISSE',
-                   u.id, 'HAUTE',
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')), 'HAUTE',
                    NOW() - INTERVAL '7 days', NOW() - INTERVAL '1 day'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
@@ -128,11 +146,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, priorite, date_creation, date_maj)
+                 createur_id, beneficiaire, priorite, date_creation, date_maj)
             SELECT 'NF-2026-000003', 'Abonnement logiciels SaaS',
                    'Renouvellement annuel Microsoft 365 et Zoom — 5 licences.',
                    284000.00, 'CDF', 'TRANSMISE_CAISSE',
-                   u.id, 'MOYENNE',
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')), 'MOYENNE',
                    NOW() - INTERVAL '5 days', NOW() - INTERVAL '12 hours'
             FROM users u
             WHERE u.email = 'dfin@mbsc.cd'
@@ -142,11 +160,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, beneficiaire, date_creation, date_maj)
             SELECT 'NF-2026-000004', 'Reparation vehicule de service',
                    'Remplacement plaquettes de frein et vidange — 4x4 terrain.',
                    67500.00, 'CDF', 'VERIFIEE_DFIN',
-                   u.id,
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')),
                    NOW() - INTERVAL '3 days', NOW() - INTERVAL '1 day'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
@@ -156,11 +174,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, beneficiaire, date_creation, date_maj)
             SELECT 'NF-2026-000005', 'Frais de reception clients',
                    'Dejeuner de travail avec partenaires — 8 personnes.',
                    52000.00, 'CDF', 'SOUMISE',
-                   u.id,
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')),
                    NOW() - INTERVAL '1 day', NOW() - INTERVAL '10 hours'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
@@ -170,11 +188,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, beneficiaire, date_creation, date_maj)
             SELECT 'NF-2026-000006', 'Formation Excel avance',
                    'Session pour 3 agents comptables, 2 jours.',
                    38000.00, 'CDF', 'BROUILLON',
-                   u.id,
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')),
                    NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours'
             FROM users u
             WHERE u.email = 'dfin@mbsc.cd'
@@ -184,11 +202,11 @@ public class DataSeeder implements CommandLineRunner {
         jdbc.update("""
             INSERT INTO notes_frais
                 (reference, objet, description, montant, devise, statut,
-                 createur_id, date_creation, date_maj)
+                 createur_id, beneficiaire, date_creation, date_maj)
             SELECT 'NF-2026-000007', 'Achat mobilier de bureau',
                    'Chaises ergonomiques — 10 unites open space.',
                    230000.00, 'CDF', 'REJETEE_DA',
-                   u.id,
+                   u.id, TRIM(COALESCE(u.prenom, '') || ' ' || COALESCE(u.nom, '')),
                    NOW() - INTERVAL '14 days', NOW() - INTERVAL '9 days'
             FROM users u
             WHERE u.email = 'directeur@mbsc.cd'
@@ -342,17 +360,20 @@ public class DataSeeder implements CommandLineRunner {
               AND NOT EXISTS (SELECT 1 FROM grand_livre g WHERE g.transaction_id = tx.id AND g.compte_id = c.id)
         """);
 
-        // Budgets
+        // Budgets de démonstration : seulement sur une base neuve (séquence des budgets
+        // jamais avancée). Sinon, des budgets supprimés par l'utilisateur reviendraient à
+        // chaque redémarrage et pourraient heurter un budget réel en exécution sur le même mois.
         jdbc.update("""
-            INSERT INTO budgets (intitule, exercice, statut, elabore_par_id, approuve_par_id,
+            INSERT INTO budgets (reference, intitule, exercice, statut, elabore_par_id, approuve_par_id,
                 observation, date_creation)
-            SELECT 'Budget Exploitation Q2 2026', 2026, 'EN_EXECUTION',
+            SELECT 'BUD-2026-' || lpad(nextval('seq_budget')::text, 6, '0'), 'Budget Exploitation Q2 2026', 2026, 'EN_EXECUTION',
                    dfin.id, da.id,
                    'Approuve en reunion du 01/04/2026. Couvre charges courantes et deplacements.',
                    NOW() - INTERVAL '30 days'
             FROM users dfin, users da
             WHERE dfin.email = 'dfin@mbsc.cd' AND da.email = 'da@mbsc.cd'
               AND NOT EXISTS (SELECT 1 FROM budgets WHERE intitule = 'Budget Exploitation Q2 2026')
+              AND (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM seq_budget) < 1
         """);
 
         jdbc.update("""
@@ -381,18 +402,27 @@ public class DataSeeder implements CommandLineRunner {
         """);
 
         jdbc.update("""
-            INSERT INTO budgets (intitule, exercice, statut, elabore_par_id, approuve_par_id,
+            INSERT INTO budgets (reference, intitule, exercice, statut, elabore_par_id, approuve_par_id,
                 observation, date_creation)
-            SELECT 'Budget Formation & Developpement 2026', 2026, 'APPROUVE',
+            SELECT 'BUD-2026-' || lpad(nextval('seq_budget')::text, 6, '0'), 'Budget Formation & Developpement 2026', 2026, 'APPROUVE',
                    dfin.id, da.id,
                    'Renforcement de capacites : formations, seminaires, abonnements outils metier.',
                    NOW() - INTERVAL '20 days'
             FROM users dfin, users da
             WHERE dfin.email = 'dfin@mbsc.cd' AND da.email = 'da@mbsc.cd'
               AND NOT EXISTS (SELECT 1 FROM budgets WHERE intitule = 'Budget Formation & Developpement 2026')
+              AND (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM seq_budget) < 2
         """);
 
-        jdbc.execute("SELECT setval('seq_budget', GREATEST(nextval('seq_budget') + 1, 3))");
+        // Ventilation mensuelle (V100) : montant annuel a parts egales, centimes restants sur decembre.
+        jdbc.update("""
+            INSERT INTO lignes_budget_mois (ligne_budget_id, mois, montant)
+            SELECT l.id, m.mois,
+                   CASE WHEN m.mois < 12 THEN trunc(l.montant_prevu / 12, 2)
+                        ELSE l.montant_prevu - 11 * trunc(l.montant_prevu / 12, 2) END
+            FROM lignes_budget l CROSS JOIN generate_series(1, 12) AS m(mois)
+            WHERE NOT EXISTS (SELECT 1 FROM lignes_budget_mois x WHERE x.ligne_budget_id = l.id)
+        """);
 
         log.info("Donnees de demonstration inserees.");
     }

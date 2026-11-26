@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // StockService.listerMouvements exclut le caissier, qui a pourtant le
 // module en LECTURE pour le catalogue : sans ce controle il voyait la page.
-definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] })
+definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] })
 
 interface Mouvement {
   id: number
@@ -11,15 +12,32 @@ interface Mouvement {
   libelle?: string
   statut: string
   pieceReference?: string
+  /** Validé et hors de toute opération (vente, production, camion) qui doive l'annuler elle-même. */
+  annulable: boolean
+  /** Porte sur un plat, une boisson ou une provision : seul l'administrateur l'annule d'ici. */
+  moduleRestaurant: boolean
 }
 
 const api = useApi()
+const dialogues = useDialogues()
 const auth = useAuthStore()
 const loading = ref(false)
 const erreur = ref('')
 const mouvements = ref<Mouvement[]>([])
 
-const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE']))
+// Mêmes rôles que StockService (créer, valider, annuler). L'administrateur y
+// est le dernier recours pour les articles du module Restaurant — voir
+// StockService.exigerHorsModuleDedie.
+const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'ADMIN']))
+const estAdmin = computed(() => auth.hasRole('ADMIN'))
+const peutAnnuler = (m: Mouvement) =>
+  m.statut === 'VALIDE' && m.annulable && (!m.moduleRestaurant || estAdmin.value)
+function motifNonAnnulable(m: Mouvement): string | null {
+  if (m.statut !== 'VALIDE') return null
+  if (!m.annulable) return "Appartient à une vente, une production, un camion ou une perte de boisson : s'annule depuis cette opération."
+  if (m.moduleRestaurant && !estAdmin.value) return "Article du module Restaurant : s'annule depuis ses écrans."
+  return null
+}
 
 const statutColor: Record<string, string> = {
   BROUILLON: 'grey',
@@ -36,7 +54,8 @@ async function charger() {
   loading.value = true
   erreur.value = ''
   try {
-    mouvements.value = await api<Mouvement[]>('/logistique/mouvements')
+    // Ancien exercice choisi dans la barre du haut : ses mouvements seulement.
+    mouvements.value = (await api<Mouvement[]>('/logistique/mouvements')).filter(m => useExerciceStore().dansExercice(m.dateMouvement))
   } catch (e: any) {
     erreur.value = e?.data?.message || 'Impossible de charger les mouvements.'
   } finally {
@@ -56,7 +75,15 @@ async function valider(id: number) {
 }
 
 async function annuler(id: number) {
-  if (!confirm('Annuler ce mouvement ? Les stocks et écritures seront extournés.')) return
+  const confirme = await dialogues.confirmer({
+    titre: 'Annuler ce mouvement ?',
+    message: 'Les stocks et écritures seront extournés.',
+    bouton: 'Annuler le mouvement',
+    abandon: 'Retour',
+    nature: 'danger',
+    icone: 'mdi-cancel',
+  })
+  if (!confirme) return
   erreur.value = ''
   try {
     await api(`/logistique/mouvements/${id}/annuler`, { method: 'POST' })
@@ -113,9 +140,17 @@ function fmtDate(d: string) {
             <v-btn v-if="item.statut === 'BROUILLON'" size="small" color="success" variant="tonal" @click="valider(item.id)">
               Valider
             </v-btn>
-            <v-btn v-if="item.statut === 'VALIDE'" size="small" color="error" variant="tonal" @click="annuler(item.id)">
+            <v-btn v-if="peutAnnuler(item)" size="small" color="error" variant="tonal" @click="annuler(item.id)">
               Annuler
             </v-btn>
+            <v-icon
+              v-else-if="motifNonAnnulable(item)"
+              icon="mdi-lock-outline"
+              size="18"
+              class="text-medium-emphasis"
+              :title="motifNonAnnulable(item)!"
+              :aria-label="motifNonAnnulable(item)!"
+            />
           </div>
         </template>
       </v-data-table>

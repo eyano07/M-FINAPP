@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Grand par défaut (4 × 4 cases) : solde total, entrées et sorties du jour, détail caisse / banque / mobile money et,
+     pour le DFIN, le DA et l'administrateur, le résultat net. Il se réduit jusqu'à 3 rangées. Actualisé toutes les
+     30 min (minimum Android), à chaque sortie de l'application et à chaque notification reçue. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_tresorerie_description"
+    android:initialLayout="@layout/widget_tresorerie"
+    android:minWidth="250dp"
+    android:minHeight="250dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="180dp"
+    android:previewImage="@drawable/widget_apercu"
+    android:previewLayout="@layout/widget_tresorerie"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="4"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

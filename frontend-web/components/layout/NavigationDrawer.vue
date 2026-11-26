@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useAuthStore } from '~/stores/auth'
+import { estApplicationMobile, routePermiseDansApplication } from '~/utils/applicationMobile'
+import { useAuthStore, ROLES_RESTAURANT_BAR, ROLES_RESTAURANT_COMPLET, ROLES_RESTAURANT_CUISINE } from '~/stores/auth'
 import { usePermissionsStore, type ModuleMetier, type NiveauPermission } from '~/stores/permissions'
 import { useParametresStore } from '~/stores/parametres'
 
@@ -9,6 +10,7 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
 const auth = useAuthStore()
 const permissions = usePermissionsStore()
 const parametresStore = useParametresStore()
+const appVersion = useRuntimeConfig().public.appVersion as string
 
 interface NavItem {
   title: string
@@ -22,60 +24,102 @@ interface NavItem {
   niveau?: NiveauPermission
   /** États financiers consultés en premier reflexe (Bilan, Balance...) : mis en avant dans le menu. */
   essentiel?: boolean
+  /** Lien montré seulement dans l'application Android (le site l'offre dans le menu du compte). */
+  application?: boolean
+}
+
+/**
+ * Sous-rubrique repliable à l'intérieur d'une rubrique (Restaurant > Cuisine,
+ * Bar, Stocks) : visible si au moins un de ses liens l'est, repliée par défaut
+ * sauf si elle contient la page courante.
+ */
+interface NavSousGroupe {
+  id: string
+  title: string
+  icon: string
+  items: NavItem[]
+}
+type NavEntree = NavItem | NavSousGroupe
+function estSousGroupe(e: NavEntree): e is NavSousGroupe {
+  return 'items' in e
 }
 
 // Le Directeur metier (DIRECTEUR) n'a pas acces au tableau de bord
 // (statistiques/graphiques globaux) : il ne voit que ses notes de frais.
-const NON_DIRECTEUR = ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'LOGISTIQUE', 'COMPTABLE']
+// LOGISTIQUE non plus : il a son propre tableau de bord (logistiqueItems,
+// route /logistique), sans rapport avec la tresorerie/les notes de frais.
+const NON_DIRECTEUR = ['ADMIN', 'DG', 'DA', 'DFIN', 'CAISSIER', 'COMPTABLE']
+// Roles qui gerent leurs propres notes de frais via cet ecran : ni RESP_DRH
+// (paie/RH, pas de notes personnelles), ni LOGISTIQUE (son suivi passe par
+// son propre tableau de bord) - a mettre a jour si un nouveau role est ajoute.
+const AVEC_NOTES_FRAIS = ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR']
+const applicationMobile = estApplicationMobile()
+
 const items: NavItem[] = [
   { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/dashboard', roles: NON_DIRECTEUR },
-  { title: 'Notes de frais', icon: 'mdi-receipt-text-outline', to: '/notes-frais' },
+  { title: 'Notes de frais', icon: 'mdi-receipt-text-outline', to: '/notes-frais', roles: AVEC_NOTES_FRAIS },
+  // Arbitrage de tresorerie : le DA y fixe la reserve minimale a preserver
+  // par priorite de note (voir ParametresPrioriteNote cote backend).
+  { title: 'Seuils de priorité', icon: 'mdi-tune-vertical', to: '/notes-frais/parametres-priorite', roles: ['DA'] },
+  // Ni role ni module : accessible a tout compte authentifie, comme /profil
+  // (auto-service, pas une fonctionnalite metier a activer/desactiver).
+  { title: 'Papier à en-tête', icon: 'mdi-printer-outline', to: '/papier-entete' },
+  // Application Android : son profil (nom, photo, mot de passe, double authentification) à portée de main.
+  { title: 'Mon profil', icon: 'mdi-account-cog-outline', to: '/profil', application: true },
   // Le comptable consulte la tresorerie (journal/grand livre/balance) mais
   // n'opere pas la caisse (encaissement/decaissement direct) : cet ecran-ci
   // reste reserve aux roles qui en avaient deja l'usage.
-  // Ecran d'operation (encaissement/decaissement), pas de consultation : reserve
-  // aux roles qui l'operent reellement (niveau ECRITURE requis, comme la page).
-  { title: 'Caisse', icon: 'mdi-cash-register', to: '/caisse', module: 'CAISSE', niveau: 'ECRITURE', roles: ['CAISSIER', 'ADMIN'] },
+  // Ecrans d'operation (encaissement/decaissement : Caisse, Banque, Mobile Money), pas de
+  // consultation : reserves au CAISSIER, le seul role que le serveur autorise a operer.
+  // L'administrateur consulte les journaux, le grand livre et la balance, il n'encaisse ni ne decaisse.
+  { title: 'Caisse', icon: 'mdi-cash-register', to: '/caisse', module: 'CAISSE', niveau: 'ECRITURE', roles: ['CAISSIER'] },
   { title: 'Journal de caisse', icon: 'mdi-notebook-outline', to: '/caisse/journal', module: 'CAISSE' },
-  { title: 'Banque', icon: 'mdi-bank', to: '/banque', module: 'BANQUE' },
+  { title: 'Banque', icon: 'mdi-bank', to: '/banque', module: 'BANQUE', roles: ['CAISSIER'] },
   { title: 'Journal de banque', icon: 'mdi-notebook-outline', to: '/banque/journal', module: 'BANQUE' },
-  { title: 'Mobile Money', icon: 'mdi-cellphone', to: '/mobile-money', module: 'MOBILE_MONEY' },
+  { title: 'Mobile Money', icon: 'mdi-cellphone', to: '/mobile-money', module: 'MOBILE_MONEY', roles: ['CAISSIER'] },
   { title: 'Journal de mobile money', icon: 'mdi-notebook-outline', to: '/mobile-money/journal', module: 'MOBILE_MONEY' },
-  { title: 'Grand Livre', icon: 'mdi-book-open-variant', to: '/grand-livre', module: 'CAISSE' },
-  { title: 'Balance', icon: 'mdi-scale-balance', to: '/balance', module: 'CAISSE', essentiel: true },
+  // Les anciens écrans « Grand Livre » et « Balance » (/grand-livre, /balance) ont été retirés le 15/11/2026 : ils
+  // doublaient « GL par compte » et « Balance de vérification » de la rubrique Comptabilité.
   // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
   // uniquement) mais ne voit pas les Budgets.
-  { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  // Services (départements) et leur responsable : enveloppes des budgets, suivi des dépenses par service.
+  { title: 'Services budgétaires', icon: 'mdi-account-group-outline', to: '/budgets/services', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
 ]
 
 const comptabiliteItems: NavItem[] = [
-  // Plan comptable reste hors systeme de modules : reference partagee
-  // consultee par la caisse/la logistique bien au-dela du seul module
-  // Comptabilite (voir definePageMeta de la page elle-meme, inchange).
-  { title: 'Plan comptable', icon: 'mdi-format-list-numbered', to: '/admin/plan-comptable', roles: ['DFIN', 'DA', 'DG', 'LOGISTIQUE', 'COMPTABLE', 'ADMIN'] },
-  // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
-  // uniquement) mais ne voit pas les Pieces comptables.
-  { title: 'Pièces comptables', icon: 'mdi-file-document-edit-outline', to: '/comptabilite/pieces', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  // Plan comptable reste hors systeme de modules (voir definePageMeta de la
+  // page elle-meme, inchange). DA et LOGISTIQUE exclus explicitement.
+  { title: 'Plan comptable', icon: 'mdi-format-list-numbered', to: '/admin/plan-comptable', roles: ['DFIN', 'DG', 'COMPTABLE', 'ADMIN'] },
+  // DA exclu explicitement (comme Bilan/Gestion TVA plus bas) : le DA ne
+  // doit voir aucune page de Comptabilite. CAISSIER et LOGISTIQUE n'ont de
+  // toute facon plus le module depuis V30 (COMPTABILITE = AUCUN) : cette
+  // liste couvre juste les roles qui l'ont reellement aujourd'hui.
+  { title: 'Pièces comptables', icon: 'mdi-file-document-edit-outline', to: '/comptabilite/pieces', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   // Creation de piece : reservee au DFIN cote serveur (ADMIN ne modifie que
   // les pages dediees a l'administration).
-  { title: "Solde d'ouverture", icon: 'mdi-flag-outline', to: '/comptabilite/solde-ouverture', module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['DFIN'] },
-  // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
-  // uniquement) mais ne voit pas le GL par compte ni le Livre-journal.
-  { title: 'GL par compte', icon: 'mdi-book-account-outline', to: '/comptabilite/grand-livre', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
-  // Balance de verification et Compte de resultat : accessibles au CAISSIER.
-  { title: 'Balance de vérification', icon: 'mdi-table-check', to: '/comptabilite/balance-verification', module: 'COMPTABILITE', essentiel: true },
-  { title: 'Livre-journal', icon: 'mdi-notebook-outline', to: '/comptabilite/livre-journal', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
-  { title: 'Compte de résultat', icon: 'mdi-finance', to: '/comptabilite/compte-resultat', module: 'COMPTABILITE', essentiel: true },
+  { title: "Solde d'ouverture", icon: 'mdi-flag-outline', to: '/comptabilite/solde-ouverture', module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['COMPTABLE'] },
+  { title: 'GL par compte', icon: 'mdi-book-account-outline', to: '/comptabilite/grand-livre', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
+  { title: 'Balance de vérification', icon: 'mdi-table-check', to: '/comptabilite/balance-verification', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
+  // Le caissier ne rapproche pas ses propres opérations (audit SYSCOHADA du 10/11/2026, C-20) ; il ne voit plus l'écran.
+  { title: 'Rapprochement bancaire', icon: 'mdi-bank-check', to: '/comptabilite/rapprochement', module: 'RAPPROCHEMENT', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  { title: 'Livre-journal', icon: 'mdi-notebook-outline', to: '/comptabilite/livre-journal', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
+  { title: 'Journal des comptes', icon: 'mdi-book-search-outline', to: '/comptabilite/journal-compte', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  // Comptabilite analytique de gestion (SYSCOHADA classe 9, comptes 92 a 99).
+  { title: 'Comptabilité analytique', icon: 'mdi-chart-tree', to: '/comptabilite/analytique', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  { title: 'Compte de résultat', icon: 'mdi-finance', to: '/comptabilite/compte-resultat', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   // DA exclu explicitement de la consultation du Bilan.
   { title: 'Bilan', icon: 'mdi-scale-balance', to: '/comptabilite/bilan', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] },
   // COMPTABLE, DA et DG exclus explicitement.
   { title: 'États financiers', icon: 'mdi-file-document-multiple-outline', to: '/comptabilite/etats-financiers', module: 'COMPTABILITE', essentiel: true, roles: ['ADMIN', 'DFIN'] },
-  // Consultation ouverte a DA/DG ; constitution et reprise reservees au DFIN.
-  { title: 'Provisions', icon: 'mdi-shield-alert-outline', to: '/comptabilite/provisions', module: 'COMPTABILITE', roles: ['DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
+  { title: 'Provisions', icon: 'mdi-shield-alert-outline', to: '/comptabilite/provisions', module: 'COMPTABILITE', roles: ['DFIN', 'DG', 'COMPTABLE', 'ADMIN'] },
   // DA exclu explicitement de la consultation de la Gestion TVA.
   { title: 'Gestion TVA', icon: 'mdi-percent-box-outline', to: '/comptabilite/tva', module: 'COMPTABILITE', roles: ['DFIN', 'DG', 'COMPTABLE', 'ADMIN'] },
   // PeriodeComptableService.definirDateCloture est reserve a ADMIN.
-  { title: 'Clôture de période', icon: 'mdi-lock-outline', to: '/comptabilite/cloture', module: 'COMPTABILITE', niveau: 'ECRITURE', roles: ['ADMIN'] },
+  { title: 'Régularisations', icon: 'mdi-calendar-sync-outline', to: '/comptabilite/regularisations', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  { title: 'Éditions et piste d\'audit', icon: 'mdi-book-open-variant', to: '/comptabilite/editions', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  // Le DFIN demande, le DA ou le DG approuve ; l'administrateur consulte (C-03).
+  { title: 'Clôture', icon: 'mdi-lock-outline', to: '/comptabilite/cloture', module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
 ]
 
 const venteItems: NavItem[] = [
@@ -83,21 +127,53 @@ const venteItems: NavItem[] = [
   { title: 'Clients', icon: 'mdi-account-multiple-outline', to: '/ventes/clients', module: 'VENTES' },
 ]
 
+// Le caissier garde le module LOGISTIQUE en LECTURE — V29 le lui a accorde
+// exactement pour que « Nouvelle vente » puisse charger le catalogue via
+// /logistique/articles — mais les ecrans du domaine ne relevent pas de son
+// metier. On les reserve donc aux roles qui exploitent reellement le stock,
+// sans toucher a la permission de module dont depend la saisie d'une vente.
+// GEST_PATRIMOINE y figure : il a lui aussi LOGISTIQUE en LECTURE.
+const LOGISTIQUE_HORS_CAISSIER = ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'ADMIN']
+// Le responsable cuisine et le responsable bar lisent le menu Logistique (lecture seule : StockService leur
+// ouvre ses lectures et les limite aux articles de leur domaine) — mais ni son tableau de bord ni les camions
+// de minerais, qui n'ont rien a voir avec le restaurant.
+const LOGISTIQUE_AVEC_RESTAURANT = [...LOGISTIQUE_HORS_CAISSIER, 'RESP_CUISINE', 'RESP_BAR']
 const logistiqueItems: NavItem[] = [
-  { title: 'Articles', icon: 'mdi-package-variant-closed', to: '/logistique/articles', module: 'LOGISTIQUE' },
-  { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE' },
+  // Remplace le tableau de bord financier (notes de frais/tresorerie) pour ce
+  // role : voir pages/logistique/index.vue. Meme place en tete de section
+  // que 'Tableau de bord' dans restaurantItems.
+  { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/logistique', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
+  { title: 'Articles', icon: 'mdi-package-variant-closed', to: '/logistique/articles', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
+  // 16/11/2026 : services vendables (sans stock) séparés des articles à vendre ; même catalogue, même garde.
+  { title: 'Services', icon: 'mdi-hand-extended-outline', to: '/logistique/services', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
+  { title: 'Entrepôts', icon: 'mdi-warehouse', to: '/logistique/entrepots', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
+  // Répertoire des fournisseurs (V141) : hors grille des modules, ouvert par rôle comme FournisseurService — les
+  // acheteurs (logistique, restaurant, cuisine, bar, patrimoine), la comptabilité, la direction et, depuis le
+  // 17/11/2026, le caissier (fiches des fournisseurs qu'il paie, sans archiver ni supprimer).
+  { title: 'Fournisseurs', icon: 'mdi-handshake-outline', to: '/logistique/fournisseurs', roles: ['LOGISTIQUE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'GEST_PATRIMOINE', 'COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN', 'CAISSIER'] },
   // Mouvements et grand livre stock : StockService en reserve la lecture aux
   // roles logistiques et financiers. Le caissier a bien le module en LECTURE
   // (catalogue + disponibilite necessaires a une vente) mais pas ces deux
   // ecrans, qui lui renverraient 403.
-  { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/logistique/mouvements', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
-  { title: 'État du stock', icon: 'mdi-clipboard-list-outline', to: '/logistique/stock', module: 'LOGISTIQUE' },
-  { title: 'Grand livre stock', icon: 'mdi-book-open-page-variant-outline', to: '/logistique/stock/grand-livre', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'ADMIN'] },
+  { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/logistique/mouvements', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
+  { title: 'État du stock', icon: 'mdi-clipboard-list-outline', to: '/logistique/stock', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
+  // Minerais : suivi camion par camion, chaque chargement ayant son propre
+  // prix de vente (voir pages/logistique/minerais.vue).
+  { title: 'Camions de minerais', icon: 'mdi-dump-truck', to: '/logistique/minerais', module: 'MINE', roles: LOGISTIQUE_HORS_CAISSIER },
+  { title: 'Grand livre stock', icon: 'mdi-book-open-page-variant-outline', to: '/logistique/stock/grand-livre', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
+  { title: 'Inventaire des entrepôts', icon: 'mdi-clipboard-check-multiple-outline', to: '/logistique/inventaires', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
 ]
 const patrimoineItems: NavItem[] = [
   { title: 'Immobilisations', icon: 'mdi-office-building-cog-outline', to: '/patrimoine/immobilisations', module: 'PATRIMOINE' },
+  // Inventaire (19/11/2026) : biens relevés, codes à coller (étiquettes QR), valorisation par la logistique.
+  { title: 'Biens et étiquettes', icon: 'mdi-qrcode-scan', to: '/patrimoine/inventaire', module: 'PATRIMOINE' },
+  { title: "Fiche d'un bien (QR)", icon: 'mdi-qrcode', to: '/patrimoine/bien', module: 'PATRIMOINE' },
+  { title: 'Emplacements', icon: 'mdi-map-marker-multiple-outline', to: '/patrimoine/emplacements', module: 'PATRIMOINE' },
   { title: 'Amortissements', icon: 'mdi-chart-timeline-variant-shimmer', to: '/patrimoine/amortissements', module: 'PATRIMOINE' },
   { title: 'Consommables', icon: 'mdi-package-variant', to: '/patrimoine/consommables', module: 'PATRIMOINE' },
+  // Sorties de consommables (19/11/2026) : remises aux services, passées en charge automatiquement.
+  { title: 'Sorties de consommables', icon: 'mdi-package-variant-remove', to: '/patrimoine/sorties-consommables', module: 'PATRIMOINE' },
+  { title: 'Inventaire du patrimoine', icon: 'mdi-clipboard-check-outline', to: '/patrimoine/inventaires', module: 'PATRIMOINE' },
 ]
 const transportItems: NavItem[] = [
   { title: 'Véhicules', icon: 'mdi-truck-outline', to: '/transport/vehicules', module: 'TRANSPORT' },
@@ -105,19 +181,68 @@ const transportItems: NavItem[] = [
   { title: 'Dépenses', icon: 'mdi-fuel', to: '/transport/depenses', module: 'TRANSPORT' },
 ]
 
-// Toutes les pages du restaurant appellent /restaurant/* et jamais
-// /logistique/* : le responsable restaurant n'a pas le module LOGISTIQUE, le
-// filtre serveur lui renverrait un 403 sur sa propre carte.
-const restaurantItems: NavItem[] = [
-  { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/restaurant', module: 'RESTAURANT' },
+// Les pages du restaurant appellent /restaurant/* et jamais /logistique/* : le responsable restaurant n'a pas le
+// module LOGISTIQUE, le filtre serveur lui renverrait un 403 sur sa propre carte. (Les responsables cuisine et bar,
+// eux, ont aussi la lecture du menu Logistique — voir logistiqueItems — pour les articles de leur domaine.)
+//
+// Le menu se partage entre la cuisine (ROLES_RESTAURANT_CUISINE) et le bar (ROLES_RESTAURANT_BAR) : le responsable
+// cuisine ne voit que la cuisine et ses stocks, le responsable bar que le bar et ses stocks ; le responsable
+// restaurant, la direction et la comptabilite voient tout. Carte et Stock consolide sont ouverts aux deux : le
+// serveur ne leur renvoie que les articles de leur domaine (PerimetreRestaurant). Ni l'un ni l'autre n'a les salles
+// et tables ni les parametres.
+//
+// Le caissier a le module en ECRITURE (plan des salles, ventes) mais n'en voit que ce qu'il lui faut au
+// comptoir : la carte, les salles et tables, et les stocks en consultation (Stock cuisine & bar, Stock
+// consolide, Provisions, Provisions consolide). Tout le reste — tableau de bord, fiches techniques, production,
+// sorties de plats, achats, bar, parametres — lui est ferme, comme dans les pages elles-memes
+// (definePageMeta.roles). Un compte qui cumule CAISSIER et un autre de ces roles voit tout le menu.
+const ROLES_RESTAURANT_SALLES = ['RESP_RESTAURANT', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'CAISSIER', 'ADMIN']
+const ROLES_RESTAURANT_ANALYSES = ['RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'DFIN', 'DG', 'ADMIN']
+const ROLES_STOCK_BAR = [...ROLES_RESTAURANT_BAR, 'CAISSIER']
+const ROLES_STOCK_CUISINE = [...ROLES_RESTAURANT_CUISINE, 'CAISSIER']
+const restaurantItems: NavEntree[] = [
+  { title: 'Tableau de bord', icon: 'mdi-view-dashboard-outline', to: '/restaurant', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
+  // Pilotage de l'offre : parmi les lecteurs du module, seuls ceux admis par
+  // RestaurantService.LECTURE_ANALYSES (le caissier, le DA et le comptable
+  // lisent le module sans avoir cet ecran).
+  { title: 'Analyses des ventes', icon: 'mdi-chart-timeline-variant', to: '/restaurant/analyses-ventes', module: 'RESTAURANT', roles: ROLES_RESTAURANT_ANALYSES },
   { title: 'Carte', icon: 'mdi-silverware-fork-knife', to: '/restaurant/carte', module: 'RESTAURANT' },
-  { title: 'Stock cuisine & bar', icon: 'mdi-clipboard-list-outline', to: '/restaurant/stock', module: 'RESTAURANT' },
-  { title: 'Provisions', icon: 'mdi-sack', to: '/restaurant/provisions', module: 'RESTAURANT' },
-  { title: 'Tableau de bord Provisions', icon: 'mdi-chart-box-outline', to: '/restaurant/provisions/tableau-bord', module: 'RESTAURANT' },
-  { title: 'Réceptions', icon: 'mdi-truck-delivery-outline', to: '/restaurant/receptions', module: 'RESTAURANT', niveau: 'ECRITURE' },
-  { title: 'Bouteilles vides', icon: 'mdi-bottle-wine-outline', to: '/restaurant/emballages', module: 'RESTAURANT' },
-  { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/restaurant/emballages/mouvements', module: 'RESTAURANT' },
-  { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/restaurant/parametres', module: 'RESTAURANT' },
+  { title: 'Salles et tables', icon: 'mdi-floor-plan', to: '/restaurant/salles', module: 'RESTAURANT', roles: ROLES_RESTAURANT_SALLES },
+  {
+    id: 'restaurant-cuisine', title: 'Cuisine', icon: 'mdi-stove', items: [
+      { title: 'Fiches techniques', icon: 'mdi-clipboard-text-outline', to: '/restaurant/recettes', module: 'RESTAURANT', roles: ROLES_RESTAURANT_CUISINE },
+      { title: 'Production', icon: 'mdi-chef-hat', to: '/restaurant/production', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_CUISINE },
+      // Périmé, moisi, renversé, offert... : consultable par les lecteurs du
+      // module, saisie réservée au responsable restaurant et à l'administrateur.
+      { title: 'Sorties de plats', icon: 'mdi-food-off-outline', to: '/restaurant/sorties-plats', module: 'RESTAURANT', roles: ROLES_RESTAURANT_CUISINE },
+      { title: 'Achat de provisions', icon: 'mdi-truck-delivery-outline', to: '/restaurant/provisions/receptions', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_CUISINE },
+      // Consultable par tous les lecteurs du module ; les formulaires
+      // (réception directe, utilisation, casse, péremption) restent réservés
+      // au responsable restaurant et à l'administrateur, sur la page même.
+      { title: 'Entrées / sorties de provisions', icon: 'mdi-swap-vertical', to: '/restaurant/provisions/mouvements', module: 'RESTAURANT', roles: ROLES_RESTAURANT_CUISINE },
+    ],
+  },
+  {
+    id: 'restaurant-bar', title: 'Bar', icon: 'mdi-glass-cocktail', items: [
+      { title: 'Bouteilles vides', icon: 'mdi-bottle-wine-outline', to: '/restaurant/emballages', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
+      { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/restaurant/emballages/mouvements', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
+      { title: 'Achat de boissons', icon: 'mdi-truck-delivery-outline', to: '/restaurant/receptions', module: 'RESTAURANT', niveau: 'ECRITURE', roles: ROLES_RESTAURANT_BAR },
+      // Whisky, vin, jus en carton… : pas de bouteilles vides, leurs pertes ont leur propre écran (V134).
+      { title: 'Pertes sans consigne', icon: 'mdi-glass-tulip', to: '/restaurant/pertes-boissons', module: 'RESTAURANT', roles: ROLES_RESTAURANT_BAR },
+    ],
+  },
+  {
+    id: 'restaurant-stocks', title: 'Stocks', icon: 'mdi-warehouse', items: [
+      { title: 'Tableau de bord Provisions', icon: 'mdi-chart-box-outline', to: '/restaurant/provisions/tableau-bord', module: 'RESTAURANT', roles: ROLES_RESTAURANT_CUISINE },
+      { title: 'Stock cuisine & bar', icon: 'mdi-clipboard-list-outline', to: '/restaurant/stock', module: 'RESTAURANT', roles: ROLES_STOCK_BAR },
+      { title: 'Stock consolidé', icon: 'mdi-view-list-outline', to: '/restaurant/stock/consolide', module: 'RESTAURANT' },
+      { title: 'Provisions', icon: 'mdi-sack', to: '/restaurant/provisions', module: 'RESTAURANT', roles: ROLES_STOCK_CUISINE },
+      { title: 'Provisions (consolidé)', icon: 'mdi-view-list-outline', to: '/restaurant/provisions/consolide', module: 'RESTAURANT', roles: ROLES_STOCK_CUISINE },
+    ],
+  },
+  // Retours de ventes payées demandés par la caisse : le responsable du bar, de la cuisine ou du restaurant décide (V134).
+  { title: 'Retours de ventes', icon: 'mdi-keyboard-return', to: '/restaurant/retours', module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_BAR', 'RESP_CUISINE'] },
+  { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/restaurant/parametres', module: 'RESTAURANT', roles: ROLES_RESTAURANT_COMPLET },
 ]
 
 const drhItems: NavItem[] = [
@@ -127,9 +252,15 @@ const drhItems: NavItem[] = [
   { title: 'Sorties de travailleurs', icon: 'mdi-exit-run', to: '/drh/sorties', module: 'DRH_PRESENCES' },
   { title: 'Bulletins de paie', icon: 'mdi-cash-multiple', to: '/drh/bulletins', module: 'DRH_PAIE' },
   { title: 'Paramètres de paie', icon: 'mdi-cog-outline', to: '/drh/parametres-paie', module: 'DRH_PAIE', niveau: 'ECRITURE' },
+  { title: 'Provision pour congés payés', icon: 'mdi-beach', to: '/drh/provisions-conges', module: 'DRH_PAIE' },
   { title: 'Ordres de mission', icon: 'mdi-map-marker-path', to: '/drh/missions', module: 'DRH_MISSIONS' },
   { title: 'Sites opérationnels', icon: 'mdi-office-building-marker-outline', to: '/drh/sites', module: 'DRH_MISSIONS' },
   { title: 'Rotations', icon: 'mdi-account-sync-outline', to: '/drh/rotations', module: 'DRH_MISSIONS' },
+]
+
+// Hôtellerie (V152) : l'application PMS s'ouvre par une connexion unique depuis cette page.
+const hotellerieItems: NavItem[] = [
+  { title: "Ouvrir l'hôtellerie", icon: 'mdi-bed-outline', to: '/hotellerie', module: 'HOTELLERIE' },
 ]
 
 const adminItems: NavItem[] = [
@@ -138,8 +269,15 @@ const adminItems: NavItem[] = [
   { title: 'Taux de change', icon: 'mdi-currency-usd', to: '/admin/taux-change', roles: ['ADMIN'] },
   { title: 'Taux de TVA', icon: 'mdi-percent-outline', to: '/admin/taux-tva', roles: ['ADMIN'] },
   { title: 'Paramètres', icon: 'mdi-cog-outline', to: '/admin/parametres', roles: ['ADMIN'] },
+  { title: 'Intelligence artificielle', icon: 'mdi-robot-outline', to: '/admin/ia', roles: ['ADMIN'] },
+  { title: 'Facture normalisée (DGI)', icon: 'mdi-receipt-text-check-outline', to: '/admin/facturation-normalisee', roles: ['ADMIN'] },
+  { title: "Journal d'audit", icon: 'mdi-clipboard-text-clock-outline', to: '/admin/audit', roles: ['ADMIN'] },
+  { title: 'Messagerie (e-mails)', icon: 'mdi-email-fast-outline', to: '/admin/messagerie', roles: ['ADMIN'] },
   { title: 'Modules', icon: 'mdi-view-grid-outline', to: '/admin/modules', roles: ['ADMIN'] },
+  { title: 'Hôtellerie (PMS)', icon: 'mdi-bed-outline', to: '/admin/hotellerie', roles: ['ADMIN'], module: 'HOTELLERIE' },
+  { title: 'Serveur local et synchronisation', icon: 'mdi-server-network', to: '/admin/synchronisation', roles: ['ADMIN'] },
   { title: 'Permissions', icon: 'mdi-shield-key-outline', to: '/admin/permissions', roles: ['ADMIN'] },
+  // Administrateur seul : l'import ecrit la tresorerie sans note de frais.
   { title: 'Importer un journal', icon: 'mdi-database-import-outline', to: '/admin/import-journal', roles: ['ADMIN'] },
 ]
 
@@ -152,6 +290,12 @@ const adminItems: NavItem[] = [
  * chaque page renvoyait un 403.
  */
 function visible(item: NavItem) {
+  if (item.application && !applicationMobile) return false
+  // Application Android : le tableau de bord, les notes de frais et la comptabilité (consultation) ; pour le caissier,
+  // en plus la trésorerie, la vente, les clients et les fournisseurs.
+  if (applicationMobile && !routePermiseDansApplication(item.to, auth.user?.roles ?? [])) {
+    return false
+  }
   if (item.roles && !auth.hasAnyRole(item.roles)) {
     return false
   }
@@ -166,14 +310,98 @@ const proxyModel = computed({
   set: (v: boolean) => emit('update:modelValue', v),
 })
 
-const showAdmin = computed(() => auth.hasRole('ADMIN'))
-const showVentes = computed(() => venteItems.some(item => visible(item)))
-const showComptabilite = computed(() => comptabiliteItems.some(item => visible(item)))
-const showLogistique = computed(() => logistiqueItems.some(item => visible(item)))
-const showTransport = computed(() => transportItems.some(item => visible(item)))
-const showPatrimoine = computed(() => patrimoineItems.some(item => visible(item)))
-const showDrh = computed(() => drhItems.some(item => visible(item)))
-const showRestaurant = computed(() => restaurantItems.some(item => visible(item)))
+interface NavGroup { id: string; label: string; items: NavEntree[] }
+
+// Derniers liens du menu, pour tout compte connecté (site et application) : l'aide adaptée au rôle, puis À propos.
+const itemsFin: NavItem[] = [
+  { title: 'Aide', icon: 'mdi-help-circle-outline', to: '/aide' },
+  { title: 'À propos', icon: 'mdi-information-outline', to: '/a-propos' },
+]
+
+// Chaque rubrique (auparavant une liste a plat, toujours depliee) devient un
+// groupe repliable : un menu principal plus court, chaque rubrique masquant
+// ses propres ecrans jusqu'a un clic sur son entete — voir `ouverts`/`basculer`.
+const GROUPES: NavGroup[] = [
+  { id: 'ventes', label: 'Ventes', items: venteItems },
+  { id: 'comptabilite', label: 'Comptabilité', items: comptabiliteItems },
+  { id: 'logistique', label: 'Logistique', items: logistiqueItems },
+  { id: 'patrimoine', label: 'Patrimoine', items: patrimoineItems },
+  { id: 'restaurant', label: 'Restaurant', items: restaurantItems },
+  { id: 'hotellerie', label: 'Hôtellerie', items: hotellerieItems },
+  { id: 'drh', label: 'DRH', items: drhItems },
+  { id: 'transport', label: 'Transport', items: transportItems },
+  { id: 'admin', label: 'Administration', items: adminItems },
+]
+function entreeVisible(e: NavEntree) {
+  return estSousGroupe(e) ? e.items.some(visible) : visible(e)
+}
+const groupesVisibles = computed(() => GROUPES.filter(g => g.items.some(entreeVisible)))
+
+/** Rubrique(s) et sous-rubrique(s) actuellement depliee(s) — independantes les
+ * unes des autres (pas l'exclusivite d'un accordeon strict) : replier Logistique
+ * en consultant DRH serait plus genant qu'utile ici. Repliees par defaut, sauf
+ * celles de la page courante (voir plus bas), pour ne pas reafficher tout le
+ * menu ouvert. */
+const route = useRoute()
+function correspond(chemin: string, to: string) {
+  return chemin === to || chemin.startsWith(to + '/')
+}
+/**
+ * Rubrique (et sous-rubrique) de la page courante. Le lien le plus precis
+ * l'emporte : /restaurant/provisions/receptions est dans Cuisine, pas dans
+ * Stocks ou figure /restaurant/provisions, ni sous le tableau de bord
+ * /restaurant.
+ */
+function ouvertsPourRoute(chemin: string): string[] {
+  let meilleur: { ids: string[]; longueur: number } | undefined
+  for (const g of GROUPES) {
+    for (const e of g.items) {
+      const liens = estSousGroupe(e) ? e.items.map(item => ({ item, ids: [g.id, e.id] })) : [{ item: e, ids: [g.id] }]
+      for (const { item, ids } of liens) {
+        if (correspond(chemin, item.to) && (!meilleur || item.to.length > meilleur.longueur)) {
+          meilleur = { ids, longueur: item.to.length }
+        }
+      }
+    }
+  }
+  return meilleur?.ids ?? []
+}
+const ouverts = ref<Set<string>>(new Set(ouvertsPourRoute(route.path)))
+function basculer(id: string) {
+  const s = new Set(ouverts.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  ouverts.value = s
+}
+// Navigation directe (lien externe, rechargement) vers une page d'une rubrique
+// repliee : la deplie automatiquement plutot que de laisser la page active
+// invisible dans un menu ferme. N'ajoute que la rubrique (et la sous-rubrique)
+// concernee, ne referme jamais les autres.
+watch(() => route.path, (chemin) => {
+  const ids = ouvertsPourRoute(chemin).filter(id => !ouverts.value.has(id))
+  if (ids.length) {
+    ouverts.value = new Set([...ouverts.value, ...ids])
+  }
+})
+
+/** Ligne affichee dans une rubrique : un lien (decale s'il appartient a une sous-rubrique) ou l'en-tete d'une sous-rubrique. */
+type LigneMenu =
+  | { sorte: 'lien'; item: NavItem; imbrique: boolean }
+  | { sorte: 'sousGroupe'; sousGroupe: NavSousGroupe }
+function lignes(g: NavGroup): LigneMenu[] {
+  return g.items.flatMap((e): LigneMenu[] => {
+    if (!estSousGroupe(e)) {
+      return visible(e) ? [{ sorte: 'lien', item: e, imbrique: false }] : []
+    }
+    const liens = e.items.filter(visible)
+    if (!liens.length) {
+      return []
+    }
+    const entete: LigneMenu = { sorte: 'sousGroupe', sousGroupe: e }
+    return ouverts.value.has(e.id)
+      ? [entete, ...liens.map((item): LigneMenu => ({ sorte: 'lien', item, imbrique: true }))]
+      : [entete]
+  })
+}
 </script>
 
 <template>
@@ -185,10 +413,7 @@ const showRestaurant = computed(() => restaurantItems.some(item => visible(item)
   >
     <!-- Brand in drawer (mobile only, since AppBar is hidden on mobile) -->
     <div class="modern-drawer__brand">
-      <div class="modern-drawer__logo" :class="{ 'modern-drawer__logo--image': parametresStore.parametres.logoUrl }">
-        <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
-        <v-icon v-else icon="mdi-finance" size="16" color="white" />
-      </div>
+      <div class="modern-drawer__logo logo-principal"><LogoMfinapp /></div>
       <span class="modern-drawer__brand-name">{{ parametresStore.parametres.nom }}</span>
     </div>
 
@@ -210,305 +435,179 @@ const showRestaurant = computed(() => restaurantItems.some(item => visible(item)
       </template>
     </nav>
 
-    <template v-if="showVentes">
+    <template v-for="g in groupesVisibles" :key="g.id">
       <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Ventes</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in venteItems" :key="item.to">
+      <button type="button" class="modern-drawer__group-toggle" :aria-expanded="ouverts.has(g.id)" @click="basculer(g.id)">
+        <span>{{ g.label }}</span>
+        <v-icon :icon="ouverts.has(g.id) ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="15" />
+      </button>
+      <nav v-show="ouverts.has(g.id)" class="modern-drawer__nav">
+        <template v-for="l in lignes(g)" :key="l.sorte === 'lien' ? l.item.to : l.sousGroupe.id">
+          <button
+            v-if="l.sorte === 'sousGroupe'"
+            type="button"
+            class="modern-drawer__item modern-drawer__subgroup-toggle"
+            :aria-expanded="ouverts.has(l.sousGroupe.id)"
+            @click="basculer(l.sousGroupe.id)"
+          >
+            <span class="modern-drawer__item-icon">
+              <v-icon :icon="l.sousGroupe.icon" size="18" />
+            </span>
+            <span class="modern-drawer__item-label">{{ l.sousGroupe.title }}</span>
+            <v-icon
+              :icon="ouverts.has(l.sousGroupe.id) ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+              size="16"
+              class="modern-drawer__subgroup-chevron"
+            />
+          </button>
           <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
+            v-else
+            :to="l.item.to"
+            :class="['modern-drawer__item', {
+              'modern-drawer__item--essentiel': l.item.essentiel,
+              'modern-drawer__item--imbrique': l.imbrique,
+            }]"
             active-class="modern-drawer__item--active"
           >
             <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
+              <v-icon :icon="l.item.icon" size="18" />
             </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
+            <span class="modern-drawer__item-label">{{ l.item.title }}</span>
           </nuxt-link>
         </template>
       </nav>
     </template>
 
-    <template v-if="showComptabilite">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Comptabilité</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in comptabiliteItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showLogistique">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Logistique</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in logistiqueItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showPatrimoine">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Patrimoine</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in patrimoineItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showRestaurant">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Restaurant</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in restaurantItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showDrh">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">DRH</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in drhItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showTransport">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Transport</div>
-      <nav class="modern-drawer__nav">
-        <template v-for="item in transportItems" :key="item.to">
-          <nuxt-link
-            v-if="visible(item)"
-            :to="item.to"
-            :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-            active-class="modern-drawer__item--active"
-          >
-            <span class="modern-drawer__item-icon">
-              <v-icon :icon="item.icon" size="18" />
-            </span>
-            <span class="modern-drawer__item-label">{{ item.title }}</span>
-          </nuxt-link>
-        </template>
-      </nav>
-    </template>
-
-    <template v-if="showAdmin">
-      <div class="modern-drawer__divider" />
-      <div class="modern-drawer__section-label">Administration</div>
-      <nav class="modern-drawer__nav">
-        <nuxt-link
-          v-for="item in adminItems"
-          :key="item.to"
-          :to="item.to"
-          :class="['modern-drawer__item', { 'modern-drawer__item--essentiel': item.essentiel }]"
-          active-class="modern-drawer__item--active"
-        >
-          <span class="modern-drawer__item-icon">
-            <v-icon :icon="item.icon" size="18" />
-          </span>
-          <span class="modern-drawer__item-label">{{ item.title }}</span>
-        </nuxt-link>
-      </nav>
-    </template>
+    <div class="modern-drawer__divider" />
+    <nav class="modern-drawer__nav">
+      <nuxt-link
+        v-for="item in itemsFin"
+        :key="item.to"
+        :to="item.to"
+        class="modern-drawer__item"
+        active-class="modern-drawer__item--active"
+      >
+        <span class="modern-drawer__item-icon">
+          <v-icon :icon="item.icon" size="18" />
+        </span>
+        <span class="modern-drawer__item-label">{{ item.title }}</span>
+      </nuxt-link>
+    </nav>
 
     <template #append>
       <div class="modern-drawer__footer">
-        MBSC &copy; {{ new Date().getFullYear() }}
+        Eyano MBSC &copy; {{ new Date().getFullYear() }} Version {{ appVersion }}
       </div>
     </template>
   </v-navigation-drawer>
 </template>
 
 <style scoped>
+/* Barre latérale « malachite » : fond vert très sombre dérivé de la couleur de marque ; la page active porte un filet vif. */
 .modern-drawer {
-  background: #ffffff !important;
-  border-right: 1px solid #f0f0f0 !important;
-  padding: 12px 10px;
-}
-
-.modern-drawer__brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 6px 16px;
-}
-.modern-drawer__logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: #16a34a;
-  flex-shrink: 0;
+  --nav-ink: rgba(255, 255, 255, 0.74);
+  --nav-ink-strong: #ffffff;
+  --nav-line: rgba(255, 255, 255, 0.09);
+  --nav-bright: color-mix(in srgb, var(--color-primary) 55%, #7ff0b8);
+  /* Verre teinté (21/11/2026) : le fond d'aurore de la page transparaît, flouté, sous le vert sombre de marque. */
+  background:
+    radial-gradient(120% 50% at 0% 0%, rgba(255, 255, 255, 0.10), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--nav-bg) 78%, transparent), color-mix(in srgb, var(--nav-bg) 88%, transparent)) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+  /* Panneau flottant aux coins arrondis (21/11/2026) : décollé de 10 px des bords, comme une carte de verre ; sa largeur
+     totale (10 + 246 px) reste celle que Vuetify réserve à gauche du contenu (256 px). */
+  top: calc(var(--mbsc-appbar-h, 60px) + 10px) !important;
+  left: 10px !important;
+  height: calc(100% - var(--mbsc-appbar-h, 60px) - 20px) !important;
+  width: 246px !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 24px;
   overflow: hidden;
-}
-.modern-drawer__logo--image { background: #fff; border: 1px solid #f0f0f0; }
-.modern-drawer__logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
-.modern-drawer__brand-name {
-  font-size: 0.9375rem;
-  font-weight: 400;
-  color: #374151;
-}
-.modern-drawer__brand-name strong {
-  font-weight: 700;
-  color: #111827;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 24px 50px -22px rgba(0, 0, 0, 0.55);
+  padding: 14px 10px 8px;
+  color: var(--nav-ink);
 }
 
-.modern-drawer__section-label {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: #d1d5db;
-  padding: 6px 10px 6px;
+/* Ascenseur aux couleurs de la barre : fin, translucide, sans le rail blanc ni les flèches du navigateur. */
+.modern-drawer :deep(.v-navigation-drawer__content) {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar) { width: 8px; }
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar-track) { background: transparent; }
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar-button) { display: none; height: 0; }
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar-thumb) {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.modern-drawer :deep(.v-navigation-drawer__content::-webkit-scrollbar-thumb:hover) {
+  background: var(--nav-bright);
+  background-clip: padding-box;
 }
 
-.modern-drawer__divider {
-  height: 1px;
-  background: #f3f4f6;
-  margin: 10px 6px;
+.modern-drawer__brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 18px; }
+.modern-drawer__logo {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 9px;
+  background: rgba(255, 255, 255, 0.12); flex-shrink: 0; overflow: hidden;
 }
+.modern-drawer__logo--image { background: rgba(255, 255, 255, 0.95); }
+.modern-drawer__logo img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+.modern-drawer__brand-name { font-size: 1rem; font-weight: 650; color: var(--nav-ink-strong); letter-spacing: -0.01em; }
 
-.modern-drawer__nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.modern-drawer__section-label { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.5); padding: 6px 10px; }
+
+.modern-drawer__divider { height: 1px; background: var(--nav-line); margin: 12px 8px; }
+
+.modern-drawer__group-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; margin: 0 0 2px; padding: 7px 10px;
+  border: none; border-radius: 8px; background: none; font: inherit;
+  font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.55);
+  cursor: pointer; transition: color 0.15s, background 0.15s;
 }
+.modern-drawer__group-toggle:hover { color: var(--nav-ink-strong); background: rgba(255,255,255,0.05); }
+.modern-drawer__group-toggle .v-icon { color: inherit; }
+.modern-drawer__group-toggle:focus-visible,
+.modern-drawer__item:focus-visible { outline: 2px solid var(--nav-bright); outline-offset: -2px; }
+
+.modern-drawer__nav { display: flex; flex-direction: column; gap: 1px; }
 
 .modern-drawer__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 10px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #6b7280;
-  text-decoration: none;
+  position: relative; display: flex; align-items: center; gap: 12px;
+  padding: 9px 12px; border-radius: 8px;
+  font-size: 0.9rem; font-weight: 500; color: var(--nav-ink); text-decoration: none;
   transition: background 0.15s, color 0.15s;
 }
-.modern-drawer__item:hover {
-  background: #f9fafb;
-  color: #111827;
+.modern-drawer__item:hover { background: rgba(255,255,255,0.06); color: var(--nav-ink-strong); }
+.modern-drawer__item--active { background: linear-gradient(90deg, rgba(255,255,255,0.16), rgba(255,255,255,0.06)) !important;
+  color: var(--nav-ink-strong) !important; font-weight: 600; box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset; }
+.modern-drawer__item--active::before {
+  content: ''; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 4px;
+  border-radius: 0 4px 4px 0; background: var(--nav-bright);
 }
-.modern-drawer__item--active {
-  background: #dcfce7 !important;
-  color: #16a34a !important;
-  font-weight: 600;
-}
-.modern-drawer__item--active .modern-drawer__item-icon {
-  color: #16a34a;
-}
+.modern-drawer__item--active .modern-drawer__item-icon { color: var(--nav-bright); }
 
-/* États financiers de premier reflexe (Bilan, Balance...) : reperables d'un
-   coup d'oeil dans une liste par ailleurs uniforme, sans rivaliser avec le
-   vert de la page active. */
-.modern-drawer__item--essentiel {
-  color: #92400e;
-  font-weight: 600;
-}
-.modern-drawer__item--essentiel .modern-drawer__item-icon {
-  background: #fef3c7;
-  color: #b45309;
-}
-.modern-drawer__item--essentiel:hover {
-  background: #fffbeb;
-  color: #92400e;
-}
-.modern-drawer__item--essentiel:hover .modern-drawer__item-icon {
-  background: #fde68a;
-}
-.modern-drawer__item--active.modern-drawer__item--essentiel {
-  background: #dcfce7 !important;
-  color: #16a34a !important;
-}
-.modern-drawer__item--active.modern-drawer__item--essentiel .modern-drawer__item-icon {
-  background: transparent;
-  color: #16a34a;
-}
+/* États financiers de premier réflexe (Bilan, Balance…) : repérés par un or discret. */
+.modern-drawer__item--essentiel { color: #f3d28a; font-weight: 600; }
+.modern-drawer__item--essentiel:hover { background: rgba(243, 210, 138, 0.10); color: #f8e3b0; }
+.modern-drawer__item--active.modern-drawer__item--essentiel { color: var(--nav-ink-strong) !important; }
 
-.modern-drawer__item-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-.modern-drawer__item:hover .modern-drawer__item-icon {
-  background: #f0fdf4;
-}
+.modern-drawer__item-icon { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex-shrink: 0; }
+.modern-drawer__item-label { flex: 1; }
 
-.modern-drawer__item-label {
-  flex: 1;
-}
+.modern-drawer__subgroup-toggle { width: 100%; border: none; background: none; font: inherit; font-size: 0.9rem; font-weight: 500; text-align: left; cursor: pointer; }
+.modern-drawer__subgroup-chevron { color: rgba(255,255,255,0.5); }
+.modern-drawer__item--imbrique { margin-left: 18px; padding-top: 7px; padding-bottom: 7px; font-size: 0.85rem; }
 
-.modern-drawer__footer {
-  padding: 16px 12px;
-  font-size: 0.72rem;
-  color: #d1d5db;
-  border-top: 1px solid #f3f4f6;
-  margin: 0 -10px;
+.modern-drawer__footer { padding: 14px 12px; font-size: 0.78rem; color: rgba(255,255,255,0.45); border-top: 1px solid var(--nav-line); margin: 0 -10px; }
+
+/* Menu ouvert au doigt (téléphone, tablette) : rubriques et liens d'au moins 44 px de haut. */
+@media screen and (max-width: 959px) {
+  .modern-drawer__group-toggle,
+  .modern-drawer__item { min-height: 44px; }
 }
 </style>

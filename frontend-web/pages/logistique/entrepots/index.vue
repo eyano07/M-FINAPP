@@ -1,5 +1,7 @@
 <script setup lang="ts">
-definePageMeta({ module: 'LOGISTIQUE' })
+// Voir /logistique/articles : le module en LECTURE du caissier sert la vente,
+// pas la consultation des ecrans logistiques.
+definePageMeta({ module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] })
 
 interface Entrepot {
   id: number
@@ -18,7 +20,7 @@ const entrepots = ref<Entrepot[]>([])
 const dialog = ref(false)
 const editId = ref<number | null>(null)
 
-const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE']))
+const canWrite = computed(() => auth.hasAnyRole(['LOGISTIQUE', 'ADMIN']))
 
 const form = reactive({ code: '', nom: '', localisation: '', actif: true })
 

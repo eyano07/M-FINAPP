@@ -1,5 +1,7 @@
 <script setup lang="ts">
-definePageMeta({ module: 'COMPTABILITE' })
+import { useExerciceStore } from '~/stores/exercice'
+// DA exclu explicitement : voir NavigationDrawer.vue (comptabiliteItems).
+definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 interface LigneBalance {
   compteNumero: string
@@ -30,8 +32,10 @@ const exportEnCours = ref(false)
 const erreur = ref('')
 const balance = ref<BalanceVerification | null>(null)
 
-const debutAnnee = new Date().getFullYear() + '-01-01'
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
+const exerciceConsulte = useExerciceStore()
+const debutAnnee = exerciceConsulte.debut
+const aujourdhui = exerciceConsulte.fin
 
 const filtres = reactive({
   du: debutAnnee,
@@ -133,31 +137,31 @@ function fmtDate(d: string) {
     <v-card class="classroom-card pa-6 mb-4 no-print">
       <v-row align="end">
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.du" label="Du" type="date" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.du" label="Du" type="date" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.au" label="Au" type="date" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.au" label="Au" type="date" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-btn color="primary" block :loading="loading" @click="charger">Actualiser</v-btn>
+          <v-btn color="primary" block height="48" :loading="loading" @click="charger">Actualiser</v-btn>
         </v-col>
       </v-row>
     </v-card>
 
     <template v-if="balance">
       <!-- En-tete d'impression (visible uniquement sur le document imprime) -->
-      <div class="etat-print-header">
-        <div class="etat-print-header__brand">
-          <div class="etat-print-header__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
+      <div class="etat-print-header print-entete">
+        <div class="etat-print-header__brand print-entete__marque">
+          <div class="etat-print-header__logo print-entete__logo" :class="{ 'etat-print-header__logo--image': parametresStore.parametres.logoUrl }">
             <img v-if="parametresStore.parametres.logoUrl" :src="parametresStore.parametres.logoUrl" alt="Logo">
             <v-icon v-else icon="mdi-finance" size="16" color="white" />
           </div>
           <div>
-            <span class="etat-print-header__company">{{ parametresStore.parametres.nom }}</span>
+            <span class="etat-print-header__company print-entete__nom">{{ parametresStore.parametres.nom }}</span>
             <span class="etat-print-header__doc">Balance de vérification</span>
           </div>
         </div>
-        <div class="etat-print-header__meta">
+        <div class="etat-print-header__meta print-entete__meta">
           <span>Période : <strong>{{ fmtDate(balance.du) }} au {{ fmtDate(balance.au) }}</strong></span>
           <span>Imprimé le : {{ dateImpression }}</span>
         </div>
@@ -227,6 +231,6 @@ function fmtDate(d: string) {
 </template>
 
 <style scoped>
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.25rem; font-weight: 700; color: #111827; margin-top: 4px; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.25rem; font-weight: 700; color: var(--ink); margin-top: 4px; }
 </style>

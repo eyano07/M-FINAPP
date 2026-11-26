@@ -97,6 +97,10 @@ public class Immobilisation {
     @Column(name = "numero_serie", length = 100)
     private String numeroSerie;
 
+    /** Code d'inventaire collé sur le bien (V153), repris de la fiche d'inventaire. */
+    @Column(name = "code_inventaire", length = 60, unique = true)
+    private String codeInventaire;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "piece_acquisition_id")
     private PieceComptable pieceAcquisition;
@@ -110,6 +114,17 @@ public class Immobilisation {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "piece_sortie_id")
     private PieceComptable pieceSortie;
+
+    /** Bien principal dont cette immobilisation est un composant (audit SYSCOHADA du 10/11/2026, C-18). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    @ToString.Exclude
+    private Immobilisation parent;
+
+    /** Nature de la sortie : cession courante ou hors activités ordinaires. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type_cession", length = 20)
+    private com.mbsc.finapp.domain.enums.TypeCession typeCession;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id")

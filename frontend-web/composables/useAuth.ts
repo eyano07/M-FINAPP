@@ -15,11 +15,12 @@ export function useAuth() {
   const auth = useAuthStore()
   const config = useRuntimeConfig()
 
-  async function login(email: string, motDePasse: string) {
+  /** `identifiant` : nom d'utilisateur ou adresse e-mail (le serveur le reçoit dans le champ « email »). */
+  async function login(identifiant: string, motDePasse: string, codeDoubleAuth?: string) {
     const res = await $fetch<AuthResponse>('/auth/login', {
       baseURL: config.public.apiBase as string,
       method: 'POST',
-      body: { email, motDePasse },
+      body: { email: identifiant, motDePasse, codeDoubleAuth: codeDoubleAuth || null },
     })
     auth.setSession({
       accessToken: res.accessToken,
@@ -29,7 +30,24 @@ export function useAuth() {
     return res
   }
 
-  function logout() {
+  /**
+   * Ferme la session côté serveur (tous les jetons de l'utilisateur sont
+   * révoqués), puis localement. Sans réseau ou avec un jeton déjà expiré, la
+   * déconnexion locale a lieu quand même.
+   */
+  async function logout() {
+    if (auth.accessToken) {
+      try {
+        await $fetch('/auth/logout', {
+          baseURL: config.public.apiBase as string,
+          method: 'POST',
+          headers: { Authorization: `Bearer ${auth.accessToken}` },
+          timeout: 5000,
+        })
+      } catch {
+        // Déconnexion locale malgré tout.
+      }
+    }
     auth.logout()
     navigateTo('/login')
   }

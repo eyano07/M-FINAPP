@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExerciceStore } from '~/stores/exercice'
 // Aucune ecriture ne se fait depuis cette page (la TVA se genere depuis les
 // ventes et les notes de frais), donc aucun role d'ecriture a restreindre.
 // DA exclu explicitement de la consultation.
@@ -25,12 +26,42 @@ interface Situation {
 }
 
 const api = useApi()
+const auth = useAuthStore()
 const loading = ref(false)
 const erreur = ref('')
+const succes = ref('')
 const situation = ref<Situation | null>(null)
 
-const debutAnnee = new Date().getFullYear() + '-01-01'
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// L'arrete pose une ecriture : reserve au DFIN et a l'ADMIN, comme la cloture
+// annuelle. Le COMPTABLE et le DG gardent la consultation.
+const peutDeclarer = computed(() => auth.hasAnyRole(['DFIN', 'ADMIN']))
+const declarant = ref(false)
+const dialogDeclaration = ref(false)
+
+async function declarer() {
+  declarant.value = true
+  erreur.value = ''
+  succes.value = ''
+  try {
+    const params = new URLSearchParams({ du: filtres.du, au: filtres.au })
+    const res = await api<{ pieceReference: string | null; message: string }>(
+      `/comptabilite/tva/declarer?${params}`, { method: 'POST' })
+    succes.value = res.pieceReference
+      ? `${res.message} — pièce ${res.pieceReference}.`
+      : res.message
+    dialogDeclaration.value = false
+    await charger()
+  } catch (e: any) {
+    erreur.value = messageErreurApi(e, "Échec de l'arrêté de TVA.")
+  } finally {
+    declarant.value = false
+  }
+}
+
+// Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
+const exerciceConsulte = useExerciceStore()
+const debutAnnee = exerciceConsulte.debut
+const aujourdhui = exerciceConsulte.fin
 const filtres = reactive({ du: debutAnnee, au: aujourdhui })
 
 const filtreNature = ref<'TOUS' | 'COLLECTEE' | 'RECUPERABLE'>('TOUS')
@@ -49,6 +80,12 @@ async function charger() {
   }
 }
 onMounted(charger)
+
+// Régime de TVA de l'entreprise : non assujettie => rien de nouveau n'est collecté ni
+// récupéré ; l'écran ne sert plus qu'à solder d'éventuels montants antérieurs.
+const parametresStore = useParametresStore()
+onMounted(() => { parametresStore.charger() })
+const nonAssujettie = computed(() => parametresStore.parametres.assujettiTva === false)
 
 const lignesFiltrees = computed(() => {
   if (!situation.value) return []
@@ -80,20 +117,70 @@ function fmtDate(d: string) {
           TVA collectée sur les ventes (443x) face à la TVA récupérable sur les achats (445x) — traçabilité complète
         </p>
       </div>
+      <v-btn
+        v-if="peutDeclarer" color="primary" variant="flat" rounded="lg"
+        prepend-icon="mdi-file-check-outline" :loading="declarant"
+        :disabled="!situation || (!situation.tvaCollectee && !situation.tvaRecuperable)"
+        @click="dialogDeclaration = true"
+      >
+        Arrêter la TVA
+      </v-btn>
     </div>
 
+    <v-alert v-if="nonAssujettie" type="info" variant="tonal" rounded="lg" class="mb-4">
+      L'entreprise est déclarée <strong>non assujettie à la TVA</strong> (Administration → Taux de TVA) :
+      aucune TVA n'est plus facturée sur les ventes ni récupérée sur les achats. Cet écran ne sert qu'à
+      arrêter d'éventuels montants enregistrés auparavant.
+    </v-alert>
+
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4">{{ erreur }}</v-alert>
+    <v-alert v-if="succes" type="success" variant="tonal" class="mb-4" closable @click:close="succes = ''">
+      {{ succes }}
+    </v-alert>
+
+    <!-- L'arrete solde 443x/445x vers 4441 ou 4449 : c'est une ecriture, donc
+         une confirmation explicite plutot qu'un simple clic. -->
+    <v-dialog v-model="dialogDeclaration" max-width="540">
+      <v-card>
+        <v-card-title>Arrêter la TVA de la période</v-card-title>
+        <v-divider />
+        <v-card-text>
+          <p class="text-body-2 mb-3">
+            Une pièce <strong>brouillon</strong> va être générée : elle solde la TVA collectée
+            contre la TVA récupérable et porte le net sur le compte de l'État.
+          </p>
+          <div v-if="situation" class="decl-recap">
+            <div><span>TVA collectée</span><strong>{{ fmt(situation.tvaCollectee) }}</strong></div>
+            <div><span>TVA récupérable</span><strong>{{ fmt(situation.tvaRecuperable) }}</strong></div>
+            <div class="decl-recap__net">
+              <span>{{ situation.soldeNet >= 0 ? 'TVA due à l\'État (4441)' : 'Crédit à reporter (4449)' }}</span>
+              <strong>{{ fmt(Math.abs(situation.soldeNet)) }}</strong>
+            </div>
+          </div>
+          <p class="text-caption text-medium-emphasis mt-3 mb-0">
+            Période du {{ filtres.du }} au {{ filtres.au }}. Rien n'impacte le Grand Livre
+            tant que la pièce n'est pas comptabilisée depuis Pièces comptables.
+          </p>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="declarant" @click="dialogDeclaration = false">Annuler</v-btn>
+          <v-btn color="primary" variant="flat" :loading="declarant" @click="declarer">Générer la pièce</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-card class="classroom-card pa-6 mb-4">
       <v-row align="end">
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.du" label="Du" type="date" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.du" label="Du" type="date" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-text-field v-model="filtres.au" label="Au" type="date" variant="outlined" density="comfortable" />
+          <v-text-field v-model="filtres.au" label="Au" type="date" variant="outlined" density="comfortable" hide-details />
         </v-col>
         <v-col cols="12" md="4">
-          <v-btn color="primary" block :loading="loading" @click="charger">Actualiser</v-btn>
+          <v-btn color="primary" block height="48" :loading="loading" @click="charger">Actualiser</v-btn>
         </v-col>
       </v-row>
     </v-card>
@@ -163,9 +250,12 @@ function fmtDate(d: string) {
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; color: #111827; }
+
+/* Recapitulatif de l'arrete, avant generation de la piece. */
+.decl-recap { display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); border-radius: 10px; padding: 14px 16px; }
+.decl-recap > div { display: flex; justify-content: space-between; gap: 20px; font-size: 0.9rem; color: var(--ink-2); }
+.decl-recap > div strong { font-variant-numeric: tabular-nums; color: var(--ink); }
+.decl-recap__net { border-top: 1px solid var(--hairline); padding-top: 8px; font-weight: 600; }
+.kpi-label { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; color: var(--ink); }
 </style>

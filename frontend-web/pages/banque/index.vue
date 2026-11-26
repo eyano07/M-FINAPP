@@ -1,5 +1,6 @@
 <script setup lang="ts">
-definePageMeta({ module: 'BANQUE', niveau: 'ECRITURE' })
+import { useExerciceStore } from '~/stores/exercice'
+definePageMeta({ module: 'BANQUE', niveau: 'ECRITURE', roles: ['CAISSIER'] })
 
 interface Transaction {
   id: number
@@ -93,7 +94,8 @@ async function charger() {
         manifestement fausse plutot que plausible. */,
       api<Etablissement[]>('/etablissements?type=BANQUE').catch(() => []),
     ])
-    transactions.value = txs
+    // Ancien exercice consulté : soldes cumulés jusqu'au 31 décembre, tableau limité à l'exercice.
+    transactions.value = useExerciceStore().enConsultation ? txs.filter(t => t.dateOperation.slice(0, 10) <= useExerciceStore().fin) : txs
     comptes.value = cpts
     // 0 et non 1 : un repli a 1 traiterait les FC comme des USD sans le signaler.
     tauxChange.value = tauxData.taux || 0
@@ -192,11 +194,25 @@ function onNoteFraisSelect(id: number | null) {
   const note = notesAPayer.value.find((n) => n.id === id)
   if (!note) return
   const estUSD = (note.devise || 'CDF').toUpperCase() === 'USD'
+  // Arrondi au centime comme le serveur (ConversionDeviseService), qui
+  // recalcule de toute façon le montant réel : sans cet arrondi, une note
+  // de 237 800 FC s'affichait « 108,0909090909091 ».
   form.montantUSD = estUSD
     ? note.montant
-    : (tauxChange.value > 0 ? note.montant / tauxChange.value : note.montant)
+    : (tauxChange.value > 0 ? Math.round((note.montant / tauxChange.value) * 100) / 100 : note.montant)
   form.libelle = note.objet || ''
 }
+
+/**
+ * Note en francs choisie pour un paiement : son montant exact s'affiche sous
+ * le champ, plutôt qu'une reconversion du montant arrondi en dollars
+ * (108,09 × 2 200 = 237 798 FC au lieu des 237 800 FC réels).
+ */
+const noteEnFrancs = computed(() => {
+  if (form.sens !== 'DECAISSEMENT' || !form.noteFraisId) return null
+  const n = notesAPayer.value.find(x => x.id === form.noteFraisId)
+  return n && (n.devise || 'CDF').toUpperCase() !== 'USD' ? n : null
+})
 
 const notesOptions = computed(() =>
   notesAPayer.value.map((n) => ({
@@ -259,6 +275,7 @@ const totalDecaissement = computed(() =>
   transactions.value.filter((t) => t.sens === 'DECAISSEMENT').reduce((s, t) => s + t.montant, 0)
 )
 const solde = computed(() => totalEncaissement.value - totalDecaissement.value)
+const transactionsExercice = computed(() => transactions.value.filter(t => useExerciceStore().dansExercice(t.dateOperation)))
 
 const comptesOptions = computed(() =>
   comptes.value.map((c) => ({ title: `${c.numero} — ${c.libelle}`, value: c.numero }))
@@ -346,7 +363,7 @@ const fmtTaux = computed(() =>
         <v-progress-circular indeterminate color="primary" size="28" />
       </div>
       <div v-else-if="notesAPayer.length === 0" class="caisse-empty">
-        <v-icon icon="mdi-check-circle-outline" size="28" color="#d1d5db" />
+        <v-icon icon="mdi-check-circle-outline" size="28" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" />
         <p>Aucune note en attente de paiement.</p>
       </div>
       <div v-else class="caisse-notes">
@@ -388,7 +405,7 @@ const fmtTaux = computed(() =>
         Historique des opérations
       </v-card-title>
       <v-data-table
-        :items="transactions"
+        :items="transactionsExercice"
         :loading="loading"
         density="comfortable"
         items-per-page="15"
@@ -519,7 +536,9 @@ const fmtTaux = computed(() =>
               density="comfortable"
               rounded="lg"
               :rules="rules.montant"
-              :hint="form.montantUSD ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round((form.montantUSD ?? 0) * tauxChange))} FC` : ''"
+              :hint="noteEnFrancs
+                ? `Note de ${new Intl.NumberFormat('fr-FR').format(noteEnFrancs.montant)} FC, convertie au taux du jour`
+                : (form.montantUSD ? `≈ ${new Intl.NumberFormat('fr-FR').format(Math.round((form.montantUSD ?? 0) * tauxChange))} FC` : '')"
               persistent-hint
               :readonly="form.sens === 'DECAISSEMENT' && !!form.noteFraisId"
               class="mb-3"
@@ -591,17 +610,7 @@ const fmtTaux = computed(() =>
 </template>
 
 <style scoped>
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 .taux-badge {
   font-size: 0.78rem;
   background: #eff6ff;
@@ -639,7 +648,7 @@ const fmtTaux = computed(() =>
 .operateur-solde__montant {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 .caisse-stat {
@@ -648,9 +657,9 @@ const fmtTaux = computed(() =>
   gap: 14px;
   padding: 18px 20px;
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--hairline);
 }
 .caisse-stat__icon {
   display: flex;
@@ -661,12 +670,12 @@ const fmtTaux = computed(() =>
   border-radius: 12px;
   flex-shrink: 0;
 }
-.caisse-stat--enc .caisse-stat__icon { background: #dcfce7; color: #16a34a; }
+.caisse-stat--enc .caisse-stat__icon { background: var(--color-primary-light); color: var(--color-primary); }
 .caisse-stat--dec .caisse-stat__icon { background: #fee2e2; color: #dc2626; }
 .caisse-stat--pos .caisse-stat__icon { background: #dbeafe; color: #2563eb; }
 .caisse-stat--neg .caisse-stat__icon { background: #fef3c7; color: #d97706; }
-.caisse-stat__label { font-size: 0.78rem; color: #9ca3af; margin-bottom: 2px; }
-.caisse-stat__value { font-size: 1.1rem; font-weight: 700; color: #111827; }
+.caisse-stat__label { font-size: 0.78rem; color: var(--ink-faint); margin-bottom: 2px; }
+.caisse-stat__value { font-size: 1.1rem; font-weight: 700; color: var(--ink); }
 
 /* ── Notes en attente de paiement ────────────────────────────────── */
 .caisse-empty {
@@ -675,7 +684,7 @@ const fmtTaux = computed(() =>
   align-items: center;
   gap: 8px;
   padding: 32px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -687,7 +696,7 @@ const fmtTaux = computed(() =>
   align-items: center;
   gap: 16px;
   padding: 14px 20px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--hairline);
 }
 .caisse-note__main { flex: 1; min-width: 0; }
 .caisse-note__head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
@@ -702,7 +711,7 @@ const fmtTaux = computed(() =>
 .caisse-note__objet {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #111827;
+  color: var(--ink);
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -711,9 +720,17 @@ const fmtTaux = computed(() =>
 .caisse-note__montant {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+/* Téléphone et tablette : l'objet s'affiche en entier ; le montant et « Payer » passent sous le texte, sur toute la largeur. */
+@media screen and (max-width: 959px) {
+  .caisse-note { flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; }
+  .caisse-note .caisse-note__objet { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+  .caisse-note .caisse-note__main { flex: 1 1 100%; }
+  .caisse-note .caisse-note__montant { flex: 1 1 auto; font-size: 1.05rem; }
+  .caisse-note .v-btn { flex: 0 0 auto; }
 }
 
 .dialog-card { overflow: hidden; }
@@ -735,15 +752,25 @@ const fmtTaux = computed(() =>
   border-radius: 8px;
   padding: 5px 8px;
 }
-.ia-suggestion--loading { color: #6b7280; background: #f9fafb; border-color: #f0f0f0; }
+.ia-suggestion--loading { color: var(--ink-soft); background: var(--surface-2); border-color: var(--hairline); }
 .ia-suggestion__dismiss {
   display: inline-flex;
   align-items: center;
   margin-left: auto;
   background: none;
   border: none;
-  color: #9ca3af;
+  color: var(--ink-faint);
   cursor: pointer;
   padding: 0;
 }
+</style>
+
+<style>
+/* Thème nuit (généré le 17/11) : fonds pastel fixes remplacés par un fond sombre teinté. */
+html[data-theme='dark'] .taux-badge { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .operateur-solde { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; border-color: color-mix(in srgb, #8fb4f5 28%, transparent) !important; }
+html[data-theme='dark'] .caisse-stat--dec .caisse-stat__icon { background: color-mix(in srgb, #f19a9a 11%, var(--surface)) !important; color: #f19a9a !important; }
+html[data-theme='dark'] .caisse-stat--pos .caisse-stat__icon { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
+html[data-theme='dark'] .caisse-stat--neg .caisse-stat__icon { background: color-mix(in srgb, #f2c66d 11%, var(--surface)) !important; color: #f2c66d !important; }
+html[data-theme='dark'] .caisse-note__ref { background: color-mix(in srgb, #8fb4f5 11%, var(--surface)) !important; color: #8fb4f5 !important; }
 </style>

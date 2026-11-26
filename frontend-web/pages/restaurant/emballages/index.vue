@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_BAR', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Stock de bouteilles vides, par boisson.
@@ -34,7 +34,7 @@ const boissons = ref<Boisson[]>([])
 const dialog = ref(false)
 const editId = ref<number | null>(null)
 
-const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT']))
+const canWrite = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_BAR', 'ADMIN']))
 
 const FORMATS = ['33CL', '50CL', '65CL', '1L', '1.5L']
 
@@ -53,6 +53,14 @@ const boissonsDisponibles = computed(() => {
     emballages.value.filter(e => e.id !== editId.value).map(e => e.articleBoissonId))
   return boissons.value.filter(b => !prises.has(b.id))
 })
+
+// Le code du conditionnement n'a pas besoin d'exister indépendamment de la
+// boisson : une boisson n'ayant qu'un seul conditionnement (contrainte
+// d'unicité en base), reprendre tel quel le code de l'article la
+// garantit unique sans demander de saisie ni risquer de doublon.
+const codeGenere = computed(() =>
+  boissons.value.find(b => b.id === form.articleBoissonId)?.code || '')
+watch(() => form.articleBoissonId, () => { form.code = codeGenere.value })
 
 const totalVides = computed(() => emballages.value.reduce((s, e) => s + (e.bouteillesVides || 0), 0))
 const totalCasiers = computed(() => emballages.value.reduce((s, e) => s + (e.casiers || 0), 0))
@@ -100,8 +108,8 @@ function ouvrirEdition(e: Emballage) {
 }
 
 async function enregistrer() {
-  if (!form.code.trim() || !form.libelle.trim() || !form.articleBoissonId) {
-    erreur.value = 'Code, libellé et boisson sont obligatoires.'
+  if (!form.libelle.trim() || !form.articleBoissonId) {
+    erreur.value = 'Libellé et boisson sont obligatoires.'
     return
   }
   if (!form.contenanceCasier || form.contenanceCasier <= 0) {
@@ -224,9 +232,10 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
       <v-card class="pa-6">
         <h2 class="text-h6 mb-4">{{ editId ? 'Modifier le' : 'Nouveau' }} conditionnement</h2>
 
+        <v-card-text class="pa-0">
         <v-alert v-if="erreur" type="error" variant="tonal" density="compact" rounded="lg" class="mb-4">{{ erreur }}</v-alert>
 
-        <v-select
+        <v-autocomplete
           v-model="form.articleBoissonId"
           :items="boissonsDisponibles.map(b => ({ title: `${b.code} — ${b.libelle}`, value: b.id }))"
           label="Boisson *"
@@ -236,7 +245,16 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
           density="comfortable"
           class="mb-3"
         />
-        <v-text-field v-model="form.code" label="Code *" variant="outlined" density="comfortable" class="mb-3" />
+        <v-text-field
+          :model-value="form.code"
+          label="Code"
+          hint="Généré automatiquement à partir du code de la boisson"
+          persistent-hint
+          variant="outlined"
+          density="comfortable"
+          readonly
+          class="mb-3"
+        />
         <v-text-field v-model="form.libelle" label="Libellé *" variant="outlined" density="comfortable" class="mb-3" />
         <v-combobox v-model="form.format" :items="FORMATS" label="Format (33CL, 65CL...)" variant="outlined" density="comfortable" class="mb-3" />
         <v-text-field
@@ -250,8 +268,9 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
           class="mb-3"
         />
         <v-switch v-model="form.actif" label="Actif" color="success" density="compact" hide-details class="mb-4" />
+        </v-card-text>
 
-        <div class="d-flex justify-end ga-2">
+        <div class="d-flex justify-end ga-2 mt-4">
           <v-btn variant="text" :disabled="saving" @click="dialog = false">Annuler</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving" @click="enregistrer">Enregistrer</v-btn>
         </div>
@@ -270,8 +289,10 @@ const fmtNb = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0)
   border-radius: 12px;
   font-size: 0.875rem;
 }
-.rst-stat--vides   { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
-.rst-stat--casiers { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rst-stat--vides   { background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 62%, transparent), color-mix(in srgb, #dbeafe 55%, transparent)); color: #1d4ed8; }
+/* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
+:global(html[data-theme='dark'] .rst-stat--vides) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }
+.rst-stat--casiers { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rst-stat__val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px; }
 .rst-stat__lbl { font-weight: 500; opacity: 0.75; }
 .rst-casiers { white-space: nowrap; }

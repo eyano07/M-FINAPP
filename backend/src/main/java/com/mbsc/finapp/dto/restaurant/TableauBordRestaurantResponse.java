@@ -64,7 +64,9 @@ public record TableauBordRestaurantResponse(
         BigDecimal chiffreAffaires,
         BigDecimal stockPleines,
         Integer bouteillesVides,
-        Integer casiers
+        Integer casiers,
+        /** Bouteilles par casier ; null si la boisson n'a pas de conditionnement — pour afficher « N casiers + M bouteilles ». */
+        Integer contenanceCasier
     ) {}
 
     /** Une journee de la periode, pour le graphique de tendance des ventes. */

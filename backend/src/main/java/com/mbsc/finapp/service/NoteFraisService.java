@@ -1,51 +1,75 @@
 package com.mbsc.finapp.service;
 
+import com.mbsc.finapp.domain.BulletinPaie;
+import com.mbsc.finapp.domain.enums.CategorieNote;
+import com.mbsc.finapp.domain.enums.OrganismePaie;
 import com.mbsc.finapp.domain.Article;
+import com.mbsc.finapp.domain.CamionMinerai;
+import com.mbsc.finapp.domain.ChargeCamionMinerai;
 import com.mbsc.finapp.domain.CompteOHADA;
 import com.mbsc.finapp.domain.Entrepot;
 import com.mbsc.finapp.domain.LigneNoteFrais;
 import com.mbsc.finapp.domain.NoteFrais;
 import com.mbsc.finapp.domain.ObservationNote;
 import com.mbsc.finapp.domain.PieceJointe;
+import com.mbsc.finapp.domain.ServiceBudgetaire;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.PrioriteNote;
 import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.domain.enums.SensTransaction;
+import com.mbsc.finapp.domain.enums.StatutCamionMinerai;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.domain.enums.TypeArticle;
 import com.mbsc.finapp.domain.enums.TypeNotification;
+import com.mbsc.finapp.dto.budget.ControleBudgetaireRequest;
+import com.mbsc.finapp.dto.budget.ControleBudgetaireResponse;
 import com.mbsc.finapp.dto.notes.ActionWorkflowRequest;
+import com.mbsc.finapp.dto.notes.CreerNoteReglementCamionsRequest;
 import com.mbsc.finapp.dto.notes.LigneCompteRequest;
 import com.mbsc.finapp.dto.notes.LigneNoteFraisRequest;
 import com.mbsc.finapp.dto.notes.ModifierComptesRequest;
+import com.mbsc.finapp.dto.notes.ModifierObjetRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisDetailResponse;
 import com.mbsc.finapp.dto.notes.NoteFraisRequest;
 import com.mbsc.finapp.dto.notes.NoteFraisResponse;
 import com.mbsc.finapp.dto.notes.PrioriteRequest;
+import com.mbsc.finapp.dto.notes.RegleVisibiliteResponse;
 import com.mbsc.finapp.exception.RessourceIntrouvableException;
 import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.ArticleRepository;
+import com.mbsc.finapp.repository.BudgetRepository;
+import com.mbsc.finapp.repository.CamionMineraiRepository;
+import com.mbsc.finapp.repository.BulletinPaieRepository;
+import com.mbsc.finapp.repository.ChargeCamionMineraiRepository;
 import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EmballageBoissonRepository;
 import com.mbsc.finapp.repository.EntrepotRepository;
 import com.mbsc.finapp.repository.NoteFraisRepository;
+import com.mbsc.finapp.repository.ServiceBudgetaireRepository;
 import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Orchestration du cycle de vie d'une note de frais.
@@ -65,14 +89,18 @@ import java.util.Set;
  * <p>Le controle des roles est applique par {@link PreAuthorize}. Chaque
  * transition trace une {@link ObservationNote} pour l'audit.</p>
  *
- * <p><b>Cas particulier RESP_RESTAURANT.</b> Le responsable restaurant ne
- * crée jamais de note de frais libre : il ne peut soumettre qu'une note
- * "spéciale" d'achat de boissons (une seule ligne, achat de marchandise,
- * article de type BOISSON), qui suit ensuite exactement le même circuit que
- * toute autre note de décaissement. Cela impose tout achat de boissons dans
- * le circuit d'approbation DFIN/DA et son règlement par la caisse — voir
+ * <p><b>Cas particulier des responsables du restaurant</b> (RESP_RESTAURANT,
+ * RESP_CUISINE, RESP_BAR). Ils ne créent jamais de note de frais libre : ils
+ * ne peuvent soumettre qu'une note "spéciale" d'achat (une ou plusieurs
+ * lignes, chacune un achat de marchandise) — de boissons et de provisions
+ * pour le responsable restaurant, de provisions seulement pour le responsable
+ * cuisine, de boissons seulement pour le responsable bar (voir
+ * {@link PerimetreRestaurant#typesAchetables}). Cette note suit ensuite
+ * exactement le même circuit que toute autre note de décaissement. Cela
+ * impose tout achat de boissons ou de provisions dans le circuit
+ * d'approbation DFIN/DA et son règlement par la caisse — voir
  * {@link #validerNoteRespRestaurant} et {@code CaisseService.payerNote}
- * (échange de consigne appliqué au paiement).</p>
+ * (échange de consigne appliqué au paiement, boissons uniquement).</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -93,14 +121,22 @@ public class NoteFraisService {
     private static final long TAILLE_MAX_OCTETS = 20L * 1024 * 1024;
 
     private final NoteFraisRepository noteRepository;
+    private final BudgetRepository budgetRepository;
+    private final ControleBudgetaireService controleBudgetaire;
+    private final ServiceBudgetaireRepository serviceBudgetaireRepository;
     private final CompteOHADARepository compteRepository;
     private final ArticleRepository articleRepository;
     private final EntrepotRepository entrepotRepository;
     private final EmballageBoissonRepository emballageBoissonRepository;
+    /** Camions et frais accessoires rattaches a une note de reglement de minerais — voir creerReglementCamionsMinerai. */
+    private final CamionMineraiRepository camionRepository;
+    private final ChargeCamionMineraiRepository chargeRepository;
+    private final BulletinPaieRepository bulletinPaieRepository;
     private final ReferenceGenerator referenceGenerator;
     private final CurrentUserProvider currentUser;
     private final StorageService storage;
     private final NotificationService notificationService;
+    private final RoleLibelleService roleLibelleService;
     /** Fige le taux d'engagement des notes en devise lors de la transmission. */
     private final ConversionDeviseService conversionDevise;
     /** Fige le taux de TVA applicable a chaque ligne soumise a la TVA, au moment de sa saisie. */
@@ -110,83 +146,77 @@ public class NoteFraisService {
     // Lecture
     // ---------------------------------------------------------------------
 
+    /**
+     * Notes visibles par l'utilisateur, filtrees par statut, periode de
+     * creation et recherche textuelle ({@link RechercheNoteFrais} : reference,
+     * libelle, beneficiaire, compte d'une ligne) — chaque critere est facultatif.
+     *
+     * <p>La recherche s'applique apres la regle de visibilite : elle ne peut
+     * jamais reveler une note que l'utilisateur n'a pas le droit de voir.</p>
+     */
     @Transactional(readOnly = true)
-    public List<NoteFraisResponse> lister() {
-        return noteRepository.findAllByOrderByDateCreationDesc().stream()
-            .filter(this::estVisiblePourUtilisateur)
+    public List<NoteFraisResponse> lister(StatutNote statut, LocalDate du, LocalDate au,
+                                          String reference, String libelle, String compte,
+                                          String beneficiaire) {
+        RechercheNoteFrais recherche = RechercheNoteFrais.de(reference, libelle, compte, beneficiaire);
+        RegleVisibiliteNote regle = regleVisibilite();
+        Long utilisateurId = currentUser.requireUserId();
+        List<NoteFrais> notes = statut == null
+            ? noteRepository.findAllByOrderByDateCreationDesc()
+            : noteRepository.findByStatut(statut);
+        return notes.stream()
+            .filter(n -> regle.voit(n, utilisateurId))
+            .filter(n -> dansPeriode(n, du, au))
+            .filter(recherche::correspond)
             .map(NoteFraisResponse::from)
             .toList();
     }
-
-    @Transactional(readOnly = true)
-    public List<NoteFraisResponse> listerParStatut(StatutNote statut) {
-        return noteRepository.findByStatut(statut).stream()
-            .filter(this::estVisiblePourUtilisateur)
-            .map(NoteFraisResponse::from)
-            .toList();
-    }
-
-    /** Statuts visibles par un caissier "pur" : uniquement les notes deja validees par le DA. */
-    private static final Set<StatutNote> STATUTS_VISIBLES_CAISSIER = EnumSet.of(
-        StatutNote.VALIDEE_DA, StatutNote.TRANSMISE_CAISSE, StatutNote.PAYEE);
 
     /**
-     * Regle de visibilite :
-     * <ul>
-     *   <li>le Directeur metier (DIRECTEUR, sans autre role plus large) ne
-     *       voit que les notes qu'il a lui-meme creees : il n'intervient pas
-     *       dans le circuit de validation (DFIN/DA/Caissier) et n'a donc pas
-     *       a consulter les notes des autres createurs ;</li>
-     *   <li>de meme, le responsable restaurant (RESP_RESTAURANT seul) ne voit
-     *       que ses propres notes d'achat de boissons — il n'a pas a
-     *       consulter les depenses des autres services, memes regles que le
-     *       Directeur metier ;</li>
-     *   <li>le caissier "pur" (sans role DFIN/DA/DG/ADMIN) voit les notes
-     *       deja validees par le DA ({@link #STATUTS_VISIBLES_CAISSIER}),
-     *       quel qu'en soit le createur, plus ses propres notes a n'importe
-     *       quel stade (il reste un employe qui peut soumettre ses propres
-     *       depenses et doit pouvoir en suivre l'avancement) ;</li>
-     *   <li>le DA ne voit pas les notes encore non traitees par le DFIN
-     *       (etats {@link StatutNote#BROUILLON} et {@link StatutNote#SOUMISE}) ;</li>
-     *   <li>les autres roles (DFIN, ADMIN, DG) conservent une visibilite
-     *       complete.</li>
-     * </ul>
+     * Filtre optionnel par date de création (bornes incluses, l'une ou
+     * l'autre — voire les deux — pouvant être omise). Comparée en date
+     * locale du serveur : {@code dateCreation} est un {@code Instant}, la
+     * borne saisie par l'écran un {@code LocalDate} ("aujourd'hui" par
+     * défaut, voir le filtre de /notes-frais).
      */
-    private boolean estVisiblePourUtilisateur(NoteFrais note) {
-        var authorities = currentUser.requirePrincipal().getAuthorities();
-        boolean estDA = authorities.stream()
-            .anyMatch(a -> "ROLE_DA".equals(a.getAuthority()));
-        boolean estCaissier = authorities.stream()
-            .anyMatch(a -> "ROLE_CAISSIER".equals(a.getAuthority()));
-        boolean estDfinOuAdmin = authorities.stream()
-            .anyMatch(a -> "ROLE_DFIN".equals(a.getAuthority())
-                        || "ROLE_ADMIN".equals(a.getAuthority()));
-        boolean estDG = authorities.stream()
-            .anyMatch(a -> "ROLE_DG".equals(a.getAuthority()));
-        boolean estDirecteurSeul = authorities.stream()
-            .anyMatch(a -> "ROLE_DIRECTEUR".equals(a.getAuthority()))
-            && authorities.stream()
-            .noneMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
-                         || "ROLE_DG".equals(a.getAuthority())
-                         || "ROLE_DA".equals(a.getAuthority())
-                         || "ROLE_DFIN".equals(a.getAuthority())
-                         || "ROLE_CAISSIER".equals(a.getAuthority()));
-        boolean estCaissierSeul = estCaissier && !estDfinOuAdmin && !estDA && !estDG;
+    private boolean dansPeriode(NoteFrais n, LocalDate du, LocalDate au) {
+        if (du == null && au == null) {
+            return true;
+        }
+        LocalDate date = n.getDateCreation().atZone(ZoneId.systemDefault()).toLocalDate();
+        if (du != null && date.isBefore(du)) {
+            return false;
+        }
+        return au == null || !date.isAfter(au);
+    }
 
-        if (estDirecteurSeul || estRespRestaurantSeul()) {
-            return note.getCreateur() != null
-                && note.getCreateur().getId().equals(currentUser.requireUserId());
-        }
-        if (estCaissierSeul) {
-            boolean estCreateur = note.getCreateur() != null
-                && note.getCreateur().getId().equals(currentUser.requireUserId());
-            return estCreateur || STATUTS_VISIBLES_CAISSIER.contains(note.getStatut());
-        }
-        if (estDA && !estDfinOuAdmin) {
-            return note.getStatut() != StatutNote.BROUILLON
-                && note.getStatut() != StatutNote.SOUMISE;
-        }
-        return true;
+    /**
+     * Regle de visibilite de l'utilisateur courant : une seule regle, deduite
+     * de ses roles — voir {@link RegleVisibiliteNote}, qui detaille chaque cas.
+     */
+    private RegleVisibiliteNote regleVisibilite() {
+        return RegleVisibiliteNote.pour(autoritesCourantes());
+    }
+
+    /** Autorites Spring de l'utilisateur courant (« ROLE_ADMIN », « ROLE_DA »...). */
+    private Set<String> autoritesCourantes() {
+        return currentUser.requirePrincipal().getAuthorities().stream()
+            .map(GrantedAuthority::getAuthority)
+            .collect(Collectors.toSet());
+    }
+
+    private boolean estVisiblePourUtilisateur(NoteFrais note) {
+        return regleVisibilite().voit(note, currentUser.requireUserId());
+    }
+
+    /**
+     * Explique a l'utilisateur courant quelles notes il voit, et donc pourquoi
+     * une note peut lui echapper (bandeau de la liste des notes de frais).
+     */
+    @Transactional(readOnly = true)
+    public RegleVisibiliteResponse expliquerVisibilite() {
+        RegleVisibiliteNote regle = regleVisibilite();
+        return new RegleVisibiliteResponse(regle.estRestreinte(), regle.explication());
     }
 
     @Transactional(readOnly = true)
@@ -205,7 +235,7 @@ public class NoteFraisService {
     // Creation / modification (BROUILLON)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse creer(NoteFraisRequest req) {
         User auteur = currentUser.requireUser();
@@ -228,11 +258,14 @@ public class NoteFraisService {
             .statut(StatutNote.BROUILLON)
             .sens(sens)
             .createur(auteur)
+            .justificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null)
+            .service(sens == SensTransaction.DECAISSEMENT ? resoudreService(req.serviceId(), null) : null)
             .build();
 
         construireLignes(note, req.lignes());
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
+        rattacherServiceDeduit(note);
 
         note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Creation de la note"));
         note = noteRepository.save(note);
@@ -242,74 +275,433 @@ public class NoteFraisService {
         return NoteFraisDetailResponse.from(note);
     }
 
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT')")
+    /**
+     * Hôtellerie (PMS) : achat de pièces ou de prestation d'un ticket de maintenance, créé ET soumis au DFIN au nom de
+     * l'utilisateur connecté (technicien ou direction de l'hébergement). La garde de rôle et la liste des comptes admis
+     * sont portées par {@code PmsIntegrationService} ; le contrôle du périmètre du restaurant, qui range aussi les rôles
+     * hôteliers, ne s'applique pas à cet achat. La note suit ensuite le circuit ordinaire (DFIN, DA, caisse) et son
+     * contrôle budgétaire ; hors budget, elle n'est jamais bloquée (le DA décide).
+     */
+    @Transactional
+    public NoteFraisDetailResponse creerEtSoumettreHotellerieInterne(NoteFraisRequest req) {
+        User auteur = currentUser.requireUser();
+        NoteFrais note = NoteFrais.builder()
+            .reference(referenceGenerator.pourNoteFrais())
+            .objet(req.objet())
+            .beneficiaire(req.beneficiaire())
+            .description(req.description())
+            .montant(BigDecimal.ZERO)
+            .devise(req.devise() == null ? ConversionDeviseService.DEVISE_BASE : req.devise())
+            .statut(StatutNote.BROUILLON)
+            .sens(SensTransaction.DECAISSEMENT)
+            .createur(auteur)
+            .justificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null)
+            .service(resoudreService(req.serviceId(), null))
+            .build();
+        construireLignes(note, req.lignes());
+        note.recalculerMontant();
+        rattacherServiceDeduit(note);
+        note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Création depuis l'hôtellerie (maintenance)"));
+        note = noteRepository.save(note);
+        log.info("Note de maintenance (hôtellerie) créée [ref={}, montant={}, par={}]", note.getReference(), note.getMontant(),
+            auteur.getEmail());
+        // Appel interne : sans le mandataire Spring, donc sans la garde @PreAuthorize de soumettre (portée par l'appelant).
+        return soumettre(note.getId(), new ActionWorkflowRequest("Demande d'achat de la maintenance (hôtellerie)"));
+    }
+
+    /**
+     * Achat interne (consommables...) : note de décaissement créée ET soumise au DFIN au nom de l'utilisateur connecté,
+     * dont la garde de rôle est portée par l'appelant. Elle suit ensuite le circuit ordinaire (DFIN, DA, DFIN, caisse) ;
+     * au paiement, ses lignes d'achat entrent en stock, et un retour de fonds en ressort la quantité rendue.
+     */
+    @Transactional
+    public NoteFraisDetailResponse creerEtSoumettreAchatInterne(NoteFraisRequest req, String origine, String commentaireSoumission) {
+        User auteur = currentUser.requireUser();
+        NoteFrais note = NoteFrais.builder()
+            .reference(referenceGenerator.pourNoteFrais())
+            .objet(req.objet())
+            .beneficiaire(req.beneficiaire())
+            .description(req.description())
+            .montant(BigDecimal.ZERO)
+            .devise(req.devise() == null ? ConversionDeviseService.DEVISE_BASE : req.devise())
+            .statut(StatutNote.BROUILLON)
+            .sens(SensTransaction.DECAISSEMENT)
+            .createur(auteur)
+            .justificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null)
+            .service(resoudreService(req.serviceId(), null))
+            .build();
+        construireLignes(note, req.lignes());
+        note.recalculerMontant();
+        rattacherServiceDeduit(note);
+        note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Création : " + origine));
+        note = noteRepository.save(note);
+        log.info("Note d'achat interne créée [ref={}, montant={}, origine={}, par={}]", note.getReference(), note.getMontant(),
+            origine, auteur.getEmail());
+        return soumettre(note.getId(), new ActionWorkflowRequest(commentaireSoumission));
+    }
+
+    /** Statut d'une note (lecture pour l'hôtellerie, qui en suit l'avancement sur son ticket). */
+    @Transactional(readOnly = true)
+    public NoteFraisDetailResponse lireInterne(Long id) {
+        return NoteFraisDetailResponse.from(charger(id));
+    }
+
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse modifier(Long id, NoteFraisRequest req) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.BROUILLON, "modifier");
         exigerCreateur(note);
+        exigerNoteStandard(note, "modifier la note");
 
         note.setObjet(req.objet());
         note.setBeneficiaire(req.beneficiaire());
         note.setDescription(req.description());
         note.setDevise(req.devise() == null ? Devise.CDF : req.devise());
+        note.setJustificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null);
+        note.setService(note.getSens() == SensTransaction.DECAISSEMENT ? resoudreService(req.serviceId(), note.getService()) : null);
 
-        List<LigneNoteFrais> nouvelles = creerLignes(req.lignes());
+        List<LigneNoteFrais> nouvelles = creerLignes(req.lignes(), note.getSens());
         note.remplacerLignes(nouvelles);
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
+        rattacherServiceDeduit(note);
 
         log.info("Note de frais modifiee [ref={}, montant={}]", note.getReference(), note.getMontant());
         return NoteFraisDetailResponse.from(note);
     }
 
     /**
-     * Le responsable restaurant ne cree jamais de note de frais libre : sa
-     * seule note "speciale" possible est un achat de boissons — une ligne
-     * unique, achat de marchandise, article BOISSON, en decaissement. Toute
-     * autre forme (plusieurs lignes, depense libre, article d'un autre type)
-     * est refusee, sans quoi le role deviendrait une porte d'entree generale
-     * vers les notes de frais.
+     * Cree, pour la logistique, une note de reglement de la dette
+     * fournisseur d'un ou plusieurs camions de minerais et/ou de leurs frais
+     * accessoires deja postes (transport, peage, pont bascule...) — une
+     * ligne par element, toutes imputees au compte Fournisseurs (4011).
+     * Contrairement a {@link #creer}, la note est immediatement soumise au
+     * DFIN (BROUILLON -> SOUMISE en un seul geste, cote ecran) : la
+     * logistique ne compose pas une note comme un comptable, elle demande le
+     * paiement d'une dette, constatee ou non.
+     *
+     * <p>Un camion encore A_VALIDER peut etre selectionne, pour le montant
+     * TTC estime au taux du jour de reception (voir {@link
+     * #detteEstimee}) : c'est precisement le paiement de cette note, en bout
+     * de circuit, qui constatera son achat — voir {@code MineraiService
+     * .finaliserReglementNoteInterne}. La validation et le reglement ne sont
+     * plus deux actions separees de la caisse : ils n'en font plus qu'une,
+     * au bout du circuit logistique -> DFIN -> DA -> DFIN -> tresorerie.</p>
+     *
+     * <p>Un frais accessoire, en revanche, n'est proposable que s'il est
+     * deja poste (piece non nulle, voir {@link
+     * MineraiService#listerChargesARegler}) : un frais encore en attente
+     * n'a pas de dette reelle a solder tant que son camion n'est pas valide
+     * — il rejoint la dette de son camion automatiquement des que celui-ci
+     * l'est (rejoue par {@code MineraiService#validerAchatInterne}), et
+     * pourra alors etre inclus dans une note ulterieure.</p>
+     *
+     * <p>Chaque camion et chaque frais selectionnes sont rattaches a la note
+     * ({@code CamionMinerai.noteFraisReglement}, {@code ChargeCamionMinerai
+     * .noteFraisReglement}) pour empecher de figurer dans une seconde
+     * demande tant que celle-ci est en cours — voir {@link
+     * MineraiService#listerARegler} et {@link
+     * MineraiService#listerChargesARegler}. Le lien est libere si la note
+     * est annulee ({@link #annuler}).</p>
+     *
+     * <p>Le fournisseur du minerais et le prestataire des frais accessoires
+     * (transport, peage...) n'etant generalement pas la meme partie, cette
+     * methode cree <b>jusqu'a deux notes independantes</b>, chacune avec son
+     * propre beneficiaire et son propre circuit d'approbation : une pour
+     * {@code camionIds}, une pour l'ensemble des frais a regler. Cet
+     * ensemble regroupe {@code chargeIds} (selection explicite, ecran "Frais
+     * connexes a regler", pour des charges sur des camions deja regles) ET
+     * <b>automatiquement</b> tout frais non solde et non deja rattache
+     * portant sur un camion de {@code camionIds} — poste ou encore en
+     * attente. Inutile pour la logistique d'aller chercher ces derniers dans
+     * un second ecran : poster une charge deja reglee (rejoue par {@code
+     * MineraiService#validerAchatInterne} des que le camion est valide) ou
+     * regler une charge encore en attente sont deux operations
+     * independantes, sans risque d'incoherence comptable.</p>
+     *
+     * <p>Chaque camion et chaque frais retenus sont rattaches a leur note
+     * ({@code CamionMinerai.noteFraisReglement}, {@code ChargeCamionMinerai
+     * .noteFraisReglement}) pour empecher de figurer dans une seconde
+     * demande tant que celle-ci est en cours — voir {@link
+     * MineraiService#listerARegler} et {@link
+     * MineraiService#listerChargesARegler}. Le lien est libere si la note
+     * est annulee ({@link #annuler}).</p>
+     *
+     * @return une note (camions seuls, ou frais seuls) ou deux (les deux
+     *         ensembles sont non vides) — jamais une liste vide, l'absence
+     *         totale de selection est refusee plus haut.
      */
-    private void validerNoteRespRestaurant(NoteFrais note) {
-        if (!estRespRestaurantSeul()) {
-            return;
+    @PreAuthorize("hasAnyRole('LOGISTIQUE', 'ADMIN')")
+    @Transactional
+    public List<NoteFraisDetailResponse> creerReglementCamionsMinerai(CreerNoteReglementCamionsRequest req) {
+        User auteur = currentUser.requireUser();
+        List<Long> camionIds = req.camionIds() == null ? List.of() : req.camionIds();
+        List<Long> chargeIdsExplicites = req.chargeIds() == null ? List.of() : req.chargeIds();
+        if (camionIds.isEmpty() && chargeIdsExplicites.isEmpty()) {
+            throw new IllegalArgumentException("Selectionnez au moins un camion ou un frais a regler.");
         }
-        if (note.getSens() != SensTransaction.DECAISSEMENT) {
-            throw new IllegalArgumentException(
-                "Le responsable restaurant ne peut créer qu'une note d'achat de boissons (décaissement)");
+
+        List<CamionMinerai> camions = camionRepository.findAllById(camionIds);
+        if (camions.size() != camionIds.size()) {
+            throw new RessourceIntrouvableException("Un ou plusieurs camions selectionnes sont introuvables.");
         }
-        if (note.getLignes().size() != 1) {
-            throw new IllegalArgumentException(
-                "Une note d'achat de boissons ne comporte qu'une seule ligne");
+        for (CamionMinerai camion : camions) {
+            if (camion.isRegle()) {
+                throw new IllegalArgumentException("Le camion " + camion.designation() + " est deja regle.");
+            }
+            if (camion.getNoteFraisReglement() != null) {
+                throw new IllegalArgumentException(
+                    "Le camion " + camion.designation() + " a deja une note de reglement en cours ("
+                    + camion.getNoteFraisReglement().getReference() + ").");
+            }
         }
-        LigneNoteFrais ligne = note.getLignes().get(0);
-        if (!ligne.isAchatMarchandise() || ligne.getArticle() == null
-            || ligne.getArticle().getType() != TypeArticle.BOISSON) {
-            throw new IllegalArgumentException(
-                "Le responsable restaurant ne peut créer qu'une note d'achat de boissons "
-                    + "(achat de marchandise, article de type BOISSON)");
+
+        List<ChargeCamionMinerai> chargesExplicites = chargeRepository.findAllById(chargeIdsExplicites);
+        if (chargesExplicites.size() != chargeIdsExplicites.size()) {
+            throw new RessourceIntrouvableException("Un ou plusieurs frais selectionnes sont introuvables.");
         }
-        if (ligne.isEchangeConsigne()
-            && !emballageBoissonRepository.existsByArticleBoissonId(ligne.getArticle().getId())) {
-            throw new IllegalArgumentException(
-                "La boisson \"" + ligne.getArticle().getLibelle() + "\" n'a pas de conditionnement défini : "
-                    + "créez-le avant de demander l'échange de consigne");
+        for (ChargeCamionMinerai charge : chargesExplicites) {
+            if (charge.isRegle()) {
+                throw new IllegalArgumentException("Le frais « " + charge.getLibelle() + " » est deja regle.");
+            }
+            if (charge.getNoteFraisReglement() != null) {
+                throw new IllegalArgumentException(
+                    "Le frais « " + charge.getLibelle() + " » a deja une note de reglement en cours ("
+                    + charge.getNoteFraisReglement().getReference() + ").");
+            }
+        }
+
+        // Frais rattaches automatiquement aux camions selectionnes (postes ou
+        // encore en attente) — fusionnes sans doublon avec la selection
+        // explicite ci-dessus.
+        Map<Long, ChargeCamionMinerai> chargesParId = new LinkedHashMap<>();
+        chargesExplicites.forEach(c -> chargesParId.put(c.getId(), c));
+        if (!camionIds.isEmpty()) {
+            chargeRepository.findByCamionIdInAndRegleFalseAndNoteFraisReglementIsNull(camionIds)
+                .forEach(c -> chargesParId.putIfAbsent(c.getId(), c));
+        }
+        List<ChargeCamionMinerai> charges = new ArrayList<>(chargesParId.values());
+
+        List<NoteFraisDetailResponse> resultats = new ArrayList<>();
+        if (!camions.isEmpty()) {
+            if (!StringUtils.hasText(req.beneficiaireCamions())) {
+                throw new IllegalArgumentException("Le bénéficiaire des camions est obligatoire.");
+            }
+            resultats.add(creerNoteCamions(camions, req.beneficiaireCamions(), req.description(), auteur));
+        }
+        if (!charges.isEmpty()) {
+            if (!StringUtils.hasText(req.beneficiaireFrais())) {
+                throw new IllegalArgumentException("Le bénéficiaire des frais connexes est obligatoire.");
+            }
+            resultats.add(creerNoteFrais(charges, req.beneficiaireFrais(), req.description(), auteur));
+        }
+        return resultats;
+    }
+
+    private NoteFraisDetailResponse creerNoteCamions(
+            List<CamionMinerai> camions, String beneficiaire, String description, User auteur) {
+        List<LigneNoteFraisRequest> lignesReq = camions.stream()
+            .map(c -> new LigneNoteFraisRequest(
+                detteEstimee(c), COMPTE_FOURNISSEURS,
+                "Camion " + c.getPlaque() + " - " + c.getArticle().getLibelle(),
+                false, null, null, null, null, false, null, null, null))
+            .toList();
+        String objet = camions.size() == 1
+            ? "Règlement fournisseur minerais - camion " + camions.get(0).getPlaque()
+            : "Règlement fournisseur minerais - " + camions.size() + " camions";
+
+        NoteFrais note = creerEtSoumettreNoteReglement(objet, beneficiaire, description, lignesReq, auteur);
+        camions.forEach(c -> c.setNoteFraisReglement(note));
+        camionRepository.saveAll(camions);
+
+        log.info("Note de reglement camions minerais creee et soumise [ref={}, montant={}, camions={}, par={}]",
+            note.getReference(), note.getMontant(), camions.size(), auteur.getEmail());
+        return notifierEtRepondre(note);
+    }
+
+    private NoteFraisDetailResponse creerNoteFrais(
+            List<ChargeCamionMinerai> charges, String beneficiaire, String description, User auteur) {
+        List<LigneNoteFraisRequest> lignesReq = charges.stream()
+            .map(ch -> new LigneNoteFraisRequest(
+                ch.getMontant(), COMPTE_FOURNISSEURS,
+                ch.getLibelle() + " - camion " + ch.getCamion().getPlaque(),
+                false, null, null, null, null, false, null, null, null))
+            .toList();
+        String objet = charges.size() == 1
+            ? "Règlement frais connexes minerais - " + charges.get(0).getLibelle()
+                + " (camion " + charges.get(0).getCamion().getPlaque() + ")"
+            : "Règlement frais connexes minerais - " + charges.size() + " frais";
+
+        NoteFrais note = creerEtSoumettreNoteReglement(objet, beneficiaire, description, lignesReq, auteur);
+        charges.forEach(c -> c.setNoteFraisReglement(note));
+        chargeRepository.saveAll(charges);
+
+        log.info("Note de reglement frais connexes minerais creee et soumise [ref={}, montant={}, frais={}, par={}]",
+            note.getReference(), note.getMontant(), charges.size(), auteur.getEmail());
+        return notifierEtRepondre(note);
+    }
+
+    /**
+     * Crée et soumet au DFIN une note de paie ou une note fiscale sur salaires (module DRH) : mêmes
+     * mécanismes que les notes de règlement minerai (lignes sur des comptes de dette, devise de base,
+     * contrôle budgétaire relevé pour mémoire — une dette de classe 4 n'est pas une dépense budgétaire).
+     * Appelée uniquement par {@code PaieNoteService}, qui porte le contrôle de rôle et les vérifications
+     * propres à la paie.
+     */
+    @Transactional
+    public NoteFrais creerEtSoumettreNotePaieInterne(CategorieNote categorie, int mois, int annee,
+            OrganismePaie organisme, String objet, String beneficiaire, String description,
+            List<LigneNoteFraisRequest> lignesReq) {
+        User auteur = currentUser.requireUser();
+        NoteFrais note = creerEtSoumettreNoteReglement(objet, beneficiaire, description, lignesReq, auteur);
+        note.setCategorie(categorie);
+        note.setPaieMois(mois);
+        note.setPaieAnnee(annee);
+        note.setOrganismePaie(organisme);
+        notifierEtRepondre(note);
+        log.info("Note de paie creee et soumise [ref={}, categorie={}, organisme={}, periode={}/{}, montant={}, par={}]",
+            note.getReference(), categorie, organisme, mois, annee, note.getMontant(), auteur.getEmail());
+        return note;
+    }
+
+    /** Les comptes et lignes des notes de paie sont fixés par le système (voir {@link CategorieNote}). */
+    private static void exigerNoteStandard(NoteFrais note, String action) {
+        if (note.getCategorie() != null && note.getCategorie() != CategorieNote.STANDARD) {
+            throw new TransitionInvalideException("Impossible de " + action + " : cette note de "
+                + (note.getCategorie() == CategorieNote.PAIE ? "paie" : "versement fiscal")
+                + " est générée par le module DRH, ses comptes et montants découlent des bulletins. "
+                + "Pour la corriger, annulez-la puis recréez-la depuis l'écran des bulletins de paie.");
         }
     }
 
-    /** true si l'utilisateur courant n'a QUE le role RESP_RESTAURANT (pas COMPTABLE/CAISSIER/DFIN/DA/DG/ADMIN). */
-    private boolean estRespRestaurantSeul() {
-        var authorities = currentUser.requirePrincipal().getAuthorities();
-        boolean estRespRestaurant = authorities.stream()
-            .anyMatch(a -> "ROLE_RESP_RESTAURANT".equals(a.getAuthority()));
-        return estRespRestaurant && authorities.stream()
-            .noneMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
-                         || "ROLE_DG".equals(a.getAuthority())
-                         || "ROLE_DA".equals(a.getAuthority())
-                         || "ROLE_DFIN".equals(a.getAuthority())
-                         || "ROLE_CAISSIER".equals(a.getAuthority())
-                         || "ROLE_COMPTABLE".equals(a.getAuthority()));
+    private NoteFrais creerEtSoumettreNoteReglement(String objet, String beneficiaire, String description,
+            List<LigneNoteFraisRequest> lignesReq, User auteur) {
+        NoteFrais note = NoteFrais.builder()
+            .reference(referenceGenerator.pourNoteFrais())
+            .objet(objet)
+            .beneficiaire(beneficiaire)
+            .description(description)
+            .montant(BigDecimal.ZERO)
+            // Les montants des camions et des frais (prix d'achat, dette
+            // fournisseur) sont deja en devise de base (USD) : aucune
+            // conversion a faire.
+            .devise(ConversionDeviseService.DEVISE_BASE)
+            .statut(StatutNote.BROUILLON)
+            .sens(SensTransaction.DECAISSEMENT)
+            .createur(auteur)
+            .build();
+        construireLignes(note, lignesReq);
+        note.recalculerMontant();
+        note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Creation de la note"));
+        return noteRepository.save(note);
+    }
+
+    private NoteFraisDetailResponse notifierEtRepondre(NoteFrais note) {
+        // Reglement d'une dette fournisseur (4011) : pas une depense budgetaire, le statut est releve pour memoire.
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, null, "Soumission");
+        notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
+            "Note à vérifier", note.getReference() + " — " + note.getObjet() + mentionService(note) + mentionHorsBudget(controle),
+            "/notes-frais/" + note.getId(), note);
+        return reponse;
+    }
+
+    /** Compte Fournisseurs, meme convention que {@code MineraiService.COMPTE_FOURNISSEURS}. */
+    private static final String COMPTE_FOURNISSEURS = "4011";
+
+    /**
+     * Dette fournisseur reelle (achat deja valide) ou, pour un camion encore
+     * A_VALIDER, estimee TTC au taux de TVA du jour de reception — meme
+     * calcul que {@code MineraiService.detteEstimee}, duplique ici plutot
+     * qu'expose : ce service ne reagit qu'aux repositories des domaines
+     * qu'il touche (voir {@code ArticleRepository}, {@code
+     * EntrepotRepository}), jamais a leurs services.
+     */
+    private BigDecimal detteEstimee(CamionMinerai c) {
+        if (c.getStatut() != StatutCamionMinerai.A_VALIDER) {
+            return c.detteFournisseur();
+        }
+        BigDecimal prixHt = c.getPrixAchat();
+        if (!c.getArticle().isSoumisTva()) {
+            return prixHt;
+        }
+        BigDecimal tva = prixHt.multiply(tauxTvaService.tauxALaDate(c.getDateReception()))
+            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        return prixHt.add(tva);
+    }
+
+    /**
+     * Les responsables du restaurant ne creent jamais de note de frais libre : leurs
+     * seules notes "speciales" possibles sont un achat de boissons et/ou de
+     * provisions — une ou plusieurs lignes, chacune un achat de marchandise,
+     * en decaissement (plusieurs produits receptionnes ensemble, ex. chez un
+     * meme fournisseur, tiennent alors sur une seule note) — et chacun dans
+     * son domaine : le responsable cuisine achete des provisions, le
+     * responsable bar des boissons, le responsable restaurant les deux
+     * ({@link PerimetreRestaurant#typesAchetables}). Toute autre forme
+     * (depense libre, article d'un autre type ou d'un autre domaine) est
+     * refusee, sans quoi le role deviendrait une porte d'entree generale vers
+     * les notes de frais.
+     */
+    private void validerNoteRespRestaurant(NoteFrais note) {
+        if (!estRoleRestaurantSeul()) {
+            return;
+        }
+        Set<TypeArticle> autorises = PerimetreRestaurant.typesAchetables(autoritesCourantes());
+        String achats = PerimetreRestaurant.libelleAchats(autorises);
+        if (note.getSens() != SensTransaction.DECAISSEMENT) {
+            throw new IllegalArgumentException(
+                "Votre rôle ne permet de créer qu'une note d'achat de " + achats + " (décaissement)");
+        }
+        if (note.getLignes().isEmpty()) {
+            throw new IllegalArgumentException(
+                "Une note d'achat de " + achats + " doit comporter au moins une ligne");
+        }
+        for (LigneNoteFrais ligne : note.getLignes()) {
+            // Le transport et la manutention accompagnent l'achat : leur ligne
+            // est déjà contrôlée (une seule, avec au moins un achat) par
+            // imputerFraisApproche.
+            if (ligne.isFraisApproche()) {
+                continue;
+            }
+            TypeArticle type = ligne.getArticle() == null ? null : ligne.getArticle().getType();
+            if (!ligneAchatAdmise(ligne.isAchatMarchandise(), type, autorises)) {
+                throw new IllegalArgumentException(
+                    "Votre rôle ne permet de créer qu'une note d'achat de " + achats
+                        + " (achat de marchandise, article de type " + PerimetreRestaurant.libelleTypes(autorises) + ")");
+            }
+            // L'echange de consigne n'a de sens que pour une boisson consignee :
+            // une provision n'a jamais de conditionnement, la verification serait
+            // un faux refus sans rapport avec sa propre nature.
+            if (type == TypeArticle.BOISSON && ligne.isEchangeConsigne() && ligne.getArticle().isSansConsigne()) {
+                throw new IllegalArgumentException(
+                    "« " + ligne.getArticle().getLibelle() + " » est une boisson sans consigne : son achat ne rend pas de "
+                        + "bouteilles vides (décochez l'échange de consigne)");
+            }
+            if (type == TypeArticle.BOISSON && ligne.isEchangeConsigne()
+                && !emballageBoissonRepository.existsByArticleBoissonId(ligne.getArticle().getId())) {
+                throw new IllegalArgumentException(
+                    "La boisson \"" + ligne.getArticle().getLibelle() + "\" n'a pas de conditionnement défini : "
+                        + "créez-le avant de demander l'échange de consigne");
+            }
+        }
+    }
+
+    /**
+     * Une ligne de la note d'un responsable du restaurant est admise si c'est un achat de marchandise d'un type
+     * que son role peut acheter (cuisine : provisions ; bar : boissons ; responsable global : les deux).
+     */
+    static boolean ligneAchatAdmise(boolean achatMarchandise, TypeArticle type, Set<TypeArticle> autorises) {
+        return achatMarchandise && type != null && autorises.contains(type);
+    }
+
+    /**
+     * true si l'utilisateur courant n'a QUE des roles du restaurant (RESP_RESTAURANT, RESP_CUISINE, RESP_BAR : pas
+     * COMPTABLE/CAISSIER/DFIN/DA/DG/ADMIN).
+     */
+    private boolean estRoleRestaurantSeul() {
+        return RegleVisibiliteNote.estRoleRestaurantSeul(autoritesCourantes());
     }
 
     /**
@@ -319,14 +711,15 @@ public class NoteFraisService {
      * au DA, sans renvoyer la note a l'employe pour un nouveau cycle de
      * soumission. N'altere ni le montant des lignes ni l'etat du workflow.
      */
-    @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public NoteFraisDetailResponse modifierComptesLignes(Long id, ModifierComptesRequest req) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.SOUMISE, "modifier les comptes d'imputation");
+        exigerNoteStandard(note, "modifier les comptes d'imputation");
 
         User auteur = currentUser.requireUser();
-        StringBuilder trace = new StringBuilder("Comptes d'imputation modifies par le DFIN : ");
+        StringBuilder trace = new StringBuilder("Comptes d'imputation modifies : ");
         for (int i = 0; i < req.lignes().size(); i++) {
             LigneCompteRequest ligneReq = req.lignes().get(i);
             LigneNoteFrais ligne = note.getLignes().stream()
@@ -334,6 +727,27 @@ public class NoteFraisService {
                 .findFirst()
                 .orElseThrow(() -> RessourceIntrouvableException.of("LigneNoteFrais", ligneReq.ligneId()));
             CompteOHADA nouveauCompte = resoudreCompte(ligneReq.compteImputation());
+            if (ligne.isAchatMarchandise() || ligne.isFraisApproche()) {
+                // Le compte d'une ligne d'achat de marchandise découle de
+                // l'article (son compte d'achat 601x/602x) : au paiement, la
+                // marchandise entre aussi en stock par une seconde écriture.
+                // Réimputée vers le compte de stock, la ligne le débiterait
+                // une seconde fois — stock doublé au bilan, achat absent du
+                // résultat, balance pourtant équilibrée. Même règle pour les
+                // frais de transport et manutention, dont le compte découle
+                // de la nature des achats (6015 ou 6025) et qui entrent eux
+                // aussi dans le coût du stock.
+                boolean inchange = nouveauCompte != null && ligne.getCompteImputation() != null
+                    && nouveauCompte.getId().equals(ligne.getCompteImputation().getId());
+                if (!inchange) {
+                    throw new IllegalArgumentException(ligne.isFraisApproche()
+                        ? "La ligne " + ligne.getId() + " porte les frais de transport et manutention des achats : "
+                          + "son compte découle de la nature des achats et ne se réimpute pas ici."
+                        : "La ligne " + ligne.getId() + " est un achat de marchandise : son compte découle de "
+                          + "l'article et ne se réimpute pas ici. Corrigez au besoin le compte d'achat de l'article.");
+                }
+                continue;
+            }
             String ancien = ligne.getCompteImputation() != null ? ligne.getCompteImputation().getNumero() : "(aucun)";
             String nouveau = nouveauCompte != null ? nouveauCompte.getNumero() : "(aucun)";
             ligne.setCompteImputation(nouveauCompte);
@@ -341,6 +755,7 @@ public class NoteFraisService {
             trace.append("ligne ").append(ligne.getId()).append(" : ").append(ancien).append(" -> ").append(nouveau);
         }
         note.addObservation(observation(note, auteur, note.getStatut(), trace.toString()));
+        appliquerControleBudgetaire(note);
         note = noteRepository.saveAndFlush(note);
 
         log.info("Note {} : comptes d'imputation modifies par le DFIN (par {})",
@@ -348,25 +763,75 @@ public class NoteFraisService {
         return NoteFraisDetailResponse.from(note);
     }
 
+    /**
+     * Le DFIN corrige le libelle (objet) d'une note soumise (SOUMISE), sans
+     * devoir en etre le createur : une saisie maladroite ou une faute de
+     * frappe de l'employe ne doit pas obliger a renvoyer la note pour un
+     * nouveau cycle de soumission. Memes garanties que
+     * {@link #modifierComptesLignes} : trace dans les observations, n'altere
+     * ni le montant ni l'etat du workflow.
+     */
+    @PreAuthorize("hasRole('DFIN')")
+    @Transactional
+    public NoteFraisDetailResponse modifierObjet(Long id, ModifierObjetRequest req) {
+        NoteFrais note = charger(id);
+        exigerEtat(note, StatutNote.SOUMISE, "modifier le libellé");
+
+        User auteur = currentUser.requireUser();
+        String ancien = note.getObjet();
+        String nouveau = req.objet().trim();
+        note.setObjet(nouveau);
+        note.addObservation(observation(note, auteur, note.getStatut(),
+            "Libellé modifié : \"" + ancien + "\" → \"" + nouveau + "\""));
+        note = noteRepository.saveAndFlush(note);
+
+        log.info("Note {} : libellé modifié par le DFIN (par {})", note.getReference(), auteur.getEmail());
+        return NoteFraisDetailResponse.from(note);
+    }
+
     /** Construit et rattache les lignes de depense a une note neuve. */
     private void construireLignes(NoteFrais note, List<LigneNoteFraisRequest> lignesReq) {
-        for (LigneNoteFrais l : creerLignes(lignesReq)) {
+        for (LigneNoteFrais l : creerLignes(lignesReq, note.getSens())) {
             note.addLigne(l);
         }
     }
 
-    /** Compte de TVA récupérable sur achats, retenu automatiquement pour tout achat de marchandise soumis à la TVA. */
+    /** Compte de TVA récupérable, pour une ligne de décaissement soumise à la TVA. */
     private static final String COMPTE_TVA_ACHATS = "4452";
-    /** Compte de stock par défaut d'un article de marchandise créé à la volée depuis une note de frais. */
+    /**
+     * Compte de TVA collectée, pour une ligne d'encaissement soumise à la TVA —
+     * le même que celui des ventes. Lui appliquer 4452 faisait apparaître la
+     * TVA d'une recette comme une baisse de TVA récupérable dans la
+     * déclaration (TvaService sépare collectée 443x et déductible 445x).
+     */
+    private static final String COMPTE_TVA_VENTES = VenteService.COMPTE_TVA_FACTUREE;
+    /**
+     * Comptes par défaut d'un article de marchandise créé à la volée depuis
+     * une note de frais : les trois que {@link #creerLignes} exige ensuite
+     * (stock, variation de stock, achat). Ne renseigner que le compte de
+     * stock faisait échouer la création à chaque fois, sur la garde même qui
+     * suit.
+     */
     private static final String COMPTE_STOCK_PAR_DEFAUT = "3111";
+    private static final String COMPTE_VARIATION_PAR_DEFAUT = "6031";
+    private static final String COMPTE_ACHAT_PAR_DEFAUT = "6011";
 
-    private List<LigneNoteFrais> creerLignes(List<LigneNoteFraisRequest> lignesReq) {
+    private List<LigneNoteFrais> creerLignes(List<LigneNoteFraisRequest> lignesReq, SensTransaction sens) {
+        String compteTvaDuSens = sens == SensTransaction.ENCAISSEMENT ? COMPTE_TVA_VENTES : COMPTE_TVA_ACHATS;
+        // Entreprise non assujettie : ni TVA collectée ni TVA récupérable. La TVA payée
+        // au fournisseur fait partie de la charge : le montant saisi est le montant payé.
+        boolean assujetti = tauxTvaService.estAssujetti();
         List<LigneNoteFrais> lignes = new ArrayList<>();
         int ordre = 1;
         for (LigneNoteFraisRequest l : lignesReq) {
-            boolean soumisTva = Boolean.TRUE.equals(l.soumisTva());
+            boolean soumisTva = assujetti && Boolean.TRUE.equals(l.soumisTva());
+            boolean fraisApproche = Boolean.TRUE.equals(l.fraisApproche());
 
             boolean achatMarchandise = Boolean.TRUE.equals(l.achatMarchandise());
+            if (fraisApproche && achatMarchandise) {
+                throw new IllegalArgumentException(
+                    "Une ligne ne peut pas être à la fois un achat de marchandise et des frais de transport et manutention.");
+            }
             CompteOHADA compteImputation;
             Article article = null;
             Entrepot entrepot = null;
@@ -384,9 +849,16 @@ public class NoteFraisService {
                     throw new IllegalArgumentException(
                         "L'article \"" + article.getLibelle() + "\" est un service : il n'a pas de stock.");
                 }
-                if (article.getCompteStock() == null) {
+                // Consommable non stockable (605x) : quantités suivies sans compte de stock ni de variation.
+                if (!StockService.suiviHorsComptabilite(article)
+                    && (article.getCompteStock() == null || article.getCompteCharge() == null)) {
                     throw new IllegalArgumentException(
-                        "Aucun compte de stock n'est défini pour l'article \"" + article.getLibelle() + "\".");
+                        "Le compte de stock et le compte de variation de stock doivent être définis pour l'article \""
+                        + article.getLibelle() + "\".");
+                }
+                if (article.getCompteAchat() == null) {
+                    throw new IllegalArgumentException(
+                        "Aucun compte d'achat n'est défini pour l'article \"" + article.getLibelle() + "\".");
                 }
                 // L'entrepot n'est plus choisi par l'utilisateur : une seule
                 // destination possible en pratique, retenue automatiquement.
@@ -396,11 +868,20 @@ public class NoteFraisService {
                     : entrepotRepository.findFirstByActifTrueOrderByIdAsc()
                         .orElseThrow(() -> new IllegalStateException(
                             "Aucun entrepôt actif n'est configuré : impossible de réceptionner la marchandise."));
-                // Le compte de stock de l'article prime : c'est lui qui sera
-                // débité au paiement (voir RegleTresorerieService), exactement
-                // comme une entrée de stock ordinaire — la quantité ne peut pas
-                // entrer en stock sans que sa valeur soit portée au même compte.
-                compteImputation = article.getCompteStock();
+                // Le compte d'ACHAT (601x) est débité au paiement — jamais le
+                // compte de stock : un achat au comptant s'impute en deux
+                // écritures indissociables, conformes à l'inventaire permanent
+                // du SYSCOHADA révisé (D 601x/C règlement ici, puis D 311x/C
+                // 6031 à l'entrée en stock — voir StockService
+                // .entreesDepuisNoteFraisInterne). Imputer directement le
+                // compte de stock au règlement (comme une version antérieure
+                // le faisait) produisait un bilan juste mais un compte de
+                // résultat faux : ni l'achat (601) ni sa variation de stock
+                // (6031) n'y apparaissaient jamais.
+                compteImputation = article.getCompteAchat();
+            } else if (fraisApproche) {
+                // Compte fixé après la boucle, selon la nature des achats de la note.
+                compteImputation = null;
             } else {
                 compteImputation = resoudreCompte(l.compteImputation());
             }
@@ -415,28 +896,70 @@ public class NoteFraisService {
                 .article(article)
                 .entrepot(entrepot)
                 .echangeConsigne(achatMarchandise && Boolean.TRUE.equals(l.echangeConsigne()))
+                .fraisApproche(fraisApproche)
+                .amortissable(!achatMarchandise && compteImputation != null && compteImputation.getNumero().matches("2[1-4].*")
+                    ? !Boolean.FALSE.equals(l.amortissable()) : null)
                 .soumisTva(soumisTva)
-                // Le compte de TVA récupérable n'est plus choisi par
-                // l'utilisateur : 4452 est le seul compte pertinent pour une
-                // TVA récupérable sur achat de marchandise.
-                .compteTva(soumisTva ? resoudreCompte(COMPTE_TVA_ACHATS) : null)
+                // Le compte de TVA n'est pas choisi par l'utilisateur : il
+                // découle du sens de la note (récupérable ou collectée).
+                .compteTva(soumisTva ? resoudreCompte(compteTvaDuSens) : null)
                 // Figé à la saisie : le montant TTC annoncé sur la note ne
                 // doit pas bouger si le taux légal change avant le paiement.
                 .tauxTvaApplique(soumisTva ? tauxTvaService.tauxALaDate(java.time.LocalDate.now()) : null)
                 .build());
         }
+        imputerFraisApproche(lignes, sens);
         return lignes;
+    }
+
+    /** Frais sur achats de marchandises (boissons, marchandises revendues). */
+    private static final String COMPTE_FRAIS_ACHATS_MARCHANDISES = "6015";
+    /** Frais sur achats de matières premières (provisions de cuisine). */
+    private static final String COMPTE_FRAIS_ACHATS_MATIERES = "6025";
+
+    /**
+     * Impute la ligne de frais d'approche (transport, manutention) d'une note
+     * d'achat. Son compte n'est pas choisi à l'écran : il découle de ce que la
+     * note achète — 6025 « Frais sur achats » de matières premières si elle
+     * contient une provision, 6015 « Frais sur achats » de marchandises sinon —
+     * comme le compte d'une ligne d'achat découle de son article. Au paiement,
+     * son montant est réparti sur le coût d'entrée en stock des articles
+     * achetés (voir RegleTresorerieService.construireLignesDebitDepuisNote).
+     */
+    private void imputerFraisApproche(List<LigneNoteFrais> lignes, SensTransaction sens) {
+        List<LigneNoteFrais> frais = lignes.stream().filter(LigneNoteFrais::isFraisApproche).toList();
+        if (frais.isEmpty()) {
+            return;
+        }
+        if (sens == SensTransaction.ENCAISSEMENT) {
+            throw new IllegalArgumentException(
+                "Des frais de transport et manutention ne s'ajoutent qu'à une note d'achat (décaissement).");
+        }
+        if (frais.size() > 1) {
+            throw new IllegalArgumentException(
+                "Une note ne porte qu'une seule ligne de frais de transport et manutention.");
+        }
+        List<LigneNoteFrais> achats = lignes.stream().filter(LigneNoteFrais::isAchatMarchandise).toList();
+        if (achats.isEmpty()) {
+            throw new IllegalArgumentException(
+                "Des frais de transport et manutention se répartissent sur des achats de marchandise : "
+                + "la note n'en contient aucun.");
+        }
+        boolean contientProvision = achats.stream()
+            .anyMatch(a -> a.getArticle() != null && a.getArticle().getType() == TypeArticle.PROVISION);
+        frais.get(0).setCompteImputation(resoudreCompte(
+            contientProvision ? COMPTE_FRAIS_ACHATS_MATIERES : COMPTE_FRAIS_ACHATS_MARCHANDISES));
     }
 
     // ---------------------------------------------------------------------
     // Pieces jointes (PDF / image)
     // ---------------------------------------------------------------------
 
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'ADMIN')")
-    @Transactional
-    public NoteFraisDetailResponse ajouterPieceJointe(Long id, MultipartFile fichier) {
-        NoteFrais note = chargerVisible(id);
-
+    /**
+     * Controles d'une piece jointe (presence, taille, format) : aussi appliques a l'avance par la copie en ligne d'un
+     * serveur local, qui garde les fichiers d'une nouvelle note jusqu'a sa creation par le serveur local.
+     */
+    public static void verifierPieceJointe(MultipartFile fichier) {
         if (fichier == null || fichier.isEmpty()) {
             throw new IllegalArgumentException("Le fichier est vide ou absent");
         }
@@ -448,6 +971,15 @@ public class NoteFraisService {
             throw new IllegalArgumentException(
                 "Type de fichier non autorise. Formats acceptes : PDF, JPEG, PNG, WEBP, GIF");
         }
+    }
+
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
+    @Transactional
+    public NoteFraisDetailResponse ajouterPieceJointe(Long id, MultipartFile fichier) {
+        NoteFrais note = chargerVisible(id);
+
+        verifierPieceJointe(fichier);
+        String type = fichier.getContentType();
 
         String cheminStockage = storage.enregistrer("notes-frais/" + note.getId(), fichier);
         User auteur = currentUser.requireUser();
@@ -470,7 +1002,7 @@ public class NoteFraisService {
         return NoteFraisDetailResponse.from(note);
     }
 
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional(readOnly = true)
     public PieceJointeTelechargement telechargerPieceJointe(Long noteId, Long pieceId) {
         NoteFrais note = chargerVisible(noteId);
@@ -485,7 +1017,7 @@ public class NoteFraisService {
     /** Enveloppe le contenu d'une piece jointe pour le controleur (flux + metadonnees HTTP). */
     public record PieceJointeTelechargement(Resource ressource, String nomFichier, String typeMime) {}
 
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'DA', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse supprimerPieceJointe(Long noteId, Long pieceId) {
         NoteFrais note = charger(noteId);
@@ -526,13 +1058,13 @@ public class NoteFraisService {
     // ---------------------------------------------------------------------
 
     /** Le createur soumet sa note au DFIN (BROUILLON|REJETEE_DA -> SOUMISE). */
-    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT')")
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse soumettre(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
         if (note.getSens() == SensTransaction.ENCAISSEMENT) {
             throw new TransitionInvalideException(
-                "Une note d'encaissement ne suit pas le circuit DFIN/DA : utilisez l'action "
+                "Une note d'encaissement ne suit pas le circuit " + libelle(RoleType.DFIN) + "/" + libelle(RoleType.DA) + " : utilisez l'action "
                     + "\"encaisser\" pour l'executer directement");
         }
         if (note.getStatut() != StatutNote.BROUILLON && note.getStatut() != StatutNote.REJETEE_DA) {
@@ -541,41 +1073,81 @@ public class NoteFraisService {
                     + note.getStatut() + ")");
         }
         exigerCreateur(note);
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, action, "Soumission au DFIN");
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
+        tracerControleBudgetaire(note, controle);
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.SOUMISE, action, "Soumission");
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_SOUMISE,
-            "Note à vérifier", note.getReference() + " — " + note.getObjet(),
+            "Note à vérifier", note.getReference() + " — " + note.getObjet() + mentionService(note) + mentionHorsBudget(controle),
             "/notes-frais/" + note.getId(), note);
         return reponse;
     }
 
     /** Le DFIN verifie la conformite (SOUMISE -> VERIFIEE_DFIN). */
-    @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public NoteFraisDetailResponse verifier(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.SOUMISE, "verifier");
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VERIFIEE_DFIN, action, "Verifiee par le DFIN");
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VERIFIEE_DFIN, action, "Verifiee");
         notificationService.notifierRole(RoleType.DA, TypeNotification.NOTE_VERIFIEE,
-            "Note à valider", note.getReference() + " — " + note.getObjet(),
+            "Note à valider", note.getReference() + " — " + note.getObjet() + mentionService(note) + mentionHorsBudget(controle),
             "/notes-frais/" + note.getId(), note);
         return reponse;
     }
 
     /** Le DA valide la note (VERIFIEE_DFIN -> VALIDEE_DA). */
-    @PreAuthorize("hasAnyRole('DA', 'ADMIN')")
+    @PreAuthorize("hasRole('DA')")
     @Transactional
     public NoteFraisDetailResponse valider(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.VERIFIEE_DFIN, "valider");
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VALIDEE_DA, action, "Validee par le DA");
+        // Controle refait a la validation : le budget a pu etre consomme par d'autres notes depuis la soumission.
+        ControleBudgetaireResponse controle = appliquerControleBudgetaire(note);
+        // Etapes de l'historique sans role : la fonction de l'auteur s'affiche devant son nom (voir ObservationResponse).
+        String libelle = "Validee";
+        if (controle.justificationRequise()) {
+            if (action == null || !StringUtils.hasText(action.commentaire())) {
+                throw new IllegalArgumentException("Cette note n'est pas couverte par le budget (" + resumeControle(controle)
+                    + ") : motivez votre validation dans le champ Observation.");
+            }
+            libelle = "Validee hors budget";
+        }
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.VALIDEE_DA, action, libelle);
         notificationService.notifierRole(RoleType.DFIN, TypeNotification.NOTE_VALIDEE,
-            "Note validée par le DA", note.getReference() + " — " + note.getObjet() + " (prête à transmettre)",
+            "Note validée par " + libelle(RoleType.DA), note.getReference() + " — " + note.getObjet() + " (prête à transmettre)",
             "/notes-frais/" + note.getId(), note);
+        if (controle.justificationRequise()) {
+            notifierDepassement(note, controle);
+        }
         return reponse;
     }
 
+    /**
+     * Le DA vient de valider une depense que le budget ne couvre pas (depassement du disponible, compte hors budget,
+     * aucun budget en execution) : le DFIN, qui tient le budget, en est prevenu avec le detail du controle et un lien
+     * vers le budget concerne (a reviser au besoin). La depense est desormais engagee.
+     */
+    private void notifierDepassement(NoteFrais note, ControleBudgetaireResponse controle) {
+        String titre = switch (controle.statut()) {
+            case DEPASSEMENT -> "Dépassement budgétaire";
+            case SANS_BUDGET -> "Dépense validée sans budget";
+            default -> "Dépense hors budget validée";
+        };
+        List<String> details = controle.lignes().stream()
+            .filter(l -> l.statut().exigeJustification())
+            .map(l -> l.message())
+            .toList();
+        String detail = details.isEmpty() ? resumeControle(controle) : details.get(0);
+        String message = note.getReference() + " — " + note.getObjet() + mentionService(note) + ", validée par le "
+            + libelle(RoleType.DA) + " : " + detail
+            + (details.size() > 1 ? " (et " + (details.size() - 1) + " autre(s) ligne(s) non couverte(s))" : "");
+        notificationService.notifierBudget(List.of(RoleType.DFIN), null, currentUser.requireUser(),
+            TypeNotification.BUDGET_DEPASSE, titre, message, note.getBudget());
+    }
+
     /** Le DA rejette la note ; un motif est obligatoire (VERIFIEE_DFIN -> REJETEE_DA). */
-    @PreAuthorize("hasAnyRole('DA', 'ADMIN')")
+    @PreAuthorize("hasRole('DA')")
     @Transactional
     public NoteFraisDetailResponse rejeter(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -583,7 +1155,7 @@ public class NoteFraisService {
         if (!StringUtils.hasText(action.commentaire())) {
             throw new IllegalArgumentException("Un motif de rejet est obligatoire");
         }
-        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.REJETEE_DA, action, "Rejetee par le DA");
+        NoteFraisDetailResponse reponse = appliquer(note, StatutNote.REJETEE_DA, action, "Rejetee");
         notificationService.notifierUtilisateur(note.getCreateur(), TypeNotification.NOTE_REJETEE,
             "Note rejetée", note.getReference() + " — " + action.commentaire(),
             "/notes-frais/" + note.getId(), note);
@@ -591,14 +1163,14 @@ public class NoteFraisService {
     }
 
     /** Le DFIN transmet la note validee a la caisse (VALIDEE_DA -> TRANSMISE_CAISSE). */
-    @PreAuthorize("hasAnyRole('DFIN', 'ADMIN')")
+    @PreAuthorize("hasRole('DFIN')")
     @Transactional
     public NoteFraisDetailResponse transmettre(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
         exigerEtat(note, StatutNote.VALIDEE_DA, "transmettre a la caisse");
         // Gel du taux d'engagement : la note part en tresorerie a la valeur du
         // jour ou l'entreprise s'engage. L'ecart avec le taux du reglement sera
-        // constate en 676/776 par EcartChangeService, au lieu d'etre absorbe
+        // constate en 656/756 par EcartChangeService, au lieu d'etre absorbe
         // silencieusement par le compte de charge.
         if (note.getDevise() != null && note.getDevise() != ConversionDeviseService.DEVISE_BASE
             && note.getTauxEngagement() == null) {
@@ -616,7 +1188,7 @@ public class NoteFraisService {
      * ou deja transmise a la caisse (reajustement en cours de traitement).
      * N'altere pas l'etat du workflow.
      */
-    @PreAuthorize("hasAnyRole('DA', 'ADMIN')")
+    @PreAuthorize("hasRole('DA')")
     @Transactional
     public NoteFraisDetailResponse definirPriorite(Long id, PrioriteRequest req) {
         NoteFrais note = charger(id);
@@ -645,7 +1217,7 @@ public class NoteFraisService {
      * Le DA ajoute une observation libre sur une note validee, sans changer d'etat.
      * Permet de completer le dossier apres avoir defini la priorite.
      */
-    @PreAuthorize("hasAnyRole('DA', 'ADMIN')")
+    @PreAuthorize("hasRole('DA')")
     @Transactional
     public NoteFraisDetailResponse ajouterObservation(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -662,7 +1234,7 @@ public class NoteFraisService {
     }
 
     /** Annulation par le createur ou le DFIN (etats non terminaux -> ANNULEE). */
-    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'RESP_RESTAURANT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('DIRECTEUR', 'COMPTABLE', 'CAISSIER', 'DFIN', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'LOGISTIQUE', 'RESP_DRH', 'ADMIN')")
     @Transactional
     public NoteFraisDetailResponse annuler(Long id, ActionWorkflowRequest action) {
         NoteFrais note = charger(id);
@@ -670,7 +1242,7 @@ public class NoteFraisService {
             throw new TransitionInvalideException(
                 "Une note " + note.getStatut() + " ne peut plus etre annulee");
         }
-        // DIRECTEUR/CAISSIER/RESP_RESTAURANT : seulement leurs propres notes.
+        // DIRECTEUR/CAISSIER/roles du restaurant : seulement leurs propres notes.
         // DFIN/ADMIN : toutes les notes.
         var authorities = currentUser.requirePrincipal().getAuthorities();
         boolean estDfinOuAdmin = authorities.stream()
@@ -680,6 +1252,27 @@ public class NoteFraisService {
             exigerCreateur(note);
         }
         NoteFraisDetailResponse reponse = appliquer(note, StatutNote.ANNULEE, action, "Annulation de la note");
+        // Note de reglement de camions minerais : les camions et frais
+        // rattaches redeviennent disponibles pour une nouvelle demande —
+        // voir MineraiService.listerARegler/listerChargesARegler, qui les
+        // exclurait sinon indefiniment.
+        List<CamionMinerai> camionsLies = camionRepository.findByNoteFraisReglementId(note.getId());
+        if (!camionsLies.isEmpty()) {
+            camionsLies.forEach(c -> c.setNoteFraisReglement(null));
+            camionRepository.saveAll(camionsLies);
+        }
+        List<ChargeCamionMinerai> chargesLiees = chargeRepository.findByNoteFraisReglementId(note.getId());
+        if (!chargesLiees.isEmpty()) {
+            chargesLiees.forEach(c -> c.setNoteFraisReglement(null));
+            chargeRepository.saveAll(chargesLiees);
+        }
+        // Note de paie : les bulletins redeviennent disponibles pour une nouvelle note (ou une
+        // réouverture du mois) — voir PaieNoteService.
+        if (note.getCategorie() == CategorieNote.PAIE) {
+            List<BulletinPaie> bulletins = bulletinPaieRepository.findByNoteFraisPaieId(note.getId());
+            bulletins.forEach(b -> b.setNoteFraisPaie(null));
+            bulletinPaieRepository.saveAll(bulletins);
+        }
         // Pas d'auto-notification : si le createur annule lui-meme sa note,
         // il n'a pas besoin d'etre informe de sa propre action.
         boolean annuleeParAutrui = note.getCreateur() != null
@@ -690,6 +1283,136 @@ public class NoteFraisService {
                 "/notes-frais/" + note.getId(), note);
         }
         return reponse;
+    }
+
+    // ---------------------------------------------------------------------
+    // Controle budgetaire
+    // ---------------------------------------------------------------------
+
+    /** Le createur precise (ou corrige) la justification budgetaire d'une note pas encore soumise. */
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN')")
+    @Transactional
+    public NoteFraisDetailResponse definirJustificationBudget(Long id, String justification) {
+        NoteFrais note = charger(id);
+        if (note.getStatut() != StatutNote.BROUILLON && note.getStatut() != StatutNote.REJETEE_DA) {
+            throw new TransitionInvalideException(
+                "La justification budgetaire se modifie avant la soumission (note en brouillon ou rejetee).");
+        }
+        exigerCreateur(note);
+        note.setJustificationBudget(StringUtils.hasText(justification) ? justification.trim() : null);
+        return NoteFraisDetailResponse.from(noteRepository.saveAndFlush(note));
+    }
+
+    /**
+     * Rattache une note de decaissement a un service budgetaire, ou l'en detache : le createur tant que la note n'est
+     * pas soumise (brouillon, ou rejetee par le DA), le DFIN pendant sa verification (note SOUMISE). Le changement est
+     * trace dans l'historique ; le controle budgetaire d'une note soumise est refait sur l'enveloppe du nouveau service.
+     */
+    @PreAuthorize("hasAnyRole('COMPTABLE', 'CAISSIER', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'DFIN', 'ADMIN')")
+    @Transactional
+    public NoteFraisDetailResponse modifierService(Long id, Long serviceId) {
+        NoteFrais note = charger(id);
+        if (note.getSens() != SensTransaction.DECAISSEMENT) {
+            throw new TransitionInvalideException("Une note d'encaissement ne se rattache pas à un service : seules les dépenses se suivent par service.");
+        }
+        StatutNote statut = note.getStatut();
+        if (statut == StatutNote.SOUMISE) {
+            if (!aLeRole("ROLE_DFIN")) {
+                throw new TransitionInvalideException("Pendant la vérification de la note, seul le " + libelle(RoleType.DFIN)
+                    + " en change le service.");
+            }
+        } else if (statut == StatutNote.BROUILLON || statut == StatutNote.REJETEE_DA) {
+            exigerCreateur(note);
+        } else {
+            throw new TransitionInvalideException("Le service d'une note se choisit avant sa vérification : par son créateur "
+                + "(note en brouillon ou rejetée), ou par le " + libelle(RoleType.DFIN) + " pendant la vérification.");
+        }
+        ServiceBudgetaire ancien = note.getService();
+        ServiceBudgetaire nouveau = resoudreService(serviceId, ancien);
+        if (java.util.Objects.equals(ancien == null ? null : ancien.getId(), nouveau == null ? null : nouveau.getId())) {
+            return NoteFraisDetailResponse.from(note);
+        }
+        User auteur = currentUser.requireUser();
+        note.setService(nouveau);
+        note.addObservation(observation(note, auteur, statut, "Service budgétaire : "
+            + (ancien == null ? "aucun" : ancien.getNom()) + " → " + (nouveau == null ? "aucun" : nouveau.getNom())));
+        if (statut == StatutNote.SOUMISE) {
+            appliquerControleBudgetaire(note);
+        }
+        note = noteRepository.saveAndFlush(note);
+        log.info("Note {} : service budgetaire {} -> {} (par {})", note.getReference(),
+            ancien == null ? "aucun" : ancien.getNom(), nouveau == null ? "aucun" : nouveau.getNom(), auteur.getEmail());
+        return NoteFraisDetailResponse.from(note);
+    }
+
+    /** Controle d'une note en cours de saisie (ecran de creation / modification). */
+    @Transactional(readOnly = true)
+    public ControleBudgetaireResponse controleBudgetaire(ControleBudgetaireRequest req) {
+        return controleBudgetaire.controler(req);
+    }
+
+    /** Controle a jour d'une note enregistree (meme regle de visibilite que sa consultation). */
+    @Transactional(readOnly = true)
+    public ControleBudgetaireResponse controleBudgetaireNote(Long id) {
+        NoteFrais note = noteRepository.findWithDetailsById(id)
+            .orElseThrow(() -> RessourceIntrouvableException.of("NoteFrais", id));
+        if (!estVisiblePourUtilisateur(note)) {
+            throw RessourceIntrouvableException.of("NoteFrais", id);
+        }
+        return controleBudgetaire.controlerNote(note);
+    }
+
+    /**
+     * Releve le controle budgetaire de la note (statut, budget de reference). Il ne bloque jamais : une depense non
+     * couverte par le budget (hors budget, depassement, aucun budget en execution) suit le circuit normal, signalee
+     * « hors budget » au DFIN puis au DA ; c'est le DA qui decide et qui doit motiver sa validation (voir {@link #valider}).
+     * Le demandeur peut ajouter une justification, facultative.
+     */
+    private ControleBudgetaireResponse appliquerControleBudgetaire(NoteFrais note) {
+        ControleBudgetaireResponse controle = controleBudgetaire.controlerNote(note);
+        note.setStatutBudget(controle.statut());
+        note.setBudget(controle.budgetId() == null ? null : budgetRepository.getReferenceById(controle.budgetId()));
+        return controle;
+    }
+
+    /** Trace dans l'historique une soumission hors budget, avec la justification du demandeur si elle existe. */
+    private void tracerControleBudgetaire(NoteFrais note, ControleBudgetaireResponse controle) {
+        if (!controle.justificationRequise()) {
+            return;
+        }
+        String justification = StringUtils.hasText(note.getJustificationBudget())
+            ? "justification du demandeur : " + note.getJustificationBudget().strip()
+            : "sans justification du demandeur";
+        note.addObservation(observation(note, currentUser.requireUser(), note.getStatut(),
+            "Contrôle budgétaire : " + resumeControle(controle) + " — " + justification));
+    }
+
+    /** Service de la note dans les notifications (« · service Restaurant »), vide sans service. */
+    private static String mentionService(NoteFrais note) {
+        return note.getService() == null ? "" : " · service " + note.getService().getNom();
+    }
+
+    /** Mention ajoutee aux notifications d'une note non couverte par le budget, pour que le DFIN et le DA le voient d'emblee. */
+    private static String mentionHorsBudget(ControleBudgetaireResponse controle) {
+        return controle != null && controle.justificationRequise() ? " (hors budget)" : "";
+    }
+
+    /** « ligne 1 (6042) : dépassement ; ligne 2 (6328) : hors budget » — lignes non conformes seulement. */
+    static String resumeControle(ControleBudgetaireResponse controle) {
+        List<String> parties = new java.util.ArrayList<>();
+        for (ControleBudgetaireResponse.LigneControle l : controle.lignes()) {
+            if (!l.statut().exigeJustification()) {
+                continue;
+            }
+            String motif = switch (l.statut()) {
+                case DEPASSEMENT -> "dépasse le disponible";
+                case HORS_BUDGET -> "hors budget";
+                case SANS_BUDGET -> "aucun budget en exécution pour " + controle.exercice();
+                default -> l.statut().name();
+            };
+            parties.add("ligne " + (l.index() + 1) + " (" + l.compteNumero() + ") : " + motif);
+        }
+        return String.join(" ; ", parties);
     }
 
     // ---------------------------------------------------------------------
@@ -728,8 +1451,10 @@ public class NoteFraisService {
     /**
      * Retrouve un article de marchandise existant par son nom, ou le crée à
      * la volée : l'achat d'une marchandise ne nécessite plus de passer par
-     * l'écran Logistique au préalable. Le compte de stock par défaut
-     * ({@value #COMPTE_STOCK_PAR_DEFAUT}) reste modifiable ensuite depuis
+     * l'écran Logistique au préalable. Ses comptes par défaut (stock
+     * {@value #COMPTE_STOCK_PAR_DEFAUT}, variation
+     * {@value #COMPTE_VARIATION_PAR_DEFAUT}, achat
+     * {@value #COMPTE_ACHAT_PAR_DEFAUT}) restent modifiables ensuite depuis
      * la fiche article, au même titre qu'un article créé normalement.
      */
     private Article trouverOuCreerArticle(String nom) {
@@ -740,6 +1465,8 @@ public class NoteFraisService {
                 .libelle(libelle)
                 .type(TypeArticle.MARCHANDISE)
                 .compteStock(resoudreCompte(COMPTE_STOCK_PAR_DEFAUT))
+                .compteCharge(resoudreCompte(COMPTE_VARIATION_PAR_DEFAUT))
+                .compteAchat(resoudreCompte(COMPTE_ACHAT_PAR_DEFAUT))
                 .soumisTva(true)
                 .stockMin(java.math.BigDecimal.ZERO)
                 .actif(true)
@@ -780,6 +1507,43 @@ public class NoteFraisService {
         }
     }
 
+    /**
+     * Note de depense sans service choisi : rattachee au service qui budgete ses comptes dans le budget en execution
+     * (voir {@link ControleBudgetaireService#serviceDeduit}), pour que la depense se suive sur l'enveloppe de ce service.
+     * Un service choisi par le demandeur n'est jamais remplace.
+     */
+    private void rattacherServiceDeduit(NoteFrais note) {
+        if (note.getSens() != SensTransaction.DECAISSEMENT || note.getService() != null) {
+            return;
+        }
+        LocalDate date = note.getDateCreation() == null ? LocalDate.now()
+            : LocalDate.ofInstant(note.getDateCreation(), java.time.ZoneId.systemDefault());
+        controleBudgetaire.serviceDeduit(note, date).ifPresent(note::setService);
+    }
+
+    /**
+     * Service choisi pour une depense : null si aucun ; le service actuel de la note est garde meme s'il a ete desactive
+     * depuis ; un autre service doit etre actif.
+     */
+    private ServiceBudgetaire resoudreService(Long serviceId, ServiceBudgetaire actuel) {
+        if (serviceId == null) {
+            return null;
+        }
+        if (actuel != null && serviceId.equals(actuel.getId())) {
+            return actuel;
+        }
+        ServiceBudgetaire s = serviceBudgetaireRepository.findById(serviceId)
+            .orElseThrow(() -> RessourceIntrouvableException.of("ServiceBudgetaire", serviceId));
+        if (!s.isActif()) {
+            throw new IllegalArgumentException("Le service « " + s.getNom() + " » est désactivé : choisissez un service actif.");
+        }
+        return s;
+    }
+
+    private boolean aLeRole(String autorite) {
+        return currentUser.requirePrincipal().getAuthorities().stream().anyMatch(a -> autorite.equals(a.getAuthority()));
+    }
+
     private void exigerRoleCaissierOuAdmin() {
         boolean autorise = currentUser.requirePrincipal().getAuthorities().stream()
             .anyMatch(a -> "ROLE_CAISSIER".equals(a.getAuthority()) || "ROLE_ADMIN".equals(a.getAuthority()));
@@ -796,5 +1560,10 @@ public class NoteFraisService {
             .statutAuMoment(statut)
             .commentaire(texte)
             .build();
+    }
+
+    /** Nom d'affichage du role (personnalisable par l'ADMIN) pour les textes visibles par l'utilisateur. */
+    private String libelle(RoleType role) {
+        return roleLibelleService.lister().get(role);
     }
 }

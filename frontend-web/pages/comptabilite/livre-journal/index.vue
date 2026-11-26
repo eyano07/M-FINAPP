@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
-// uniquement) mais ne voit pas le Livre-journal.
-definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
+import { useExerciceStore } from '~/stores/exercice'
+// DA exclu explicitement : voir NavigationDrawer.vue (comptabiliteItems).
+definePageMeta({ module: 'COMPTABILITE', roles: ['ADMIN', 'DFIN', 'DG', 'COMPTABLE'] })
 
 interface LignePiece {
   compteNumero: string
@@ -37,8 +37,10 @@ const loading = ref(false)
 const erreur = ref('')
 const journal = ref<LivreJournal | null>(null)
 
-const debutAnnee = new Date().getFullYear() + '-01-01'
-const aujourdhui = new Date().toISOString().slice(0, 10)
+// Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
+const exerciceConsulte = useExerciceStore()
+const debutAnnee = exerciceConsulte.debut
+const aujourdhui = exerciceConsulte.fin
 const filtres = reactive({ du: debutAnnee, au: aujourdhui })
 
 async function charger() {
@@ -63,10 +65,32 @@ onMounted(charger)
 const pieceUSD = (p: Piece, sens: 'debit' | 'credit') =>
   (p.lignes || []).reduce((s, l) => s + (l[sens] || 0), 0)
 
+// Recherche (15/11/2026) : par pièce (n° ou libellé) et par compte (numéro, début de numéro ou intitulé), sur
+// les pièces déjà chargées. Le filtre « compte » garde les pièces dont au moins une ligne mouvemente ce compte.
+const recherche = reactive({ piece: '', compte: '' })
+const normaliser = (v?: string | null) =>
+  (v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
+const piecesFiltrees = computed(() => {
+  const qPiece = normaliser(recherche.piece)
+  const qCompte = normaliser(recherche.compte)
+  return (journal.value?.pieces || []).filter((p) => {
+    if (qPiece && !normaliser(p.reference).includes(qPiece) && !normaliser(p.libelle).includes(qPiece)) return false
+    if (qCompte) {
+      const chiffres = /^\d+$/.test(qCompte)
+      return (p.lignes || []).some(l => chiffres
+        ? (l.compteNumero || '').startsWith(qCompte)
+        : normaliser(l.compteLibelle).includes(qCompte))
+    }
+    return true
+  })
+})
+const filtreActif = computed(() => !!(normaliser(recherche.piece) || normaliser(recherche.compte)))
+
 const totalDebitUSD = computed(() =>
-  (journal.value?.pieces || []).reduce((s, p) => s + pieceUSD(p, 'debit'), 0))
+  piecesFiltrees.value.reduce((s, p) => s + pieceUSD(p, 'debit'), 0))
 const totalCreditUSD = computed(() =>
-  (journal.value?.pieces || []).reduce((s, p) => s + pieceUSD(p, 'credit'), 0))
+  piecesFiltrees.value.reduce((s, p) => s + pieceUSD(p, 'credit'), 0))
 
 const fmtUSD = (v: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(v || 0)
@@ -81,6 +105,9 @@ const journalCouleur: Record<string, string> = {
   ACHATS: 'brown',
   STOCK: 'indigo',
   OPERATIONS_DIVERSES: 'orange',
+  ANALYTIQUE: 'purple',
+  PAIE: 'pink',
+  A_NOUVEAUX: 'blue-grey',
 }
 </script>
 
@@ -128,87 +155,64 @@ const journalCouleur: Record<string, string> = {
           Actualiser
         </v-btn>
       </div>
+      <div class="lj-filtres mt-4">
+        <v-text-field
+          v-model="recherche.piece"
+          label="Pièce (n° ou libellé)"
+          placeholder="ex. PC-2026-000537"
+          prepend-inner-icon="mdi-file-search-outline"
+          variant="outlined"
+          density="comfortable"
+          rounded="lg"
+          clearable
+          hide-details
+        />
+        <v-text-field
+          v-model="recherche.compte"
+          label="Compte (numéro ou intitulé)"
+          placeholder="ex. 571, 62 ou Caisse"
+          prepend-inner-icon="mdi-magnify"
+          variant="outlined"
+          density="comfortable"
+          rounded="lg"
+          clearable
+          hide-details
+        />
+      </div>
     </v-card>
 
     <template v-if="journal">
-      <v-row class="mb-4">
-        <v-col cols="6" md="4">
-          <v-card class="classroom-card pa-4 text-center">
-            <div class="kpi-label">Pièces</div>
-            <div class="kpi-value">{{ journal.pieces.length }}</div>
-          </v-card>
-        </v-col>
-        <v-col cols="6" md="4">
-          <v-card class="classroom-card pa-4 text-center">
-            <div class="kpi-label">Total débit (USD)</div>
-            <div class="kpi-value">{{ fmtUSD(totalDebitUSD) }}</div>
-          </v-card>
-        </v-col>
-        <v-col cols="6" md="4">
-          <v-card class="classroom-card pa-4 text-center">
-            <div class="kpi-label">Total crédit (USD)</div>
-            <div class="kpi-value">{{ fmtUSD(totalCreditUSD) }}</div>
-          </v-card>
-        </v-col>
-      </v-row>
+      <div class="kpi-grid">
+        <v-card class="classroom-card pa-4 text-center">
+          <div class="kpi-label">Pièces</div>
+          <div class="kpi-value">
+            {{ piecesFiltrees.length }}<span v-if="filtreActif" class="text-body-2 text-medium-emphasis"> / {{ journal.pieces.length }}</span>
+          </div>
+        </v-card>
+        <v-card class="classroom-card pa-4 text-center">
+          <div class="kpi-label">Total débit (USD)</div>
+          <div class="kpi-value">{{ fmtUSD(totalDebitUSD) }}</div>
+        </v-card>
+        <v-card class="classroom-card pa-4 text-center">
+          <div class="kpi-label">Total crédit (USD)</div>
+          <div class="kpi-value">{{ fmtUSD(totalCreditUSD) }}</div>
+        </v-card>
+      </div>
 
-      <v-card v-if="journal.pieces.length === 0" class="classroom-card pa-8 text-center">
+      <v-card v-if="piecesFiltrees.length === 0" class="classroom-card pa-8 text-center">
         <v-icon icon="mdi-book-open-blank-variant" size="42" color="grey" class="mb-2" />
-        <div class="text-medium-emphasis">Aucune pièce comptabilisée sur cette période.</div>
+        <div class="text-medium-emphasis">
+          {{ filtreActif ? 'Aucune pièce ne correspond à la recherche.' : 'Aucune pièce comptabilisée sur cette période.' }}
+        </div>
       </v-card>
 
-      <v-expansion-panels v-else variant="accordion" class="journal-panels">
-        <v-expansion-panel v-for="p in journal.pieces" :key="p.id" elevation="0" class="classroom-card mb-2">
-          <v-expansion-panel-title>
-            <div class="d-flex align-center flex-wrap ga-3" style="width: 100%">
-              <v-chip size="small" :color="journalCouleur[p.journal] || 'primary'" variant="tonal">
-                {{ p.journal }}
-              </v-chip>
-              <span class="font-weight-bold">{{ p.reference }}</span>
-              <span class="text-medium-emphasis">{{ fmtDate(p.datePiece) }}</span>
-              <span class="text-truncate flex-1-1">{{ p.libelle }}</span>
-              <v-chip v-if="p.statut === 'ANNULEE'" size="small" color="error" variant="tonal">Annulée</v-chip>
-              <span class="font-weight-medium">{{ fmtUSD(pieceUSD(p, 'debit')) }}</span>
-            </div>
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
-            <v-table density="compact">
-              <thead>
-                <tr>
-                  <th>Compte</th>
-                  <th>Libellé</th>
-                  <th class="text-right">Taux</th>
-                  <th class="text-right">Débit (USD)</th>
-                  <th class="text-right">Crédit (USD)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(l, i) in p.lignes" :key="i">
-                  <td>
-                    <span class="font-weight-medium">{{ l.compteNumero }}</span>
-                    <span class="text-medium-emphasis"> — {{ l.compteLibelle }}</span>
-                  </td>
-                  <td>{{ l.libelle }}</td>
-                  <td class="text-right text-medium-emphasis">{{ fmtTaux(l.tauxApplique) }}</td>
-                  <td class="text-right">{{ l.debit ? fmtUSD(l.debit) : '—' }}</td>
-                  <td class="text-right">{{ l.credit ? fmtUSD(l.credit) : '—' }}</td>
-                </tr>
-              </tbody>
-            </v-table>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
+      <CommunPiecesJournal v-else :pieces="piecesFiltrees" :fmt="fmtUSD" :montant="(p) => pieceUSD(p, 'debit')"
+        :couleurs-journal="journalCouleur" :fmt-taux="fmtTaux" unite="USD" />
     </template>
   </div>
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
-.kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value { font-size: 1.25rem; font-weight: 700; color: #111827; margin-top: 4px; }
-.journal-panels :deep(.v-expansion-panel) { border-radius: 12px !important; }
 .lj-filtres { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .lj-filtres :deep(.v-input) { flex: 1 1 220px; }
 .lj-filtres__btn { height: 48px; flex: 0 0 auto; }

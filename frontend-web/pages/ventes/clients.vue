@@ -8,6 +8,9 @@ interface Client {
   telephone?: string
   email?: string
   adresse?: string
+  nif?: string | null
+  compteComptable?: string | null
+  typeClient?: 'PARTICULIER' | 'ENTREPRISE' | 'ADMINISTRATION'
   actif: boolean
 }
 
@@ -23,19 +26,21 @@ const dialog = ref(false)
 const formRef = ref()
 const editId = ref<number | null>(null)
 
-const canWrite = computed(() => auth.hasAnyRole(['CAISSIER']))
+const canWrite = computed(() => auth.hasAnyRole(['CAISSIER', 'ADMIN']))
 
+// 15/11/2026 : le code (CLI-0001…) et le compte propre sous 4111 sont attribués par le serveur.
 const form = reactive({
   code: '',
   nom: '',
   telephone: '',
   email: '',
   adresse: '',
+  nif: '',
+  typeClient: 'PARTICULIER' as 'PARTICULIER' | 'ENTREPRISE' | 'ADMINISTRATION',
   actif: true,
 })
 
 const rules = {
-  code: [(v: any) => !!v?.trim() || 'Code obligatoire'],
   nom: [(v: any) => !!v?.trim() || 'Nom obligatoire'],
 }
 
@@ -54,7 +59,7 @@ onMounted(charger)
 
 function ouvrirCreation() {
   editId.value = null
-  Object.assign(form, { code: '', nom: '', telephone: '', email: '', adresse: '', actif: true })
+  Object.assign(form, { code: '', nom: '', telephone: '', email: '', adresse: '', nif: '', typeClient: 'PARTICULIER', actif: true })
   erreur.value = ''
   dialog.value = true
 }
@@ -67,6 +72,8 @@ function ouvrirEdition(c: Client) {
     telephone: c.telephone || '',
     email: c.email || '',
     adresse: c.adresse || '',
+    nif: c.nif || '',
+    typeClient: c.typeClient || 'PARTICULIER',
     actif: c.actif,
   })
   erreur.value = ''
@@ -85,6 +92,8 @@ async function enregistrer() {
       telephone: form.telephone || null,
       email: form.email || null,
       adresse: form.adresse || null,
+      nif: form.nif.trim() || null,
+      typeClient: form.typeClient,
       actif: form.actif,
     }
     if (editId.value) {
@@ -138,12 +147,17 @@ async function enregistrer() {
           { title: 'Téléphone', key: 'telephone' },
           { title: 'E-mail', key: 'email' },
           { title: 'Adresse', key: 'adresse' },
+          { title: 'Compte', key: 'compteComptable' },
           { title: 'Actif', key: 'actif', align: 'center' },
           { title: '', key: 'actions', sortable: false },
         ]"
       >
         <template #[`item.code`]="{ item }">
           <code class="text-caption text-primary">{{ item.code }}</code>
+        </template>
+        <template #[`item.compteComptable`]="{ item }">
+          <code v-if="item.compteComptable" class="text-caption">{{ item.compteComptable }}</code>
+          <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #[`item.telephone`]="{ item }">
           <span :class="item.telephone ? '' : 'text-medium-emphasis'">{{ item.telephone || '—' }}</span>
@@ -164,7 +178,7 @@ async function enregistrer() {
         </template>
         <template #no-data>
           <div class="cl-empty">
-            <v-icon icon="mdi-account-multiple-outline" size="42" color="#d1d5db" class="mb-2" />
+            <v-icon icon="mdi-account-multiple-outline" size="42" color="color-mix(in srgb, var(--color-primary) 40%, var(--ink-faint))" class="mb-2" />
             <p>Aucun client enregistré.</p>
           </div>
         </template>
@@ -185,14 +199,12 @@ async function enregistrer() {
           <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4" density="compact">{{ erreur }}</v-alert>
 
           <v-form ref="formRef">
-            <v-text-field
-              v-model="form.code"
-              label="Code *"
-              placeholder="ex : CLI-001"
-              prepend-inner-icon="mdi-identifier"
-              variant="outlined" density="comfortable" rounded="lg"
-              :rules="rules.code" class="mb-3"
-            />
+            <v-alert v-if="!editId" type="info" variant="tonal" density="compact" class="mb-4">
+              Le code client et son compte comptable (sous 4111) sont créés automatiquement à l'enregistrement.
+            </v-alert>
+            <div v-else class="text-body-2 text-medium-emphasis mb-3">
+              Code <code>{{ form.code }}</code>
+            </div>
             <v-text-field
               v-model="form.nom"
               label="Nom *"
@@ -219,6 +231,21 @@ async function enregistrer() {
               prepend-inner-icon="mdi-map-marker-outline"
               variant="outlined" density="comfortable" rounded="lg" class="mb-2"
             />
+            <v-select
+              v-model="form.typeClient"
+              :items="[{ title: 'Particulier', value: 'PARTICULIER' }, { title: 'Entreprise', value: 'ENTREPRISE' }, { title: 'Administration', value: 'ADMINISTRATION' }]"
+              label="Type de client"
+              prepend-inner-icon="mdi-account-tie-outline"
+              variant="outlined" density="comfortable" rounded="lg" class="mb-3"
+            />
+            <v-text-field
+              v-model="form.nif"
+              label="NIF (numéro d'impôt)"
+              prepend-inner-icon="mdi-card-account-details-outline"
+              hint="Facultatif"
+              persistent-hint
+              variant="outlined" density="comfortable" rounded="lg" class="mb-3"
+            />
             <v-switch v-model="form.actif" label="Actif" color="primary" density="compact" />
           </v-form>
         </v-card-text>
@@ -236,17 +263,14 @@ async function enregistrer() {
 </template>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0; }
-.page-sub { font-size: 0.875rem; color: #6b7280; margin: 2px 0 0; }
 
 .cl-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 40px 20px;
-  color: #9ca3af;
+  color: var(--ink-faint);
   font-size: 0.85rem;
 }
 .cl-empty p { margin: 0; }
@@ -255,6 +279,6 @@ async function enregistrer() {
 .dialog-header {
   padding: 26px 26px 20px;
   text-align: center;
-  background: linear-gradient(140deg, #34d399 0%, #16a34a 50%, #14532d 100%);
+  background: linear-gradient(140deg, #34d399 0%, var(--color-primary) 50%, var(--color-primary-darker) 100%);
 }
 </style>

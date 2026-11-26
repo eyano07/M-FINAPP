@@ -30,6 +30,20 @@ public class ParametresComptables {
     @Column(name = "date_cloture")
     private LocalDate dateCloture;
 
+    /**
+     * Date de la dernière clôture définitive d'exercice (audit SYSCOHADA du 10/11/2026, C-03) : le verrou de
+     * période ne peut jamais redescendre en dessous.
+     */
+    @Column(name = "date_cloture_exercice")
+    private LocalDate dateClotureExercice;
+
+    /**
+     * Dérogation à la validation par une autre personne (C-06) : true = l'auteur d'une pièce peut la
+     * comptabiliser lui-même. Réservée aux très petites équipes, posée par le DA ou le DG et tracée.
+     */
+    @Column(name = "auto_validation_autorisee", nullable = false)
+    private boolean autoValidationAutorisee;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "maj_par_id")
     @ToString.Exclude

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ module: 'RESTAURANT' })
+definePageMeta({ module: 'RESTAURANT', roles: ['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'DA', 'COMPTABLE', 'ADMIN'] })
 
 /**
  * Tableau de bord des provisions de cuisine : achats, consommation, stock.
@@ -78,9 +78,14 @@ async function charger() {
 onMounted(charger)
 watch([mois, annee], charger)
 
-const fmtNb = (n?: number | null) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n || 0)
+/** Quantités de provisions : 2 décimales au plus. */
+const fmtNb = (n?: number | null) => parametres.fmtQuantite(n)
 
 // ── Analyse IA (à la demande) ────────────────────────────────────────────
+// Rôles admis par RestaurantAnalyseIaService : le bouton n'est pas proposé
+// aux autres lecteurs du module (DA, comptable, caissier), qui recevraient un refus.
+const auth = useAuthStore()
+const peutAnalyser = computed(() => auth.hasAnyRole(['RESP_RESTAURANT', 'RESP_CUISINE', 'DFIN', 'DG', 'ADMIN']))
 const chargementIa = ref(false)
 const erreurIa = ref('')
 const analyse = ref<AnalyseIa | null>(null)
@@ -90,7 +95,6 @@ async function genererAnalyse() {
   erreurIa.value = ''
   try {
     analyse.value = await api<AnalyseIa>('/restaurant/provisions/tableau-bord/analyse-ia', {
-      method: 'POST',
       params: { du: du.value, au: au.value },
     })
   } catch (e: any) {
@@ -112,17 +116,36 @@ const cb: any = {
 }
 const fmtDateCourte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
 
+// Chart.js peint sur un <canvas> : contrairement au DOM, son API 2D ne sait
+// pas resoudre var(--color-primary) (couleur invalide → noir). On lit donc
+// la couleur de marque directement depuis le store — une chaine hex simple,
+// exploitable telle quelle par Canvas — plutot que de sonder le CSS calcule :
+// une sonde DOM lue dans onMounted peut s'executer AVANT que
+// useParametresStore().charger() (voir stores/parametres.ts, appele au
+// niveau du layout) n'ait fini d'appliquer la vraie couleur admin sur
+// :root, et capturer a tort la teinte par defaut du store. Une lecture
+// reactive du store n'a pas ce probleme : le graphique se met a jour de
+// lui-meme des que la couleur arrive, quel que soit l'ordre de chargement.
+const identite = useParametresStore()
+const couleurPrimaireHex = computed(() => identite.parametres.couleurPrimaire || '#15803D')
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!m) return hex
+  const [r, g, b] = [m[1], m[2], m[3]].map(h => parseInt(h, 16))
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
 /** Entrées et sorties par jour, deux séries de barres. */
 const mouvementsJourData = computed(() => ({
   labels: (tb.value?.mouvementsParJour || []).map(m => fmtDateCourte(m.date)),
   datasets: [
-    { label: 'Entrées (achats)', data: (tb.value?.mouvementsParJour || []).map(m => m.quantiteEntree), backgroundColor: 'rgba(22,163,74,0.7)', borderColor: '#16a34a', borderRadius: 6 },
+    { label: 'Entrées (achats)', data: (tb.value?.mouvementsParJour || []).map(m => m.quantiteEntree), backgroundColor: hexToRgba(couleurPrimaireHex.value, 0.7), borderColor: couleurPrimaireHex.value, borderRadius: 6 },
     { label: 'Sorties (consommation)', data: (tb.value?.mouvementsParJour || []).map(m => m.quantiteSortie), backgroundColor: 'rgba(220,38,38,0.7)', borderColor: '#dc2626', borderRadius: 6 },
   ],
 }))
 const mouvementsJourOpts: any = { ...cb, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
 
-const COULEURS = ['#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const COULEURS = computed(() => [couleurPrimaireHex.value, '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d'])
 
 /** Répartition de la consommation entre provisions. */
 const repartitionConsoData = computed(() => {
@@ -131,8 +154,8 @@ const repartitionConsoData = computed(() => {
     labels: items.map(p => p.libelle),
     datasets: [{
       data: items.map(p => p.quantiteConsommee),
-      backgroundColor: items.map((_, i) => COULEURS[i % COULEURS.length] + 'cc'),
-      borderColor: items.map((_, i) => COULEURS[i % COULEURS.length]),
+      backgroundColor: items.map((_, i) => hexToRgba(COULEURS.value[i % COULEURS.value.length], 0.8)),
+      borderColor: items.map((_, i) => COULEURS.value[i % COULEURS.value.length]),
       borderWidth: 2,
       hoverOffset: 8,
     }],
@@ -140,15 +163,43 @@ const repartitionConsoData = computed(() => {
 })
 const repartitionOpts: any = { ...cb, plugins: { ...cb.plugins, legend: { ...cb.plugins.legend, position: 'bottom' } }, cutout: '55%' }
 
+/** Ramène un montant USD vers la préférence d'affichage du module — mêmes règles que parametres.fmtMontant, mais un nombre pour le graphique. */
+function versDeviseAffichage(montantUSD: number): number {
+  return parametres.devise === 'CDF' && parametres.tauxChange > 0 ? montantUSD * parametres.tauxChange : montantUSD
+}
+
 /** Valeur du stock par provision. */
 const stockData = computed(() => {
   const items = (tb.value?.parProvision || []).filter(p => p.valeurStock > 0)
   return {
     labels: items.map(p => p.libelle),
-    datasets: [{ label: 'Valeur en stock', data: items.map(p => p.valeurStock), backgroundColor: 'rgba(126,34,206,0.65)', borderColor: '#7e22ce', borderRadius: 6 }],
+    datasets: [{
+      // Réactif à la préférence du module : ce graphique n'affichait
+      // jusqu'ici aucune devise du tout, alors que les valeurs tracées (et
+      // les KPI juste au-dessus) sont converties en FC dès que la
+      // préférence l'est.
+      label: `Valeur en stock (${parametres.devise === 'CDF' ? 'FC' : 'USD'})`,
+      data: items.map(p => versDeviseAffichage(p.valeurStock)),
+      backgroundColor: 'rgba(126,34,206,0.65)', borderColor: '#7e22ce', borderRadius: 6,
+    }],
   }
 })
-const stockOpts: any = { ...cb, indexAxis: 'y' as const, scales: { x: { beginAtZero: true } } }
+const stockOpts: any = {
+  ...cb,
+  indexAxis: 'y' as const,
+  scales: { x: { beginAtZero: true } },
+  plugins: {
+    ...cb.plugins,
+    tooltip: {
+      ...cb.plugins.tooltip,
+      // ctx.parsed.x (barres horizontales) est deja dans la devise
+      // d'affichage (voir versDeviseAffichage ci-dessus).
+      callbacks: {
+        label: (ctx: any) => parametres.fmtDans(ctx.parsed.x, parametres.devise),
+      },
+    },
+  },
+}
 </script>
 
 <template>
@@ -269,7 +320,7 @@ const stockOpts: any = { ...cb, indexAxis: 'y' as const, scales: { x: { beginAtZ
         </v-data-table>
       </v-card>
 
-      <div class="rdb-ia">
+      <div v-if="peutAnalyser" class="rdb-ia">
         <v-btn
           variant="tonal"
           color="deep-purple"
@@ -316,44 +367,49 @@ const stockOpts: any = { ...cb, indexAxis: 'y' as const, scales: { x: { beginAtZ
 .rdb-page { max-width: 1280px; margin: 0 auto; padding-bottom: 48px; }
 
 .rdb-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-.rdb-kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: #f9fafb; }
-.rdb-kpi--stock  { background: linear-gradient(135deg,#faf5ff,#f3e8ff); color: #7e22ce; }
-.rdb-kpi--achats { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
-.rdb-kpi--conso  { background: linear-gradient(135deg,#fff7ed,#ffedd5); color: #c2410c; }
-.rdb-kpi--nb     { background: linear-gradient(135deg,#eff6ff,#dbeafe); color: #1d4ed8; }
-.rdb-kpi--alerte { background: linear-gradient(135deg,#fef2f2,#fee2e2); color: #b91c1c; }
-.rdb-kpi--ok     { background: linear-gradient(135deg,#f0fdf4,#dcfce7); color: #15803d; }
+.rdb-kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); }
+.rdb-kpi--stock  { background: linear-gradient(135deg, color-mix(in srgb, #faf5ff 62%, transparent), color-mix(in srgb, #f3e8ff 55%, transparent)); color: #7e22ce; }
+.rdb-kpi--achats { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
+.rdb-kpi--conso  { background: linear-gradient(135deg, color-mix(in srgb, #fff7ed 62%, transparent), color-mix(in srgb, #ffedd5 55%, transparent)); color: #c2410c; }
+.rdb-kpi--nb     { background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 62%, transparent), color-mix(in srgb, #dbeafe 55%, transparent)); color: #1d4ed8; }
+.rdb-kpi--alerte { background: linear-gradient(135deg, color-mix(in srgb, #fef2f2 62%, transparent), color-mix(in srgb, #fee2e2 55%, transparent)); color: #b91c1c; }
+/* Thème nuit : les cartes pastel deviennent un fond sombre légèrement teinté, texte adouci (17/11). */
+:global(html[data-theme='dark'] .rdb-kpi--stock) { background: color-mix(in srgb, #c7a3ee 10%, var(--surface)); color: #c7a3ee; box-shadow: inset 0 0 0 1px color-mix(in srgb, #c7a3ee 22%, transparent); }
+:global(html[data-theme='dark'] .rdb-kpi--conso) { background: color-mix(in srgb, #f0a77a 10%, var(--surface)); color: #f0a77a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f0a77a 22%, transparent); }
+:global(html[data-theme='dark'] .rdb-kpi--nb) { background: color-mix(in srgb, #8fb4f5 10%, var(--surface)); color: #8fb4f5; box-shadow: inset 0 0 0 1px color-mix(in srgb, #8fb4f5 22%, transparent); }
+:global(html[data-theme='dark'] .rdb-kpi--alerte) { background: color-mix(in srgb, #f19a9a 10%, var(--surface)); color: #f19a9a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #f19a9a 22%, transparent); }
+.rdb-kpi--ok     { background: linear-gradient(135deg,var(--color-primary-lighter),var(--color-primary-light)); color: var(--color-primary-dark); }
 .rdb-kpi__val { display: block; font-size: 1.05rem; font-weight: 800; letter-spacing: -0.4px; }
 .rdb-kpi__lbl { display: block; font-size: 0.72rem; font-weight: 500; opacity: 0.8; }
 
 .rdb-charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-.rdb-chart { background: #fff; border: 1px solid #f0f0f0; border-radius: 16px; padding: 16px 18px 20px; }
+.rdb-chart { background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; padding: 16px 18px 20px; }
 .rdb-chart--wide { grid-column: 1 / -1; }
-.rdb-chart__title { font-size: 0.8rem; font-weight: 700; color: #374151; margin: 0 0 12px; display: flex; align-items: center; }
+.rdb-chart__title { font-size: 0.8rem; font-weight: 700; color: var(--ink-2); margin: 0 0 12px; display: flex; align-items: center; }
 .rdb-chart__body { height: 260px; position: relative; }
-.rdb-chart__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.82rem; }
+.rdb-chart__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ink-faint); font-size: 0.82rem; }
 
 @media (max-width: 900px) { .rdb-charts { grid-template-columns: 1fr; } }
 
 .rdb-card-head {
   display: flex; align-items: center; font-size: 0.8rem; font-weight: 700;
-  letter-spacing: 0.3px; text-transform: uppercase; color: #6b7280; padding: 16px 20px 12px;
+  letter-spacing: 0.3px; text-transform: uppercase; color: var(--ink-soft); padding: 16px 20px 12px;
 }
 
 .rdb-ia__card {
-  background: #fff; border: 1px solid #ede9fe; border-left: 3px solid #7c3aed;
+  background: var(--surface); border: 1px solid #ede9fe; border-left: 3px solid #7c3aed;
   border-radius: 16px; padding: 20px 22px; margin-top: 16px; box-shadow: 0 2px 10px rgba(124, 58, 237, 0.06);
 }
 .rdb-ia__head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: #7c3aed; }
-.rdb-ia__title { font-size: 0.95rem; font-weight: 700; color: #111827; }
-.rdb-ia__synthese { font-size: 0.875rem; color: #374151; line-height: 1.6; margin: 0 0 18px; }
+.rdb-ia__title { font-size: 0.95rem; font-weight: 700; color: var(--ink); }
+.rdb-ia__synthese { font-size: 0.875rem; color: var(--ink-2); line-height: 1.6; margin: 0 0 18px; }
 .rdb-ia__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
 .rdb-ia__col-title { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 8px; }
-.rdb-ia__col-title--forts { color: #16a34a; }
+.rdb-ia__col-title--forts { color: var(--color-primary); }
 .rdb-ia__col-title--attention { color: #d97706; }
 .rdb-ia__col-title--reco { color: #7c3aed; }
 .rdb-ia__col ul, .rdb-ia__reco ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
-.rdb-ia__col li, .rdb-ia__reco li { font-size: 0.8125rem; color: #374151; line-height: 1.5; }
+.rdb-ia__col li, .rdb-ia__reco li { font-size: 0.8125rem; color: var(--ink-2); line-height: 1.5; }
 .rdb-ia__reco { padding-top: 14px; border-top: 1px dashed #ede9fe; }
 
 @media (max-width: 640px) { .rdb-ia__grid { grid-template-columns: 1fr; } }

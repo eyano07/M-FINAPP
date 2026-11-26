@@ -20,6 +20,9 @@ import java.util.List;
  *                        reglement BANQUE ou MOBILE_MONEY
  * @param entrepotId      entrepot de sortie, requis des qu'une ligne porte
  *                        une marchandise
+ * @param tableId         table du restaurant a laquelle rattacher cette
+ *                        vente, facultatif (la grande majorite des ventes
+ *                        n'en ont pas)
  */
 public record VenteRequest(
 
@@ -38,6 +41,8 @@ public record VenteRequest(
     Long etablissementId,
 
     Long entrepotId,
+
+    Long tableId,
 
     @NotEmpty(message = "Une vente doit comporter au moins une ligne")
     @Valid

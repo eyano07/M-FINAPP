@@ -3,27 +3,35 @@ package com.mbsc.finapp.controller;
 import com.mbsc.finapp.dto.admin.CompteDetailResponse;
 import com.mbsc.finapp.dto.admin.CompteRequest;
 import com.mbsc.finapp.dto.admin.CompteResponse;
+import com.mbsc.finapp.dto.admin.CompteUpdateRequest;
 import com.mbsc.finapp.dto.admin.ImportJournalResponse;
 import com.mbsc.finapp.dto.admin.TauxChangeRequest;
 import com.mbsc.finapp.dto.admin.TauxChangeResponse;
+import com.mbsc.finapp.dto.admin.AssujettissementTvaRequest;
 import com.mbsc.finapp.dto.admin.TauxTvaRequest;
 import com.mbsc.finapp.dto.admin.TauxTvaResponse;
 import com.mbsc.finapp.dto.admin.UserCreateRequest;
 import com.mbsc.finapp.dto.admin.UserResponse;
 import com.mbsc.finapp.dto.admin.UserUpdateRequest;
+import com.mbsc.finapp.dto.parametrage.InformationsLiasse;
 import com.mbsc.finapp.dto.parametrage.ModuleActifRequest;
 import com.mbsc.finapp.dto.parametrage.ModuleConfigResponse;
+import com.mbsc.finapp.dto.parametrage.ModuleImpactResponse;
 import com.mbsc.finapp.dto.parametrage.NiveauPermissionRequest;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseRequest;
 import com.mbsc.finapp.dto.parametrage.ParametresEntrepriseResponse;
+import com.mbsc.finapp.dto.parametrage.RoleLibelleRequest;
 import com.mbsc.finapp.dto.parametrage.RolePermissionResponse;
 import com.mbsc.finapp.domain.enums.ModuleMetier;
 import com.mbsc.finapp.domain.enums.RoleType;
 import com.mbsc.finapp.service.AdminService;
+import com.mbsc.finapp.service.instance.ActionsDistantesService;
+import com.mbsc.finapp.service.instance.InstanceService;
 import com.mbsc.finapp.service.ModuleConfigService;
 import com.mbsc.finapp.service.ParametresEntrepriseService;
 import com.mbsc.finapp.service.ImportJournalService;
 import com.mbsc.finapp.service.PermissionService;
+import com.mbsc.finapp.service.RoleLibelleService;
 import com.mbsc.finapp.service.TauxTvaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -48,10 +56,14 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminService service;
+    /** Copie en ligne d'un serveur local (V133) : l'activation d'un compte y est immediate puis relayee. */
+    private final InstanceService instance;
+    private final ActionsDistantesService relais;
     private final TauxTvaService tauxTvaService;
     private final ParametresEntrepriseService parametresService;
     private final ModuleConfigService moduleConfigService;
     private final PermissionService permissionService;
+    private final RoleLibelleService roleLibelleService;
     private final ImportJournalService importJournalService;
 
     /** Plan comptable OHADA (referentiel partage). */
@@ -71,6 +83,12 @@ public class AdminController {
     @ResponseStatus(HttpStatus.CREATED)
     public CompteResponse ajouterCompte(@Valid @RequestBody CompteRequest req) {
         return service.ajouterCompte(req);
+    }
+
+    /** Renomme un compte manuel (ADMIN, DFIN). */
+    @PutMapping("/comptes/{id}")
+    public CompteResponse modifierCompte(@PathVariable Long id, @Valid @RequestBody CompteUpdateRequest req) {
+        return service.modifierCompte(id, req);
     }
 
     /** Supprime un compte manuel (ADMIN). */
@@ -108,7 +126,8 @@ public class AdminController {
     /** Active ou désactive un utilisateur (ADMIN). */
     @PatchMapping("/admin/users/{id}/actif")
     public UserResponse toggleActif(@PathVariable Long id) {
-        return service.toggleActif(id);
+        // Copie en ligne : effet immediat ici (connexion bloquee), puis applique par le serveur local.
+        return instance.estMiroir() ? relais.enregistrerActivation(id) : service.toggleActif(id);
     }
 
     /** Taux de change actuel + historique (tout utilisateur authentifie). */
@@ -137,6 +156,12 @@ public class AdminController {
         return tauxTvaService.enregistrer(req);
     }
 
+    /** Régime de TVA de l'entreprise : assujettie ou non (ADMIN). */
+    @PutMapping("/admin/taux-tva/assujettissement")
+    public TauxTvaResponse definirAssujettissementTva(@Valid @RequestBody AssujettissementTvaRequest req) {
+        return tauxTvaService.definirAssujettissement(req.assujetti());
+    }
+
     // ---------------------------------------------------------------------
     // Identite de l'entreprise (nom, slogan, logo)
     // ---------------------------------------------------------------------
@@ -151,6 +176,18 @@ public class AdminController {
     @PutMapping("/parametres")
     public ParametresEntrepriseResponse modifierParametres(@Valid @RequestBody ParametresEntrepriseRequest req) {
         return parametresService.mettreAJour(req);
+    }
+
+    /** Renseignements de la liasse OHADA : page de garde, fiches R1 à R3 (ADMIN). */
+    @GetMapping("/parametres/liasse")
+    public InformationsLiasse liasse() {
+        return parametresService.obtenirLiasse();
+    }
+
+    /** Enregistre les renseignements de la liasse OHADA, tous facultatifs (ADMIN). */
+    @PutMapping("/parametres/liasse")
+    public InformationsLiasse modifierLiasse(@Valid @RequestBody InformationsLiasse infos) {
+        return parametresService.mettreAJourLiasse(infos);
     }
 
     /** Remplace le logo (ADMIN). */
@@ -169,9 +206,14 @@ public class AdminController {
         MediaType type = telechargement.typeMime() != null
             ? MediaType.parseMediaType(telechargement.typeMime())
             : MediaType.APPLICATION_OCTET_STREAM;
+        // Le logo est public et servi sur le domaine de l'application : même si un
+        // ancien logo SVG était resté en base, ces en-têtes empêchent tout script
+        // qu'il contiendrait de s'exécuter (audit sécurité du 05/10/2026, S-08).
         return ResponseEntity.ok()
             .contentType(type)
             .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000, immutable")
+            .header("X-Content-Type-Options", "nosniff")
+            .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
             .body(telechargement.ressource());
     }
 
@@ -191,6 +233,15 @@ public class AdminController {
         return moduleConfigService.definir(module, req.actif());
     }
 
+    /**
+     * Apercu d'une bascule de module (ADMIN) : roles qui disparaitraient et comptes qui seraient desactives.
+     * Lecture seule — l'ecran l'affiche avant de demander confirmation.
+     */
+    @GetMapping("/admin/modules/{module}/impact")
+    public ModuleImpactResponse impactModule(@PathVariable ModuleMetier module, @RequestParam(defaultValue = "false") boolean actif) {
+        return moduleConfigService.impact(module, actif);
+    }
+
     // ---------------------------------------------------------------------
     // Grille de permissions role x module (ADMIN)
     // ---------------------------------------------------------------------
@@ -207,6 +258,28 @@ public class AdminController {
             @PathVariable RoleType role, @PathVariable ModuleMetier module,
             @Valid @RequestBody NiveauPermissionRequest req) {
         return permissionService.definir(role, module, req.niveau());
+    }
+
+    /** Libelles d'affichage des roles (tout utilisateur authentifie : en-tete, listes, menus). */
+    @GetMapping("/roles/libelles")
+    public Map<RoleType, String> libellesRoles() {
+        return roleLibelleService.lister();
+    }
+
+    /**
+     * Roles qu'on peut attribuer aujourd'hui (ADMIN) : ceux dont le module n'est pas desactive. Un role lie a un
+     * module desactive disparait de la gestion des utilisateurs jusqu'a la reactivation du module.
+     */
+    @GetMapping("/admin/roles/disponibles")
+    public List<RoleType> rolesDisponibles() {
+        return service.rolesDisponibles();
+    }
+
+    /** Renomme l'affichage d'un role, sans toucher a ses droits (ADMIN). Libelle vide = defaut. */
+    @PutMapping("/admin/roles/{role}/libelle")
+    public Map<RoleType, String> definirLibelleRole(
+            @PathVariable RoleType role, @Valid @RequestBody RoleLibelleRequest req) {
+        return roleLibelleService.definir(role, req.libelle());
     }
 
     /** Permissions effectives de l'utilisateur courant, par module (navigation, garde de page cote frontend). */
@@ -235,7 +308,9 @@ public class AdminController {
             ImportJournalService.ModeRegroupement regroupement,
         @RequestParam(name = "devise", defaultValue = "CDF")
             com.mbsc.finapp.domain.enums.Devise devise,
-        @RequestParam(name = "modeImport", defaultValue = "REMPLACER")
+        // Sans choix explicite, on AJOUTE : effacer des ecritures doit toujours etre demande. Le defaut etait
+        // REMPLACER alors que l'ecran n'envoyait pas ce parametre : choisir « Ajouter » effacait quand meme tout.
+        @RequestParam(name = "modeImport", defaultValue = "AJOUTER")
             ImportJournalService.ModeImport modeImport
     ) {
         return importJournalService.importer(fichier, simulation,

@@ -6,17 +6,18 @@ import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.User;
 import com.mbsc.finapp.domain.Vente;
 import com.mbsc.finapp.domain.enums.JournalComptable;
+import com.mbsc.finapp.domain.enums.TypeCompte;
 import com.mbsc.finapp.dto.comptabilite.ClotureExerciceResponse;
+import com.mbsc.finapp.dto.comptabilite.ControleClotureResponse;
+import com.mbsc.finapp.exception.TransitionInvalideException;
 import com.mbsc.finapp.repository.CompteOHADARepository;
 import com.mbsc.finapp.repository.EcritureGrandLivreRepository;
 import com.mbsc.finapp.repository.PieceComptableRepository;
 import com.mbsc.finapp.repository.VenteRepository;
-import com.mbsc.finapp.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -47,7 +48,8 @@ import java.util.List;
  *       en 478/479 (le seul cas, dans cette application, où un solde de
  *       tiers reste exposé au change après son enregistrement — voir
  *       {@link VenteRepository#creancesOuvertes()}) ;</li>
- *   <li>solde l'intégralité des comptes de classes 6 et 7 vers le compte 131
+ *   <li>solde l'intégralité des comptes de gestion — classes 6, 7 et 8
+ *       (H.A.O.), voir {@link #CLASSES_DE_GESTION} — vers le compte 131
  *       (bénéfice) ou 139 (perte) ;</li>
  *   <li>verrouille la date via {@link PeriodeComptableService}.</li>
  * </ol>
@@ -63,6 +65,19 @@ public class ClotureAnnuelleService {
 
     private static final String COMPTE_RESULTAT_BENEFICE = "131";
     private static final String COMPTE_RESULTAT_PERTE = "139";
+    /**
+     * Classes soldees a la cloture. La classe 8 (Hors Activites Ordinaires)
+     * en fait partie au meme titre que les classes 6 et 7 : le SYSCOHADA
+     * revise l'integre au resultat net de l'exercice.
+     *
+     * <p>Son omission etait un defaut reel : {@code PatrimoineService.sortir}
+     * impute toute cession/mise au rebut d'immobilisation en 812 (VNC) et 822
+     * (produit de cession), et {@code EtatsFinanciersExcelService} compte deja
+     * la classe 8 dans le resultat. Sans elle ici, le resultat porte en 131/139
+     * differait de celui des etats financiers, et les soldes H.A.O. se
+     * reportaient indefiniment d'un exercice sur l'autre.</p>
+     */
+    private static final java.util.Set<Integer> CLASSES_DE_GESTION = java.util.Set.of(6, 7, 8);
     /** "Diminution des créances" (perte latente) / "Augmentation des créances" (gain latent). */
     private static final String COMPTE_ECART_CONVERSION_ACTIF = "4781";
     private static final String COMPTE_ECART_CONVERSION_PASSIF = "4791";
@@ -74,39 +89,42 @@ public class ClotureAnnuelleService {
     private final VenteRepository venteRepository;
     private final CompteOHADARepository compteRepository;
     private final ConversionDeviseService conversionDevise;
-    private final CurrentUserProvider currentUser;
+    private final ControlesClotureService controlesCloture;
+    private final ReevaluationDevisesService reevaluationDevises;
+    private final ArchiveClotureService archives;
 
-    @PreAuthorize("hasRole('ADMIN')")
+    /**
+     * Exécute la clôture approuvée (appelé par {@link ClotureGouvernanceService} quand le DA ou le DG approuve la
+     * demande du DFIN, jamais directement par un écran). Les contrôles préalables sont refaits ici : entre la demande
+     * et l'approbation, un brouillon a pu être saisi.
+     */
     @Transactional
-    public ClotureExerciceResponse cloturerExercice(LocalDate dateCloture) {
-        LocalDate precedente = periodeService.dateCloture();
-        if (precedente != null && !dateCloture.isAfter(precedente)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "La date de clôture (" + dateCloture + ") doit être postérieure à la précédente ("
-                + precedente + ").");
+    public ClotureExerciceResponse executer(LocalDate dateCloture, String motif, User auteur) {
+        List<ControleClotureResponse> controles = controlesCloture.controler(dateCloture);
+        if (!ControlesClotureService.clotureAutorisee(controles)) {
+            throw new TransitionInvalideException("Clôture de l'exercice impossible : "
+                + ControlesClotureService.motifsDeRefus(controles));
         }
-        LocalDate limite = LocalDate.now().plusDays(1);
-        if (dateCloture.isAfter(limite)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "La date de clôture ne peut pas être postérieure à aujourd'hui.");
-        }
-
-        User auteur = currentUser.requireUser();
 
         int reversees = reverserReevaluationsOuvertes(auteur);
         ReevaluationResultat reevaluation = reevaluerCreancesDevise(dateCloture, auteur);
-        BigDecimal resultatNet = solderComptesDeGestion(dateCloture, auteur);
-        periodeService.definirDateCloture(dateCloture);
+        ReevaluationDevisesService.Resultat generale = reevaluationDevises.reevaluer(dateCloture, auteur);
+        Soldage soldage = solderComptesDeGestion(dateCloture, auteur);
+        PieceComptable pieceCloture = soldage.piece();
+        BigDecimal resultatNet = soldage.resultatNet();
+        periodeService.cloturerDefinitivement(dateCloture, motif, auteur);
+        archives.archiver(dateCloture, auteur);
 
-        log.info("Exercice clôturé [date={}, resultatNet={} {}, creances reevaluees={}, reevaluations reversees={}]",
-            dateCloture, resultatNet, ConversionDeviseService.DEVISE_BASE, reevaluation.nbCreances(), reversees);
+        log.info("Exercice clôturé [date={}, resultatNet={} {}, creances reevaluees={}, soldes reevalues={}, "
+            + "reevaluations reversees={}]", dateCloture, resultatNet, ConversionDeviseService.DEVISE_BASE,
+            reevaluation.nbCreances(), generale.soldes(), reversees);
 
         return new ClotureExerciceResponse(
             dateCloture, resultatNet,
-            null, // renseigne par l'appelant si besoin (piece de cloture non retournee individuellement ici)
+            pieceCloture == null ? null : pieceCloture.getReference(),
             reevaluation.pieceReference(),
             reversees,
-            reevaluation.nbCreances());
+            reevaluation.nbCreances() + generale.soldes());
     }
 
     // ---------------------------------------------------------------------
@@ -170,7 +188,7 @@ public class ClotureAnnuelleService {
         // celles d'une vente encore en cours.
         for (Vente v : creances) {
             BigDecimal montantBooked = ecritureRepository.soldePourPieceEtCompte(
-                v.getPiece().getId(), VenteService.COMPTE_CLIENTS);
+                v.getPiece().getId(), VenteService.compteCreance(v));
             if (montantBooked == null || montantBooked.signum() == 0) {
                 continue;
             }
@@ -181,7 +199,7 @@ public class ClotureAnnuelleService {
                 continue;
             }
             String libelleLigne = libelle + " (" + v.getReference() + ")";
-            CompteOHADA client = compteParNumero(VenteService.COMPTE_CLIENTS);
+            CompteOHADA client = compteParNumero(VenteService.compteCreance(v));
             List<EcritureGrandLivre> lignes = new ArrayList<>();
             if (ecart.signum() > 0) {
                 // La creance vaut desormais plus cher en devise de base : gain latent.
@@ -215,7 +233,9 @@ public class ClotureAnnuelleService {
     // 3. Soldage des comptes de gestion (classes 6 et 7)
     // ---------------------------------------------------------------------
 
-    private BigDecimal solderComptesDeGestion(LocalDate dateCloture, User auteur) {
+    private record Soldage(PieceComptable piece, BigDecimal resultatNet) {}
+
+    private Soldage solderComptesDeGestion(LocalDate dateCloture, User auteur) {
         List<Object[]> cumul = ecritureRepository.cumulParCompte(dateCloture);
         List<EcritureGrandLivre> lignes = new ArrayList<>();
         BigDecimal totalCharges = BigDecimal.ZERO;
@@ -224,24 +244,31 @@ public class ClotureAnnuelleService {
 
         for (Object[] row : cumul) {
             String numero = (String) row[0];
+            TypeCompte type = (TypeCompte) row[2];
             Integer classe = (Integer) row[3];
             BigDecimal debit = nz((BigDecimal) row[4]);
             BigDecimal credit = nz((BigDecimal) row[5]);
-            if (classe == null) {
+            if (classe == null || !CLASSES_DE_GESTION.contains(classe) || type == null) {
                 continue;
             }
-            if (classe == 6) {
+            // Le sens se lit sur le TYPE du compte, pas sur sa classe : la
+            // classe 8 (H.A.O.) porte a la fois des charges (81x, 83x) et des
+            // produits (82x, 84x), contrairement aux classes 6 et 7 qui sont
+            // homogenes. Un solde nul (compte mouvemente puis contre-passe)
+            // n'a rien a solder.
+            if (type == TypeCompte.CHARGE) {
                 BigDecimal solde = debit.subtract(credit);
                 if (solde.signum() != 0) {
-                    CompteOHADA compte = compteParNumero(numero);
-                    lignes.add(ligne(compte, BigDecimal.ZERO, solde.abs(), libelle, dateCloture));
+                    // Contre-passation : un solde debiteur se solde au credit,
+                    // et l'inverse pour un solde crediteur (compte de charge
+                    // exceptionnellement crediteur apres extourne).
+                    lignes.add(ligneSolde(compteParNumero(numero), solde.negate(), libelle, dateCloture));
                     totalCharges = totalCharges.add(solde);
                 }
-            } else if (classe == 7) {
+            } else if (type == TypeCompte.PRODUIT) {
                 BigDecimal solde = credit.subtract(debit);
                 if (solde.signum() != 0) {
-                    CompteOHADA compte = compteParNumero(numero);
-                    lignes.add(ligne(compte, solde.abs(), BigDecimal.ZERO, libelle, dateCloture));
+                    lignes.add(ligneSolde(compteParNumero(numero), solde, libelle, dateCloture));
                     totalProduits = totalProduits.add(solde);
                 }
             }
@@ -250,7 +277,7 @@ public class ClotureAnnuelleService {
         BigDecimal resultatNet = totalProduits.subtract(totalCharges);
         if (lignes.isEmpty()) {
             log.info("Cloture de l'exercice au {} : aucun mouvement de gestion, aucune piece a passer", dateCloture);
-            return resultatNet;
+            return new Soldage(null, resultatNet);
         }
         if (resultatNet.signum() > 0) {
             lignes.add(ligne(compteParNumero(COMPTE_RESULTAT_BENEFICE), BigDecimal.ZERO, resultatNet, libelle, dateCloture));
@@ -258,8 +285,12 @@ public class ClotureAnnuelleService {
             lignes.add(ligne(compteParNumero(COMPTE_RESULTAT_PERTE), resultatNet.abs(), BigDecimal.ZERO, libelle, dateCloture));
         }
 
-        comptabilite.creerPieceInterne(JournalComptable.OPERATIONS_DIVERSES, libelle, dateCloture, lignes, auteur);
-        return resultatNet;
+        PieceComptable piece = comptabilite.creerPieceInterne(
+            JournalComptable.OPERATIONS_DIVERSES, libelle, dateCloture, lignes, auteur);
+        // Marqueur posé dans la transaction de création : la pièce n'est pas encore figée (V135).
+        piece.setClotureExercice(true);
+        pieceRepository.save(piece);
+        return new Soldage(piece, resultatNet);
     }
 
     // ---------------------------------------------------------------------
@@ -276,6 +307,20 @@ public class ClotureAnnuelleService {
                                      String libelle, LocalDate date) {
         return EcritureGrandLivre.builder()
             .compte(compte).debit(debit).credit(credit).libelle(libelle).dateEcriture(date).build();
+    }
+
+    /**
+     * Ligne dont le sens decoule du signe : montant positif au debit, negatif
+     * au credit. Evite d'avoir a distinguer a chaque appel le cas nominal
+     * (charge debitrice, produit crediteur) du cas inverse — un compte de
+     * gestion peut se retrouver dans le sens oppose apres une extourne, et il
+     * doit alors etre soldé dans l'autre sens.
+     */
+    private EcritureGrandLivre ligneSolde(CompteOHADA compte, BigDecimal montantSigne,
+                                          String libelle, LocalDate date) {
+        return montantSigne.signum() >= 0
+            ? ligne(compte, montantSigne, BigDecimal.ZERO, libelle, date)
+            : ligne(compte, BigDecimal.ZERO, montantSigne.abs(), libelle, date);
     }
 
     private static BigDecimal nz(BigDecimal v) {

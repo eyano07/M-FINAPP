@@ -26,8 +26,26 @@ public enum ModuleMetier {
     BANQUE,
     MOBILE_MONEY,
     COMPTABILITE,
+    /**
+     * Budgets prévisionnels et contrôle budgétaire des notes de frais, sous-module de COMPTABILITE.
+     * Désactivé, les dépenses ne sont plus rattachées ni contrôlées par rapport au budget.
+     */
+    BUDGET,
+    /** Rapprochement bancaire (relevés des banques et du mobile money), sous-module de COMPTABILITE. */
+    RAPPROCHEMENT,
     VENTES,
+    /**
+     * Facture normalisee DGI (e-MCF), sous-module de VENTES : interrupteur unique de la fonction. Desactive, les
+     * ventes validees ne sont plus transmises a la DGI (les avoirs des factures deja certifiees restent emis).
+     * Ne garde aucune URL : ses ecrans relevent des modules VENTES et de l'administration.
+     */
+    FACTURATION_NORMALISEE,
     LOGISTIQUE,
+    /**
+     * Mine (19/11/2026), sous-module de LOGISTIQUE : minerais suivis camion par camion (réception, charges, vente au
+     * prix du chargement, règlement des camions). Désactivé, ses pages et ses fonctions disparaissent du site.
+     */
+    MINE,
     TRANSPORT,
     /** Biens immobilises et consommables (registre, amortissements). */
     PATRIMOINE,
@@ -46,5 +64,27 @@ public enum ModuleMetier {
      * (bouteilles, bacs). Module plat, sans sous-module : l'administrateur
      * l'active ou le coupe d'un seul geste, comme {@link #PATRIMOINE}.
      */
-    RESTAURANT
+    RESTAURANT,
+    /**
+     * Hôtellerie (V152) : M-FINAPP Hôtellerie, application à part (PMS) reliée à celle-ci par une clé d'appairage. Le
+     * module ouvre la connexion unique et l'API {@code /pms/**} (folios, acomptes, cautions) ; coupé, le PMS est refusé.
+     */
+    HOTELLERIE;
+
+    /**
+     * Module parent dans la hierarchie (DRH et ses quatre sous-modules, COMPTABILITE avec BUDGET et RAPPROCHEMENT,
+     * VENTES avec FACTURATION_NORMALISEE), ou {@code null} pour un module autonome. C'est la meme hierarchie que la
+     * colonne {@code modules_config.parent_module} (V41, V104, V105, V113) — mais definie ici, dans le code : une
+     * ligne recree par une bascule, ou apres une purge de la table, n'avait plus son lien et le module restait actif
+     * quand son parent etait coupe. Voir {@link com.mbsc.finapp.service.EtatModules#parentDe}.
+     */
+    public ModuleMetier parent() {
+        return switch (this) {
+            case DRH_PERSONNEL, DRH_PRESENCES, DRH_PAIE, DRH_MISSIONS -> DRH;
+            case BUDGET, RAPPROCHEMENT -> COMPTABILITE;
+            case FACTURATION_NORMALISEE -> VENTES;
+            case MINE -> LOGISTIQUE;
+            default -> null;
+        };
+    }
 }

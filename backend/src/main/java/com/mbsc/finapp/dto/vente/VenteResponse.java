@@ -29,6 +29,8 @@ public record VenteResponse(
     String etablissementNom,
     Long entrepotId,
     String entrepotNom,
+    Long tableId,
+    String tableNumero,
     BigDecimal totalHt,
     BigDecimal totalTva,
     BigDecimal totalTtc,
@@ -41,7 +43,11 @@ public record VenteResponse(
     Instant createdAt,
     boolean reglee,
     LocalDate dateReglement,
-    List<LigneVenteResponse> lignes
+    List<LigneVenteResponse> lignes,
+    /** CAISSE ou HOTELLERIE (folio de séjour, V152). */
+    com.mbsc.finapp.domain.enums.OrigineVente origine,
+    /** Pièce du règlement d'une vente à crédit (null tant qu'elle n'est pas réglée). */
+    String pieceReglementReference
 ) {
     public static VenteResponse from(Vente v) {
         return from(v, true);
@@ -69,6 +75,8 @@ public record VenteResponse(
             v.getEtablissement() == null ? null : v.getEtablissement().getNom(),
             v.getEntrepot() == null ? null : v.getEntrepot().getId(),
             v.getEntrepot() == null ? null : v.getEntrepot().getNom(),
+            v.getTable() == null ? null : v.getTable().getId(),
+            v.getTable() == null ? null : v.getTable().getNumero(),
             v.getTotalHt(),
             v.getTotalTva(),
             v.getTotalTtc(),
@@ -81,7 +89,9 @@ public record VenteResponse(
             v.getCreatedAt(),
             v.estReglee(),
             v.getDateReglement(),
-            lignesDto
+            lignesDto,
+            v.getOrigine(),
+            v.getPieceReglement() == null ? null : v.getPieceReglement().getReference()
         );
     }
 }

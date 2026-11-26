@@ -50,6 +50,12 @@ public class Vente {
     @Column(name = "client_nom", length = 200)
     private String clientNom;
 
+    /** Caisse de M-FINAPP ou folio de l'application Hôtellerie (V152). */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private com.mbsc.finapp.domain.enums.OrigineVente origine = com.mbsc.finapp.domain.enums.OrigineVente.CAISSE;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
@@ -88,6 +94,18 @@ public class Vente {
     @ToString.Exclude
     private Entrepot entrepot;
 
+    /**
+     * Table du restaurant a laquelle cette vente est rattachee, ou null pour
+     * toute vente hors restaurant (la grande majorite). Plusieurs ventes non
+     * reglees peuvent coexister sur une meme table — chacune se regle
+     * individuellement via le circuit de creance habituel (voir
+     * VenteService.reglerCreance) ; il n'existe pas de "paiement groupe".
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "table_id")
+    @ToString.Exclude
+    private TableRestaurant table;
+
     @Column(name = "total_ht", nullable = false, precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal totalHt = BigDecimal.ZERO;
@@ -109,6 +127,16 @@ public class Vente {
     @JoinColumn(name = "piece_id")
     @ToString.Exclude
     private PieceComptable piece;
+
+    /**
+     * Piece du journal ANALYTIQUE qui reflete cette vente en classe 9 (chiffre d'affaires HT et cout des ventes par
+     * activite) — voir AnalytiqueVentesService. {@code null} tant qu'elle n'est pas refletee : la reprise faite au
+     * demarrage de l'application rattrape alors la vente.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "piece_analytique_id")
+    @ToString.Exclude
+    private PieceComptable pieceAnalytique;
 
     /** Mouvement de sortie de stock (cout des ventes), null pour une vente de services seuls. */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -168,6 +196,19 @@ public class Vente {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /**
+     * Verrou optimiste : un double-clic (ou deux requêtes concurrentes) sur
+     * le règlement de la même créance ne peuvent plus régler deux fois la
+     * même vente — sans lui, les deux lisaient {@code pieceReglement == null}
+     * avant que l'une ou l'autre n'ait sauvegardé, et généraient chacune leur
+     * propre pièce de règlement (caisse débitée deux fois pour une seule
+     * créance). Même principe que {@code StockNiveau.version}.
+     */
+    @Version
+    @Column(nullable = false)
+    @Builder.Default
+    private long version = 0L;
+
     @OneToMany(mappedBy = "vente", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("ordre ASC, id ASC")
     @Builder.Default
@@ -179,16 +220,23 @@ public class Vente {
         this.lignes.add(ligne);
     }
 
-    /** Libelle du client, quelle que soit la facon dont il a ete renseigne. */
+    /** Designation d'une vente sans client : un simple tiret (libelles, facture, recu, journal). */
+    public static final String CLIENT_NON_RENSEIGNE = "-";
+
+    /** Libelle du client, quelle que soit la facon dont il a ete renseigne ; « - » s'il ne l'a pas ete. */
     public String designationClient() {
         if (client != null) {
             return client.getNom();
         }
-        return clientNom == null || clientNom.isBlank() ? "Client comptoir" : clientNom;
+        return clientNom == null || clientNom.isBlank() ? CLIENT_NON_RENSEIGNE : clientNom.trim();
     }
 
-    /** true si la creance est soldee (ou si la vente n'en genere pas). */
+    /**
+     * true si la vente est encaissee : validee, et sa creance soldee (ou aucune creance a regler, pour un
+     * reglement comptant). Un brouillon n'est jamais regle : rien n'est comptabilise, le client n'a pas paye.
+     */
     public boolean estReglee() {
-        return modeReglement != ModeReglement.CREDIT || pieceReglement != null;
+        return statut != StatutVente.BROUILLON
+            && (modeReglement != ModeReglement.CREDIT || pieceReglement != null);
     }
 }

@@ -3,7 +3,6 @@ package com.mbsc.finapp.repository;
 import com.mbsc.finapp.domain.PieceComptable;
 import com.mbsc.finapp.domain.enums.JournalComptable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -24,9 +23,45 @@ public interface PieceComptableRepository extends JpaRepository<PieceComptable, 
     @Query("""
         select p from PieceComptable p
         left join fetch p.createdBy
+        left join fetch p.comptabiliseePar
         order by p.datePiece desc, p.id desc
     """)
     List<PieceComptable> findAllWithCreatedByOrderByDatePieceDesc();
+
+    /**
+     * Pieces que l'ecran Comptabilite ne peut pas extourner seules — voir
+     * ComptabiliteService.annuler : celles d'un mouvement de stock (stock,
+     * achat d'une reception, ecart d'annulation), d'une vente (vente,
+     * reglement, reevaluation, reflet analytique) ou d'une operation de tresorerie. Une seule
+     * requete pour toute la liste des pieces, plutot qu'une verification par
+     * piece.
+     */
+    @Query(value = """
+        select piece_id from mouvements_stock where piece_id is not null
+        union select piece_achat_id from mouvements_stock where piece_achat_id is not null
+        union select piece_ecart_annulation_id from mouvements_stock where piece_ecart_annulation_id is not null
+        union select piece_id from ventes where piece_id is not null
+        union select piece_reglement_id from ventes where piece_reglement_id is not null
+        union select piece_reevaluation_id from ventes where piece_reevaluation_id is not null
+        union select piece_analytique_id from ventes where piece_analytique_id is not null
+        union select piece_id from grand_livre
+              where piece_id is not null
+                and (transaction_id is not null or transaction_bancaire_id is not null
+                     or transaction_mobile_money_id is not null)
+    """, nativeQuery = true)
+    List<Long> idsPiecesLieesAUneOperation();
+
+    /**
+     * Pieces qui mouvementent au moins un compte de tresorerie (classe 5) :
+     * l'ecran Pieces comptables ne peut ni les comptabiliser ni les
+     * extourner — voir ComptabiliteService.exigerHorsTresorerie.
+     */
+    @Query(value = """
+        select distinct e.piece_id from grand_livre e
+        join comptes_ohada c on c.id = e.compte_id
+        where e.piece_id is not null and c.numero like '5%'
+    """, nativeQuery = true)
+    List<Long> idsPiecesTresorerie();
 
     /**
      * Livre-journal : pièces comptabilisées et annulées d'une période, avec
@@ -110,11 +145,29 @@ public interface PieceComptableRepository extends JpaRepository<PieceComptable, 
                                     @Param("totalDebit") java.math.BigDecimal totalDebit,
                                     @Param("depuis") java.time.Instant depuis);
 
-    /** Efface les pieces devenues vides apres suppression de leurs ecritures. */
-    @Modifying
-    @Query("""
-        delete from PieceComptable p
-        where not exists (select 1 from EcritureGrandLivre e where e.piece = p)
-        """)
-    int supprimerPiecesSansEcriture();
+    /** Pièces annulées qui ont déjà une restauration en cours ou comptabilisée. */
+    @Query("select distinct p.pieceRestauree.id from PieceComptable p where p.pieceRestauree is not null "
+        + "and p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.ANNULEE")
+    List<Long> idsPiecesRestaurees();
+
+    @Query("select count(p) > 0 from PieceComptable p where p.pieceRestauree.id = :id "
+        + "and p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.ANNULEE")
+    boolean existsRestaurationActive(@org.springframework.data.repository.query.Param("id") Long id);
+
+    /**
+     * Pièces d'origine dont l'extourne est encore comptabilisée : leur annulation est toujours en vigueur, donc
+     * elles se restaurent. Si l'extourne a elle-même été annulée (extourne d'extourne), la comptabilisation est déjà
+     * rétablie : restaurer la pièce l'écrirait une seconde fois.
+     */
+    @Query("select distinct p.pieceOrigine.id from PieceComptable p where p.pieceOrigine is not null "
+        + "and p.statut = com.mbsc.finapp.domain.enums.StatutPiece.COMPTABILISEE")
+    List<Long> idsPiecesAvecExtourneEnVigueur();
+
+    @Query("select count(p) > 0 from PieceComptable p where p.pieceOrigine.id = :id "
+        + "and p.statut = com.mbsc.finapp.domain.enums.StatutPiece.COMPTABILISEE")
+    boolean existsExtourneEnVigueur(@org.springframework.data.repository.query.Param("id") Long id);
+
+    /** L'extourne la plus recente d'une piece, dans le statut donne : son auteur est celui qui a annule la piece. */
+    Optional<PieceComptable> findFirstByPieceOrigine_IdAndStatutOrderByIdDesc(
+        Long pieceOrigineId, com.mbsc.finapp.domain.enums.StatutPiece statut);
 }

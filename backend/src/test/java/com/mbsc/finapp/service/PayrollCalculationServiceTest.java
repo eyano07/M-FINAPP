@@ -10,13 +10,18 @@ import java.math.BigDecimal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Rejoue les 8 cas de l'ancien {@code PayrollServiceTest} (PayMBSC) comme
+ * Mise en conformité du 16/11/2026 (législation congolaise) : base cotisable et base IPR = appointements H + gains
+ * imposables ; CNSS patronale par branche (5 % + 6,5 % + 1,5 %) ; INPP selon l'effectif ; conjoint compté ; CNSS
+ * salariale déduite de la base IPR (paramètre vrai par défaut). Les attendus des cas du classeur DEBOURS MBSC
+ * ci-dessous sont recalculés à la main en conséquence.
+ *
+ * <p>Rejoue les 8 cas de l'ancien {@code PayrollServiceTest} (PayMBSC) comme
  * jeu de régression, avec les valeurs IPR recalculées pour la formule
  * complète du classeur DEBOURS MBSC 2026 (plafond 30 %, plancher 2 000 FC,
  * réduction 2 %/enfant) actée pour ce module — les résultats IPR diffèrent
  * donc délibérément de l'ancien outil, qui n'appliquait aucun de ces trois
  * mécanismes. Chaque valeur attendue est recalculée à la main dans les
- * commentaires pour rester vérifiable indépendamment du code testé.
+ * commentaires pour rester vérifiable indépendamment du code testé.</p>
  */
 class PayrollCalculationServiceTest {
 
@@ -29,8 +34,15 @@ class PayrollCalculationServiceTest {
             .tauxTransport(new BigDecimal("0.10"))
             .tauxCnssOuvriere(new BigDecimal("0.05"))
             .tauxCnssPatronale(new BigDecimal("0.13"))
+            .tauxCnssPensionPatronale(new BigDecimal("0.05"))
+            .tauxCnssPf(new BigDecimal("0.065"))
+            .tauxCnssRp(new BigDecimal("0.015"))
             .tauxOnem(new BigDecimal("0.005"))
             .tauxInpp(new BigDecimal("0.03"))
+            .tauxInpp51A300(new BigDecimal("0.02"))
+            .tauxInppPlus300(new BigDecimal("0.01"))
+            .cnssDeductibleIpr(true)
+            .conjointACharge(true)
             .reductionIprParEnfant(new BigDecimal("0.02"))
             .plafondEnfantsIpr(9)
             .plancherIprFc(new BigDecimal("2000"))
@@ -140,11 +152,11 @@ class PayrollCalculationServiceTest {
 
     @Test
     void net_avec_prime_avance_et_pret() {
-        // R=1000 -> I=300, J=100, H=600. gains=primeRendement=50. Q=650.
-        // cnssOuvriere = 600*0.05 = 30 ; ipr(H=600, enfants=0) = 82.80 (voir calcul ci-dessous)
-        //   baseFc=600*2700=1620000 -> bracketRaw=4860+(1620000-162000)*0.15=223560 (plafond 486000, non atteint)
-        //   0 enfant -> ipr = 223560/2700 = 82.80
-        // net = 1000 - 30 - 82.80 + 50 - 80 - 20 = 837.20
+        // R=1000 -> I=300, J=100, H=600. gains imposables = primeRendement = 50. Base cotisable = 650.
+        // cnssOuvriere = 650*0.05 = 32.50 ; base IPR = 650 - 32.50 = 617.50 (CNSS salariale deductible)
+        //   baseFc = 617.50*2700 = 1667250 -> bracketRaw = 4860+(1667250-162000)*0.15 = 4860+225787.50 = 230647.50
+        //   plafond 500175 (non atteint) ; 0 personne a charge -> ipr = 230647.50/2700 = 85.425 -> 85.43
+        // net = 1000 - 32.50 - 85.43 + 50 - 80 - 20 = 832.07  (classeur historique : 837.20)
         EntreesCalculPaie entrees = new EntreesCalculPaie(
             new BigDecimal("1000"), new BigDecimal("100"),
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -154,29 +166,31 @@ class PayrollCalculationServiceTest {
         assertThat(r.salaireBrut()).isEqualByComparingTo("1000.00");
         assertThat(r.indemniteLogement()).isEqualByComparingTo("300.00");
         assertThat(r.indemniteTransport()).isEqualByComparingTo("100.00");
-        assertThat(r.baseImposableInss()).isEqualByComparingTo("600.00");
-        assertThat(r.cnssOuvriere()).isEqualByComparingTo("30.00");
-        assertThat(r.ipr()).isEqualByComparingTo("82.80");
-        assertThat(r.salaireNet()).isEqualByComparingTo("837.20");
+        assertThat(r.appointements()).isEqualByComparingTo("600.00");
+        assertThat(r.baseImposableInss()).isEqualByComparingTo("650.00");
+        assertThat(r.cnssOuvriere()).isEqualByComparingTo("32.50");
+        assertThat(r.baseImposableIpr()).isEqualByComparingTo("617.50");
+        assertThat(r.ipr()).isEqualByComparingTo("85.43");
+        assertThat(r.salaireNet()).isEqualByComparingTo("832.07");
     }
 
     @Test
     void net_sans_prime_ni_retenue_seules_cnss_et_ipr_deduites() {
-        // R=500 -> I=150, J=50, H=300. gains=0. Q=300.
-        // cnssOuvriere = 300*0.05 = 15
-        // ipr(H=300, enfants=0) : baseFc=300*2700=810000 -> bracketRaw=4860+(810000-162000)*0.15=102060
-        //   plafond=243000 (non atteint) -> ipr = 102060/2700 = 37.80
-        // net = 500 - 15 - 37.80 = 447.20
+        // R=500 -> I=150, J=50, H=300. gains=0. Base cotisable = 300.
+        // cnssOuvriere = 300*0.05 = 15 ; base IPR = 300 - 15 = 285
+        // ipr : baseFc=285*2700=769500 -> bracketRaw=4860+(769500-162000)*0.15=4860+91125=95985
+        //   plafond=230850 (non atteint) -> ipr = 95985/2700 = 35.55
+        // net = 500 - 15 - 35.55 = 449.45  (classeur historique : 447.20)
         ResultatCalculPaie r = service.calculer(entreesVides(new BigDecimal("500")), parametresParDefaut(),
             new BigDecimal("2700"));
 
         assertThat(r.cnssOuvriere()).isEqualByComparingTo("15.00");
-        assertThat(r.ipr()).isEqualByComparingTo("37.80");
-        assertThat(r.salaireNet()).isEqualByComparingTo("447.20");
+        assertThat(r.ipr()).isEqualByComparingTo("35.55");
+        assertThat(r.salaireNet()).isEqualByComparingTo("449.45");
         // Les charges patronales (cnssPatronale, onem, inpp) ne sont jamais deduites du net.
-        assertThat(r.cnssPatronale()).isEqualByComparingTo("39.00"); // 300*0.13
+        assertThat(r.cnssPatronale()).isEqualByComparingTo("39.00"); // 300*(0.05+0.065+0.015)
         assertThat(r.onem()).isEqualByComparingTo("1.50");           // 300*0.005
-        assertThat(r.inpp()).isEqualByComparingTo("9.00");           // 300*0.03 (base Q, pas H)
+        assertThat(r.inpp()).isEqualByComparingTo("9.00");           // 300*0.03 (meme base que la CNSS)
     }
 
     @Test
@@ -215,31 +229,178 @@ class PayrollCalculationServiceTest {
     // ------------------------------------------------------------------
 
     @Test
-    void base_ipr_par_defaut_est_h_sans_deduire_la_cnss() {
-        // Defaut historique (classeur DEBOURS MBSC) : la CNSS ouvriere n'est
-        // PAS deduite de la base imposable. R=1000 -> H=600, base IPR = 600.
-        ResultatCalculPaie r = service.calculer(entreesVides(new BigDecimal("1000")), parametresParDefaut(),
-            new BigDecimal("2700"));
+    void base_ipr_sans_deduction_de_la_cnss_si_le_parametre_est_coupe() {
+        // Comportement historique (classeur DEBOURS MBSC), encore possible en coupant le parametre :
+        // la CNSS salariale n'est PAS deduite. R=1000 -> H=600, base IPR = 600 -> ipr = 223560/2700 = 82.80.
+        ParametresPaie params = parametresParDefaut();
+        params.setCnssDeductibleIpr(false);
+        ResultatCalculPaie r = service.calculer(entreesVides(new BigDecimal("1000")), params, new BigDecimal("2700"));
         assertThat(r.baseImposableIpr()).isEqualByComparingTo("600.00");
         assertThat(r.baseImposableIpr()).isEqualByComparingTo(r.baseImposableInss());
+        assertThat(r.ipr()).isEqualByComparingTo("82.80");
     }
 
     @Test
-    void base_ipr_deduit_la_cnss_quand_le_parametre_est_actif() {
+    void base_ipr_deduit_la_cnss_salariale_par_defaut() {
+        // PwC Tax Summaries RDC : seule la part salariale est deductible de la base IPR (parametre vrai par defaut).
         // R=1000 -> H=600 ; cnssOuvriere = 600*0.05 = 30 -> base IPR = 570.
         // baseFc = 570*2700 = 1539000 (palier 2)
         // bracketRaw = 4860 + (1539000-162000)*0.15 = 4860 + 206550 = 211410
         // plafond = 1539000*0.30 = 461700 (non atteint) ; 0 enfant ; plancher 2000 (non atteint)
         // ipr = 211410 / 2700 = 78.30  (contre 82.80 sans deduction)
-        ParametresPaie params = parametresParDefaut();
-        params.setCnssDeductibleIpr(true);
-
-        ResultatCalculPaie r = service.calculer(entreesVides(new BigDecimal("1000")), params, new BigDecimal("2700"));
+        ResultatCalculPaie r = service.calculer(entreesVides(new BigDecimal("1000")), parametresParDefaut(),
+            new BigDecimal("2700"));
 
         assertThat(r.baseImposableIpr()).isEqualByComparingTo("570.00");
         assertThat(r.ipr()).isEqualByComparingTo("78.30");
-        // La base CNSS elle-meme reste H : seule la base IPR change.
+        // La base cotisable reste 600 : seule la base IPR est diminuee de la CNSS salariale.
         assertThat(r.baseImposableInss()).isEqualByComparingTo("600.00");
+    }
+
+    // ------------------------------------------------------------------
+    // Législation congolaise (corrections du 16/11/2026)
+    // ------------------------------------------------------------------
+
+    @Test
+    void primes_conge_et_heures_sup_entrent_dans_les_bases() {
+        // R=1000 -> H=600. Gains imposables = conge 20 + HS 30 + primes 20+20+10 = 100 -> base cotisable 700.
+        // CNSS salariale 700*0.05 = 35 ; patronale 35 + 45.50 + 10.50 = 91 ; ONEM 3.50 ; INPP 3 % = 21.
+        // Base IPR = 700 - 35 = 665 -> baseFc 1795500 -> 4860+(1795500-162000)*0.15 = 249885 -> /2700 = 92.55
+        // net = 1000 + 100 - 35 - 92.55 = 972.45
+        EntreesCalculPaie entrees = new EntreesCalculPaie(
+            new BigDecimal("1000"), new BigDecimal("100"),
+            new BigDecimal("20"), new BigDecimal("30"), BigDecimal.ZERO,
+            new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("10"),
+            BigDecimal.ZERO, BigDecimal.ZERO, 0);
+        ResultatCalculPaie r = service.calculer(entrees, parametresParDefaut(), new BigDecimal("2700"));
+
+        assertThat(r.appointements()).isEqualByComparingTo("600.00");
+        assertThat(r.gainsImposables()).isEqualByComparingTo("100.00");
+        assertThat(r.baseImposableInss()).isEqualByComparingTo("700.00");
+        assertThat(r.baseImposableInpp()).isEqualByComparingTo("700.00");
+        assertThat(r.cnssOuvriere()).isEqualByComparingTo("35.00");
+        assertThat(r.cnssPatronale()).isEqualByComparingTo("91.00");
+        assertThat(r.onem()).isEqualByComparingTo("3.50");
+        assertThat(r.inpp()).isEqualByComparingTo("21.00");
+        assertThat(r.baseImposableIpr()).isEqualByComparingTo("665.00");
+        assertThat(r.ipr()).isEqualByComparingTo("92.55");
+        assertThat(r.salaireNet()).isEqualByComparingTo("972.45");
+    }
+
+    @Test
+    void excedent_d_allocation_familiale_imposable_et_cotisable() {
+        // Minimum legal pour 2 enfants : 21500/27 = 796.296296 FC * 2 * 26 / 2700 = 15.34 USD (exonere).
+        // Allocation 20 -> exoneree 15.34, excedent 4.66 imposable. R=500 -> H=300 ; base cotisable = 304.66.
+        // CNSS 304.66*0.05 = 15.233 -> 15.23 ; base IPR = 289.43 -> baseFc 781461
+        //   bracketRaw = 4860+(781461-162000)*0.15 = 97779.15 ; 2 enfants -> -4 % = 93867.98 -> /2700 = 34.77
+        // net = 500 + 20 (allocation entiere) - 15.23 - 34.77 = 470.00
+        EntreesCalculPaie entrees = new EntreesCalculPaie(
+            new BigDecimal("500"), new BigDecimal("100"),
+            BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("20"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            BigDecimal.ZERO, BigDecimal.ZERO, 2);
+        ResultatCalculPaie r = service.calculer(entrees, parametresParDefaut(), new BigDecimal("2700"));
+
+        assertThat(r.allocationExoneree()).isEqualByComparingTo("15.34");
+        assertThat(r.gainsImposables()).isEqualByComparingTo("4.66");
+        assertThat(r.baseImposableInss()).isEqualByComparingTo("304.66");
+        assertThat(r.cnssOuvriere()).isEqualByComparingTo("15.23");
+        assertThat(r.ipr()).isEqualByComparingTo("34.77");
+        assertThat(r.salaireNet()).isEqualByComparingTo("470.00");
+    }
+
+    @Test
+    void allocation_sans_enfant_reste_entierement_exoneree() {
+        // Minimum legal non calculable (aucun enfant) : toute l'allocation est exoneree, la base reste H = 300.
+        EntreesCalculPaie entrees = new EntreesCalculPaie(
+            new BigDecimal("500"), new BigDecimal("100"),
+            BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("30"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            BigDecimal.ZERO, BigDecimal.ZERO, 0);
+        ResultatCalculPaie r = service.calculer(entrees, parametresParDefaut(), new BigDecimal("2700"));
+
+        assertThat(r.allocationExoneree()).isEqualByComparingTo("30");
+        assertThat(r.baseImposableInss()).isEqualByComparingTo("300.00");
+        assertThat(r.salaireNet()).isEqualByComparingTo("479.45"); // 500 + 30 - 15 - 35.55
+    }
+
+    @Test
+    void conjoint_d_un_agent_marie_compte_comme_personne_a_charge() {
+        // R=1000, base IPR 570 -> bracketRaw 211410 (voir base_ipr_deduit_la_cnss_salariale_par_defaut).
+        // Marie + 2 enfants -> 3 personnes -> -6 % : 211410*0.94 = 198725.40 -> /2700 = 73.60
+        // Non marie (ou conjoint non compte) -> 2 personnes -> -4 % : 202953.60 -> /2700 = 75.17
+        EntreesCalculPaie marie = new EntreesCalculPaie(new BigDecimal("1000"), new BigDecimal("100"),
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            BigDecimal.ZERO, BigDecimal.ZERO, 2, true, null, null);
+        EntreesCalculPaie celibataire = new EntreesCalculPaie(new BigDecimal("1000"), new BigDecimal("100"),
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            BigDecimal.ZERO, BigDecimal.ZERO, 2, false, null, null);
+        ParametresPaie params = parametresParDefaut();
+
+        ResultatCalculPaie r = service.calculer(marie, params, new BigDecimal("2700"));
+        assertThat(r.personnesACharge()).isEqualTo(3);
+        assertThat(r.ipr()).isEqualByComparingTo("73.60");
+
+        assertThat(service.calculer(celibataire, params, new BigDecimal("2700")).ipr()).isEqualByComparingTo("75.17");
+
+        params.setConjointACharge(false);
+        ResultatCalculPaie sansConjoint = service.calculer(marie, params, new BigDecimal("2700"));
+        assertThat(sansConjoint.personnesACharge()).isEqualTo(2);
+        assertThat(sansConjoint.ipr()).isEqualByComparingTo("75.17");
+    }
+
+    @Test
+    void personnes_a_charge_figees_sur_le_bulletin_l_emportent() {
+        // Recalcul d'un bulletin : le nombre fige (3) est repris tel quel, meme si l'agent n'est plus marie.
+        EntreesCalculPaie entrees = new EntreesCalculPaie(new BigDecimal("1000"), new BigDecimal("100"),
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            BigDecimal.ZERO, BigDecimal.ZERO, 2, false, 3, null);
+        ResultatCalculPaie r = service.calculer(entrees, parametresParDefaut(), new BigDecimal("2700"));
+        assertThat(r.personnesACharge()).isEqualTo(3);
+        assertThat(r.ipr()).isEqualByComparingTo("73.60");
+    }
+
+    @Test
+    void inpp_selon_l_effectif() {
+        // Base cotisable 600 : 3 % jusqu'a 50 employes (18), 2 % de 51 a 300 (12), 1 % au-dela (6).
+        ParametresPaie params = parametresParDefaut();
+        for (Object[] cas : new Object[][] {{50, "18.00", "0.03"}, {51, "12.00", "0.02"}, {300, "12.00", "0.02"},
+                                            {301, "6.00", "0.01"}}) {
+            EntreesCalculPaie entrees = new EntreesCalculPaie(new BigDecimal("1000"), new BigDecimal("100"),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, 0, false, null, (Integer) cas[0]);
+            ResultatCalculPaie r = service.calculer(entrees, params, new BigDecimal("2700"));
+            assertThat(r.inpp()).as("effectif %s", cas[0]).isEqualByComparingTo((String) cas[1]);
+            assertThat(r.tauxInppApplique()).isEqualByComparingTo((String) cas[2]);
+        }
+    }
+
+    @Test
+    void cnss_patronale_par_branche() {
+        // Base 600 : pensions 5 % = 30, prestations familiales 6,5 % = 39, risques professionnels 1,5 % = 9 -> 78.
+        ResultatCalculPaie r = service.calculer(entreesVides(new BigDecimal("1000")), parametresParDefaut(),
+            new BigDecimal("2700"));
+        assertThat(r.cnssPatronalePension()).isEqualByComparingTo("30.00");
+        assertThat(r.cnssPatronalePf()).isEqualByComparingTo("39.00");
+        assertThat(r.cnssPatronaleRp()).isEqualByComparingTo("9.00");
+        assertThat(r.cnssPatronale()).isEqualByComparingTo("78.00");
+        assertThat(r.totalInss()).isEqualByComparingTo("108.00");
+    }
+
+    @Test
+    void bulletin_type_du_rapport() {
+        // 1 000 USD, 100 % de presence, prime 50, 2 enfants, marie, taux 2 800 FC (docs/audit-drh-2026-11-15.md, § 6).
+        // Base cotisable 650 ; CNSS 32.50 ; patronale 32.50 + 42.25 + 9.75 = 84.50 ; ONEM 3.25 ; INPP 19.50 ;
+        // base IPR 617.50 -> baseFc 1729000 -> 4860+(1729000-162000)*0.15 = 239910 ; 3 personnes -> -6 % = 225515.40
+        // -> /2800 = 80.54 ; net = 1000 + 50 - 32.50 - 80.54 = 936.96
+        EntreesCalculPaie entrees = new EntreesCalculPaie(new BigDecimal("1000"), new BigDecimal("100"),
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("50"),
+            BigDecimal.ZERO, BigDecimal.ZERO, 2, true, null, 10);
+        ResultatCalculPaie r = service.calculer(entrees, parametresParDefaut(), new BigDecimal("2800"));
+        assertThat(r.cnssOuvriere()).isEqualByComparingTo("32.50");
+        assertThat(r.cnssPatronale()).isEqualByComparingTo("84.50");
+        assertThat(r.onem()).isEqualByComparingTo("3.25");
+        assertThat(r.inpp()).isEqualByComparingTo("19.50");
+        assertThat(r.ipr()).isEqualByComparingTo("80.54");
+        assertThat(r.salaireNet()).isEqualByComparingTo("936.96");
     }
 
     // ------------------------------------------------------------------
