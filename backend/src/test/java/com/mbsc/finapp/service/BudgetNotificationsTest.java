@@ -49,7 +49,7 @@ class BudgetNotificationsTest {
         courant = mock(CurrentUserProvider.class);
         notifications = mock(NotificationService.class);
         service = new BudgetService(budgets, mock(CompteOHADARepository.class), mock(ReferenceGenerator.class), courant,
-            mock(SuiviBudgetaireService.class), mock(ServiceBudgetaireRepository.class), notifications);
+            mock(SuiviBudgetaireService.class), mock(ServiceBudgetaireRepository.class), notifications, mock(BudgetSoumissions.class));
     }
 
     private Budget budget(StatutBudget statut) {

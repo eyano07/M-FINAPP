@@ -32,6 +32,8 @@ const estDa = computed(() => auth.hasRole('DA'))
 
 // Révision (26/11/2026) : le budget qu'elle révise, pour montrer au DA ce qui a changé (comptes ajoutés, retirés, montants).
 const budgetRevise = ref<any | null>(null)
+/** Copies du budget à chaque soumission au DA (V165), de la première à la dernière. */
+const soumissionsBudget = ref<any[]>([])
 
 async function charger() {
   loading.value = true
@@ -40,7 +42,12 @@ async function charger() {
     const [b, s] = await Promise.all([api<any>(`/budgets/${id.value}`), api<any>(`/budgets/${id.value}/suivi`)])
     budget.value = b
     suivi.value = s
-    budgetRevise.value = b.revisionDeId ? await api<any>(`/budgets/${b.revisionDeId}`).catch(() => null) : null
+    const [revise, copies] = await Promise.all([
+      b.revisionDeId ? api<any>(`/budgets/${b.revisionDeId}`).catch(() => null) : null,
+      api<any[]>(`/budgets/${id.value}/soumissions`).catch(() => []),
+    ])
+    budgetRevise.value = revise
+    soumissionsBudget.value = copies
   } catch (e) {
     erreur.value = messageErreurApi(e, 'Budget introuvable.')
   } finally {
@@ -53,11 +60,10 @@ async function charger() {
  */
 interface Modification { cle: string, type: 'AJOUTEE' | 'RETIREE' | 'MODIFIEE' | 'VENTILATION', compteNumero: string,
   compteLibelle: string, serviceNom: string | null, avant: number, apres: number }
-const modifications = computed<Modification[]>(() => {
-  if (!budget.value || !budgetRevise.value) return []
+function comparer(lignesAvant: any[], lignesApres: any[]): Modification[] {
   const cle = (l: any) => `${l.compteNumero}|${l.serviceId ?? ''}`
-  const avant = new Map<string, any>((budgetRevise.value.lignes || []).map((l: any) => [cle(l), l]))
-  const apres = new Map<string, any>((budget.value.lignes || []).map((l: any) => [cle(l), l]))
+  const avant = new Map<string, any>((lignesAvant || []).map((l: any) => [cle(l), l]))
+  const apres = new Map<string, any>((lignesApres || []).map((l: any) => [cle(l), l]))
   const res: Modification[] = []
   const base = (l: any) => ({ compteNumero: l.compteNumero, compteLibelle: l.compteLibelle, serviceNom: l.serviceNom ?? null })
   for (const [k, l] of apres) {
@@ -68,7 +74,22 @@ const modifications = computed<Modification[]>(() => {
   }
   for (const [k, a] of avant) if (!apres.has(k)) res.push({ cle: k, type: 'RETIREE', ...base(a), avant: Number(a.montantPrevu), apres: 0 })
   return res.sort((x, y) => x.compteNumero.localeCompare(y.compteNumero))
+}
+const modifications = computed<Modification[]>(() =>
+  budget.value && budgetRevise.value ? comparer(budgetRevise.value.lignes, budget.value.lignes) : [])
+/**
+ * Soumission de référence pour le DA : la précédente (budget soumis à nouveau après un rejet), ou la dernière si le
+ * budget est revenu en brouillon (ce que le comptable ou le DFIN modifie depuis).
+ */
+const soumissionReference = computed(() => {
+  const n = soumissionsBudget.value.length
+  if (!budget.value || !n) return null
+  if (budget.value.statut === 'BROUILLON') return soumissionsBudget.value[n - 1]
+  return n >= 2 ? soumissionsBudget.value[n - 2] : null
 })
+const modificationsSoumission = computed<Modification[]>(() =>
+  soumissionReference.value ? comparer(soumissionReference.value.lignes, budget.value.lignes) : [])
+const ecartSoumission = computed(() => modificationsSoumission.value.reduce((t, m) => t + m.apres - m.avant, 0))
 const TYPES_MODIFICATION = {
   AJOUTEE: { libelle: 'Ajoutée', couleur: 'success', icone: 'mdi-plus-circle-outline' },
   RETIREE: { libelle: 'Retirée', couleur: 'error', icone: 'mdi-minus-circle-outline' },
@@ -428,6 +449,40 @@ const classeEcart = (section: string, v: number) => {
           </v-btn>
         </template>
       </v-alert>
+
+      <!-- Soumis à nouveau après un rejet : ce qui a changé depuis la soumission précédente -->
+      <v-card v-if="soumissionReference" class="classroom-card mb-4 bs-modifs"
+        :class="{ 'bs-modifs--a-valider': budget.statut === 'SOUMIS' }">
+        <div class="pa-4 pb-2 d-flex align-center flex-wrap ga-2">
+          <v-icon icon="mdi-history" color="warning" />
+          <span class="bs-titre">Modifications depuis la soumission n° {{ soumissionReference.numero }}</span>
+          <span class="text-caption text-medium-emphasis">
+            du {{ new Date(soumissionReference.soumisLe).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) }}
+            <template v-if="soumissionReference.soumisPar"> par {{ soumissionReference.soumisPar }}</template>
+          </span>
+          <v-spacer />
+          <span v-if="modificationsSoumission.length" class="text-body-2">
+            Écart total : <strong :class="ecartSoumission > 0 ? 'text-error' : ecartSoumission < 0 ? 'text-success' : ''">{{ ecartSoumission > 0 ? '+' : '' }}{{ fmtMontant(ecartSoumission) }} USD</strong>
+          </span>
+        </div>
+        <p v-if="!modificationsSoumission.length" class="px-4 pb-4 mb-0 text-medium-emphasis">Aucune ligne modifiée depuis cette soumission.</p>
+        <v-table v-else density="compact">
+          <thead><tr><th>Changement</th><th>Compte</th><th>Libellé</th><th>Service</th><th class="text-end">Avant (USD)</th><th class="text-end">Après (USD)</th><th class="text-end">Écart</th></tr></thead>
+          <tbody>
+            <tr v-for="m in modificationsSoumission" :key="m.cle" :class="`bs-modif bs-modif--${m.type.toLowerCase()}`">
+              <td><v-chip size="x-small" :color="TYPES_MODIFICATION[m.type].couleur" variant="flat" :prepend-icon="TYPES_MODIFICATION[m.type].icone">{{ TYPES_MODIFICATION[m.type].libelle }}</v-chip></td>
+              <td class="mono text-no-wrap">{{ m.compteNumero }}</td>
+              <td>{{ m.compteLibelle }}</td>
+              <td class="text-caption">{{ m.serviceNom || 'Ligne générale' }}</td>
+              <td class="text-end text-no-wrap" :class="{ 'bs-barre': m.type === 'RETIREE' || m.type === 'MODIFIEE' }">{{ m.type === 'AJOUTEE' ? '—' : fmtMontant(m.avant) }}</td>
+              <td class="text-end text-no-wrap font-weight-bold">{{ m.type === 'RETIREE' ? '—' : fmtMontant(m.apres) }}</td>
+              <td class="text-end text-no-wrap" :class="m.apres - m.avant > 0 ? 'text-error' : m.apres - m.avant < 0 ? 'text-success' : ''">
+                {{ m.apres - m.avant > 0 ? '+' : '' }}{{ m.apres === m.avant ? '—' : fmtMontant(m.apres - m.avant) }}
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+      </v-card>
 
       <!-- Révision : ce qui a changé par rapport au budget révisé -->
       <v-card v-if="budget.revisionDeId && budgetRevise" class="classroom-card mb-4 bs-modifs"

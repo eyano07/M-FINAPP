@@ -47,6 +47,12 @@ public class BudgetController {
     }
 
     /** Execution : prevu, realise et engage par ligne et par mois, totaux par section et nature, hors budget. */
+    /** Copies du budget à chaque soumission au DA (ce qui a changé depuis la soumission précédente). */
+    @GetMapping("/{id}/soumissions")
+    public List<com.mbsc.finapp.service.BudgetSoumissions.Soumission> soumissions(@PathVariable Long id) {
+        return service.soumissions(id);
+    }
+
     @GetMapping("/{id}/suivi")
     public SuiviBudgetResponse suivi(@PathVariable Long id) {
         return service.suivi(id);
