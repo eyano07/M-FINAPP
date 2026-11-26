@@ -78,7 +78,8 @@ const enAttente = computed(() => budgets.value
 const enDepassement = computed(() => budgets.value.filter(b => b.statut === 'EN_EXECUTION' && (Number(b.montantDepassement) > 0 || b.servicesEnDepassement?.length)))
 const resultatPrevu = (b: BudgetResume) => centimes(b.prevuProduits - b.prevuCharges)
 // Seul un budget mis en exécution (même remplacé ou clôturé depuis) a un taux d'exécution qui a un sens.
-const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE'].includes(b.statut)
+// Un budget remplacé par sa révision ne contrôle plus rien : son exécution est celle de la révision (pas de suivi ici).
+const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'CLOTURE'].includes(b.statut)
 </script>
 
 <template>
@@ -184,6 +185,9 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
               rounded
             />
           </template>
+          <div v-else-if="b.statut === 'REMPLACE'" class="text-caption text-medium-emphasis mt-3">
+            Dépenses prévues : {{ fmtEntier(b.totalPrevu) }} USD — remplacé : le suivi est sur la révision
+          </div>
           <div v-else class="text-caption text-medium-emphasis mt-3">
             Dépenses prévues : {{ fmtEntier(b.totalPrevu) }} USD — pas encore en exécution
           </div>
