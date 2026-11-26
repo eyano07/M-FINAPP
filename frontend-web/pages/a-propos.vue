@@ -49,7 +49,7 @@ onMounted(async () => {
 const adresseServeur = computed(() => parametres.parametres.adresseServeur || '')
 const qrServeur = ref('')
 watch(adresseServeur, async a => {
-  qrServeur.value = a ? await QRCode.toDataURL(a, { margin: 1, width: 220, errorCorrectionLevel: 'M' }) : ''
+  qrServeur.value = a ? await QRCode.toDataURL(a, { margin: 2, width: 480, errorCorrectionLevel: 'M' }) : ''
 }, { immediate: true })
 const lienApkLogistique = computed(() => `/telechargements/${apkLogistique.value?.fichier || 'MBSC-Logistique.apk'}`)
 const lienApk = computed(() => `/telechargements/${apk.value?.fichier || 'MBSC-Finapp.apk'}`)
@@ -147,7 +147,7 @@ const chiffres = (n: string) => n.replace(/[^\d+]/g, '')
         </p>
       </div>
       <div v-else-if="qrServeur" class="apropos__serveur">
-        <img :src="qrServeur" alt="QR de l'adresse du serveur" width="110" height="110">
+        <img :src="qrServeur" alt="QR de l'adresse du serveur" width="220" height="220">
         <p>
           <strong>Adresse de ce serveur</strong><br>
           <code>{{ adresseServeur }}</code><br>
@@ -240,9 +240,9 @@ const chiffres = (n: string) => n.replace(/[^\d+]/g, '')
 .apropos__apk-textes { flex: 1 1 220px; min-width: 0; }
 .apropos__apk-titre { margin: 0; font-weight: 700; color: var(--ink); }
 .apropos__apk-detail { margin: 2px 0 0; font-size: 13px; color: var(--ink-soft); line-height: 1.45; }
-.apropos__serveur { display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 14px; border-radius: 14px; background: var(--surface-2); }
-.apropos__serveur img { border-radius: 8px; background: #fff; flex: 0 0 auto; }
-.apropos__serveur p { margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.5; word-break: break-all; }
+.apropos__serveur { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 12px; padding: 14px; border-radius: 14px; background: var(--surface-2); }
+.apropos__serveur img { border-radius: 12px; background: #fff; flex: 0 0 auto; width: 220px; height: 220px; max-width: 100%; }
+.apropos__serveur p { margin: 0; flex: 1 1 220px; font-size: 14px; color: var(--ink-soft); line-height: 1.5; word-break: break-all; }
 .apropos__apk-aide { margin: 10px 2px 0; font-size: 12.5px; color: var(--ink-faint); line-height: 1.5; }
 .apropos__pied { text-align: center; color: var(--ink-faint); font-size: 12.5px; margin: 4px 0 8px; }
 </style>
