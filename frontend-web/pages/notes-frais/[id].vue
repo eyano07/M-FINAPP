@@ -439,6 +439,19 @@ async function action(chemin: string, requiertCommentaire = false, statutFileSui
 }
 
 async function encaisserNote() {
+  // Confirmation (26/11/2026) : montant et payeur rappelés avant l'entrée en caisse.
+  const n = note.value
+  const confirme = await dialogues.confirmer({
+    titre: `Encaisser ${fmtMontant(n?.montant ?? 0)} ${n?.devise || 'CDF'} ?`,
+    message: [
+      `Note ${n?.reference || ''} — ${n?.objet || ''}`,
+      `Payeur : ${n?.beneficiaire || '—'}`,
+      "L'argent entre en caisse et la note passe « Encaissée ».",
+    ],
+    bouton: "Confirmer l'encaissement",
+    icone: 'mdi-cash-check',
+  })
+  if (!confirme) return
   busy.value = true
   erreur.value = ''
   try {
