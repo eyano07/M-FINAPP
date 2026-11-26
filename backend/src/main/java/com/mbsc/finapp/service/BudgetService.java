@@ -65,7 +65,8 @@ public class BudgetService {
 
     private static final Logger log = LoggerFactory.getLogger(BudgetService.class);
 
-    static final String LECTURE = "hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'ADMIN')";
+    /** Consultation : le caissier aussi, en lecture seule (26/11/2026). */
+    static final String LECTURE = "hasAnyRole('COMPTABLE', 'DFIN', 'DA', 'DG', 'CAISSIER', 'ADMIN')";
     /**
      * Élaboration (26/11/2026) : le comptable ou le DFIN crée, modifie, soumet, reprend ou révise un budget ; le DA
      * l'approuve ou le rejette ; seul le DFIN le met en exécution et le clôture. L'administrateur n'y a aucune action.
@@ -113,7 +114,11 @@ public class BudgetService {
                 ? engagements.computeIfAbsent(b.getExercice(), e -> suivi.engagementsDeLExercice(e, null, new ArrayList<>()))
                 : List.of();
             BudgetResponse detail = BudgetResponse.from(b);
-            SuiviBudgetaireService.SyntheseExecution s = suivi.synthese(b, mvts, engages, catalogue, execute);
+            // Budget remplacé par sa révision : figé, plus aucun calcul (réalisé, dépassements) ; son exécution est celle de
+            // la révision (26/11/2026).
+            SuiviBudgetaireService.SyntheseExecution s = b.getStatut() == StatutBudget.REMPLACE
+                ? new SuiviBudgetaireService.SyntheseExecution(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, List.of())
+                : suivi.synthese(b, mvts, engages, catalogue, execute);
             BigDecimal prevuDepenses = detail.totalCharges().add(detail.totalInvestissements());
             BigDecimal realiseDepenses = s.realiseCharges().add(s.realiseInvestissements());
             long nombreServices = b.getLignes().stream().map(LigneBudget::getService).filter(Objects::nonNull)

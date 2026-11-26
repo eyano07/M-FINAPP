@@ -2,7 +2,7 @@
 const rolesStore = useRolesStore()
 // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
 // uniquement) mais ne voit pas les Budgets.
-definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
+definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] })
 
 interface BudgetResume {
   id: number
@@ -150,10 +150,10 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'CLOTURE'].includes(b.
             · {{ b.nombreLignes }} ligne(s)<template v-if="b.nombreServices"> · {{ b.nombreServices }} service{{ b.nombreServices > 1 ? 's' : '' }}</template>
           </div>
           <div class="mb-3 d-flex flex-wrap ga-1">
-            <v-chip v-if="Number(b.montantDepassement) > 0" size="x-small" color="error" variant="flat" prepend-icon="mdi-alert-octagon-outline">
+            <v-chip v-if="b.statut !== 'REMPLACE' && Number(b.montantDepassement) > 0" size="x-small" color="error" variant="flat" prepend-icon="mdi-alert-octagon-outline">
               Dépassement {{ fmtEntier(b.montantDepassement) }} USD
             </v-chip>
-            <v-chip v-for="s in b.servicesEnDepassement || []" :key="s" size="x-small" color="error" variant="tonal" prepend-icon="mdi-account-alert-outline">
+            <v-chip v-for="s in (b.statut === 'REMPLACE' ? [] : b.servicesEnDepassement || [])" :key="s" size="x-small" color="error" variant="tonal" prepend-icon="mdi-account-alert-outline">
               {{ s }}
             </v-chip>
           </div>

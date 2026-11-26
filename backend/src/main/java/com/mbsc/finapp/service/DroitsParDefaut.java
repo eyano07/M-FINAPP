@@ -41,7 +41,7 @@ public final class DroitsParDefaut {
         // le DA, qui rouvre un mois rapproché, a l'écriture sur le module (V138).
         definir(RoleType.CAISSIER,
             modules(CAISSE, BANQUE, MOBILE_MONEY, VENTES, RESTAURANT),
-            modules(ModuleMetier.LOGISTIQUE, ModuleMetier.MINE, ModuleMetier.RAPPROCHEMENT));
+            modules(ModuleMetier.LOGISTIQUE, ModuleMetier.MINE, ModuleMetier.RAPPROCHEMENT, ModuleMetier.BUDGET));
         // Audit DRH du 15/11/2026, D-11 : le DFIN clôture, rouvre et comptabilise la paie (seul rôle autorisé depuis
         // C-14) ; avec la seule lecture sur DRH_PAIE, ces actions étaient refusées à tout le monde (V146).
         definir(RoleType.DFIN,

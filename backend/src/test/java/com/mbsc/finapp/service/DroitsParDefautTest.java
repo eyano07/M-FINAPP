@@ -77,15 +77,16 @@ class DroitsParDefautTest {
      * MINE (V151 : les droits LOGISTIQUE du caissier, du DFIN, du DA, du DG, du comptable, de la logistique et du
      * patrimoine, sans les responsables du restaurant), plus les 9 du module HOTELLERIE (V152 : lecture du DG, du DFIN,
      * du DA et du comptable ; écriture des quatre rôles de l'hébergement ; ventes en lecture pour la direction de
-     * l'hébergement), plus 1 pour la logistique, qui tient l'inventaire et les fiches du patrimoine (V153).
+     * l'hébergement), plus 1 pour la logistique, qui tient l'inventaire et les fiches du patrimoine (V153), plus 1 pour
+     * le caissier, qui consulte les budgets en lecture seule (V166).
      */
     @Test
-    void la_grille_d_origine_reprend_les_79_droits_des_migrations() {
+    void la_grille_d_origine_reprend_les_80_droits_des_migrations() {
         int total = 0;
         for (RoleType role : RoleType.values()) {
             total += DroitsParDefaut.pour(role).size();
         }
-        assertThat(total).isEqualTo(79);
+        assertThat(total).isEqualTo(80);
     }
 
     /**

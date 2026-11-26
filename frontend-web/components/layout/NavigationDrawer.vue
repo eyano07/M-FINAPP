@@ -80,11 +80,10 @@ const items: NavItem[] = [
   { title: 'Journal de mobile money', icon: 'mdi-notebook-outline', to: '/mobile-money/journal', module: 'MOBILE_MONEY' },
   // Les anciens écrans « Grand Livre » et « Balance » (/grand-livre, /balance) ont été retirés le 15/11/2026 : ils
   // doublaient « GL par compte » et « Balance de vérification » de la rubrique Comptabilité.
-  // CAISSIER a COMPTABILITE en LECTURE (pour Balance/Compte de resultat
-  // uniquement) mais ne voit pas les Budgets.
-  { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  // Budgets : le caissier les consulte en lecture seule (26/11/2026) ; seuls le comptable, le DFIN et le DA y agissent.
+  { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] },
   // Services (départements) et leur responsable : enveloppes des budgets, suivi des dépenses par service.
-  { title: 'Services budgétaires', icon: 'mdi-account-group-outline', to: '/budgets/services', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] },
+  { title: 'Services budgétaires', icon: 'mdi-account-group-outline', to: '/budgets/services', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] },
 ]
 
 const comptabiliteItems: NavItem[] = [

@@ -3,7 +3,7 @@ import { useDisplay } from 'vuetify'
 import { Bar, Line, Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS } from 'chart.js'
 
-definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE'] })
+definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] })
 
 const route = useRoute()
 const api = useApi()
