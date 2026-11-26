@@ -264,6 +264,35 @@ async function valoriser() {
   }
 }
 
+// ── Bascule immobilisé / non amortissable, depuis la colonne Statut ─────────
+const bascule = ref<number | null>(null)
+const confirmation = reactive({ ouvert: false, bien: null as Bien | null, versImmo: true })
+function demanderBascule(b: Bien, versImmo: boolean) {
+  Object.assign(confirmation, { ouvert: true, bien: b, versImmo })
+}
+async function confirmerBascule() {
+  const b = confirmation.bien
+  if (!b) return
+  confirmation.ouvert = false
+  bascule.value = b.id
+  erreur.value = ''
+  try {
+    if (confirmation.versImmo) {
+      const r = await api<Bien>(`/patrimoine/inventaire/${b.id}/valorisation`, { method: 'POST', body: {
+        valeurUsd: b.valeurUsd, dateAcquisition: b.dateAcquisition, dateMiseService: b.dateMiseService, amortissable: true } })
+      succes.value = `${b.code} immobilisé : fiche ${r.immobilisationReference}, acquisition comptabilisée (crédit 1013) et dotations des mois écoulés passées.`
+    } else {
+      await api(`/patrimoine/inventaire/${b.id}/declassement`, { method: 'POST' })
+      succes.value = `${b.code} classé non amortissable : acquisition et dotations extournées, fiche retirée du registre.`
+    }
+  } catch (e) {
+    erreur.value = messageErreurApi(e, "Le statut n'a pas été changé.")
+  } finally {
+    bascule.value = null
+    await charger()
+  }
+}
+
 // ── Correction (avant valorisation) ─────────────────────────────────────
 const cor = reactive({ ouvert: false, bien: null as Bien | null, libelle: '', categorie: 'MOBILIER' as Categorie, dureeMois: 120, localisation: '', etat: '' })
 function ouvrirCorrection(b: Bien) {
@@ -372,7 +401,16 @@ async function imprimerEtiquettes() {
         <template #[`item.dureeMois`]="{ item }">{{ item.statut === 'PETIT_MATERIEL' ? '—' : duree(item.dureeMois) }}</template>
         <template #[`item.valeurUsd`]="{ item }">{{ item.valeurUsd == null ? '—' : usd(item.valeurUsd) }}</template>
         <template #[`item.statut`]="{ item }">
-          <v-chip size="small" variant="tonal" :color="STATUTS[item.statut].couleur">{{ STATUTS[item.statut].titre }}</v-chip>
+          <!-- Le logisticien choisit lui-même : immobilisé (fiche, acquisition, dotations) ou non amortissable (extourne). -->
+          <div v-if="peutEcrire && item.statut !== 'A_VALORISER'" class="bascule-statut">
+            <v-switch :model-value="item.statut === 'IMMOBILISE'" color="success" density="compact" hide-details inset
+              :loading="bascule === item.id" :disabled="bascule !== null" :aria-label="`Statut de ${item.code}`"
+              @update:model-value="demanderBascule(item, !!$event)" />
+            <span :class="item.statut === 'IMMOBILISE' ? 'text-success' : 'text-medium-emphasis'">
+              {{ item.statut === 'IMMOBILISE' ? 'Immobilisé' : 'Non amortissable' }}
+            </span>
+          </div>
+          <v-chip v-else size="small" variant="tonal" :color="STATUTS[item.statut].couleur">{{ STATUTS[item.statut].titre }}</v-chip>
           <NuxtLink v-if="item.immobilisationReference" to="/patrimoine/immobilisations" class="ml-1 text-caption">{{ item.immobilisationReference }}</NuxtLink>
         </template>
         <template #[`item.actions`]="{ item }">
@@ -390,8 +428,6 @@ async function imprimerEtiquettes() {
             <v-btn size="small" variant="text" icon="mdi-pencil" aria-label="Corriger" @click="ouvrirCorrection(item)" />
             <v-btn size="small" color="primary" variant="tonal" @click="ouvrirValorisation(item)">Valoriser</v-btn>
           </template>
-          <v-btn v-if="peutEcrire && item.statut === 'PETIT_MATERIEL'" size="small" color="primary" variant="text"
-            title="Bien durable : l'immobiliser et l'amortir" @click="ouvrirValorisation(item)">Immobiliser</v-btn>
           </div>
         </template>
       </v-data-table>
@@ -411,6 +447,32 @@ async function imprimerEtiquettes() {
     </div>
 
     <input ref="choixFacture" type="file" :accept="TYPES_FACTURE" hidden @change="factureChoisie">
+
+    <v-dialog v-model="confirmation.ouvert" max-width="480">
+      <v-card class="pa-2">
+        <v-card-title class="font-weight-bold">
+          {{ confirmation.versImmo ? 'Immobiliser ce bien ?' : 'Classer ce bien non amortissable ?' }}
+        </v-card-title>
+        <v-card-text>
+          <p class="mb-2"><code>{{ confirmation.bien?.code }}</code> · {{ confirmation.bien?.libelle }} · {{ usd(confirmation.bien?.valeurUsd ?? 0) }}</p>
+          <p v-if="confirmation.versImmo" class="text-body-2">
+            Bien durable, utilisé au-delà d'un exercice : sa fiche d'amortissement est créée, l'acquisition est comptabilisée
+            (débit du compte d'immobilisation, crédit 1013) et les dotations des mois écoulés sont passées.
+          </p>
+          <p v-else class="text-body-2">
+            Bien consommé dans l'exercice : une pièce d'opérations diverses extourne son acquisition et les dotations déjà passées,
+            puis sa fiche est retirée du registre. Il reste suivi à l'inventaire avec son code.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="confirmation.ouvert = false">Annuler</v-btn>
+          <v-btn color="primary" variant="flat" @click="confirmerBascule">
+            {{ confirmation.versImmo ? 'Immobiliser' : 'Classer non amortissable' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-dialog v-model="val.ouvert" max-width="560">
       <v-card class="pa-2">
@@ -537,6 +599,7 @@ async function imprimerEtiquettes() {
 .photo-grande { display: block; width: 100%; max-height: 70vh; object-fit: contain; margin-top: 14px; border-radius: 14px; cursor: zoom-out; }
 .code-bien { font-size: 0.78rem; white-space: nowrap; }
 .etiquettes { display: none; }
+.bascule-statut { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: .85rem; }
 </style>
 
 <style>

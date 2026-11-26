@@ -176,6 +176,11 @@ public class PatrimoineController {
         return inventaire.corriger(id, req);
     }
 
+    @PostMapping("/inventaire/{id}/declassement")
+    public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien declasser(@PathVariable Long id) {
+        return inventaire.declasser(id);
+    }
+
     @PostMapping("/inventaire/{id}/valorisation")
     public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien valoriser(@PathVariable Long id,
             @jakarta.validation.Valid @RequestBody com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.ValorisationRequest req) {

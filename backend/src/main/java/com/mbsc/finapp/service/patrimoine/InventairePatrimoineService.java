@@ -48,6 +48,8 @@ public class InventairePatrimoineService {
     private final PatrimoineService patrimoine;
     private final CurrentUserProvider currentUser;
     private final com.mbsc.finapp.service.StorageService stockage;
+    private final com.mbsc.finapp.service.ComptabiliteService comptabilite;
+    private final com.mbsc.finapp.repository.CompteOHADARepository comptes;
 
     /**
      * {@code localisation} : lieu relevé sur la fiche d'inventaire (texte libre) ; {@code emplacementId} : affectation
@@ -288,5 +290,77 @@ public class InventairePatrimoineService {
         AuditService.detailler("Inventaire " + b.code() + " immobilisé : " + immo.reference() + ", " + r.valeurUsd()
             + " USD, " + duree + " mois, contrepartie " + CONTREPARTIE + ".");
         return bien(id);
+    }
+
+    /**
+     * Le logisticien reclasse un bien immobilisé en « non amortissable » (consommé dans l'exercice) : une pièce
+     * d'opérations diverses extourne l'acquisition (D contrepartie / C compte d'immobilisation) et les dotations déjà
+     * passées (D amortissements / C dotations) ; la fiche et son plan sont supprimés, le bien reste à l'inventaire.
+     */
+    @PreAuthorize(ECRITURE)
+    @Transactional
+    public Bien declasser(Long id) {
+        Bien b = bien(id);
+        if (!"IMMOBILISE".equals(b.statut()) || b.immobilisationId() == null) {
+            throw new TransitionInvalideException("Le bien " + b.code() + " n'est pas immobilisé.");
+        }
+        Long immoId = b.immobilisationId();
+        var fiche = jdbc.queryForMap("""
+            select reference, statut, piece_acquisition_id, compte_amortissement_id, compte_dotation_id
+            from immobilisations where id = ? for update""", immoId);
+        if (!"EN_SERVICE".equals(fiche.get("statut"))) {
+            throw new TransitionInvalideException("La fiche " + fiche.get("reference") + " est déjà sortie du patrimoine.");
+        }
+        var auteur = currentUser.requireUser();
+        LocalDate aujourdhui = LocalDate.now(com.mbsc.finapp.config.FuseauEntreprise.ZONE);
+        String libelle = "Déclassement " + b.code() + " (" + b.libelle() + ") : bien non amortissable, extourne de "
+            + fiche.get("reference");
+        if (libelle.length() > 250) libelle = libelle.substring(0, 250);
+        List<com.mbsc.finapp.domain.EcritureGrandLivre> lignes = new java.util.ArrayList<>();
+        // 1. Acquisition : chaque ligne de la pièce d'origine, sens inversé.
+        if (fiche.get("piece_acquisition_id") != null) {
+            for (var e : jdbc.queryForList("select compte_id, debit, credit from grand_livre where piece_id = ?",
+                    ((Number) fiche.get("piece_acquisition_id")).longValue())) {
+                lignes.add(ecriture(((Number) e.get("compte_id")).longValue(), (BigDecimal) e.get("credit"),
+                    (BigDecimal) e.get("debit"), libelle, aujourdhui));
+            }
+        }
+        // 2. Dotations déjà passées : reprise du cumul.
+        BigDecimal cumul = jdbc.queryForObject(
+            "select coalesce(sum(dotation), 0) from lignes_amortissement where immobilisation_id = ? and comptabilise",
+            BigDecimal.class, immoId);
+        if (cumul.signum() > 0 && fiche.get("compte_amortissement_id") != null && fiche.get("compte_dotation_id") != null) {
+            lignes.add(ecriture(((Number) fiche.get("compte_amortissement_id")).longValue(), cumul, BigDecimal.ZERO, libelle, aujourdhui));
+            lignes.add(ecriture(((Number) fiche.get("compte_dotation_id")).longValue(), BigDecimal.ZERO, cumul, libelle, aujourdhui));
+        }
+        String piece = null;
+        if (lignes.size() >= 2) {
+            piece = comptabilite.creerPieceInterne(com.mbsc.finapp.domain.enums.JournalComptable.OPERATIONS_DIVERSES,
+                libelle, aujourdhui, lignes, auteur).getReference();
+        }
+        // 3. La fiche disparaît du registre ; le bien redevient non amortissable.
+        jdbc.update("update inventaires_immobilisations_lignes set immobilisation_id = null where immobilisation_id = ? and bien_id is not null", immoId);
+        Long autres = jdbc.queryForObject("select count(*) from inventaires_immobilisations_lignes where immobilisation_id = ?", Long.class, immoId);
+        if (autres != null && autres > 0) {
+            throw new TransitionInvalideException("La fiche " + fiche.get("reference") + " figure dans un inventaire du patrimoine "
+                + "sans code de bien : sortez-la plutôt par mise au rebut.");
+        }
+        jdbc.update("update inventaire_biens set statut = 'PETIT_MATERIEL', immobilisation_id = null, maj_le = now(), maj_par = ? where id = ?",
+            auteur.getEmail(), id);
+        jdbc.update("delete from immobilisations where id = ?", immoId);
+        AuditService.detailler("Bien " + b.code() + " déclassé (non amortissable) : fiche " + fiche.get("reference")
+            + " supprimée" + (piece == null ? "." : ", extourne " + piece + "."));
+        return bien(id);
+    }
+
+    private com.mbsc.finapp.domain.EcritureGrandLivre ecriture(Long compteId, BigDecimal debit, BigDecimal credit,
+                                                                String libelle, LocalDate date) {
+        return com.mbsc.finapp.domain.EcritureGrandLivre.builder()
+            .compte(comptes.findById(compteId).orElseThrow())
+            .debit(debit == null ? BigDecimal.ZERO : debit)
+            .credit(credit == null ? BigDecimal.ZERO : credit)
+            .libelle(libelle)
+            .dateEcriture(date)
+            .build();
     }
 }
