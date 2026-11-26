@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import QRCode from 'qrcode'
 import { useParametresStore } from '~/stores/parametres'
 import { estApplicationMobile } from '~/utils/applicationMobile'
 
@@ -30,20 +31,39 @@ const EQUIPE = [
 interface VersionApk { version: string; taille?: number; date?: string; fichier?: string }
 const applicationMobile = estApplicationMobile()
 const apk = ref<VersionApk | null>(null)
-onMounted(async () => {
-  if (applicationMobile) return
+// MBSC Logistique (26/11/2026) : scanner des QR des biens (mobile-logistique/outils/publier-apk.sh, version-logistique.json).
+const apkLogistique = ref<VersionApk | null>(null)
+async function lireVersion(fichier: string) {
   try {
-    const r = await fetch('/telechargements/version.json', { cache: 'no-store' })
-    if (r.ok) apk.value = await r.json()
-  } catch { /* aucun APK publié */ }
+    const r = await fetch(`/telechargements/${fichier}`, { cache: 'no-store' })
+    return r.ok ? await r.json() as VersionApk : null
+  } catch { return null /* aucun APK publié */ }
+}
+onMounted(async () => {
+  parametres.charger()   // adresse du serveur à jour (modifiée par l'administrateur)
+  if (applicationMobile) return
+  ;[apk.value, apkLogistique.value] = await Promise.all([lireVersion('version.json'), lireVersion('version-logistique.json')])
 })
+// Adresse du serveur saisie par l'administrateur (Administration › Paramètres) et son QR : scanné au premier lancement
+// des applications (Finapp ≥ 2.13, Logistique), sans rien saisir.
+const adresseServeur = computed(() => parametres.parametres.adresseServeur || '')
+const qrServeur = ref('')
+watch(adresseServeur, async a => {
+  qrServeur.value = a ? await QRCode.toDataURL(a, { margin: 1, width: 220, errorCorrectionLevel: 'M' }) : ''
+}, { immediate: true })
+const lienApkLogistique = computed(() => `/telechargements/${apkLogistique.value?.fichier || 'MBSC-Logistique.apk'}`)
 const lienApk = computed(() => `/telechargements/${apk.value?.fichier || 'MBSC-Finapp.apk'}`)
 const tailleApk = computed(() => apk.value?.taille ? `${(apk.value.taille / 1048576).toFixed(1).replace('.', ',')} Mo` : '')
-const dateApk = computed(() => {
-  if (!apk.value?.date) return ''
-  const d = new Date(apk.value.date)
+function datePublication(v: VersionApk | null) {
+  if (!v?.date) return ''
+  const d = new Date(v.date)
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-})
+}
+const dateApk = computed(() => datePublication(apk.value))
+const detailLogistique = computed(() => [
+  apkLogistique.value?.taille ? `${(apkLogistique.value.taille / 1048576).toFixed(1).replace('.', ',')} Mo` : '',
+  datePublication(apkLogistique.value) ? `publiée le ${datePublication(apkLogistique.value)}` : '',
+].filter(Boolean).join(' · '))
 
 const TELEPHONE = '+243 86 26 93 422'
 const WHATSAPP = '+243 82 30 88 383'
@@ -90,9 +110,9 @@ const chiffres = (n: string) => n.replace(/[^\d+]/g, '')
       </div>
     </section>
 
-    <section v-if="apk" class="apropos__carte">
-      <h2 class="apropos__h2">Application Android</h2>
-      <div class="apropos__apk">
+    <section v-if="apk || apkLogistique" class="apropos__carte">
+      <h2 class="apropos__h2">Applications Android</h2>
+      <div v-if="apk" class="apropos__apk">
         <span class="apropos__apk-icone"><v-icon icon="mdi-android" size="28" /></span>
         <div class="apropos__apk-textes">
           <p class="apropos__apk-titre">MBSC Finapp pour Android · version {{ apk.version }}</p>
@@ -105,10 +125,40 @@ const chiffres = (n: string) => n.replace(/[^\d+]/g, '')
           Télécharger l'APK
         </v-btn>
       </div>
+      <div v-if="apkLogistique" class="apropos__apk" :class="{ 'mt-3': apk }">
+        <span class="apropos__apk-icone"><v-icon icon="mdi-qrcode-scan" size="26" /></span>
+        <div class="apropos__apk-textes">
+          <p class="apropos__apk-titre">MBSC Logistique pour Android · version {{ apkLogistique.version }}</p>
+          <p class="apropos__apk-detail">
+            Logistique, approvisionnement et patrimoine ; scan du QR d'un bien pour ouvrir sa fiche.
+            <template v-if="detailLogistique"><br>{{ detailLogistique }}</template>
+          </p>
+        </div>
+        <v-btn :href="lienApkLogistique" download color="primary" variant="flat" rounded="lg" prepend-icon="mdi-download">
+          Télécharger l'APK
+        </v-btn>
+      </div>
+      <div v-if="!adresseServeur" class="apropos__serveur">
+        <v-icon icon="mdi-qrcode-remove" size="40" color="medium-emphasis" />
+        <p>
+          <strong>QR du serveur non disponible</strong><br>
+          L'administrateur doit saisir l'adresse du serveur (URL ou IP joignable par les téléphones) dans
+          Administration › Paramètres, rubrique « Applications Android ».
+        </p>
+      </div>
+      <div v-else-if="qrServeur" class="apropos__serveur">
+        <img :src="qrServeur" alt="QR de l'adresse du serveur" width="110" height="110">
+        <p>
+          <strong>Adresse de ce serveur</strong><br>
+          <code>{{ adresseServeur }}</code><br>
+          Au premier lancement de MBSC Finapp ou de MBSC Logistique, touchez « Scanner le QR du serveur » et visez
+          ce QR : rien à saisir.
+        </p>
+      </div>
       <p class="apropos__apk-aide">
         Ouvrez ce lien depuis le téléphone (connecté au réseau de l'entreprise), puis autorisez l'installation
         d'applications de cette source si Android le demande. Une nouvelle version s'installe par-dessus l'ancienne,
-        sans perdre la connexion. Au premier lancement, saisissez l'adresse de ce serveur.
+        sans perdre la connexion. Au premier lancement, scannez le QR ci-dessus ou saisissez l'adresse de ce serveur.
       </p>
     </section>
 
@@ -190,6 +240,9 @@ const chiffres = (n: string) => n.replace(/[^\d+]/g, '')
 .apropos__apk-textes { flex: 1 1 220px; min-width: 0; }
 .apropos__apk-titre { margin: 0; font-weight: 700; color: var(--ink); }
 .apropos__apk-detail { margin: 2px 0 0; font-size: 13px; color: var(--ink-soft); line-height: 1.45; }
+.apropos__serveur { display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 14px; border-radius: 14px; background: var(--surface-2); }
+.apropos__serveur img { border-radius: 8px; background: #fff; flex: 0 0 auto; }
+.apropos__serveur p { margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.5; word-break: break-all; }
 .apropos__apk-aide { margin: 10px 2px 0; font-size: 12.5px; color: var(--ink-faint); line-height: 1.5; }
 .apropos__pied { text-align: center; color: var(--ink-faint); font-size: 12.5px; margin: 4px 0 8px; }
 </style>

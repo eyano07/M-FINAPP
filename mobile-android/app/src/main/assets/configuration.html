@@ -46,10 +46,11 @@
 <header>
   <div class="logo" style="color:#fff"><svg xmlns="http://www.w3.org/2000/svg" viewBox="16 18 92 86" width="30" height="30" aria-label="M-FINAPP"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M28 90 V36 L60 66" stroke-width="13"/><path d="M92 58 V90" stroke-width="13"/><path d="M60 66 L94 32" stroke-width="13"/><path d="M76 30 H96 V50" stroke-width="10"/></g></svg></div>
   <h1>Adresse du serveur</h1>
-  <p>Saisissez l'adresse du serveur MBSC Finapp de votre entreprise. Vous pourrez la changer plus tard : appui long sur l'icône de l'application, puis « Changer de serveur ».</p>
+  <p>Scannez le QR du serveur (site M-FINAPP, page « À propos ») ou saisissez son adresse. Vous pourrez la changer plus tard : appui long sur l'icône de l'application, puis « Changer de serveur ».</p>
 </header>
 <main>
   <div class="carte">
+    <button id="scanner" class="principal" style="width:100%;margin-bottom:14px">Scanner le QR du serveur</button>
     <label for="adresse">Adresse IP ou nom du serveur</label>
     <input id="adresse" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
            placeholder="192.168.1.10" autocomplete="off">
@@ -75,6 +76,13 @@
 
   function afficher(classe, texte) { etat.className = 'etat ' + classe; etat.textContent = texte; }
   function occupe(oui) { bTester.disabled = oui; bValider.disabled = oui; }
+
+  // QR scanné (appelé par l'application) : adresse du serveur, testée puis retenue.
+  window.adresseScannee = function (adresse) {
+    champ.value = adresse;
+    lancer('valider');
+  };
+  document.getElementById('scanner').addEventListener('click', function () { if (A && A.scannerServeur) A.scannerServeur(); });
 
   // Réponse du test, appelée par l'application (Java) quand le serveur a répondu ou non.
   window.resultatTest = function (ok, message, adresse) {

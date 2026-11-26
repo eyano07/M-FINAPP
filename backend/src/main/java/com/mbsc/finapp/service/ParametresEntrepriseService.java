@@ -70,11 +70,26 @@ public class ParametresEntrepriseService {
         p.setIdNat(req.idNat());
         p.setNif(req.nif());
         p.setCouleurPrimaire(req.couleurPrimaire());
+        p.setAdresseServeur(normaliserAdresseServeur(req.adresseServeur()));
         if (req.modeleEntete() != null) {
             p.setModeleEntete(req.modeleEntete());
         }
         p = repository.save(p);
         return ParametresEntrepriseResponse.from(p);
+    }
+
+    /**
+     * Adresse saisie → adresse lue par les applications : http:// ajouté s'il manque, sans « / » final ni « /api »
+     * (même règle que l'écran de configuration des applications) ; vide → null.
+     */
+    static String normaliserAdresseServeur(String saisie) {
+        if (saisie == null || saisie.isBlank()) return null;
+        String s = saisie.trim();
+        if (!s.matches("(?i)^https?://.*")) s = "http://" + s;
+        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+        if (s.toLowerCase(java.util.Locale.ROOT).endsWith("/api")) s = s.substring(0, s.length() - 4);
+        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+        return s;
     }
 
     /** Renseignements de la liasse OHADA (page de garde, fiches R1 à R3) — ADMIN. */

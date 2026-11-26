@@ -25,6 +25,7 @@ const form = reactive({
   nif: '',
   couleurPrimaire: '#15803D',
   modeleEntete: MODELE_ENTETE_DEFAUT as ModeleEntete,
+  adresseServeur: '',
 })
 
 // ── Liasse fiscale OHADA (fiches R1 à R3, facultatives) ─────────────────
@@ -83,6 +84,7 @@ async function charger() {
     form.nif = parametresStore.parametres.nif || ''
     form.couleurPrimaire = parametresStore.parametres.couleurPrimaire || '#15803D'
     form.modeleEntete = parametresStore.parametres.modeleEntete || MODELE_ENTETE_DEFAUT
+    form.adresseServeur = parametresStore.parametres.adresseServeur || ''
   } catch (e: any) {
     erreur.value = messageErreurApi(e, 'Impossible de charger les paramètres.')
   } finally {
@@ -112,6 +114,7 @@ async function enregistrer() {
         email: form.email || null, rccm: form.rccm || null, idNat: form.idNat || null, nif: form.nif || null,
         couleurPrimaire: form.couleurPrimaire,
         modeleEntete: form.modeleEntete,
+        adresseServeur: form.adresseServeur.trim() || null,
       },
     })
     const enregistree = await api<Partial<InformationsLiasse>>('/parametres/liasse', {
@@ -301,6 +304,29 @@ async function onLogoChoisi(e: Event) {
               placeholder="ex: contact@societe.com"
               hide-details="auto"
               hint="Plusieurs adresses possibles, séparées par « · »"
+              persistent-hint
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Applications Android (26/11/2026) ──────────────────── -->
+      <div class="param-card">
+        <p class="param-card__title">
+          <v-icon icon="mdi-cellphone-link" size="16" class="mr-2" />
+          Applications Android
+        </p>
+        <div v-if="loading" class="param-loading">
+          <v-progress-circular indeterminate color="primary" size="24" />
+        </div>
+        <div v-else class="param-fields">
+          <div class="param-field">
+            <label class="param-label">Adresse du serveur (URL ou IP)</label>
+            <v-text-field
+              v-model="form.adresseServeur"
+              placeholder="ex: http://192.168.1.10 ou https://erp.exemple.com"
+              hide-details="auto"
+              hint="Adresse que les téléphones joignent (pas « localhost »). La page « À propos » en fait un QR, scanné au premier lancement de MBSC Finapp et de MBSC Logistique."
               persistent-hint
             />
           </div>

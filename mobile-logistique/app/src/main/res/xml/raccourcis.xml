@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Appui long sur l'icône : « Scanner un bien » et « Changer de serveur ». -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="scanner"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/raccourci_scanner">
+        <intent
+            android:action="cd.mbsc.logistique.SCANNER"
+            android:targetPackage="cd.mbsc.logistique"
+            android:targetClass="cd.mbsc.logistique.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="serveur"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/raccourci_serveur">
+        <intent
+            android:action="cd.mbsc.logistique.CONFIGURER"
+            android:targetPackage="cd.mbsc.logistique"
+            android:targetClass="cd.mbsc.logistique.MainActivity" />
+    </shortcut>
+</shortcuts>

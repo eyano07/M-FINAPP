@@ -18,6 +18,8 @@ export interface Parametres {
   modeleEntete?: ModeleEntete
   /** Régime de TVA : false = entreprise non assujettie (factures sans TVA, mention « non applicable »). */
   assujettiTva?: boolean
+  /** Adresse du serveur pour les applications Android (URL ou IP), saisie par l'administrateur : QR de « À propos ». */
+  adresseServeur?: string | null
 }
 
 const DEFAUT: Parametres = {

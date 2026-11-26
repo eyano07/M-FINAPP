@@ -38,6 +38,9 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -79,6 +82,7 @@ public class MainActivity extends Activity {
     private static final int PERMISSION_CAMERA_PAGE = 2;
     private static final int PERMISSION_CAMERA_FICHIERS = 3;
     private static final int PERMISSION_NOTIFICATIONS = 4;
+    private static final int PERMISSION_CAMERA_SCAN = 5;
 
     /** Version de l'application (versionName), lue au démarrage. */
     private static String versionAppli = "?";
@@ -640,6 +644,15 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int demande, int resultat, Intent donnees) {
         super.onActivityResult(demande, resultat, donnees);
+        // QR de l'adresse du serveur (écran de configuration, 26/11/2026).
+        IntentResult scan = IntentIntegrator.parseActivityResult(demande, resultat, donnees);
+        if (scan != null) {
+            if (scan.getContents() != null && !scan.getContents().trim().isEmpty()) {
+                vue.evaluateJavascript("window.adresseScannee && window.adresseScannee("
+                    + chaineJs(scan.getContents().trim()) + ")", null);
+            }
+            return;
+        }
         if (demande != DEMANDE_FICHIERS || choixFichiers == null) return;
         Uri[] choisis = null;
         if (resultat == RESULT_OK) {
@@ -661,13 +674,38 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int demande, String[] permissions, int[] resultats) {
         boolean accordee = resultats.length > 0 && resultats[0] == PackageManager.PERMISSION_GRANTED;
-        if (demande == PERMISSION_CAMERA_FICHIERS) {
+        if (demande == PERMISSION_CAMERA_SCAN) {
+            if (accordee) lancerScanServeur();
+            else message("Le scanner a besoin de l'appareil photo : autorisez-le dans les réglages de l'application.");
+        } else if (demande == PERMISSION_CAMERA_FICHIERS) {
             lancerChoixFichiers();
         } else if (demande == PERMISSION_CAMERA_PAGE && demandeCamera != null) {
             if (accordee) demandeCamera.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
             else demandeCamera.deny();
             demandeCamera = null;
         }
+    }
+
+    /**
+     * Scanner du QR de l'adresse du serveur, affiché sur la page « À propos » du site : l'adresse n'est plus à saisir
+     * au premier lancement.
+     */
+    private void scannerServeur() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, PERMISSION_CAMERA_SCAN);
+            return;
+        }
+        lancerScanServeur();
+    }
+
+    private void lancerScanServeur() {
+        IntentIntegrator scan = new IntentIntegrator(this);
+        scan.setCaptureActivity(Scanner.class);
+        scan.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE);
+        scan.setPrompt("Visez le QR du serveur (page « À propos » du site)");
+        scan.setBeepEnabled(true);
+        scan.setOrientationLocked(true);
+        scan.initiateScan();
     }
 
     private void demanderNotifications() {
@@ -849,6 +887,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void ouvrirLien(String url) { ouvrirAilleurs(url); }
         @JavascriptInterface public void message(String texte) { MainActivity.this.message(texte); }
         /** Jeton Firebase du téléphone (vide tant que Firebase ne l'a pas donné) : le site l'inscrit au compte connecté. */
+        @JavascriptInterface public void scannerServeur() { runOnUiThread(MainActivity.this::scannerServeur); }
         @JavascriptInterface public String jetonPush() { return Notifications.jeton(MainActivity.this); }
     }
 }

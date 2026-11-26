@@ -55,6 +55,13 @@ public class ParametresEntreprise {
     @Column(length = 40)
     private String nif;
 
+    /**
+     * Adresse du serveur pour les applications Android (URL ou IP, ex. http://192.168.1.10), saisie par l'administrateur :
+     * la page « À propos » en fait le QR scanné au premier lancement des applications (V161).
+     */
+    @Column(name = "adresse_serveur", length = 255)
+    private String adresseServeur;
+
     @Column(name = "logo_chemin_stockage", length = 500)
     private String logoCheminStockage;
 

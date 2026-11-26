@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MBSC Logistique</string>
+    <string name="raccourci_scanner">Scanner un bien</string>
+    <string name="raccourci_serveur">Changer de serveur</string>
+</resources>

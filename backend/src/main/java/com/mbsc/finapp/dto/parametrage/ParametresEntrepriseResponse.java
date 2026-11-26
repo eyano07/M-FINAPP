@@ -18,7 +18,9 @@ public record ParametresEntrepriseResponse(
     /** Modèle de papier à en-tête des documents imprimés et PDF. */
     ModeleEntete modeleEntete,
     /** Régime de TVA de l'entreprise (factures : mention « TVA non applicable » si non assujettie). */
-    boolean assujettiTva
+    boolean assujettiTva,
+    /** Adresse du serveur pour les applications Android : QR de la page « À propos ». */
+    String adresseServeur
 ) {
     public static ParametresEntrepriseResponse from(ParametresEntreprise p) {
         // Parametre de cache-busting (?v=...) : sans lui, le navigateur
@@ -30,6 +32,6 @@ public record ParametresEntrepriseResponse(
         return new ParametresEntrepriseResponse(
             p.getNom(), p.getNomComplet(), p.getSlogan(), p.getAdresse(), p.getTelephone(),
             p.getEmail(), p.getRccm(), p.getIdNat(), p.getNif(), logoUrl, p.getCouleurPrimaire(), p.getModeleEntete(),
-            p.isAssujettiTva());
+            p.isAssujettiTva(), p.getAdresseServeur());
     }
 }

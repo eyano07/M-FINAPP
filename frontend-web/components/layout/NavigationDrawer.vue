@@ -167,6 +167,7 @@ const patrimoineItems: NavItem[] = [
   { title: 'Immobilisations', icon: 'mdi-office-building-cog-outline', to: '/patrimoine/immobilisations', module: 'PATRIMOINE' },
   // Inventaire (19/11/2026) : biens relevés, codes à coller (étiquettes QR), valorisation par la logistique.
   { title: 'Biens et étiquettes', icon: 'mdi-qrcode-scan', to: '/patrimoine/inventaire', module: 'PATRIMOINE' },
+  { title: "Fiche d'un bien (QR)", icon: 'mdi-qrcode', to: '/patrimoine/bien', module: 'PATRIMOINE' },
   { title: 'Emplacements', icon: 'mdi-map-marker-multiple-outline', to: '/patrimoine/emplacements', module: 'PATRIMOINE' },
   { title: 'Amortissements', icon: 'mdi-chart-timeline-variant-shimmer', to: '/patrimoine/amortissements', module: 'PATRIMOINE' },
   { title: 'Consommables', icon: 'mdi-package-variant', to: '/patrimoine/consommables', module: 'PATRIMOINE' },

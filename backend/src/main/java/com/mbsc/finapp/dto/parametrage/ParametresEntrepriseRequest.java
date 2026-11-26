@@ -19,5 +19,10 @@ public record ParametresEntrepriseRequest(
     @NotBlank @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "La couleur doit etre un code hexadecimal (ex. #15803D)")
     String couleurPrimaire,
     /** Facultatif : absent, le modèle actuel est conservé. */
-    ModeleEntete modeleEntete
+    ModeleEntete modeleEntete,
+    /** Adresse du serveur pour les applications Android (URL ou IP) ; vide : aucune. */
+    @Size(max = 255)
+    @Pattern(regexp = "^$|^(?i)(https?://)?[a-z0-9.-]+(:\\d{1,5})?(/.*)?$",
+        message = "Adresse du serveur invalide (ex. 192.168.1.10, http://192.168.1.10:8080 ou https://erp.exemple.com)")
+    String adresseServeur
 ) {}

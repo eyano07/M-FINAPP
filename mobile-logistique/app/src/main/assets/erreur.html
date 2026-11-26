@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Serveur injoignable</title>
+<style>
+  :root { --vert: #0f6e56; --fond: #eef2f0; --carte: #fff; --encre: #12241d; --doux: #5b6b64; --ambre: #b26a00; --verre: rgba(255,255,255,.55); --verre-bord: rgba(255,255,255,.7); }
+  @media (prefers-color-scheme: dark) { :root { --fond: #08130f; --carte: #11201a; --encre: #e6efe9; --doux: #9fb2a9; --vert: #3fbf7f; --ambre: #f2c66d; --verre: rgba(20,30,26,.58); --verre-bord: rgba(255,255,255,.10); } }
+  * { box-sizing: border-box; }
+  /* Verre dépoli (21/11/2026), comme le site : aurore colorée floue derrière une carte translucide. */
+  .aurore { position: fixed; inset: 0; z-index: -1; overflow: hidden; filter: blur(56px); opacity: .55; pointer-events: none; }
+  .aurore span { position: absolute; border-radius: 50%; }
+  .aurore span:nth-child(1) { width: 70vw; height: 70vw; left: -20vw; top: -10vw; background: #10b981; }
+  .aurore span:nth-child(2) { width: 60vw; height: 60vw; right: -20vw; top: 30vh; background: #38bdf8; }
+  .aurore span:nth-child(3) { width: 55vw; height: 55vw; left: 10vw; bottom: -15vw; background: #a855f7; opacity: .7; }
+  @media (prefers-color-scheme: dark) { .aurore { opacity: .3; } }
+  body { position: relative; isolation: isolate; margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fond); color: var(--encre); }
+  .carte { width: 100%; max-width: 440px; background: var(--verre); -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%); border: 1px solid var(--verre-bord); border-radius: 24px; padding: 28px 20px; text-align: center; box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 16px 34px -14px rgba(0,0,0,.25); }
+  .icone { width: 64px; height: 64px; margin: 0 auto 14px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; background: color-mix(in srgb, var(--ambre) 16%, transparent); color: var(--ambre); }
+  .logo { width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 16px; display: grid; place-items: center; background: color-mix(in srgb, var(--vert) 14%, transparent); }
+  .logo + .icone { display: none; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p { color: var(--doux); font-size: 14px; line-height: 1.5; margin: 0 0 6px; }
+  .serveur { font-family: ui-monospace, monospace; color: var(--encre); word-break: break-all; }
+  .boutons { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+  button { font-size: 16px; font-weight: 600; padding: 14px; border-radius: 12px; border: 0; }
+  .principal { background: linear-gradient(135deg, var(--vert), #0d9488 60%, #0891b2); color: #fff; box-shadow: 0 10px 22px -10px rgba(13,148,136,.75); }
+  .secondaire { background: transparent; color: var(--vert); border: 1.5px solid var(--vert); }
+</style>
+</head>
+<body>
+<div class="aurore" aria-hidden="true"><span></span><span></span><span></span></div>
+<div class="carte">
+  <div class="logo" style="color:var(--vert)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="16 18 92 86" width="34" height="34" aria-label="M-FINAPP"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M28 90 V36 L60 66" stroke-width="13"/><path d="M92 58 V90" stroke-width="13"/><path d="M60 66 L94 32" stroke-width="13"/><path d="M76 30 H96 V50" stroke-width="10"/></g></svg></div>
+  <div class="icone">!</div>
+  <h1>Serveur injoignable</h1>
+  <p id="detail">Le serveur ne répond pas.</p>
+  <p>Adresse : <span id="serveur" class="serveur"></span></p>
+  <p>Vérifiez que le téléphone est connecté au réseau de l'entreprise (Wi-Fi) ou à Internet, et que le serveur est allumé.</p>
+  <div class="boutons">
+    <button class="principal" onclick="LogistiqueAndroid.reessayer()">Réessayer</button>
+    <button class="secondaire" onclick="LogistiqueAndroid.configurer()">Changer de serveur</button>
+  </div>
+</div>
+<script>
+  var q = new URLSearchParams(location.search);
+  if (q.get('m')) document.getElementById('detail').textContent = q.get('m');
+  document.getElementById('serveur').textContent = (window.LogistiqueAndroid && LogistiqueAndroid.serveurActuel()) || '—';
+</script>
+</body>
+</html>

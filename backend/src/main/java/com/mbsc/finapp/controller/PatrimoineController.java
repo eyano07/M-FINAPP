@@ -170,6 +170,12 @@ public class PatrimoineController {
         return inventaire.lister();
     }
 
+    /** Bien d'après le code de son étiquette (QR scanné par l'application MBSC Logistique). */
+    @GetMapping("/inventaire/par-code")
+    public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien parCode(@RequestParam String code) {
+        return inventaire.parCode(code);
+    }
+
     @org.springframework.web.bind.annotation.PutMapping("/inventaire/{id}")
     public com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.Bien corriger(@PathVariable Long id,
             @jakarta.validation.Valid @RequestBody com.mbsc.finapp.service.patrimoine.InventairePatrimoineService.CorrectionRequest req) {

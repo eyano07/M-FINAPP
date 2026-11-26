@@ -86,6 +86,18 @@ public class InventairePatrimoineService {
         return jdbc.query(SELECT + " order by coalesce(e.nom, b.localisation), b.code", LIGNE);
     }
 
+    /**
+     * Bien d'après le code de son étiquette (contenu du QR), pour l'application MBSC Logistique : la casse et les
+     * espaces autour sont ignorés.
+     */
+    @PreAuthorize(LECTURE)
+    @Transactional(readOnly = true)
+    public Bien parCode(String code) {
+        String c = code == null ? "" : code.trim();
+        return jdbc.query(SELECT + " where upper(b.code) = upper(?)", LIGNE, c).stream().findFirst()
+            .orElseThrow(() -> new RessourceIntrouvableException("Aucun bien ne porte le code « " + c + " »."));
+    }
+
     private Bien bien(Long id) {
         return jdbc.query(SELECT + " where b.id = ?", LIGNE, id).stream().findFirst()
             .orElseThrow(() -> RessourceIntrouvableException.of("Bien inventorié", id));
