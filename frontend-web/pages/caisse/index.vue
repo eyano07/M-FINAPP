@@ -562,9 +562,25 @@ const notesOptions = computed(() =>
   }))
 )
 
+// Encaissement (26/11/2026) : le caissier confirme le montant reçu et son motif avant l'enregistrement.
+const dialogues = useDialogues()
+
 async function soumettre() {
   const { valid } = await formRef.value.validate()
   if (!valid) return
+  if (form.sens === 'ENCAISSEMENT') {
+    const confirme = await dialogues.confirmer({
+      titre: `Encaisser ${fmtUSD(Number(form.montantUSD) || 0)} ?`,
+      message: [
+        `Motif : ${form.libelle || '—'}`,
+        `Compte de contrepartie : ${form.compteContrepartie || '—'}`,
+        "L'argent entre en caisse et l'écriture est passée au grand livre.",
+      ],
+      bouton: "Confirmer l'encaissement",
+      icone: 'mdi-cash-plus',
+    })
+    if (!confirme) return
+  }
   envoi.value = true
   erreurEnvoi.value = ''
   try {

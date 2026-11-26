@@ -472,10 +472,27 @@ async function creerNoteSurCopie(executerEnsuite: boolean) {
   }
 }
 
+const dialogues = useDialogues()
+
 async function creerNote(executerEnsuite: boolean) {
   if (!peutCreer.value) {
     erreur.value = 'Renseignez un objet, le bénéficiaire et au moins une ligne avec un montant.'
     return
+  }
+  // « Créer et encaisser » (26/11/2026) : le caissier confirme le montant reçu avant l'entrée en caisse.
+  if (executerEnsuite && form.sens === 'ENCAISSEMENT' && !surCopie.value) {
+    const montant = lignesValides.value.reduce((t, l) => t + (Number(l.montant) || 0), 0)
+    const confirme = await dialogues.confirmer({
+      titre: `Encaisser ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(montant)} ${form.devise} ?`,
+      message: [
+        `Objet : ${form.objet}`,
+        `Payeur : ${form.beneficiaire}`,
+        "La note est créée et l'argent entre aussitôt en caisse.",
+      ],
+      bouton: "Confirmer l'encaissement",
+      icone: 'mdi-cash-check',
+    })
+    if (!confirme) return
   }
   if (executerEnsuite) soumission.value = true
   else saving.value = true
