@@ -393,11 +393,14 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
      * payee — ou, pour un retour de fonds en caisse, celui de la note reduite (le retour diminue le realise du service
      * qui avait engage la depense) ; une ecriture sans note, ou d'une note sans service, n'en a pas.</p>
      *
-     * <p>7e colonne (V162) : budget secondaire de cette note (null : budget principal).</p>
+     * <p>7e colonne (V162) : budget secondaire de cette note (null : budget principal ; 0 : déclarée hors budget, V163).</p>
      */
     @Query("""
         select c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id),
-               coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0), coalesce(bc.id, br.id, bb.id, bm.id)
+               coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0),
+               coalesce(bc.id, br.id, bb.id, bm.id,
+                        case when nc.horsBudget = true or nr.horsBudget = true or nb.horsBudget = true or nm.horsBudget = true
+                             then 0L end)
         from EcritureGrandLivre e
         join e.compte c
         left join e.piece p
@@ -412,7 +415,9 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
                              and p.reevaluationDevise = false
                              and p.clotureExercice = false))
         group by c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id),
-                 coalesce(bc.id, br.id, bb.id, bm.id)
+                 coalesce(bc.id, br.id, bb.id, bm.id,
+                          case when nc.horsBudget = true or nr.horsBudget = true or nb.horsBudget = true or nm.horsBudget = true
+                               then 0L end)
     """)
     List<Object[]> mouvementsMensuelsBudgetaires(@Param("du") LocalDate du, @Param("au") LocalDate au);
 

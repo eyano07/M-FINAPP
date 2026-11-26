@@ -261,11 +261,15 @@ public class NoteFraisService {
             .justificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null)
             .service(sens == SensTransaction.DECAISSEMENT ? resoudreService(req.serviceId(), null) : null)
             .build();
-        note.setBudgetSecondaire(sens == SensTransaction.DECAISSEMENT ? resoudreBudgetSecondaire(req.budgetSecondaireId(), null) : null);
+        appliquerHorsBudget(note, sens == SensTransaction.DECAISSEMENT && req.estHorsBudget());
+        if (!note.isHorsBudget()) {
+            note.setBudgetSecondaire(sens == SensTransaction.DECAISSEMENT ? resoudreBudgetSecondaire(req.budgetSecondaireId(), null) : null);
+        }
 
         construireLignes(note, req.lignes());
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
+        detecterHorsBudget(note);
         rattacherServiceDeduit(note);
 
         note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Creation de la note"));
@@ -361,13 +365,15 @@ public class NoteFraisService {
         note.setDevise(req.devise() == null ? Devise.CDF : req.devise());
         note.setJustificationBudget(StringUtils.hasText(req.justificationBudget()) ? req.justificationBudget().trim() : null);
         note.setService(note.getSens() == SensTransaction.DECAISSEMENT ? resoudreService(req.serviceId(), note.getService()) : null);
-        note.setBudgetSecondaire(note.getSens() == SensTransaction.DECAISSEMENT
+        appliquerHorsBudget(note, note.getSens() == SensTransaction.DECAISSEMENT && req.estHorsBudget());
+        note.setBudgetSecondaire(note.getSens() == SensTransaction.DECAISSEMENT && !note.isHorsBudget()
             ? resoudreBudgetSecondaire(req.budgetSecondaireId(), note.getBudgetSecondaire()) : null);
 
         List<LigneNoteFrais> nouvelles = creerLignes(req.lignes(), note.getSens());
         note.remplacerLignes(nouvelles);
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
+        detecterHorsBudget(note);
         rattacherServiceDeduit(note);
 
         log.info("Note de frais modifiee [ref={}, montant={}]", note.getReference(), note.getMontant());
@@ -1538,6 +1544,41 @@ public class NoteFraisService {
      * Budget secondaire choisi pour une dépense (V162) : null = budget principal. Le budget actuel de la note est gardé
      * tel quel ; un autre doit être un budget secondaire en exécution sur le mois en cours.
      */
+    /**
+     * Dépense déclarée hors budget par le demandeur (V163) : sur aucun budget, avec une justification obligatoire ; le DA
+     * devra motiver sa validation (contrôle HORS_BUDGET, voir {@link #valider}).
+     */
+    /**
+     * Hors budget automatique : une ligne sur un compte que le budget de la note (principal, ou son budget secondaire) ne
+     * prévoit pas fait passer la note hors budget, avec les mêmes exigences qu'un choix du demandeur.
+     */
+    private void detecterHorsBudget(NoteFrais note) {
+        if (note.getSens() != SensTransaction.DECAISSEMENT || note.isHorsBudget()) {
+            return;
+        }
+        ControleBudgetaireResponse controle = controleBudgetaire.controlerNote(note);
+        boolean compteNonBudgete = controle.lignes().stream()
+            .anyMatch(l -> l.statut() == com.mbsc.finapp.domain.enums.StatutControleBudget.HORS_BUDGET);
+        if (compteNonBudgete) {
+            if (!StringUtils.hasText(note.getJustificationBudget())) {
+                throw new IllegalArgumentException("Un compte de la note n'est pas prévu au budget : la note passe hors budget. "
+                    + "Indiquez pourquoi dans la justification budgétaire.");
+            }
+            appliquerHorsBudget(note, true);
+        }
+    }
+
+    private void appliquerHorsBudget(NoteFrais note, boolean horsBudget) {
+        note.setHorsBudget(horsBudget);
+        if (!horsBudget) {
+            return;
+        }
+        note.setBudgetSecondaire(null);
+        if (!StringUtils.hasText(note.getJustificationBudget())) {
+            throw new IllegalArgumentException("Dépense hors budget : indiquez pourquoi dans la justification budgétaire.");
+        }
+    }
+
     private com.mbsc.finapp.domain.Budget resoudreBudgetSecondaire(Long budgetId, com.mbsc.finapp.domain.Budget actuel) {
         if (budgetId == null) {
             return null;

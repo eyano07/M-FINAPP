@@ -24,6 +24,8 @@ const props = defineProps<{
   serviceId?: number | null
   /** Budget secondaire choisi (null : budget principal) : la note est contrôlée sur ce budget. */
   budgetSecondaireId?: number | null
+  /** Dépense déclarée hors budget : aucune imputation. */
+  horsBudget?: boolean
 }>()
 const emit = defineEmits<{ (e: 'resultat', r: any | null): void }>()
 
@@ -60,7 +62,7 @@ async function controler() {
         return
       }
       resultat.value = await api<any>('/notes-frais/controle-budgetaire', {
-        method: 'POST', body: { devise: props.devise || 'CDF', lignes, noteId: props.noteId || null, serviceId: props.serviceId ?? null, budgetSecondaireId: props.budgetSecondaireId ?? null },
+        method: 'POST', body: { devise: props.devise || 'CDF', lignes, noteId: props.noteId || null, serviceId: props.serviceId ?? null, budgetSecondaireId: props.budgetSecondaireId ?? null, horsBudget: !!props.horsBudget },
       })
     } else if (props.noteId) {
       resultat.value = await api<any>(`/notes-frais/${props.noteId}/controle-budgetaire`)
@@ -80,7 +82,7 @@ function planifier() {
   minuterie = setTimeout(controler, 450)
 }
 
-watch(() => [props.lignes, props.devise, props.sens, props.serviceId, props.budgetSecondaireId], planifier, { deep: true })
+watch(() => [props.lignes, props.devise, props.sens, props.serviceId, props.budgetSecondaireId, props.horsBudget], planifier, { deep: true })
 watch(() => [props.noteId, props.rafraichir], planifier)
 onMounted(controler)
 onBeforeUnmount(() => { if (minuterie) clearTimeout(minuterie) })

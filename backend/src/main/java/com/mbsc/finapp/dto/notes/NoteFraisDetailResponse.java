@@ -54,7 +54,9 @@ public record NoteFraisDetailResponse(
     /** Budget secondaire de la note (V162) ; null : budget principal. */
     Long budgetSecondaireId,
     String budgetSecondaireReference,
-    String budgetSecondaireIntitule
+    String budgetSecondaireIntitule,
+    /** Dépense déclarée hors budget par le demandeur (V163). */
+    boolean horsBudget
 ) {
     public static NoteFraisDetailResponse from(NoteFrais n) {
         var createur = n.getCreateur();
@@ -106,7 +108,8 @@ public record NoteFraisDetailResponse(
             n.getRetoursFonds().stream().anyMatch(r -> r.getStatut() == com.mbsc.finapp.domain.enums.StatutRetourFonds.EN_ATTENTE),
             n.getBudgetSecondaire() == null ? null : n.getBudgetSecondaire().getId(),
             n.getBudgetSecondaire() == null ? null : n.getBudgetSecondaire().getReference(),
-            n.getBudgetSecondaire() == null ? null : n.getBudgetSecondaire().getIntitule()
+            n.getBudgetSecondaire() == null ? null : n.getBudgetSecondaire().getIntitule(),
+            n.isHorsBudget()
         );
     }
 }

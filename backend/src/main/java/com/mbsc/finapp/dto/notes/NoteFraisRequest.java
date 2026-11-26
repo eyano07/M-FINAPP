@@ -57,10 +57,17 @@ public record NoteFraisRequest(
      * Budget secondaire (projet...) sur lequel porte la dépense (V162) ; null : budget principal. Il doit être en
      * exécution sur le mois de la note.
      */
-    Long budgetSecondaireId
+    Long budgetSecondaireId,
+
+    /** Dépense déclarée hors budget (V163) : justification obligatoire, validation motivée du DA. */
+    Boolean horsBudget
 ) {
     public NoteFraisRequest(String objet, String beneficiaire, String description, Devise devise, SensTransaction sens,
                             List<LigneNoteFraisRequest> lignes, String justificationBudget, Long serviceId) {
-        this(objet, beneficiaire, description, devise, sens, lignes, justificationBudget, serviceId, null);
+        this(objet, beneficiaire, description, devise, sens, lignes, justificationBudget, serviceId, null, null);
+    }
+
+    public boolean estHorsBudget() {
+        return Boolean.TRUE.equals(horsBudget);
     }
 }

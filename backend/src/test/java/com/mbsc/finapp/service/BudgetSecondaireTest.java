@@ -25,7 +25,8 @@ import static org.mockito.Mockito.mock;
 
 /**
  * Budgets secondaires (V162) : le budget principal ne compte que les dépenses sans budget secondaire ; un budget
- * secondaire (projet), seulement les siennes, y compris celles des notes rattachées à sa version initiale.
+ * secondaire (projet), seulement les siennes, y compris celles des notes rattachées à sa version initiale. Une note
+ * déclarée hors budget (V163) n'entre dans aucun des deux.
  */
 class BudgetSecondaireTest {
 
@@ -47,11 +48,13 @@ class BudgetSecondaireTest {
     private final MouvementsExercice mouvements = new MouvementsExercice(List.of(
         depense("300", null),    // budget principal
         depense("200", 20L),     // projet A (version initiale 20)
-        depense("50", 30L)),     // projet B
+        depense("50", 30L),      // projet B
+        depense("75", SuiviBudgetaireService.HORS_BUDGET)),   // déclarée hors budget
         Map.of());
     private final List<Engagement> engagements = List.of(
         new Engagement(1L, "6011", 12, new BigDecimal("40"), null, null),
-        new Engagement(2L, "6011", 12, new BigDecimal("15"), null, 20L));
+        new Engagement(2L, "6011", 12, new BigDecimal("15"), null, 20L),
+        new Engagement(3L, "6011", 12, new BigDecimal("9"), null, SuiviBudgetaireService.HORS_BUDGET));
 
     @Test
     void le_budget_principal_exclut_les_depenses_des_budgets_secondaires() {

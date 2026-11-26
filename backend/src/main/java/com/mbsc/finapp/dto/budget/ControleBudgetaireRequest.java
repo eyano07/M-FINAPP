@@ -19,10 +19,12 @@ public record ControleBudgetaireRequest(
     /** Service qui engage la depense (null : aucun) : la note est controlee sur l'enveloppe de ce service. */
     Long serviceId,
     /** Budget secondaire choisi (null : budget principal). */
-    Long budgetSecondaireId
+    Long budgetSecondaireId,
+    /** Dépense déclarée hors budget : aucune imputation, chaque dépense budgétaire est HORS_BUDGET. */
+    Boolean horsBudget
 ) {
     public ControleBudgetaireRequest(Devise devise, List<Depense> lignes, Long noteId, Long serviceId) {
-        this(devise, lignes, noteId, serviceId, null);
+        this(devise, lignes, noteId, serviceId, null, null);
     }
 
     public record Depense(

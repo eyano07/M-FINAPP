@@ -90,7 +90,8 @@ public class ControleBudgetaireService {
         BigDecimal taux = devise == ConversionDeviseService.DEVISE_BASE ? null : conversion.tauxCourant();
         ServiceBudgetaire service = req.serviceId() == null ? null : serviceRepository.findById(req.serviceId()).orElse(null);
         Budget secondaire = req.budgetSecondaireId() == null ? null : budgetRepository.findById(req.budgetSecondaireId()).orElse(null);
-        return controler(depenses, devise, taux, LocalDate.now(), req.noteId(), service, secondaire);
+        return controler(depenses, devise, taux, LocalDate.now(), req.noteId(), service, secondaire,
+            Boolean.TRUE.equals(req.horsBudget()));
     }
 
     /** Controle d'une note enregistree, a la date de sa creation et au taux d'engagement s'il est fige. */
@@ -109,7 +110,8 @@ public class ControleBudgetaireService {
             return budgetDesactive(depenses, devise, date);
         }
         BigDecimal taux = suivi.tauxDeLaNote(note);
-        return controler(depenses, devise, taux, date, note.getId(), note.getService(), note.getBudgetSecondaire());
+        return controler(depenses, devise, taux, date, note.getId(), note.getService(), note.getBudgetSecondaire(),
+            note.isHorsBudget());
     }
 
     /**
@@ -157,7 +159,7 @@ public class ControleBudgetaireService {
      */
     @Transactional(readOnly = true)
     public Optional<ServiceBudgetaire> serviceDeduit(NoteFrais note, LocalDate date) {
-        if (note.getSens() == SensTransaction.ENCAISSEMENT || !modules.estActif(ModuleMetier.BUDGET)) {
+        if (note.getSens() == SensTransaction.ENCAISSEMENT || note.isHorsBudget() || !modules.estActif(ModuleMetier.BUDGET)) {
             return Optional.empty();
         }
         java.util.Set<Long> comptes = note.getLignes().stream()
@@ -237,14 +239,17 @@ public class ControleBudgetaireService {
     // ---------------------------------------------------------------------
 
     private ControleBudgetaireResponse controler(List<Depense> depenses, Devise devise, BigDecimal taux,
-                                                 LocalDate date, Long noteId, ServiceBudgetaire service, Budget secondaire) {
+                                                 LocalDate date, Long noteId, ServiceBudgetaire service, Budget secondaire,
+                                                 boolean horsBudget) {
         int exercice = date.getYear();
         int mois = date.getMonthValue();
         Long serviceId = service == null ? null : service.getId();
         List<String> avertissements = new ArrayList<>();
-        Optional<Budget> budgetOpt = secondaire != null ? budgetSecondaireEnExecution(secondaire, date) : budgetEnExecution(exercice, mois);
+        // Dépense déclarée hors budget : rapprochée d'aucun budget.
+        Optional<Budget> budgetOpt = horsBudget ? Optional.empty()
+            : secondaire != null ? budgetSecondaireEnExecution(secondaire, date) : budgetEnExecution(exercice, mois);
         String nomMois = Month.of(mois).getDisplayName(TextStyle.FULL, FR);
-        if (secondaire != null && budgetOpt.isEmpty()) {
+        if (!horsBudget && secondaire != null && budgetOpt.isEmpty()) {
             avertissements.add("Le budget secondaire " + secondaire.getReference() + " (" + secondaire.getIntitule()
                 + ") n'est pas en exécution pour " + nomMois + " " + exercice + ".");
         }
@@ -255,7 +260,7 @@ public class ControleBudgetaireService {
             Budget budget = budgetOpt.get();
             env = new BudgetControle(budget, suivi.repartirSurLignes(budget, suivi.mouvementsDetailles(exercice),
                 suivi.engagementsDeLExercice(exercice, noteId, avertissements)));
-        } else if (secondaire == null) {
+        } else if (secondaire == null && !horsBudget) {
             budgetsEnAttente(exercice, mois).ifPresent(avertissements::add);
         }
 
@@ -278,6 +283,9 @@ public class ControleBudgetaireService {
             } else if (!MoteurBudgetaire.estDepenseBudgetaire(numero, compte.getClasse(), compte.getType())) {
                 ligne = ligne(i, numero, compte.getLibelle(), montant, montantBase, StatutControleBudget.NON_CONCERNE, null, null,
                     "Pas une dépense budgétaire (règlement de dette, avance, trésorerie...) : non soumise au contrôle.");
+            } else if (horsBudget) {
+                ligne = ligne(i, numero, compte.getLibelle(), montant, montantBase, StatutControleBudget.HORS_BUDGET, null, null,
+                    "Dépense déclarée hors budget par le demandeur : le DA doit motiver sa validation.");
             } else if (env == null) {
                 ligne = ligne(i, numero, compte.getLibelle(), montant, montantBase, StatutControleBudget.SANS_BUDGET, null, null,
                     "Aucun budget en exécution pour " + nomMois + " " + exercice + " : la dépense est hors budget.");

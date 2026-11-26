@@ -142,6 +142,14 @@ public class NoteFrais {
     @ToString.Exclude
     private Budget budgetSecondaire;
 
+    /**
+     * Dépense déclarée hors budget par le demandeur (V163) : imputée sur aucun budget, justification obligatoire,
+     * validation motivée du DA.
+     */
+    @Column(name = "hors_budget", nullable = false)
+    @Builder.Default
+    private boolean horsBudget = false;
+
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "createur_id")
     private User createur;   // Directeur (ou Caissier en urgence)

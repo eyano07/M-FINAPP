@@ -72,6 +72,8 @@ public class SuiviBudgetaireService {
     static final Set<StatutNote> STATUTS_ENGAGES = EnumSet.of(StatutNote.VALIDEE_DA, StatutNote.TRANSMISE_CAISSE);
     /** Compte de repli applique au paiement d'une ligne de note sans compte (voir EcritureComptableService). */
     static final String COMPTE_REPLI = "6588";
+    /** Marque d'une dépense déclarée hors budget (V163) dans les mouvements et les engagements : aucun budget n'y répond. */
+    static final Long HORS_BUDGET = 0L;
     /** Nom du bloc des lignes generales (sans service) d'un budget organise par service. */
     static final String LIGNES_GENERALES = "Lignes générales (sans service)";
     private static final String DEVISE = ConversionDeviseService.DEVISE_BASE.name();
@@ -171,7 +173,9 @@ public class SuiviBudgetaireService {
             BigDecimal taux = tauxDeLaNote(n);
             int mois = moisDe(n.getDateCreation());
             Long service = n.getService() == null ? null : n.getService().getId();
-            Long budgetSecondaire = n.getBudgetSecondaire() == null ? null : n.getBudgetSecondaire().racineId();
+            // Hors budget (V163) : 0, qui n'est l'identifiant d'aucun budget ; la dépense n'entre dans aucun suivi.
+            Long budgetSecondaire = n.isHorsBudget() ? HORS_BUDGET
+                : n.getBudgetSecondaire() == null ? null : n.getBudgetSecondaire().racineId();
             for (LigneNoteFrais l : n.getLignes()) {
                 BigDecimal base = versBase(l.montantHtTotal(), n.getDevise(), taux);
                 if (base == null) {
