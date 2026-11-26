@@ -22,6 +22,13 @@ export interface PontApplicationMobile {
   ajouterWidget?(type: 'notes' | 'tresorerie'): string
 }
 
+/** Application MBSC Logistique (26/11/2026) : agent utilisateur propre, le site s'y ouvre sans restriction. */
+export const AGENT_APPLICATION_LOGISTIQUE = 'MBSCLogistiqueAndroid'
+
+export function estApplicationLogistique(): boolean {
+  return import.meta.client && typeof navigator !== 'undefined' && navigator.userAgent.includes(AGENT_APPLICATION_LOGISTIQUE)
+}
+
 export function estApplicationMobile(): boolean {
   return import.meta.client && typeof navigator !== 'undefined' && navigator.userAgent.includes(AGENT_APPLICATION_MOBILE)
 }

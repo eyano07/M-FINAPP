@@ -18,8 +18,11 @@ let minuterie: ReturnType<typeof setInterval> | null = null
 // Exercice consulté (sélecteur de la barre du haut) : la page est reconstruite à chaque changement, avec ses bornes.
 const exercice = useExerciceStore()
 exercice.hydrater()
-onMounted(() => {
-  void exercice.charger()
+onMounted(async () => {
+  await exercice.charger()
+  // Seuls le DFIN et le comptable choisissent l'exercice : un autre compte revient toujours à l'exercice en cours
+  // (choix resté d'une session précédente ou d'un autre compte sur ce navigateur).
+  if (exercice.enConsultation && !useAuthStore().hasAnyRole(['DFIN', 'COMPTABLE'])) exercice.choisir(exercice.anneeCourante)
   void instance.charger()
   minuterie = setInterval(() => { void instance.charger() }, 60_000)
 })

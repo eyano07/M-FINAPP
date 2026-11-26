@@ -2,6 +2,7 @@
 definePageMeta({ layout: 'blank' })
 
 import { useParametresStore } from '~/stores/parametres'
+import { estApplicationLogistique } from '~/utils/applicationMobile'
 
 // Identifiant de connexion : nom d'utilisateur OU adresse e-mail (le champ API s'appelle toujours « email »).
 const identifiant = ref('')
@@ -19,6 +20,10 @@ const motDePasseChange = useRoute().query.motDePasse === 'change'
 // Activation du mode local lancée depuis cet onglet : les comptes viennent maintenant du serveur en ligne.
 const apresActivation = ref(false)
 const parametresStore = useParametresStore()
+// Application MBSC Logistique : mention « Logistique » sur l'écran de connexion (lue après le montage, l'agent
+// utilisateur n'étant connu que du navigateur).
+const logistique = ref(false)
+onMounted(() => { logistique.value = estApplicationLogistique() })
 onMounted(() => {
   parametresStore.charger()
   apresActivation.value = activationModeLocalRecente()
@@ -106,14 +111,16 @@ async function submit() {
         <div class="acces__banniere-marque">
           <span class="logo logo-principal"><LogoMfinapp /></span>
           <span>{{ parametresStore.parametres.nom }}</span>
+          <span v-if="logistique" class="pastille-logistique">Logistique</span>
         </div>
-        <p class="acces__banniere-texte">Gestion financière et comptable</p>
+        <p class="acces__banniere-texte">{{ logistique ? 'Logistique, approvisionnement et patrimoine' : 'Gestion financière et comptable' }}</p>
       </div>
 
       <div class="acces__inner">
         <div class="acces__marque">
           <span class="logo logo-principal"><LogoMfinapp /></span>
           <span>{{ parametresStore.parametres.nom }}</span>
+          <span v-if="logistique" class="pastille-logistique">Logistique</span>
         </div>
 
         <h2 class="acces__titre">Connexion</h2>
@@ -256,6 +263,10 @@ async function submit() {
   box-shadow: 0 12px 24px -12px color-mix(in srgb, var(--color-primary) 75%, transparent) !important; }
 .acces__pied { margin-top: 40px; font-size: 0.8125rem; color: var(--ink-faint); }
 
+/* Mention « Logistique » de l'application MBSC Logistique. */
+.pastille-logistique { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 0.72rem;
+  font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: #d97706; }
+
 /* Bandeau photo du téléphone : même photo que le visuel du PC, fondue dans la couleur de marque. */
 .acces__banniere { display: none; }
 @media (max-width: 959px) {
@@ -283,9 +294,9 @@ async function submit() {
     background: linear-gradient(0deg, #13234f 6%, color-mix(in srgb, #13234f 55%, transparent) 55%, transparent 100%);
   }
   .acces__banniere-marque {
-    position: absolute; z-index: 1; left: 24px; bottom: 44px;
+    position: absolute; z-index: 1; left: 24px; right: 72px; bottom: 70px;
     display: flex; align-items: center; gap: 10px; font-size: 1.05rem; font-weight: 650;
   }
-  .acces__banniere-texte { position: absolute; z-index: 1; left: 24px; bottom: 18px; margin: 0; font-size: 0.85rem; opacity: 0.82; }
+  .acces__banniere-texte { position: absolute; z-index: 1; left: 24px; right: 24px; bottom: 44px; margin: 0; font-size: 0.85rem; opacity: 0.82; }
 }
 </style>

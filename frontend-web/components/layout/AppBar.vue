@@ -28,6 +28,8 @@ const parametresStore = useParametresStore()
 // Exercice consulté (19/11/2026) : liste déroulante du site (pas dans l'application Android). Un exercice clôturé se
 // consulte en lecture seule ; la page en cours est reconstruite avec les bornes du nouvel exercice (layouts/default.vue).
 const exercice = useExerciceStore()
+// Choix de l'exercice (26/11/2026) : réservé au DFIN et au comptable, sur le site comme dans les applications.
+const peutChoisirExercice = computed(() => auth.hasAnyRole(['DFIN', 'COMPTABLE']))
 const STATUTS_EXERCICE: Record<Exercice['statut'], { libelle: string, icone: string, couleur: string }> = {
   CLOTURE: { libelle: 'Clôturé · lecture seule', icone: 'mdi-lock-outline', couleur: 'deep-purple' },
   A_CLOTURER: { libelle: 'À clôturer', icone: 'mdi-calendar-alert', couleur: 'warning' },
@@ -177,7 +179,7 @@ async function ouvrirNotification(n: NotificationItem) {
 
     <v-spacer class="modern-appbar__espace" />
 
-    <v-menu v-if="!applicationMobile && exercice.liste.length > 0" location="bottom end" max-height="420">
+    <v-menu v-if="!applicationMobile && peutChoisirExercice && exercice.liste.length > 0" location="bottom end" max-height="420">
       <template #activator="{ props }">
         <v-btn v-bind="props" variant="tonal" size="small" rounded="lg" class="modern-appbar__exercice"
           :color="exercice.lectureSeule ? 'deep-purple' : exercice.enConsultation ? 'warning' : undefined"

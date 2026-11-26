@@ -213,11 +213,18 @@ public class MainActivity extends Activity {
 
     private void appliquerEtatReseau(boolean ok, boolean changement) {
         vue.setNetworkAvailable(ok);   // navigator.onLine et événements online/offline de la page
-        vue.getSettings().setCacheMode(ok ? WebSettings.LOAD_DEFAULT : WebSettings.LOAD_CACHE_ELSE_NETWORK);
+        // Pas de copie en cache hors connexion (26/11/2026) : une page du site rechargée du cache sans le serveur restait
+        // blanche. Hors connexion, l'application affiche son propre message (erreur.html).
+        vue.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
         if (!changement) return;
         if (ok) {
             if (messageHorsLigne != null) messageHorsLigne.dismiss();
             Toast.makeText(this, "Connexion rétablie", Toast.LENGTH_SHORT).show();
+            String actuelle = vue.getUrl();
+            if (actuelle != null && actuelle.startsWith(PAGE_ERREUR)) {
+                chargerServeur(preferences.getString(CLE_DERNIERE_PAGE, null));   // retour automatique sur la page
+                return;
+            }
             if (pageDuCache) {
                 pageDuCache = false;
                 essaiCache = null;
@@ -352,6 +359,10 @@ public class MainActivity extends Activity {
             vue.loadUrl(PAGE_CONFIGURATION);
             return;
         }
+        if (!connecte()) {
+            afficherErreur(TITRE_SANS_RESEAU, MESSAGE_SANS_RESEAU);
+            return;
+        }
         effacerHistorique = true;
         String chemin = lien != null && lien.startsWith("/") ? lien : "/";
         vue.loadUrl(s + chemin);
@@ -475,8 +486,18 @@ public class MainActivity extends Activity {
         return l > 0.6;
     }
 
+    static final String TITRE_SANS_RESEAU = "Pas de connexion";
+    static final String MESSAGE_SANS_RESEAU = "Le téléphone n'est connecté ni au Wi-Fi ni aux données mobiles. "
+        + "Activez l'un des deux : la page s'ouvrira dès le retour de la connexion.";
+
     private void afficherErreur(String message) {
-        vue.loadUrl(PAGE_ERREUR + "?m=" + Uri.encode(message));
+        afficherErreur("Serveur injoignable", message);
+    }
+
+    /** Écran de l'application (titre et message) à la place d'une page blanche ; « Réessayer » rouvre la page. */
+    private void afficherErreur(String titre, String message) {
+        if (messageHorsLigne != null) messageHorsLigne.dismiss();
+        vue.loadUrl(PAGE_ERREUR + "?t=" + Uri.encode(titre) + "&m=" + Uri.encode(message));
     }
 
     // ---------------------------------------------------------------------
@@ -567,26 +588,10 @@ public class MainActivity extends Activity {
             if (!requete.isForMainFrame()) return;
             String url = requete.getUrl().toString();
             if (url.startsWith("file:")) return;
-            if (!url.equals(essaiCache)) {
-                // Plutôt qu'une page blanche : la dernière version de la page gardée par la vue web, avec un message.
-                essaiCache = url;
-                pageDuCache = true;
-                v.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ONLY);
-                v.loadUrl(url);
-                v.postDelayed(() -> {
-                    if (connecte()) v.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
-                    else v.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-                }, 1500);
-                afficherHorsLigne(String.valueOf(erreur.getDescription()));
-                return;
-            }
-            // Pas de copie en cache non plus (première ouverture hors ligne) : page d'erreur de l'application.
             essaiCache = null;
             pageDuCache = false;
-            if (messageHorsLigne != null) messageHorsLigne.dismiss();
-            afficherErreur(connecte()
-                ? "Le serveur ne répond pas (" + erreur.getDescription() + ")."
-                : "Vous n'êtes pas connecté à Internet : ni Wi-Fi ni données mobiles.");
+            if (connecte()) afficherErreur("Le serveur ne répond pas (" + erreur.getDescription() + ").");
+            else afficherErreur(TITRE_SANS_RESEAU, MESSAGE_SANS_RESEAU);
         }
 
         @Override
@@ -925,7 +930,9 @@ public class MainActivity extends Activity {
                 .putBoolean(CLE_THEME_SOMBRE, sombre).apply();
             runOnUiThread(() -> appliquerTheme(etat, nav, sombre));
         }
-        @JavascriptInterface public void reessayer() { runOnUiThread(() -> chargerServeur(null)); }
+        @JavascriptInterface public void reessayer() {
+            runOnUiThread(() -> chargerServeur(preferences.getString(CLE_DERNIERE_PAGE, null)));
+        }
         @JavascriptInterface public void enregistrer(String base64, String nom, String type) { MainActivity.this.enregistrer(base64, nom, type); }
         @JavascriptInterface public void imprimer(String titre) { MainActivity.this.imprimer(titre); }
         @JavascriptInterface public void ouvrirLien(String url) { ouvrirAilleurs(url); }
