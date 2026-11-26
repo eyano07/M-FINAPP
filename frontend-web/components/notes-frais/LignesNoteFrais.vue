@@ -118,19 +118,26 @@ function supprimerLigne(index: number) {
 }
 
 function majChamp<K extends keyof LigneNoteFraisForm>(index: number, champ: K, val: LigneNoteFraisForm[K]) {
+  majChamps(index, { [champ]: val } as Partial<LigneNoteFraisForm>)
+}
+
+/**
+ * Plusieurs champs d'une ligne en UNE seule mise à jour. Deux majChamp successifs partaient chacun de la même copie
+ * des lignes (le parent n'a pas encore renvoyé la nouvelle valeur) : le second effaçait le premier (le compte choisi
+ * disparaissait en quittant le champ, 26/11/2026).
+ */
+function majChamps(index: number, champs: Partial<LigneNoteFraisForm>) {
   const copy = [...lignes.value]
-  copy[index] = { ...copy[index], [champ]: val }
+  copy[index] = { ...copy[index], ...champs }
   lignes.value = copy
 }
 
 function toggleAchatMarchandise(index: number, val: boolean) {
-  majChamp(index, 'achatMarchandise', val)
   if (val) {
+    majChamp(index, 'achatMarchandise', true)
     chargerReferentielStock()
   } else {
-    majChamp(index, 'quantiteMarchandise', null)
-    majChamp(index, 'articleId', null)
-    majChamp(index, 'articleNom', null)
+    majChamps(index, { achatMarchandise: false, quantiteMarchandise: null, articleId: null, articleNom: null })
   }
 }
 
@@ -143,8 +150,7 @@ function toggleSoumisTva(index: number, val: boolean) {
  *  existant) et nom (nouvel article, créé automatiquement à la soumission). */
 function onArticleChange(index: number, val: string | null) {
   const existant = articlesDispo.value.find(a => a.libelle === val)
-  majChamp(index, 'articleId', existant ? existant.id : null)
-  majChamp(index, 'articleNom', existant ? null : val)
+  majChamps(index, { articleId: existant ? existant.id : null, articleNom: existant ? null : val })
 }
 
 function libelleArticleAffiche(ligne: LigneNoteFraisForm) {
@@ -204,11 +210,10 @@ async function suggererCompte(index: number) {
 }
 
 function onCompteChange(index: number, val: string | null) {
-  majChamp(index, 'compteImputation', val)
   // Compte d'immobilisation : amortissable par défaut ; autre compte : la question ne se pose pas.
   const immo = estCompteImmobilisation(val)
-  if (immo && lignes.value[index]?.amortissable == null) majChamp(index, 'amortissable', true)
-  if (!immo) majChamp(index, 'amortissable', null)
+  const amortissable = immo ? (lignes.value[index]?.amortissable ?? true) : null
+  majChamps(index, { compteImputation: val, amortissable })
   const appliquee = iaAppliquee.value[index]
   if (appliquee && val !== appliquee.compteNumero) {
     delete iaAppliquee.value[index]
