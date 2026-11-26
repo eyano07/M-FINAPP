@@ -89,6 +89,7 @@ const proxy = computed({
     density="comfortable"
     hide-details="auto"
     clearable
+    auto-select-first
     @focus="chargerComptes"
   />
 </template>

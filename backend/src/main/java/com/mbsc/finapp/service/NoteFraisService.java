@@ -269,8 +269,9 @@ public class NoteFraisService {
         construireLignes(note, req.lignes());
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
-        detecterHorsBudget(note);
+        // Service d'abord (celui qui budgète les comptes de la note), puis le contrôle hors budget sur son enveloppe.
         rattacherServiceDeduit(note);
+        detecterHorsBudget(note);
 
         note.addObservation(observation(note, auteur, StatutNote.BROUILLON, "Creation de la note"));
         note = noteRepository.save(note);
@@ -373,8 +374,9 @@ public class NoteFraisService {
         note.remplacerLignes(nouvelles);
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
-        detecterHorsBudget(note);
+        // Service d'abord (celui qui budgète les comptes de la note), puis le contrôle hors budget sur son enveloppe.
         rattacherServiceDeduit(note);
+        detecterHorsBudget(note);
 
         log.info("Note de frais modifiee [ref={}, montant={}]", note.getReference(), note.getMontant());
         return NoteFraisDetailResponse.from(note);
@@ -1557,8 +1559,12 @@ public class NoteFraisService {
             return;
         }
         ControleBudgetaireResponse controle = controleBudgetaire.controlerNote(note);
+        // Seules comptent les lignes dont le compte est choisi : une ligne sans compte (imputée au compte de repli) attend
+        // l'imputation du DFIN à sa vérification.
+        List<LigneNoteFrais> lignes = note.getLignes();
         boolean compteNonBudgete = controle.lignes().stream()
-            .anyMatch(l -> l.statut() == com.mbsc.finapp.domain.enums.StatutControleBudget.HORS_BUDGET);
+            .anyMatch(l -> l.statut() == com.mbsc.finapp.domain.enums.StatutControleBudget.HORS_BUDGET
+                && l.index() >= 0 && l.index() < lignes.size() && lignes.get(l.index()).getCompteImputation() != null);
         if (compteNonBudgete) {
             if (!StringUtils.hasText(note.getJustificationBudget())) {
                 throw new IllegalArgumentException("Un compte de la note n'est pas prévu au budget : la note passe hors budget. "
