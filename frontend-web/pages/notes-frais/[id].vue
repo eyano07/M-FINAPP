@@ -63,6 +63,12 @@ interface NoteDetail {
   serviceNom?: string | null
   serviceResponsable?: string | null
   serviceActif?: boolean
+  /** Budget secondaire (projet...) de la dépense ; absent : budget principal (V162). */
+  budgetSecondaireId?: number | null
+  budgetSecondaireReference?: string | null
+  budgetSecondaireIntitule?: string | null
+  /** Dépense déclarée hors budget par le demandeur (V163). */
+  horsBudget?: boolean
   /** Notes du module DRH : PAIE ou IMPOT_PAIE (comptes imposés), avec leur mois de paie. */
   categorie?: string | null
   paieMois?: number | null
@@ -897,6 +903,17 @@ const peutGererPieces = computed(() => !surCopie.value &&
               <div>
                 <span class="nd-info-label">Identifiant</span>
                 <span class="nd-info-val">{{ note.demandeurEmail || '—' }}</span>
+              </div>
+            </div>
+            <div v-if="!estEncaissement" class="nd-info-row">
+              <div class="nd-info-icon"><v-icon :icon="note.horsBudget ? 'mdi-alert-octagon-outline' : note.budgetSecondaireId ? 'mdi-briefcase-outline' : 'mdi-bank-outline'" size="16" /></div>
+              <div>
+                <span class="nd-info-label">Budget</span>
+                <span class="nd-info-val">
+                  <template v-if="note.horsBudget"><span class="text-warning font-weight-medium">Hors budget</span><span class="nd-fonction"> · validation motivée du DA</span></template>
+                  <template v-else-if="note.budgetSecondaireId">Budget secondaire : {{ note.budgetSecondaireIntitule }}<span class="nd-fonction"> · {{ note.budgetSecondaireReference }}</span></template>
+                  <template v-else>Budget principal</template>
+                </span>
               </div>
             </div>
             <div v-if="!estEncaissement" class="nd-info-row">

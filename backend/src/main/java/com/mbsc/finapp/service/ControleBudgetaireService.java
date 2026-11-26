@@ -89,7 +89,9 @@ public class ControleBudgetaireService {
         }
         BigDecimal taux = devise == ConversionDeviseService.DEVISE_BASE ? null : conversion.tauxCourant();
         ServiceBudgetaire service = req.serviceId() == null ? null : serviceRepository.findById(req.serviceId()).orElse(null);
-        return controler(depenses, devise, taux, LocalDate.now(), req.noteId(), service);
+        Budget secondaire = req.budgetSecondaireId() == null ? null : budgetRepository.findById(req.budgetSecondaireId()).orElse(null);
+        return controler(depenses, devise, taux, LocalDate.now(), req.noteId(), service, secondaire,
+            Boolean.TRUE.equals(req.horsBudget()));
     }
 
     /** Controle d'une note enregistree, a la date de sa creation et au taux d'engagement s'il est fige. */
@@ -108,7 +110,8 @@ public class ControleBudgetaireService {
             return budgetDesactive(depenses, devise, date);
         }
         BigDecimal taux = suivi.tauxDeLaNote(note);
-        return controler(depenses, devise, taux, date, note.getId(), note.getService());
+        return controler(depenses, devise, taux, date, note.getId(), note.getService(), note.getBudgetSecondaire(),
+            note.isHorsBudget());
     }
 
     /**
@@ -117,6 +120,7 @@ public class ControleBudgetaireService {
      */
     Optional<String> budgetsEnAttente(int exercice, int mois) {
         List<Budget> enAttente = budgetRepository.findByExercice(exercice).stream()
+            .filter(b -> !b.estSecondaire())
             .filter(b -> b.couvreMois(mois) && (b.getStatut() == StatutBudget.APPROUVE || b.getStatut() == StatutBudget.SOUMIS))
             .sorted(Comparator.comparing((Budget b) -> b.getStatut() == StatutBudget.APPROUVE ? 0 : 1).thenComparing(Budget::getReference))
             .toList();
@@ -155,7 +159,7 @@ public class ControleBudgetaireService {
      */
     @Transactional(readOnly = true)
     public Optional<ServiceBudgetaire> serviceDeduit(NoteFrais note, LocalDate date) {
-        if (note.getSens() == SensTransaction.ENCAISSEMENT || !modules.estActif(ModuleMetier.BUDGET)) {
+        if (note.getSens() == SensTransaction.ENCAISSEMENT || note.isHorsBudget() || !modules.estActif(ModuleMetier.BUDGET)) {
             return Optional.empty();
         }
         java.util.Set<Long> comptes = note.getLignes().stream()
@@ -166,7 +170,9 @@ public class ControleBudgetaireService {
         if (comptes.isEmpty()) {
             return Optional.empty();
         }
-        Optional<Budget> budget = budgetEnExecution(date.getYear(), date.getMonthValue());
+        Optional<Budget> budget = note.getBudgetSecondaire() != null
+            ? budgetSecondaireEnExecution(note.getBudgetSecondaire(), date)
+            : budgetEnExecution(date.getYear(), date.getMonthValue());
         if (budget.isEmpty()) {
             return Optional.empty();
         }
@@ -189,23 +195,64 @@ public class ControleBudgetaireService {
         return duBeneficiaire.size() == 1 ? Optional.of(duBeneficiaire.get(0)) : Optional.empty();
     }
 
-    /** Budget en execution couvrant ce mois de cet exercice (au plus un : regle du service et contrainte V122). */
+    /** Budget principal en execution couvrant ce mois de cet exercice (au plus un : regle du service et contrainte V122/V162). */
     Optional<Budget> budgetEnExecution(int exercice, int mois) {
         return budgetRepository.findByExerciceAndStatut(exercice, StatutBudget.EN_EXECUTION).stream()
+            .filter(b -> !b.estSecondaire())
             .filter(b -> b.couvreMois(mois))
             .findFirst();
+    }
+
+    /**
+     * Version en exécution d'un budget secondaire (la note garde le budget choisi ; une révision mise en exécution depuis
+     * le remplace) couvrant la date, s'il y en a une.
+     */
+    Optional<Budget> budgetSecondaireEnExecution(Budget choisi, LocalDate date) {
+        Long racine = choisi.racineId();
+        return budgetRepository.findByExerciceAndStatut(date.getYear(), StatutBudget.EN_EXECUTION).stream()
+            .filter(Budget::estSecondaire)
+            .filter(b -> racine.equals(b.racineId()) && b.couvreMois(date.getMonthValue()))
+            .findFirst();
+    }
+
+    /**
+     * Budget secondaire proposé au choix d'une note de frais : en exécution sur le mois de la date. {@code id} est celui de
+     * la version initiale (la note la garde, ses révisions la retrouvent) ; la référence est celle de la version en exécution.
+     */
+    public record BudgetSecondaireDisponible(Long id, String reference, String intitule, String libellePeriode) {
+    }
+
+    /** Budgets secondaires (projets...) en exécution ce mois-ci, à proposer lors de la saisie d'une note de frais. */
+    @Transactional(readOnly = true)
+    public List<BudgetSecondaireDisponible> budgetsSecondairesDisponibles(LocalDate date) {
+        if (!modules.estActif(ModuleMetier.BUDGET)) {
+            return List.of();
+        }
+        return budgetRepository.findByExerciceAndStatut(date.getYear(), StatutBudget.EN_EXECUTION).stream()
+            .filter(Budget::estSecondaire)
+            .filter(b -> b.couvreMois(date.getMonthValue()))
+            .sorted(Comparator.comparing(Budget::getIntitule, String.CASE_INSENSITIVE_ORDER))
+            .map(b -> new BudgetSecondaireDisponible(b.racineId(), b.getReference(), b.getIntitule(), b.libellePeriode()))
+            .toList();
     }
 
     // ---------------------------------------------------------------------
 
     private ControleBudgetaireResponse controler(List<Depense> depenses, Devise devise, BigDecimal taux,
-                                                 LocalDate date, Long noteId, ServiceBudgetaire service) {
+                                                 LocalDate date, Long noteId, ServiceBudgetaire service, Budget secondaire,
+                                                 boolean horsBudget) {
         int exercice = date.getYear();
         int mois = date.getMonthValue();
         Long serviceId = service == null ? null : service.getId();
         List<String> avertissements = new ArrayList<>();
-        Optional<Budget> budgetOpt = budgetEnExecution(exercice, mois);
+        // Dépense déclarée hors budget : rapprochée d'aucun budget.
+        Optional<Budget> budgetOpt = horsBudget ? Optional.empty()
+            : secondaire != null ? budgetSecondaireEnExecution(secondaire, date) : budgetEnExecution(exercice, mois);
         String nomMois = Month.of(mois).getDisplayName(TextStyle.FULL, FR);
+        if (!horsBudget && secondaire != null && budgetOpt.isEmpty()) {
+            avertissements.add("Le budget secondaire " + secondaire.getReference() + " (" + secondaire.getIntitule()
+                + ") n'est pas en exécution pour " + nomMois + " " + exercice + ".");
+        }
 
         Map<String, CompteOHADA> comptes = new HashMap<>();
         BudgetControle env = null;
@@ -213,7 +260,7 @@ public class ControleBudgetaireService {
             Budget budget = budgetOpt.get();
             env = new BudgetControle(budget, suivi.repartirSurLignes(budget, suivi.mouvementsDetailles(exercice),
                 suivi.engagementsDeLExercice(exercice, noteId, avertissements)));
-        } else {
+        } else if (secondaire == null && !horsBudget) {
             budgetsEnAttente(exercice, mois).ifPresent(avertissements::add);
         }
 
@@ -236,6 +283,9 @@ public class ControleBudgetaireService {
             } else if (!MoteurBudgetaire.estDepenseBudgetaire(numero, compte.getClasse(), compte.getType())) {
                 ligne = ligne(i, numero, compte.getLibelle(), montant, montantBase, StatutControleBudget.NON_CONCERNE, null, null,
                     "Pas une dépense budgétaire (règlement de dette, avance, trésorerie...) : non soumise au contrôle.");
+            } else if (horsBudget) {
+                ligne = ligne(i, numero, compte.getLibelle(), montant, montantBase, StatutControleBudget.HORS_BUDGET, null, null,
+                    "Dépense déclarée hors budget par le demandeur : le DA doit motiver sa validation.");
             } else if (env == null) {
                 ligne = ligne(i, numero, compte.getLibelle(), montant, montantBase, StatutControleBudget.SANS_BUDGET, null, null,
                     "Aucun budget en exécution pour " + nomMois + " " + exercice + " : la dépense est hors budget.");

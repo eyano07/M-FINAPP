@@ -51,5 +51,23 @@ public record NoteFraisRequest(
      * Service qui engage la depense (facultatif, decaissement seulement) : la note est controlee sur l'enveloppe de
      * ce service et sa depense se suit sur son budget.
      */
-    Long serviceId
-) {}
+    Long serviceId,
+
+    /**
+     * Budget secondaire (projet...) sur lequel porte la dépense (V162) ; null : budget principal. Il doit être en
+     * exécution sur le mois de la note.
+     */
+    Long budgetSecondaireId,
+
+    /** Dépense déclarée hors budget (V163) : justification obligatoire, validation motivée du DA. */
+    Boolean horsBudget
+) {
+    public NoteFraisRequest(String objet, String beneficiaire, String description, Devise devise, SensTransaction sens,
+                            List<LigneNoteFraisRequest> lignes, String justificationBudget, Long serviceId) {
+        this(objet, beneficiaire, description, devise, sens, lignes, justificationBudget, serviceId, null, null);
+    }
+
+    public boolean estHorsBudget() {
+        return Boolean.TRUE.equals(horsBudget);
+    }
+}

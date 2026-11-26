@@ -54,6 +54,15 @@ public class Budget {
     @Builder.Default
     private StatutBudget statut = StatutBudget.BROUILLON;
 
+    /**
+     * Budget principal, ou budget secondaire (projet...) qui ne contrôle que les notes qui lui sont rattachées (V162).
+     * Plusieurs budgets secondaires peuvent être en exécution en même temps que le budget principal.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type_budget", nullable = false, length = 12)
+    @Builder.Default
+    private com.mbsc.finapp.domain.enums.TypeBudget typeBudget = com.mbsc.finapp.domain.enums.TypeBudget.PRINCIPAL;
+
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "elabore_par_id")
     private User elaborePar;   // DFIN
@@ -132,6 +141,22 @@ public class Budget {
     }
 
     /** « Exercice 2026 », « 2e semestre 2026 », « 4e trimestre 2026 », « Décembre 2026 ». */
+    public boolean estSecondaire() {
+        return typeBudget == com.mbsc.finapp.domain.enums.TypeBudget.SECONDAIRE;
+    }
+
+    /**
+     * Budget d'origine de la lignée (version initiale, avant révisions) : une note rattachée à un budget secondaire
+     * le reste quand une révision le remplace.
+     */
+    public Long racineId() {
+        Budget b = this;
+        while (b.getRevisionDe() != null) {
+            b = b.getRevisionDe();
+        }
+        return b.getId();
+    }
+
     public String libellePeriode() {
         return duree.libelle(periode, exercice);
     }

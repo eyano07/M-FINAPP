@@ -392,24 +392,32 @@ public interface EcritureGrandLivreRepository extends JpaRepository<EcritureGran
      * <p>Le service est celui de la note de frais que l'operation de tresorerie (caisse, banque, mobile money) a
      * payee — ou, pour un retour de fonds en caisse, celui de la note reduite (le retour diminue le realise du service
      * qui avait engage la depense) ; une ecriture sans note, ou d'une note sans service, n'en a pas.</p>
+     *
+     * <p>7e colonne (V162) : budget secondaire de cette note (null : budget principal ; 0 : déclarée hors budget, V163).</p>
      */
     @Query("""
         select c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id),
-               coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0)
+               coalesce(sum(e.debit), 0), coalesce(sum(e.credit), 0),
+               coalesce(bc.id, br.id, bb.id, bm.id,
+                        case when nc.horsBudget = true or nr.horsBudget = true or nb.horsBudget = true or nm.horsBudget = true
+                             then 0L end)
         from EcritureGrandLivre e
         join e.compte c
         left join e.piece p
-        left join e.transaction tc left join tc.noteFrais nc left join nc.service sc
-        left join tc.noteRetour nr left join nr.service sr
-        left join e.transactionBancaire tb left join tb.noteFrais nb left join nb.service sb
-        left join e.transactionMobileMoney tm left join tm.noteFrais nm left join nm.service sm
+        left join e.transaction tc left join tc.noteFrais nc left join nc.service sc left join nc.budgetSecondaire bc
+        left join tc.noteRetour nr left join nr.service sr left join nr.budgetSecondaire br
+        left join e.transactionBancaire tb left join tb.noteFrais nb left join nb.service sb left join nb.budgetSecondaire bb
+        left join e.transactionMobileMoney tm left join tm.noteFrais nm left join nm.service sm left join nm.budgetSecondaire bm
         where e.dateEcriture >= :du and e.dateEcriture <= :au
           and c.classe in (2, 6, 7, 8)
           and (p is null or (p.statut <> com.mbsc.finapp.domain.enums.StatutPiece.BROUILLON
                              and p.soldeOuverture = false
                              and p.reevaluationDevise = false
                              and p.clotureExercice = false))
-        group by c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id)
+        group by c.numero, c.type, extract(month from e.dateEcriture), coalesce(sc.id, sr.id, sb.id, sm.id),
+                 coalesce(bc.id, br.id, bb.id, bm.id,
+                          case when nc.horsBudget = true or nr.horsBudget = true or nb.horsBudget = true or nm.horsBudget = true
+                               then 0L end)
     """)
     List<Object[]> mouvementsMensuelsBudgetaires(@Param("du") LocalDate du, @Param("au") LocalDate au);
 

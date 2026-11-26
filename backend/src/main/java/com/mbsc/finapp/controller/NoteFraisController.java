@@ -99,6 +99,11 @@ public class NoteFraisController {
      * Explique a l'utilisateur courant quelles notes il voit : selon son role,
      * certaines notes ne lui sont pas accessibles (voir {@code RegleVisibiliteNote}).
      */
+    @GetMapping("/budgets-secondaires")
+    public java.util.List<com.mbsc.finapp.service.ControleBudgetaireService.BudgetSecondaireDisponible> budgetsSecondaires() {
+        return service.budgetsSecondaires();
+    }
+
     @GetMapping("/regle-visibilite")
     public RegleVisibiliteResponse regleVisibilite() {
         return service.expliquerVisibilite();

@@ -334,7 +334,7 @@ const classeEcart = (section: string, v: number) => {
       <!-- Titre et actions -->
       <div class="page-head no-print">
         <div style="min-width: 0">
-          <h1 class="page-title">{{ budget.intitule }}</h1>
+          <h1 class="page-title">{{ budget.intitule }}<v-chip v-if="budget.typeBudget === 'SECONDAIRE'" size="small" color="deep-purple" variant="tonal" prepend-icon="mdi-briefcase-outline" class="ml-2 align-middle">Budget secondaire</v-chip></h1>
           <p class="page-sub">
             {{ budget.reference }} · <v-icon icon="mdi-calendar-range" size="14" /> {{ libellePeriodeBudget }}<template v-if="!estAnnuel"> ({{ DUREES.find(d => d.value === budget.duree)?.title.split(' ')[0].toLowerCase() }})</template>
             <template v-if="budget.parService"> · budget par service</template>

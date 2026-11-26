@@ -26,6 +26,8 @@ interface BudgetResume {
   duree: string
   periode: number
   libellePeriode: string
+  /** PRINCIPAL ou SECONDAIRE (projet...), V162. */
+  typeBudget?: 'PRINCIPAL' | 'SECONDAIRE'
   moisDebut: number
   moisFin: number
   nombreServices: number
@@ -64,12 +66,12 @@ const affiches = computed(() => budgets.value.filter(b => !filtreExercice.value 
 const aujourdhui = new Date()
 const moisCourant = aujourdhui.getMonth() + 1
 const libelleMoisCourant = `${MOIS_LONGS[aujourdhui.getMonth()].toLowerCase()} ${aujourdhui.getFullYear()}`
-const enExecution = computed(() => budgets.value.find(b => b.statut === 'EN_EXECUTION' && b.exercice === aujourdhui.getFullYear()
+const enExecution = computed(() => budgets.value.find(b => b.statut === 'EN_EXECUTION' && b.typeBudget !== 'SECONDAIRE' && b.exercice === aujourdhui.getFullYear()
   && dansLaPeriode(moisCourant, b.moisDebut || 1, b.moisFin || 12)))
 // Budgets qui couvriraient le mois en cours mais n'en contrôlent pas encore les dépenses : approuvés (à mettre en
 // exécution) d'abord, puis soumis (à approuver).
 const enAttente = computed(() => budgets.value
-  .filter(b => ['APPROUVE', 'SOUMIS'].includes(b.statut) && b.exercice === aujourdhui.getFullYear()
+  .filter(b => ['APPROUVE', 'SOUMIS'].includes(b.statut) && b.typeBudget !== 'SECONDAIRE' && b.exercice === aujourdhui.getFullYear()
     && dansLaPeriode(moisCourant, b.moisDebut || 1, b.moisFin || 12))
   .sort((a, b) => (a.statut === 'APPROUVE' ? 0 : 1) - (b.statut === 'APPROUVE' ? 0 : 1)))
 const enDepassement = computed(() => budgets.value.filter(b => b.statut === 'EN_EXECUTION' && (Number(b.montantDepassement) > 0 || b.servicesEnDepassement?.length)))
@@ -133,6 +135,9 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'REMPLACE', 'CLOTURE']
                 {{ b.reference }}<span v-if="b.numeroRevision"> · révision n° {{ b.numeroRevision }}</span>
               </div>
               <div class="text-subtitle-1 font-weight-bold bud-titre" :title="b.intitule">{{ b.intitule }}</div>
+              <v-chip v-if="b.typeBudget === 'SECONDAIRE'" size="x-small" color="deep-purple" variant="tonal" prepend-icon="mdi-briefcase-outline" class="mt-1">
+                Budget secondaire
+              </v-chip>
             </div>
             <v-chip :color="statutBudget(b.statut).color" size="small" variant="tonal" class="bud-statut" :prepend-icon="statutBudget(b.statut).icon">
               {{ statutBudget(b.statut).label }}

@@ -117,7 +117,7 @@ public class BudgetService {
                 s.realiseProduits(), s.realiseCharges(), s.realiseInvestissements(), prevuDepenses, realiseDepenses,
                 MoteurBudgetaire.taux(realiseDepenses, prevuDepenses), b.getLignes().size(),
                 b.getDuree(), b.getPeriode(), b.libellePeriode(), b.moisDebut(), b.moisFin(), (int) nombreServices,
-                s.montantDepassement(), s.nombreDepassements(), s.servicesEnDepassement()));
+                s.montantDepassement(), s.nombreDepassements(), s.servicesEnDepassement(), b.getTypeBudget()));
         }
         return resultat;
     }
@@ -214,6 +214,7 @@ public class BudgetService {
             .exercice(req.exercice())
             .duree(duree)
             .periode(periode)
+            .typeBudget(req.typeBudget() == null ? com.mbsc.finapp.domain.enums.TypeBudget.PRINCIPAL : req.typeBudget())
             .statut(StatutBudget.BROUILLON)
             .elaborePar(auteur)
             .observation(vide(req.observation()))
@@ -361,6 +362,11 @@ public class BudgetService {
             if (enCours.getId().equals(budget.getId()) || !enCours.chevauche(budget)) {
                 continue;
             }
+            // Budgets secondaires (V162) : en exécution en parallèle du principal et entre eux ; seule la version qu'une
+            // révision remplace s'arrête.
+            if (!enCours.getId().equals(revise) && (budget.estSecondaire() || enCours.estSecondaire())) {
+                continue;
+            }
             if (!enCours.getId().equals(revise)) {
                 throw new TransitionInvalideException("Le budget " + enCours.getReference() + " (" + enCours.libellePeriode()
                     + ") est déjà en exécution sur une partie de cette période (" + budget.libellePeriode() + ") : "
@@ -377,7 +383,9 @@ public class BudgetService {
         log.info("Budget {} passe en execution ({})", budget.getReference(), budget.libellePeriode());
         notifications.notifierBudget(List.of(RoleType.DA, RoleType.DG), null, currentUser.requireUser(),
             TypeNotification.BUDGET_EN_EXECUTION, "Budget en exécution",
-            designation(budget) + " est en exécution : il contrôle désormais les notes de frais de « " + budget.libellePeriode() + " »"
+            designation(budget) + " est en exécution : il contrôle désormais "
+                + (budget.estSecondaire() ? "les notes de frais qui lui sont rattachées" : "les notes de frais")
+                + " de « " + budget.libellePeriode() + " »"
                 + (remplace == null ? "." : " et remplace le budget " + remplace + "."),
             budget);
         return BudgetResponse.from(budget);
@@ -405,6 +413,7 @@ public class BudgetService {
             .exercice(budget.getExercice())
             .duree(budget.getDuree())
             .periode(budget.getPeriode())
+            .typeBudget(budget.getTypeBudget())
             .statut(StatutBudget.BROUILLON)
             .elaborePar(currentUser.requireUser())
             .observation("Révision n° " + numero + " du budget " + budget.getReference())

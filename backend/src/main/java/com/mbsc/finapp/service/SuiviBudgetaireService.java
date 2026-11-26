@@ -72,6 +72,8 @@ public class SuiviBudgetaireService {
     static final Set<StatutNote> STATUTS_ENGAGES = EnumSet.of(StatutNote.VALIDEE_DA, StatutNote.TRANSMISE_CAISSE);
     /** Compte de repli applique au paiement d'une ligne de note sans compte (voir EcritureComptableService). */
     static final String COMPTE_REPLI = "6588";
+    /** Marque d'une dépense déclarée hors budget (V163) dans les mouvements et les engagements : aucun budget n'y répond. */
+    static final Long HORS_BUDGET = 0L;
     /** Nom du bloc des lignes generales (sans service) d'un budget organise par service. */
     static final String LIGNES_GENERALES = "Lignes générales (sans service)";
     private static final String DEVISE = ConversionDeviseService.DEVISE_BASE.name();
@@ -98,7 +100,13 @@ public class SuiviBudgetaireService {
     }
 
     /** Mouvements d'un compte pendant un mois, pour un service (null : ecriture sans note ou note sans service). */
-    public record Mouvement(String numero, TypeCompte type, int mois, Long serviceId, BigDecimal debit, BigDecimal credit) {
+    public record Mouvement(String numero, TypeCompte type, int mois, Long serviceId, BigDecimal debit, BigDecimal credit,
+                            Long budgetSecondaireId) {
+        /** Mouvement du budget principal (sans budget secondaire). */
+        public Mouvement(String numero, TypeCompte type, int mois, Long serviceId, BigDecimal debit, BigDecimal credit) {
+            this(numero, type, mois, serviceId, debit, credit, null);
+        }
+
         BigDecimal realiseSelon(TypeCompte typeLigne) {
             return MoteurBudgetaire.realise(typeLigne, debit, credit);
         }
@@ -124,7 +132,8 @@ public class SuiviBudgetaireService {
             Long service = row[3] == null ? null : ((Number) row[3]).longValue();
             BigDecimal debit = montant(row[4]);
             BigDecimal credit = montant(row[5]);
-            lignes.add(new Mouvement(numero, type, mois, service, debit, credit));
+            Long budgetSecondaire = row.length > 6 && row[6] != null ? ((Number) row[6]).longValue() : null;
+            lignes.add(new Mouvement(numero, type, mois, service, debit, credit, budgetSecondaire));
             MouvementsCompte m = parCompte.computeIfAbsent(numero,
                 n -> new MouvementsCompte(n, type, MoteurBudgetaire.zeros(), MoteurBudgetaire.zeros()));
             m.debit()[mois - 1] = m.debit()[mois - 1].add(debit);
@@ -140,7 +149,12 @@ public class SuiviBudgetaireService {
     }
 
     /** Un engagement : une ligne de note approuvee non payee, en devise de base, avec le service de la note. */
-    public record Engagement(Long noteId, String compteNumero, int mois, BigDecimal montantBase, Long serviceId) {
+    public record Engagement(Long noteId, String compteNumero, int mois, BigDecimal montantBase, Long serviceId,
+                             Long budgetSecondaireId) {
+        /** Engagement du budget principal (sans budget secondaire). */
+        public Engagement(Long noteId, String compteNumero, int mois, BigDecimal montantBase, Long serviceId) {
+            this(noteId, compteNumero, mois, montantBase, serviceId, null);
+        }
     }
 
     /**
@@ -159,6 +173,9 @@ public class SuiviBudgetaireService {
             BigDecimal taux = tauxDeLaNote(n);
             int mois = moisDe(n.getDateCreation());
             Long service = n.getService() == null ? null : n.getService().getId();
+            // Hors budget (V163) : 0, qui n'est l'identifiant d'aucun budget ; la dépense n'entre dans aucun suivi.
+            Long budgetSecondaire = n.isHorsBudget() ? HORS_BUDGET
+                : n.getBudgetSecondaire() == null ? null : n.getBudgetSecondaire().racineId();
             for (LigneNoteFrais l : n.getLignes()) {
                 BigDecimal base = versBase(l.montantHtTotal(), n.getDevise(), taux);
                 if (base == null) {
@@ -167,7 +184,7 @@ public class SuiviBudgetaireService {
                     break;
                 }
                 String compte = l.getCompteImputation() == null ? COMPTE_REPLI : l.getCompteImputation().getNumero();
-                engagements.add(new Engagement(n.getId(), compte, mois, base, service));
+                engagements.add(new Engagement(n.getId(), compte, mois, base, service, budgetSecondaire));
             }
         }
         return engagements;
@@ -208,6 +225,11 @@ public class SuiviBudgetaireService {
         int debut = budget.moisDebut();
         int fin = budget.moisFin();
         ImputationBudgetaire imputation = ImputationBudgetaire.de(budget);
+        // Budgets secondaires (V162) : le budget principal ne compte que les dépenses sans budget secondaire ; un budget
+        // secondaire, seulement les siennes (toutes versions de sa lignée confondues).
+        // Une note garde la version initiale de son budget secondaire (NoteFraisService#resoudreBudgetSecondaire).
+        Long lignee = budget.estSecondaire() ? budget.racineId() : null;
+        java.util.function.Predicate<Long> duBudget = id -> Objects.equals(lignee, id);
 
         Map<String, TypeCompte> typeDesLignes = new HashMap<>();
         Map<Enveloppe, BigDecimal[]> realiseEnveloppe = new HashMap<>();
@@ -234,7 +256,7 @@ public class SuiviBudgetaireService {
         boolean surLaPeriode = false;
 
         for (Mouvement m : mouvements.lignes()) {
-            if (m.mois() < debut || m.mois() > fin) {
+            if (m.mois() < debut || m.mois() > fin || !duBudget.test(m.budgetSecondaireId())) {
                 continue;
             }
             surLaPeriode = true;
@@ -263,7 +285,7 @@ public class SuiviBudgetaireService {
             }
         }
         for (Engagement e : engagements) {
-            if (e.mois() < debut || e.mois() > fin) {
+            if (e.mois() < debut || e.mois() > fin || !duBudget.test(e.budgetSecondaireId())) {
                 continue;
             }
             String consolidee = imputation.ligneConsolidee(e.compteNumero());
