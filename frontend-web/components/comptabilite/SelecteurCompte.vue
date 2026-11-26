@@ -30,6 +30,8 @@ const props = withDefaults(defineProps<{
    * la tresorerie, qui ne se saisit pas depuis les pieces comptables).
    */
   exclurePrefixe?: string
+  /** Ne propose que les comptes que ce filtre accepte (ex. contreparties d'un décaissement) ; la valeur actuelle reste affichée. */
+  filtre?: (numero: string) => boolean
 }>(), {
   label: 'Compte OHADA',
   disabled: false,
@@ -66,6 +68,7 @@ const items = computed(() =>
     .filter(c => !props.seulementActifs || (c.imputable && c.actif) || c.numero === props.modelValue)
     .filter(c => !props.prefixe || c.numero.startsWith(props.prefixe) || c.numero === props.modelValue)
     .filter(c => !props.exclurePrefixe || !c.numero.startsWith(props.exclurePrefixe) || c.numero === props.modelValue)
+    .filter(c => !props.filtre || props.filtre(c.numero) || c.numero === props.modelValue)
     .map(c => ({
       title: `${c.numero} — ${c.libelle}`,
       value: c.numero,

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { estContrepartieDecaissement } from '~/utils/contrepartieTresorerie'
 // Voir pages/notes-frais/index.vue : ni le DRH ni LOGISTIQUE n'ont acces a cet ecran.
 definePageMeta({ roles: ['ADMIN', 'DG', 'DA', 'DFIN', 'DIRECTEUR', 'CAISSIER', 'COMPTABLE', 'GEST_PATRIMOINE', 'RESP_RESTAURANT', 'RESP_CUISINE', 'RESP_BAR', 'LOGISTIQUE'] })
 
@@ -986,6 +987,7 @@ const peutGererPieces = computed(() => !surCopie.value &&
                 <ComptabiliteSelecteurCompte
                   v-model="comptesEdites[l.id]"
                   label="Compte d'imputation"
+                  :filtre="estEncaissement ? undefined : estContrepartieDecaissement"
                   :disabled="enregistrementComptes"
                 />
               </div>

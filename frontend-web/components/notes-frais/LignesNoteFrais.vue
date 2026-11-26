@@ -17,6 +17,7 @@ export const estCompteImmobilisation = (numero?: string | null) => !!numero && /
 </script>
 
 <script setup lang="ts">
+import { estContrepartieDecaissement } from '~/utils/contrepartieTresorerie'
 const props = withDefaults(defineProps<{
   modelValue: LigneNoteFraisForm[]
   devise?: string
@@ -280,6 +281,7 @@ function fmt(v: number) {
           <ComptabiliteSelecteurCompte
             :model-value="ligne.compteImputation"
             label="Compte (optionnel)"
+            :filtre="estEncaissement ? undefined : estContrepartieDecaissement"
             @update:model-value="onCompteChange(index, $event)"
           />
           <div v-if="chargementSuggestion[index]" class="lignes-note__ia lignes-note__ia--loading">
