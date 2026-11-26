@@ -17,8 +17,14 @@ public record ControleBudgetaireRequest(
     /** Note deja enregistree que l'on modifie : ses propres engagements ne sont pas comptes deux fois. */
     Long noteId,
     /** Service qui engage la depense (null : aucun) : la note est controlee sur l'enveloppe de ce service. */
-    Long serviceId
+    Long serviceId,
+    /** Budget secondaire choisi (null : budget principal). */
+    Long budgetSecondaireId
 ) {
+    public ControleBudgetaireRequest(Devise devise, List<Depense> lignes, Long noteId, Long serviceId) {
+        this(devise, lignes, noteId, serviceId, null);
+    }
+
     public record Depense(
         String compteNumero,
         BigDecimal montant,

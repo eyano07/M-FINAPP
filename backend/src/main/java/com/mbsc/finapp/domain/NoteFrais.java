@@ -133,6 +133,15 @@ public class NoteFrais {
     @ToString.Exclude
     private ServiceBudgetaire service;
 
+    /**
+     * Budget secondaire (projet...) sur lequel porte la dépense (V162) ; null : budget principal. La note est contrôlée
+     * et suivie sur ce budget seulement.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "budget_secondaire_id")
+    @ToString.Exclude
+    private Budget budgetSecondaire;
+
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "createur_id")
     private User createur;   // Directeur (ou Caissier en urgence)

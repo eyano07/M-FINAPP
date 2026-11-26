@@ -55,6 +55,8 @@ const entete = reactive({
   observation: '',
   duree: 'ANNUEL' as DureeBudget,
   periode: 1,
+  // Budget principal, ou secondaire (projet...) en exécution en parallèle (V162) ; fixé à la création.
+  typeBudget: 'PRINCIPAL' as 'PRINCIPAL' | 'SECONDAIRE',
 })
 /** Une révision garde la période du budget qu'elle révise. */
 const estRevision = ref(false)
@@ -211,6 +213,7 @@ async function charger() {
     entete.observation = b.observation || ''
     entete.duree = (b.duree || 'ANNUEL') as DureeBudget
     entete.periode = b.periode || 1
+    entete.typeBudget = b.typeBudget || 'PRINCIPAL'
     estRevision.value = !!b.revisionDeId
     lignes.value = (b.lignes || []).map((l: any) => ({
       cle: ++compteur,
@@ -504,6 +507,7 @@ async function enregistrer() {
       observation: entete.observation || null,
       duree: entete.duree,
       periode: entete.duree === 'ANNUEL' ? 1 : entete.periode,
+      typeBudget: entete.typeBudget,
       lignes: valides.map(l => ({
         compteNumero: l.compteNumero,
         mensuel: l.mensuel.map((v, i) => (dansLaPeriode(i + 1, debut.value, fin.value) ? centimes(Number(v) || 0) : 0)),
@@ -532,6 +536,19 @@ async function enregistrer() {
     <template v-else>
       <!-- En-tête -->
       <v-card class="classroom-card pa-4 mb-4">
+        <div class="eb-type mb-3">
+          <v-btn-toggle v-model="entete.typeBudget" mandatory color="primary" variant="outlined" density="comfortable" rounded="lg"
+            :disabled="!!props.budgetId" aria-label="Type de budget">
+            <v-btn value="PRINCIPAL" prepend-icon="mdi-bank-outline">Budget principal</v-btn>
+            <v-btn value="SECONDAIRE" prepend-icon="mdi-briefcase-outline">Budget secondaire (projet)</v-btn>
+          </v-btn-toggle>
+          <p class="text-caption text-medium-emphasis mt-1 mb-0">
+            {{ entete.typeBudget === 'SECONDAIRE'
+              ? "Budget parallèle (un projet…) : il ne contrôle que les notes de frais qui le choisissent, et peut être en exécution en même temps que le budget principal."
+              : "Budget de l'entreprise : il contrôle toutes les notes de frais qui ne sont pas rattachées à un budget secondaire." }}
+            <template v-if="props.budgetId"> Le type ne change plus après la création.</template>
+          </p>
+        </div>
         <div class="eb-entete">
           <v-text-field v-model="entete.intitule" label="Intitulé du budget *" placeholder="Ex. Budget 2027 – Exploitation" hide-details="auto" class="eb-entete__titre" />
           <v-text-field v-model.number="entete.exercice" label="Exercice *" type="number" hide-details="auto" class="eb-entete__exercice" :disabled="estRevision" />

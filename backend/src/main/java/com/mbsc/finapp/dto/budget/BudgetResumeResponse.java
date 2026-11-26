@@ -48,5 +48,7 @@ public record BudgetResumeResponse(
     /** Lignes du budget consolide en depassement. */
     int nombreDepassements,
     /** Services dont l'enveloppe est depassee ou qui ont des depenses non budgetees (budget mis en execution). */
-    List<String> servicesEnDepassement
+    List<String> servicesEnDepassement,
+    /** PRINCIPAL ou SECONDAIRE (V162). */
+    com.mbsc.finapp.domain.enums.TypeBudget typeBudget
 ) {}

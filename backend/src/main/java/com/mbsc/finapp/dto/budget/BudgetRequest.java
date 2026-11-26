@@ -37,5 +37,13 @@ public record BudgetRequest(
     /** Numero de la periode dans l'exercice (1 si absent) : 1-2 (semestre), 1-4 (trimestre), 1-12 (mois). */
     @Min(value = 1, message = "Période invalide")
     @Max(value = 12, message = "Période invalide")
-    Integer periode
-) {}
+    Integer periode,
+
+    /** PRINCIPAL (si absent) ou SECONDAIRE (budget d'un projet...) : non modifiable après la création. */
+    com.mbsc.finapp.domain.enums.TypeBudget typeBudget
+) {
+    public BudgetRequest(String intitule, Integer exercice, String observation, List<LigneBudgetRequest> lignes,
+                         DureeBudget duree, Integer periode) {
+        this(intitule, exercice, observation, lignes, duree, periode, null);
+    }
+}

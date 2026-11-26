@@ -46,7 +46,9 @@ public record BudgetResponse(
     int moisDebut,
     int moisFin,
     /** true si au moins une ligne est rattachee a un service. */
-    boolean parService
+    boolean parService,
+    /** PRINCIPAL ou SECONDAIRE (V162). */
+    com.mbsc.finapp.domain.enums.TypeBudget typeBudget
 ) {
     public static BudgetResponse from(Budget b) {
         List<LigneBudgetResponse> lignes = b.getLignes().stream()
@@ -67,7 +69,8 @@ public record BudgetResponse(
             b.getDateCreation(), b.getDateSoumission(), b.getDateApprobation(), b.getDateExecution(), b.getDateCloture(),
             produits, charges, totalSection(lignes, "INVESTISSEMENTS"), produits.subtract(charges),
             lignes,
-            b.getDuree(), b.getPeriode(), b.libellePeriode(), b.moisDebut(), b.moisFin(), b.parService()
+            b.getDuree(), b.getPeriode(), b.libellePeriode(), b.moisDebut(), b.moisFin(), b.parService(),
+            b.getTypeBudget()
         );
     }
 
