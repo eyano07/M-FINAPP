@@ -412,6 +412,20 @@ const classeEcart = (section: string, v: number) => {
         </div>
       </div>
 
+      <!-- Budget d'un projet (27/11/2026, V169) : comment se lit son exécution -->
+      <v-alert v-if="budget.typeBudget === 'SECONDAIRE'" type="info" variant="tonal" icon="mdi-briefcase-outline" class="mb-4 bs-projet-aide">
+        <div class="font-weight-bold mb-1">Budget d’un projet : comment se lit son exécution</div>
+        <ul>
+          <li>Les comptes « Projet — … » ne sont liés à <strong>aucun projet</strong> : un compte créé pour un projet peut servir à d’autres.</li>
+          <li>Une note de frais sur un compte prévu par ce budget s’y rattache <strong>automatiquement</strong> (aucun choix de budget à la saisie) ;
+            le montant de la ligne = quantité × prix unitaire prévu ici.</li>
+          <li><strong>Engagé</strong> : la note est approuvée mais pas encore payée, puis, une fois payée, le bien attend dans le
+            <strong>stock des projets</strong> chez le logisticien, sans être affecté.</li>
+          <li><strong>Exécuté</strong> (réalisé) : le logisticien a <strong>affecté</strong> le bien à ce projet. Un transfert vers un autre
+            projet déplace l’exécution sur le budget de ce projet.</li>
+        </ul>
+      </v-alert>
+
       <v-card class="classroom-card pa-3 mb-4 no-print bs-actions">
         <v-btn v-if="surSite && peutElaborer && budget.statut === 'BROUILLON'" color="primary" variant="tonal" prepend-icon="mdi-pencil" :to="`/budgets/${id}/modifier`">Modifier</v-btn>
         <v-btn v-if="peutElaborer && budget.statut === 'BROUILLON'" color="blue" prepend-icon="mdi-send" :loading="action === 'soumettre'" @click="actionAConfirmer = 'soumettre'">Soumettre au {{ lDA }}</v-btn>
@@ -1171,6 +1185,8 @@ const classeEcart = (section: string, v: number) => {
 .bs-cartes__section { background: #eef2ff; border-left: 4px solid; font-weight: 800; text-transform: uppercase; font-size: 0.74rem; letter-spacing: 0.04em; padding: 8px 10px; margin-top: 10px; border-radius: 4px; }
 .bs-carte { border: 1px solid #eef0f3; border-radius: 10px; padding: 10px; margin-top: 8px; }
 .bs-carte--total { background: #f1f5f9; font-weight: 700; }
+.bs-projet-aide ul { margin: 0; padding-left: 18px; font-size: 0.86rem; }
+.bs-projet-aide li { margin: 2px 0; }
 .bs-carte--alerte { border-left: 4px solid #dc2626; }
 .bs-carte--lien { display: block; color: inherit; text-decoration: none; }
 .bs-carte__bouton { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }

@@ -100,15 +100,41 @@ onMounted(chargerTauxTva)
 const articlesOptions = computed(() =>
   articlesDispo.value.map(a => `${a.libelle}`))
 
-// Comptes « Projet … » (27/11/2026) : une ligne qui en porte un demande la quantité achetée (fiche de stock du projet).
-interface CompteProjet { numero: string, libelle: string, projetId: number | null, projetNom: string | null, budgetId: number | null }
+// Comptes « Projet — … » (27/11/2026) : liés à aucun projet. Une ligne qui en porte un demande la quantité achetée ; son
+// montant = quantité × prix unitaire du budget (en USD, converti au taux du jour pour une note en francs).
+interface CompteProjet { numero: string, libelle: string, unite: string | null, prixUnitaireUsd: number | null }
 const comptesProjet = ref(new Map<string, CompteProjet>())
+const tauxDuJour = ref(0)
 onMounted(async () => {
   if (estEncaissement.value) return
   try {
     const liste = await api<CompteProjet[]>('/notes-frais/comptes-projet')
     comptesProjet.value = new Map(liste.map(c => [c.numero, c]))
   } catch { /* sans la liste, la ligne reste une dépense ordinaire (quantité 1 au paiement) */ }
+  try {
+    tauxDuJour.value = Number((await api<{ taux: number }>('/admin/taux-change')).taux) || 0
+  } catch { tauxDuJour.value = 0 }
+})
+/** Montant d'une ligne de projet dans la devise de la note ; null si le prix (ou le taux, en francs) manque. */
+function montantProjet(compte: string | null | undefined, quantite: number | null | undefined): number | null {
+  const prix = Number(compte ? comptesProjet.value.get(compte)?.prixUnitaireUsd : 0)
+  const q = Number(quantite)
+  if (!prix || !q || q <= 0) return null
+  const usd = prix * q
+  if (props.devise === 'USD') return Math.round(usd * 100) / 100
+  return tauxDuJour.value > 0 ? Math.round(usd * tauxDuJour.value * 100) / 100 : null
+}
+function majQuantiteProjet(index: number, quantite: number | null) {
+  const montant = montantProjet(lignes.value[index]?.compteImputation, quantite)
+  majChamps(index, montant === null ? { quantiteProjet: quantite } : { quantiteProjet: quantite, montant })
+}
+// Devise changée : les montants des lignes de projet suivent.
+watch(() => props.devise, () => {
+  const copie = lignes.value.map((l) => {
+    const m = l.compteImputation && comptesProjet.value.has(l.compteImputation) ? montantProjet(l.compteImputation, l.quantiteProjet) : null
+    return m === null ? l : { ...l, montant: m }
+  })
+  if (copie.some((l, i) => l !== lignes.value[i])) lignes.value = copie
 })
 
 const lignes = computed({
@@ -227,9 +253,11 @@ function onCompteChange(index: number, val: string | null) {
   // Compte d'immobilisation : amortissable par défaut ; autre compte : la question ne se pose pas.
   const immo = estCompteImmobilisation(val)
   const amortissable = immo ? (lignes.value[index]?.amortissable ?? true) : null
-  // Compte « Projet … » : quantité (1 par défaut) pour la fiche de stock du projet.
+  // Compte « Projet … » : quantité (1 par défaut) et montant = quantité × prix unitaire du budget.
   const quantiteProjet = val && comptesProjet.value.has(val) ? (lignes.value[index]?.quantiteProjet ?? 1) : null
-  majChamps(index, { compteImputation: val, amortissable, quantiteProjet })
+  const montant = quantiteProjet ? montantProjet(val, quantiteProjet) : null
+  majChamps(index, montant === null ? { compteImputation: val, amortissable, quantiteProjet }
+    : { compteImputation: val, amortissable, quantiteProjet, montant })
   const appliquee = iaAppliquee.value[index]
   if (appliquee && val !== appliquee.compteNumero) {
     delete iaAppliquee.value[index]
@@ -344,12 +372,16 @@ function fmt(v: number) {
             density="compact"
             hide-details
             style="max-width: 170px"
-            @update:model-value="majChamp(index, 'quantiteProjet', $event ? Number($event) : null)"
+            :suffix="comptesProjet.get(ligne.compteImputation)?.unite || undefined"
+            @update:model-value="majQuantiteProjet(index, $event ? Number($event) : null)"
           />
           <span class="lignes-note__compte-auto">
             <v-icon icon="mdi-briefcase-outline" size="14" class="mr-1" />
-            Au paiement, l'achat entre dans la fiche de stock du projet
-            « {{ comptesProjet.get(ligne.compteImputation)?.projetNom || 'à affecter' }} » (le montant est le total de la ligne).
+            <template v-if="comptesProjet.get(ligne.compteImputation)?.prixUnitaireUsd">
+              Prix unitaire au budget : {{ Number(comptesProjet.get(ligne.compteImputation)?.prixUnitaireUsd).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) }} USD,
+              le montant suit la quantité.
+            </template>
+            Au paiement, l'achat entre dans le stock des projets ; le logisticien l'affecte au projet.
           </span>
         </div>
         <div v-if="!ligne.achatMarchandise && estCompteImmobilisation(ligne.compteImputation)" class="lignes-note__toggle-row">

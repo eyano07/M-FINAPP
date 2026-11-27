@@ -92,7 +92,7 @@ const fmt = (v: number | null | undefined) => new Intl.NumberFormat('fr-FR', { m
         <p class="page-sub">Besoins, budget du projet et fiche de stock projet — séparée du stock global, sans écriture comptable</p>
       </div>
       <div class="d-flex flex-wrap ga-2">
-        <v-btn variant="tonal" rounded="lg" prepend-icon="mdi-tray-arrow-down" to="/logistique/projets/a-affecter">À affecter</v-btn>
+        <v-btn variant="tonal" rounded="lg" prepend-icon="mdi-warehouse" to="/logistique/projets/a-affecter">Stock des projets</v-btn>
         <v-btn v-if="auth.hasAnyRole(['LOGISTIQUE', 'COMPTABLE', 'DFIN'])" variant="tonal" rounded="lg" prepend-icon="mdi-sync" :loading="synchro" @click="synchroniser">Synchroniser</v-btn>
         <v-btn color="success" variant="tonal" rounded="lg" prepend-icon="mdi-file-excel-outline" :loading="exportEnCours" @click="exporter">Excel</v-btn>
         <v-btn v-if="peutEcrire" color="primary" rounded="lg" prepend-icon="mdi-plus" @click="Object.assign(nouveau, { ouvert: true, nom: '', description: '' })">Nouveau projet</v-btn>

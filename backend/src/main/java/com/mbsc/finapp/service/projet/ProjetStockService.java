@@ -24,8 +24,9 @@ import java.util.Map;
 /**
  * Alimentation de la fiche de stock projet (V167) par les achats PAYÉS imputés à un compte dont le libellé commence par
  * « Projet » (achats divers 6588…, acquisitions 6058… ou 21-24…) : une entrée ACHAT par ligne de note (quantité de la
- * ligne, montant HT en USD au taux du paiement), une fois seulement. Un compte « Projet … » inconnu des projets (créé à la
- * main) crée un article « à affecter ». Aucune écriture : la fiche de stock projet est séparée du stock global.
+ * ligne, montant HT en USD au taux du paiement), une fois seulement, dans le STOCK COMMUN DES PROJETS (V169 : article
+ * sans projet, un par compte) ; le logisticien affecte ensuite les biens aux projets. Aucune écriture : la fiche de stock
+ * projet est séparée du stock global.
  */
 @Service
 @RequiredArgsConstructor
@@ -45,13 +46,14 @@ public class ProjetStockService {
         }
     }
 
-    /** Fiche d'immobilisation créée au paiement d'une acquisition de projet (compte 21-24 « Projet … ») : affectée au projet. */
+    /**
+     * Fiche d'immobilisation créée au paiement d'une acquisition de projet (compte 21-24 « Projet … ») : depuis V169, un
+     * compte « Projet — … » n'est lié à aucun projet ; la fiche reste sans projet, le logisticien l'affecte (onglet
+     * Acquisitions du projet).
+     */
     @Transactional
     public void lierImmobilisation(Long immobilisationId, CompteOHADA compte) {
-        if (compte == null || !ComptesProjetService.estCompteProjet(compte.getLibelle())) return;
-        jdbc.update("""
-            update immobilisations set projet_id = (select projet_id from projet_articles where compte_id = ?) where id = ?
-            """, compte.getId(), immobilisationId);
+        // Rien à rattacher automatiquement.
     }
 
     /**
@@ -112,12 +114,16 @@ public class ProjetStockService {
         if (compte == null || l.isAchatMarchandise() || !ComptesProjetService.estCompteProjet(compte.getLibelle())) {
             return;
         }
-        Long articleId = jdbc.query("select id from projet_articles where compte_id = ?", (rs, i) -> rs.getLong(1), compte.getId())
+        // Stock commun des projets (V169) : un article sans projet par compte ; le logisticien l'affecte ensuite.
+        Long articleId = jdbc.query("select id from projet_articles where compte_id = ? and projet_id is null",
+                (rs, i) -> rs.getLong(1), compte.getId())
             .stream().findFirst()
             .orElseGet(() -> jdbc.queryForObject("""
-                insert into projet_articles (projet_id, designation, nature, compte_id) values (null, ?, ?, ?) returning id
-                """, Long.class, compte.getLibelle(), compte.getNumero().matches("2[1-4].*|6058.*") ? "ACQUISITION" : "ACHAT",
-                compte.getId()));
+                insert into projet_articles (projet_id, designation, unite, nature, compte_id)
+                values (null, ?, (select unite from projet_articles where compte_id = ? and unite is not null order by id desc limit 1),
+                        ?, ?) returning id
+                """, Long.class, designation(compte.getLibelle()), compte.getId(),
+                compte.getNumero().matches("2[1-4].*|6058.*") ? "ACQUISITION" : "ACHAT", compte.getId()));
         Devise devise = note.getDevise() == null ? Devise.CDF : note.getDevise();
         BigDecimal montant = conversion.enDeviseBase(l.montantHtTotal(), devise, taux).montantBase().setScale(2, RoundingMode.HALF_UP);
         BigDecimal quantite = l.getQuantiteProjet() != null && l.getQuantiteProjet().signum() > 0 ? l.getQuantiteProjet() : BigDecimal.ONE;
@@ -130,6 +136,12 @@ public class ProjetStockService {
         if (n > 0) {
             log.info("Stock projet : achat {} ({} USD, qté {}) entré sur l'article {}", note.getReference(), montant, quantite, articleId);
         }
+    }
+
+    /** « Projet — Riz 25 kg » → « Riz 25 kg ». */
+    static String designation(String libelle) {
+        String d = libelle.trim().replaceFirst("(?i)^projet\\s*[—–-]?\\s*", "").trim();
+        return d.isEmpty() ? libelle.trim() : d;
     }
 
     private BigDecimal tauxDuPaiement(Long noteId) {

@@ -77,8 +77,11 @@ public class ProjetService {
     public record Detail(Projet projet, List<Article> articles, List<Mouvement> mouvements, List<Acquisition> acquisitions,
                          Depenses depenses) { }
 
-    /** Compte « Projet … » proposé dans une note de frais, avec le budget secondaire du projet (version initiale). */
-    public record CompteProjet(String numero, String libelle, Long projetId, String projetNom, Long budgetId) { }
+    /**
+     * Compte « Projet — … » proposé dans une note de frais (V169) : lié à aucun projet, avec le prix unitaire et l'unité
+     * du dernier besoin budgété sur ce compte, pour calculer le montant de la ligne d'après la quantité.
+     */
+    public record CompteProjet(String numero, String libelle, String unite, BigDecimal prixUnitaireUsd) { }
 
     // ---------------------------------------------------------------------
     // Requêtes
@@ -98,14 +101,19 @@ public class ProjetService {
                                    @NotNull BigDecimal quantite, Long projetCibleId, LocalDate date,
                                    @Size(max = 500) String commentaire) { }
 
-    public record AffectationRequest(Long projetId) { }
+    /** Projet qui reçoit ; quantité affectée (achat du stock commun : tout le solde si vide). */
+    public record AffectationRequest(Long projetId, BigDecimal quantite) {
+        public AffectationRequest(Long projetId) {
+            this(projetId, null);
+        }
+    }
 
     private static final String SELECT_PROJET = """
         select p.*, b.reference as budget_reference, b.statut as budget_statut,
                (select count(*) from projet_articles a where a.projet_id = p.id) as nb,
                (select coalesce(sum(a.quantite_prevue * a.prix_estime_usd), 0) from projet_articles a where a.projet_id = p.id) as prevu,
                (select coalesce(sum(m.montant_usd), 0) from projet_mouvements m join projet_articles a on a.id = m.article_id
-                 where a.projet_id = p.id and m.type in ('ACHAT', 'RETOUR_FONDS')) as paye
+                 where a.projet_id = p.id and m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE')) as paye
         from projets p left join budgets b on b.id = p.budget_id
         """;
 
@@ -121,7 +129,7 @@ public class ProjetService {
                coalesce(-sum(m.quantite) filter (where m.quantite < 0), 0) as sorties,
                coalesce(sum(m.quantite), 0) as solde,
                coalesce(sum(m.montant_usd), 0) as valeur,
-               coalesce(sum(m.montant_usd) filter (where m.type in ('ACHAT', 'RETOUR_FONDS')), 0) as paye
+               coalesce(sum(m.montant_usd) filter (where m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE')), 0) as paye
         from projet_articles a left join comptes_ohada c on c.id = a.compte_id
         left join projet_mouvements m on m.article_id = a.id
         """;
@@ -168,14 +176,16 @@ public class ProjetService {
     @Transactional(readOnly = true)
     public List<CompteProjet> comptesProjet() {
         return jdbc.query("""
-            select c.numero, c.libelle, p.id as projet_id, p.nom as projet_nom, p.budget_id
+            select c.numero, c.libelle,
+                   (select a.unite from projet_articles a where a.compte_id = c.id and a.projet_id is not null
+                     order by a.id desc limit 1) as unite,
+                   (select a.prix_estime_usd from projet_articles a where a.compte_id = c.id and a.projet_id is not null
+                     order by a.id desc limit 1) as prix
             from comptes_ohada c
-            left join projet_articles a on a.compte_id = c.id
-            left join projets p on p.id = a.projet_id
             where c.imputable and c.actif and lower(trim(c.libelle)) like 'projet%'
             order by c.numero
-            """, (rs, i) -> new CompteProjet(rs.getString("numero"), rs.getString("libelle"), (Long) rs.getObject("projet_id"),
-            rs.getString("projet_nom"), (Long) rs.getObject("budget_id")));
+            """, (rs, i) -> new CompteProjet(rs.getString("numero"), rs.getString("libelle"), rs.getString("unite"),
+            rs.getBigDecimal("prix")));
     }
 
     // ---------------------------------------------------------------------
@@ -300,17 +310,33 @@ public class ProjetService {
         return consulter(projetId);
     }
 
-    /** Rattache un achat « à affecter » (compte « Projet … » créé à la main) à un projet. */
+    /**
+     * Affecte au projet une quantité d'un achat qui attend dans le stock commun des projets (V169) : sortie du stock commun,
+     * entrée dans l'article du projet sur le même compte (créé au besoin), au coût moyen. C'est cette affectation qui
+     * exécute la ligne du budget du projet.
+     */
     @PreAuthorize(ECRITURE)
     @Transactional
     public Article affecterArticle(Long articleId, AffectationRequest r) {
         Article a = article(articleId);
         if (a.projetId() != null) {
-            throw new IllegalArgumentException("Cet article appartient déjà à un projet.");
+            throw new IllegalArgumentException("Cet article est déjà dans un projet : transférez-le depuis la fiche du projet.");
         }
-        projet(r.projetId());
-        jdbc.update("update projet_articles set projet_id = ? where id = ?", r.projetId(), articleId);
-        return article(articleId);
+        if (r.projetId() == null) {
+            throw new IllegalArgumentException("Choisissez le projet qui reçoit le bien.");
+        }
+        Projet cible = projet(r.projetId());
+        BigDecimal q = (r.quantite() == null ? a.solde() : r.quantite()).setScale(3, RoundingMode.HALF_UP);
+        exigerPositive(q);
+        if (a.solde().compareTo(q) < 0) throw stockInsuffisant(a);
+        Long articleCible = articleDuTransfert(cible.id(), a);
+        BigDecimal valeur = valeurDe(a, q);
+        LocalDate date = LocalDate.now(com.mbsc.finapp.config.FuseauEntreprise.ZONE);
+        String auteur = nom(currentUser.requireUser());
+        String commentaire = "Affectation au projet " + cible.code() + " — " + cible.nom();
+        inserer(a.id(), date, "AFFECTATION_SORTIE", q.negate(), valeur.negate(), articleCible, commentaire, auteur);
+        inserer(articleCible, date, "AFFECTATION", q, valeur, a.id(), "Reçu du stock commun des projets", auteur);
+        return article(articleCible);
     }
 
     /** Affecte une acquisition (fiche d'immobilisation) à un projet, ou la retire (projetId null). */
@@ -383,14 +409,21 @@ public class ProjetService {
                    sum(case when n.devise = 'USD' then l.montant
                             else l.montant / nullif(coalesce(n.taux_engagement, ?), 0) end) as montant
             from notes_frais n join lignes_note_frais l on l.note_id = n.id
-            join projet_articles a on a.compte_id = l.compte_imputation_id
-            where a.projet_id = ? and n.statut <> 'ANNULEE'
+            join comptes_ohada c on c.id = l.compte_imputation_id
+            where n.budget_secondaire_id = ? and lower(trim(c.libelle)) like 'projet%' and n.statut <> 'ANNULEE'
             group by n.id order by n.date_creation desc
             """, (rs, i) -> new NoteLiee(rs.getLong("id"), rs.getString("reference"), rs.getString("objet"), rs.getString("statut"),
             rs.getBigDecimal("montant") == null ? BigDecimal.ZERO : rs.getBigDecimal("montant").setScale(2, RoundingMode.HALF_UP)),
-            taux, p.id());
+            taux, p.budgetId() == null ? -1L : p.budgetId());
+        // Engagé : notes approuvées non payées, plus les biens payés qui attendent dans le stock commun des projets sur
+        // les comptes de ce projet (pas encore affectés par le logisticien).
+        BigDecimal enAttente = jdbc.queryForObject("""
+            select coalesce(sum(m.montant_usd), 0) from projet_mouvements m join projet_articles a on a.id = m.article_id
+            where a.projet_id is null
+              and a.compte_id in (select compte_id from projet_articles where projet_id = ? and compte_id is not null)
+            """, BigDecimal.class, p.id());
         BigDecimal engage = notes.stream().filter(n -> "VALIDEE_DA".equals(n.statut()) || "TRANSMISE_CAISSE".equals(n.statut()))
-            .map(NoteLiee::montantUsd).reduce(BigDecimal.ZERO, BigDecimal::add);
+            .map(NoteLiee::montantUsd).reduce(BigDecimal.ZERO, BigDecimal::add).add(enAttente);
         BigDecimal paye = p.payeUsd();
         BigDecimal reference = prevuBudget != null ? prevuBudget : p.prevuUsd();
         return new Depenses(prevuBudget, p.prevuUsd(), engage, paye, reference.subtract(engage).subtract(paye), notes);
@@ -406,13 +439,18 @@ public class ProjetService {
     }
 
     /** Article du projet cible qui reçoit le transfert : même désignation, sinon créé (sans compte : pas un achat). */
+    /** Article du projet qui reçoit : même compte « Projet — … » (sinon même désignation), créé au besoin. */
     private Long articleDuTransfert(Long projetCibleId, Article source) {
-        return jdbc.query("select id from projet_articles where projet_id = ? and lower(designation) = lower(?) order by id limit 1",
-                (rs, i) -> rs.getLong(1), projetCibleId, source.designation()).stream().findFirst()
+        return jdbc.query("""
+                select id from projet_articles where projet_id = ?
+                  and (compte_id = ? or (compte_id is null and lower(designation) = lower(?)))
+                order by (compte_id is null), id limit 1
+                """, (rs, i) -> rs.getLong(1), projetCibleId, source.compteId(), source.designation())
+            .stream().findFirst()
             .orElseGet(() -> jdbc.queryForObject("""
-                insert into projet_articles (projet_id, designation, unite, nature, ordre)
-                values (?, ?, ?, ?, 1000) returning id
-                """, Long.class, projetCibleId, source.designation(), source.unite(), source.nature()));
+                insert into projet_articles (projet_id, designation, unite, nature, compte_id, ordre)
+                values (?, ?, ?, ?, ?, 1000) returning id
+                """, Long.class, projetCibleId, source.designation(), source.unite(), source.nature(), source.compteId()));
     }
 
     /** Valeur d'une quantité au coût moyen de l'article (valeur / solde). */

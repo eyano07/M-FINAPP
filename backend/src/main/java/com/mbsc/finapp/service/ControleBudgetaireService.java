@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -89,7 +90,10 @@ public class ControleBudgetaireService {
         }
         BigDecimal taux = devise == ConversionDeviseService.DEVISE_BASE ? null : conversion.tauxCourant();
         ServiceBudgetaire service = req.serviceId() == null ? null : serviceRepository.findById(req.serviceId()).orElse(null);
-        Budget secondaire = req.budgetSecondaireId() == null ? null : budgetRepository.findById(req.budgetSecondaireId()).orElse(null);
+        Budget secondaire = req.budgetSecondaireId() != null ? budgetRepository.findById(req.budgetSecondaireId()).orElse(null)
+            : Boolean.TRUE.equals(req.horsBudget()) ? null
+            : budgetSecondaireDeduit(depenses.stream().map(Depense::compteNumero).filter(Objects::nonNull).toList(), LocalDate.now())
+                .orElse(null);
         return controler(depenses, devise, taux, LocalDate.now(), req.noteId(), service, secondaire,
             Boolean.TRUE.equals(req.horsBudget()));
     }
@@ -207,6 +211,21 @@ public class ControleBudgetaireService {
      * Version en exécution d'un budget secondaire (la note garde le budget choisi ; une révision mise en exécution depuis
      * le remplace) couvrant la date, s'il y en a une.
      */
+    /**
+     * Budget d'une dépense déduit de ses comptes (27/11/2026), sans choix du demandeur : le budget secondaire en exécution
+     * à cette date (budget d'un projet) qui prévoit l'un de ces comptes, le plus ancien s'il y en a plusieurs ; vide =
+     * budget principal.
+     */
+    public Optional<Budget> budgetSecondaireDeduit(java.util.Collection<String> comptes, LocalDate date) {
+        if (comptes.isEmpty()) {
+            return Optional.empty();
+        }
+        return budgetRepository.findByExerciceAndStatut(date.getYear(), StatutBudget.EN_EXECUTION).stream()
+            .filter(b -> b.estSecondaire() && b.couvreMois(date.getMonthValue()))
+            .filter(b -> b.getLignes().stream().anyMatch(l -> comptes.contains(l.getCompte().getNumero())))
+            .min(Comparator.comparing(Budget::racineId));
+    }
+
     Optional<Budget> budgetSecondaireEnExecution(Budget choisi, LocalDate date) {
         Long racine = choisi.racineId();
         return budgetRepository.findByExerciceAndStatut(date.getYear(), StatutBudget.EN_EXECUTION).stream()
