@@ -183,7 +183,6 @@ function effacerPeriode() {
 
 onMounted(charger)
 onMounted(chargerRegleVisibilite)
-onMounted(chargerBudgetsSecondaires)
 
 // ── Affichage : cartes ou tableau (PC), choix enregistré sur le compte ─────────────────────────────────────
 // Sous 960 px (téléphone, tablette) la page n'affiche que les cartes.
@@ -222,43 +221,11 @@ const form = reactive({
   lignes: lignesVides(),
   justificationBudget: '',
   serviceId: null as number | null,
-  // Budget de la dépense (V162) : principal par défaut ; un budget secondaire (projet...) seulement s'il est choisi.
-  typeBudget: 'PRINCIPAL' as 'PRINCIPAL' | 'SECONDAIRE' | 'HORS_BUDGET',
-  budgetSecondaireId: null as number | null,
 })
 
-/** Budgets secondaires (projets...) en exécution ce mois-ci : le choix n'apparaît que s'il en existe. */
-interface BudgetSecondaire { id: number, reference: string, intitule: string, libellePeriode: string }
-const budgetsSecondaires = ref<BudgetSecondaire[]>([])
-async function chargerBudgetsSecondaires() {
-  try {
-    budgetsSecondaires.value = await api<BudgetSecondaire[]>('/notes-frais/budgets-secondaires')
-  } catch {
-    budgetsSecondaires.value = []
-  }
-}
-/** Budget secondaire envoyé au serveur : seulement pour une dépense explicitement rattachée à un budget secondaire. */
-// Comptes « Projet … » (27/11/2026) : une ligne sur un compte de projet présélectionne le budget secondaire du projet
-// (sinon la note passerait hors budget : ces comptes ne figurent pas au budget principal).
-interface CompteProjet { numero: string, projetId: number | null, budgetId: number | null }
-const comptesProjet = ref<CompteProjet[]>([])
-onMounted(async () => {
-  try { comptesProjet.value = await api<CompteProjet[]>('/notes-frais/comptes-projet') } catch { comptesProjet.value = [] }
-})
-watch(() => form.lignes.map((l: any) => l.compteImputation).join('|'), () => {
-  if (form.sens !== 'DECAISSEMENT' || form.typeBudget !== 'PRINCIPAL') return
-  const budget = form.lignes
-    .map((l: any) => comptesProjet.value.find(c => c.numero === l.compteImputation)?.budgetId)
-    .find((b: number | null | undefined) => b && budgetsSecondaires.value.some(x => x.id === b))
-  if (budget) {
-    form.typeBudget = 'SECONDAIRE'
-    form.budgetSecondaireId = budget
-  }
-})
-const budgetSecondaireEnvoye = computed(() =>
-  form.sens === 'DECAISSEMENT' && form.typeBudget === 'SECONDAIRE' ? form.budgetSecondaireId : null)
-/** Dépense déclarée hors budget par le demandeur. */
-const horsBudgetManuel = computed(() => form.sens === 'DECAISSEMENT' && form.typeBudget === 'HORS_BUDGET')
+// Budget de la dépense (27/11/2026) : plus de choix du demandeur. Le serveur le déduit des comptes : un compte budgété par
+// le budget d'un projet (« Projet — … ») rattache la note à ce budget, sinon au budget principal ; un compte qu'aucun
+// budget ne prévoit la fait passer hors budget (justification obligatoire, validation motivée du DA).
 
 // Résultat du contrôle budgétaire des lignes en cours de saisie (composant BudgetControleBudgetaire) : une
 // dépense non couverte par le budget en exécution exige une justification avant la soumission.
@@ -269,14 +236,12 @@ const controleCreation = ref<any | null>(null)
  * note revient au budget choisi.
  */
 const horsBudgetAutomatique = computed(() => {
-  if (form.sens !== 'DECAISSEMENT' || horsBudgetManuel.value || !controleCreation.value?.lignes) return false
+  if (form.sens !== 'DECAISSEMENT' || !controleCreation.value?.lignes) return false
   const choisis = new Set(form.lignes.map((l: any) => l.compteImputation).filter(Boolean))
   return controleCreation.value.lignes.some((l: any) => l.statut === 'HORS_BUDGET' && choisis.has(l.compteNumero))
 })
-/** Dépense hors budget (choisie ou automatique) : justification obligatoire, validation motivée du DA. */
-const horsBudget = computed(() => horsBudgetManuel.value || horsBudgetAutomatique.value)
-/** Choix affiché : « Hors budget » tant qu'un compte choisi n'est pas prévu au budget. */
-const typeBudgetAffiche = computed(() => (horsBudgetAutomatique.value ? 'HORS_BUDGET' : form.typeBudget))
+/** Dépense hors budget (automatique) : justification obligatoire, validation motivée du DA. */
+const horsBudget = computed(() => horsBudgetAutomatique.value)
 const devises = ['CDF', 'USD']
 
 function ouvrirDialog() {
@@ -302,7 +267,6 @@ const lignesValides = computed(() =>
   form.lignes.filter(l => l.montant && l.montant > 0)
 )
 const peutCreer = computed(() => !!form.objet && !!form.beneficiaire && lignesValides.value.length > 0
-  && !(form.sens === 'DECAISSEMENT' && form.typeBudget === 'SECONDAIRE' && !form.budgetSecondaireId)
   && !(horsBudget.value && !form.justificationBudget.trim()))
 
 // ── Pièces jointes à joindre dès la création ──────────────────────────
@@ -436,10 +400,8 @@ function utiliserPhoto() {
 }
 
 function resetForm() {
-  Object.assign(form, { objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: activeSens.value, lignes: lignesVides(), justificationBudget: '', serviceId: null,
-    typeBudget: 'PRINCIPAL', budgetSecondaireId: null })
+  Object.assign(form, { objet: '', beneficiaire: '', devise: 'CDF', description: '', sens: activeSens.value, lignes: lignesVides(), justificationBudget: '', serviceId: null })
   controleCreation.value = null
-  void chargerBudgetsSecondaires()
   fichiersAJoindre.value = []
 }
 
@@ -455,8 +417,6 @@ function corpsNote() {
     sens: form.sens,
     justificationBudget: form.sens === 'DECAISSEMENT' && form.justificationBudget.trim() ? form.justificationBudget.trim() : null,
     serviceId: form.sens === 'DECAISSEMENT' ? form.serviceId : null,
-    budgetSecondaireId: budgetSecondaireEnvoye.value,
-    horsBudget: horsBudget.value,
     lignes: lignesValides.value.map(l => ({
       montant: l.montant,
       compteImputation: l.compteImputation || null,
@@ -533,8 +493,6 @@ async function creerNote(executerEnsuite: boolean) {
         sens: form.sens,
         justificationBudget: form.sens === 'DECAISSEMENT' && form.justificationBudget.trim() ? form.justificationBudget.trim() : null,
         serviceId: form.sens === 'DECAISSEMENT' ? form.serviceId : null,
-        budgetSecondaireId: budgetSecondaireEnvoye.value,
-        horsBudget: horsBudget.value,
         lignes: lignesValides.value.map(l => ({
           montant: l.montant,
           compteImputation: l.compteImputation || null,
@@ -877,28 +835,10 @@ const labelPayees = computed(() => activeSens.value === 'ENCAISSEMENT' ? 'Encais
             <v-textarea v-model="form.description" rows="2" placeholder="Détails supplémentaires..." hide-details="auto" />
           </div>
 
-          <div v-if="form.sens === 'DECAISSEMENT'" class="nf-field">
-            <label class="nf-label">Budget de la dépense</label>
-            <v-btn-toggle :model-value="typeBudgetAffiche" mandatory color="primary" variant="outlined" density="comfortable" rounded="lg" class="mb-2"
-              @update:model-value="(t: any) => { form.typeBudget = t; if (t !== 'SECONDAIRE') form.budgetSecondaireId = null; else if (budgetsSecondaires.length === 1) form.budgetSecondaireId = budgetsSecondaires[0].id }">
-              <v-btn value="PRINCIPAL" prepend-icon="mdi-bank-outline">Budget principal</v-btn>
-              <v-btn v-if="budgetsSecondaires.length" value="SECONDAIRE" prepend-icon="mdi-briefcase-outline">Budget secondaire</v-btn>
-              <v-btn value="HORS_BUDGET" prepend-icon="mdi-alert-octagon-outline">Hors budget</v-btn>
-            </v-btn-toggle>
-            <p v-if="horsBudget" class="text-caption text-warning mb-1">
-              <template v-if="horsBudgetAutomatique">Un compte de la note n'est pas prévu au budget : la note passe automatiquement hors budget. </template>
-              Dépense sur aucun budget : justifiez-la ci-dessous. Le DA devra motiver sa validation.
-            </p>
-            <v-select v-if="form.typeBudget === 'SECONDAIRE'" v-model="form.budgetSecondaireId" :items="budgetsSecondaires"
-              item-value="id" :item-title="(b: BudgetSecondaire) => `${b.intitule} (${b.reference} · ${b.libellePeriode})`"
-              label="Budget secondaire *" placeholder="Choisissez le projet" hide-details="auto"
-              :error-messages="form.budgetSecondaireId ? [] : ['Choisissez le budget secondaire']" />
-          </div>
-
           <NotesFraisLignesNoteFrais v-model="form.lignes" :devise="form.devise" :sens="form.sens" />
 
           <BudgetControleBudgetaire :lignes="form.lignes" :devise="form.devise" :sens="form.sens" :service-id="form.serviceId"
-            :budget-secondaire-id="budgetSecondaireEnvoye" :hors-budget="horsBudgetManuel" @resultat="(r: any) => controleCreation = r" />
+            @resultat="(r: any) => controleCreation = r" />
           <div v-if="form.sens === 'DECAISSEMENT' && (horsBudget || controleCreation?.justificationRequise)" class="nf-field">
             <label class="nf-label">Justification budgétaire {{ horsBudget ? '* (obligatoire hors budget)' : '(facultative)' }}</label>
             <v-textarea

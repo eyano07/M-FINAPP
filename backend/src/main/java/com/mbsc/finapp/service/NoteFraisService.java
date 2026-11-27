@@ -270,6 +270,7 @@ public class NoteFraisService {
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
         // Service d'abord (celui qui budgète les comptes de la note), puis le contrôle hors budget sur son enveloppe.
+        deduireBudgetSecondaire(note);
         rattacherServiceDeduit(note);
         detecterHorsBudget(note);
 
@@ -375,6 +376,7 @@ public class NoteFraisService {
         note.recalculerMontant();
         validerNoteRespRestaurant(note);
         // Service d'abord (celui qui budgète les comptes de la note), puis le contrôle hors budget sur son enveloppe.
+        deduireBudgetSecondaire(note);
         rattacherServiceDeduit(note);
         detecterHorsBudget(note);
 
@@ -1565,6 +1567,27 @@ public class NoteFraisService {
      * Dépense déclarée hors budget par le demandeur (V163) : sur aucun budget, avec une justification obligatoire ; le DA
      * devra motiver sa validation (contrôle HORS_BUDGET, voir {@link #valider}).
      */
+    /**
+     * Budget de la dépense déduit de ses comptes (27/11/2026) : le demandeur ne choisit plus de budget. Une note dont un
+     * compte est budgété par un budget secondaire en exécution ce mois-ci (budget d'un projet : comptes « Projet — … »)
+     * est rattachée à ce budget (le plus ancien s'il y en a plusieurs) ; sinon elle relève du budget principal. Un compte
+     * qu'aucun budget ne prévoit fait ensuite passer la note hors budget ({@link #detecterHorsBudget}).
+     */
+    private void deduireBudgetSecondaire(NoteFrais note) {
+        if (note.getSens() != SensTransaction.DECAISSEMENT || note.isHorsBudget() || note.getBudgetSecondaire() != null) {
+            return;
+        }
+        java.util.Set<String> comptes = new java.util.HashSet<>();
+        note.getLignes().forEach(l -> {
+            if (l.getCompteImputation() != null) comptes.add(l.getCompteImputation().getNumero());
+        });
+        if (comptes.isEmpty()) {
+            return;
+        }
+        controleBudgetaire.budgetSecondaireDeduit(comptes, LocalDate.now())
+            .ifPresent(b -> note.setBudgetSecondaire(resoudreBudgetSecondaire(b.racineId(), null)));
+    }
+
     /**
      * Hors budget automatique : une ligne sur un compte que le budget de la note (principal, ou son budget secondaire) ne
      * prévoit pas fait passer la note hors budget, avec les mêmes exigences qu'un choix du demandeur.

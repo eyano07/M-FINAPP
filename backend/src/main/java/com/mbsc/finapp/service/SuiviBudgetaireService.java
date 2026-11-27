@@ -84,6 +84,9 @@ public class SuiviBudgetaireService {
     private final CompteOHADARepository compteRepository;
     private final ConversionDeviseService conversion;
     private final ServiceBudgetaireRepository serviceRepository;
+    /** Exécution des budgets de projet par le stock des projets (V169) ; absente dans les tests unitaires. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.mbsc.finapp.service.projet.ExecutionStockProjet stockProjets;
 
     // ---------------------------------------------------------------------
     // Donnees brutes d'un exercice
@@ -302,8 +305,54 @@ public class SuiviBudgetaireService {
                 ajouter(serie(engageHorsBudgetService, e.serviceId(), e.compteNumero()), e.mois(), e.montantBase());
             }
         }
+        if (budget.estSecondaire() && stockProjets != null) {
+            surLaPeriode |= executerParLeStockDuProjet(budget, imputation, realise, engage, realiseEnveloppe, engageEnveloppe);
+        }
         return new ExecutionLignes(realise, engage, horsBudget, engageHorsBudget, realiseEnveloppe, engageEnveloppe,
             horsBudgetService, engageHorsBudgetService, imputeGeneral, nonRattache, types, imputation, surLaPeriode);
+    }
+
+    /**
+     * Budget d'un projet (V169) : une ligne sur un compte « Projet — … » est EXÉCUTÉE quand le logisticien affecte le bien
+     * au projet, et ENGAGÉE tant que le bien payé attend dans le stock commun des projets (en plus des notes approuvées
+     * non payées). Le paiement d'une note sur ces comptes n'en est donc pas le réalisé : il remplit le stock commun.
+     * Renvoie vrai si un mouvement tombe dans la période.
+     */
+    private boolean executerParLeStockDuProjet(Budget budget, ImputationBudgetaire imputation, Map<String, BigDecimal[]> realise,
+                                               Map<String, BigDecimal[]> engage, Map<Enveloppe, BigDecimal[]> realiseEnveloppe,
+                                               Map<Enveloppe, BigDecimal[]> engageEnveloppe) {
+        var execution = stockProjets.pour(budget.racineId(), budget.getExercice());
+        if (execution == null) {
+            return false;
+        }
+        int debut = budget.moisDebut();
+        int fin = budget.moisFin();
+        boolean surLaPeriode = false;
+        java.util.Set<String> faits = new java.util.HashSet<>();
+        for (LigneBudget l : budget.getLignes()) {
+            String numero = l.getCompte().getNumero();
+            if (!com.mbsc.finapp.service.projet.ComptesProjetService.estCompteProjet(l.getCompte().getLibelle()) || !faits.add(numero)) {
+                continue;
+            }
+            String consolidee = imputation.ligneConsolidee(numero);
+            Enveloppe enveloppe = ImputationBudgetaire.enveloppeDe(l);
+            BigDecimal[] recu = execution.recu().getOrDefault(numero, MoteurBudgetaire.zeros());
+            BigDecimal[] enAttente = execution.enAttente().getOrDefault(numero, MoteurBudgetaire.zeros());
+            BigDecimal[] serieRealise = MoteurBudgetaire.zeros();
+            for (int mois = debut; mois <= fin; mois++) {
+                serieRealise[mois - 1] = recu[mois - 1];
+                surLaPeriode |= recu[mois - 1].signum() != 0 || enAttente[mois - 1].signum() != 0;
+            }
+            if (consolidee != null && consolidee.equals(numero)) {
+                realise.put(consolidee, serieRealise.clone());
+                for (int mois = debut; mois <= fin; mois++) ajouter(engage.get(consolidee), mois, enAttente[mois - 1]);
+            }
+            if (realiseEnveloppe.containsKey(enveloppe)) {
+                realiseEnveloppe.put(enveloppe, serieRealise.clone());
+                for (int mois = debut; mois <= fin; mois++) ajouter(engageEnveloppe.get(enveloppe), mois, enAttente[mois - 1]);
+            }
+        }
+        return surLaPeriode;
     }
 
     // ---------------------------------------------------------------------
