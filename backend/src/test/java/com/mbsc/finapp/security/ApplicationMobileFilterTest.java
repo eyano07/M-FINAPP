@@ -49,6 +49,19 @@ class ApplicationMobileFilterTest {
     }
 
     @Test
+    void l_application_decide_sur_les_budgets_sans_les_elaborer() throws Exception {
+        for (String decision : new String[] {"soumettre", "approuver", "rejeter", "demarrer", "cloturer"}) {
+            assertThat(passer("POST", "/budgets/5/" + decision, TELEPHONE).getStatus()).isEqualTo(200);
+        }
+        assertThat(passer("GET", "/budgets/5/suivi", TELEPHONE).getStatus()).isEqualTo(200);
+        assertThat(passer("POST", "/budgets", TELEPHONE).getStatus()).isEqualTo(403);
+        assertThat(passer("PUT", "/budgets/5", TELEPHONE).getStatus()).isEqualTo(403);
+        assertThat(passer("DELETE", "/budgets/5", TELEPHONE).getStatus()).isEqualTo(403);
+        assertThat(passer("POST", "/budgets/5/reviser", TELEPHONE).getStatus()).isEqualTo(403);
+        assertThat(passer("POST", "/budgets/projets/2/budget", TELEPHONE).getStatus()).isEqualTo(403);
+    }
+
+    @Test
     void l_application_ne_saisit_rien_d_autre() throws Exception {
         MockHttpServletResponse r = passer("POST", "/comptabilite/pieces", TELEPHONE);
         assertThat(r.getStatus()).isEqualTo(403);

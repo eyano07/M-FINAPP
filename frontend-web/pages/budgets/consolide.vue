@@ -3,6 +3,7 @@
  * Budget consolidé (27/11/2026) : tous les budgets EN EXÉCUTION de l'exercice, principal et secondaires (projets),
  * additionnés compte par compte à partir de leur suivi (prévu, engagé, réalisé, disponible). Lecture seule.
  */
+import { useDisplay } from 'vuetify'
 import { SECTIONS, libelleSection, fmtEntier, fmtTaux, centimes } from '~/composables/useBudget'
 
 definePageMeta({ module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] })
@@ -16,6 +17,7 @@ interface Source { budget: BudgetResume, prevu: number, engage: number, realise:
 interface Ligne { compteNumero: string, compteLibelle: string, section: string, budgets: string[], prevu: number, engage: number, realise: number }
 
 const api = useApi()
+const { xs } = useDisplay()
 const chargement = ref(false)
 const erreur = ref('')
 const enExecution = ref<BudgetResume[]>([])
@@ -94,7 +96,7 @@ const refsAbregees = (refs: string[]) => refs.map(r => r.replace(/^BUD-\d{4}-0*/
         <h1 class="page-title">Budget consolidé</h1>
         <p class="page-sub">Tous les budgets en exécution de l'exercice, principal et projets, additionnés compte par compte</p>
       </div>
-      <div class="d-flex ga-2 no-print">
+      <div class="d-flex flex-wrap ga-2 no-print cons-actions">
         <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/budgets">Budgets</v-btn>
         <v-btn variant="tonal" prepend-icon="mdi-printer-outline" :disabled="!budgets.length" @click="imprimer">Imprimer</v-btn>
       </div>
@@ -122,8 +124,28 @@ const refsAbregees = (refs: string[]) => refs.map(r => r.replace(/^BUD-\d{4}-0*/
         </div>
 
         <v-card class="classroom-card mb-4">
-          <div class="pa-4 pb-2 font-weight-bold">Budgets consolidés ({{ budgets.length }}) — exercice {{ exercice }}, en USD</div>
-          <v-table density="compact">
+          <div class="pa-4 pb-2 font-weight-bold">Budgets consolidés ({{ budgets.length }}) <span class="text-caption text-medium-emphasis">— exercice {{ exercice }}, en USD</span></div>
+          <div v-if="xs" class="cons-cartes">
+            <NuxtLink v-for="s in sources" :key="s.budget.id" :to="`/budgets/${s.budget.id}`" class="cons-carte"
+              :class="s.budget.typeBudget === 'SECONDAIRE' ? 'cons-carte--projet' : 'cons-carte--principal'">
+              <div class="d-flex align-start ga-2">
+                <div class="flex-grow-1" style="min-width: 0">
+                  <div class="text-caption text-medium-emphasis">{{ s.budget.reference }}<template v-if="s.budget.numeroRevision"> · rév. {{ s.budget.numeroRevision }}</template></div>
+                  <div class="font-weight-bold">{{ s.budget.intitule }}</div>
+                </div>
+                <v-chip v-if="s.budget.typeBudget === 'SECONDAIRE'" size="x-small" color="deep-purple" variant="tonal" prepend-icon="mdi-briefcase-outline">Projet</v-chip>
+                <v-chip v-else size="x-small" color="primary" variant="tonal">Principal</v-chip>
+              </div>
+              <v-progress-linear class="mt-2" :model-value="Math.min(100, Number(taux(s) || 0))" :color="Number(taux(s) || 0) > 100 ? 'error' : 'primary'" height="6" rounded />
+              <dl class="cons-grille">
+                <div><dt>Prévu</dt><dd>{{ fmtEntier(s.prevu) }}</dd></div>
+                <div><dt>Réalisé</dt><dd>{{ fmtEntier(s.realise) }}</dd></div>
+                <div><dt>Engagé</dt><dd>{{ fmtEntier(s.engage) }}</dd></div>
+                <div><dt>Disponible</dt><dd :class="disponible(s) < 0 ? 'text-error' : 'text-success'">{{ fmtEntier(disponible(s)) }}</dd></div>
+              </dl>
+            </NuxtLink>
+          </div>
+          <v-table v-else density="compact">
             <thead><tr><th>Budget</th><th>Type</th><th>Période</th><th class="text-end">Prévu</th><th class="text-end">Engagé</th><th class="text-end">Réalisé</th><th class="text-end">Disponible</th><th class="text-end">Exécution</th></tr></thead>
             <tbody>
               <tr v-for="s in sources" :key="s.budget.id">
@@ -158,7 +180,29 @@ const refsAbregees = (refs: string[]) => refs.map(r => r.replace(/^BUD-\d{4}-0*/
 
         <v-card v-for="s in sections" :key="s.code" class="classroom-card mb-4">
           <div class="pa-4 pb-2 font-weight-bold" :style="{ color: SECTIONS[s.code]?.color }">{{ libelleSection(s.code) }}</div>
-          <v-table density="compact">
+          <div v-if="xs" class="cons-cartes">
+            <div v-for="l in s.lignes" :key="l.compteNumero" class="cons-ligne" :class="{ 'cons-ligne--alerte': estDepense(s.code) && disponible(l) < 0 }">
+              <div class="cons-ligne__tete"><span class="cons-mono">{{ l.compteNumero }}</span> {{ l.compteLibelle }}</div>
+              <div class="cons-ligne__budgets">{{ refsAbregees(l.budgets).join(' · ') }}</div>
+              <dl class="cons-grille">
+                <div><dt>Prévu</dt><dd>{{ fmtEntier(l.prevu) }}</dd></div>
+                <div><dt>Réalisé</dt><dd>{{ fmtEntier(l.realise) }}</dd></div>
+                <div><dt>Engagé</dt><dd>{{ fmtEntier(l.engage) }}</dd></div>
+                <div v-if="estDepense(s.code)"><dt>Disponible</dt><dd :class="disponible(l) < 0 ? 'text-error font-weight-bold' : ''">{{ fmtEntier(disponible(l)) }}</dd></div>
+                <div v-else><dt>Exécution</dt><dd>{{ fmtTaux(taux(l)) }}</dd></div>
+              </dl>
+            </div>
+            <div class="cons-ligne cons-ligne--total">
+              <div class="cons-ligne__tete">Total {{ libelleSection(s.code).toLowerCase() }}</div>
+              <dl class="cons-grille">
+                <div><dt>Prévu</dt><dd>{{ fmtEntier(s.prevu) }}</dd></div>
+                <div><dt>Réalisé</dt><dd>{{ fmtEntier(s.realise) }}</dd></div>
+                <div><dt>Engagé</dt><dd>{{ fmtEntier(s.engage) }}</dd></div>
+                <div><dt>{{ estDepense(s.code) ? 'Disponible' : 'Exécution' }}</dt><dd>{{ estDepense(s.code) ? fmtEntier(disponible(s)) : fmtTaux(taux(s)) }}</dd></div>
+              </dl>
+            </div>
+          </div>
+          <v-table v-else density="compact">
             <thead><tr><th>Compte</th><th>Budgets</th><th class="text-end">Prévu</th><th class="text-end">Engagé</th><th class="text-end">Réalisé</th>
               <th v-if="estDepense(s.code)" class="text-end">Disponible</th><th class="text-end">Exécution</th></tr></thead>
             <tbody>
@@ -192,5 +236,24 @@ const refsAbregees = (refs: string[]) => refs.map(r => r.replace(/^BUD-\d{4}-0*/
 .cons-tuiles div { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
 .cons-tuiles span { display: block; font-size: 0.72rem; color: var(--ink-soft); }
 .cons-tuiles strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.cons-cartes { padding: 0 12px 12px; display: grid; gap: 8px; }
+.cons-carte { display: block; color: inherit; text-decoration: none; border: 1px solid var(--hairline); border-radius: 12px; padding: 12px; background: var(--surface); }
+.cons-carte--principal { border-left: 4px solid rgb(var(--v-theme-primary)); }
+.cons-carte--projet { border-left: 4px solid #7c3aed; }
+.cons-grille { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; margin: 8px 0 0; }
+.cons-grille dt { font-size: 0.68rem; color: var(--ink-soft); }
+.cons-grille dd { margin: 0; font-size: 0.9rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cons-ligne { border-radius: 10px; background: var(--surface-2); padding: 10px 12px; }
+.cons-ligne--alerte { box-shadow: inset 4px 0 0 #dc2626; }
+.cons-ligne--total { border: 1px dashed var(--hairline); background: transparent; }
+.cons-ligne__tete { font-size: 0.86rem; font-weight: 600; }
+.cons-ligne__budgets { font-size: 0.7rem; color: var(--ink-soft); margin-top: 2px; }
+.cons-mono { font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--ink-soft); }
+@media (max-width: 599px) {
+  .cons-tuiles { grid-template-columns: repeat(2, 1fr); }
+  .cons-tuiles div:last-child { grid-column: 1 / -1; }
+  .cons-actions { width: 100%; }
+  .cons-actions .v-btn { flex: 1; }
+}
 @media print { .no-print { display: none !important; } }
 </style>

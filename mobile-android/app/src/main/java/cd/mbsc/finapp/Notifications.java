@@ -13,6 +13,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
 final class Notifications {
 
     static final String CANAL = "notes_frais";
+    /** Budgets (2.15) : à approuver, approuvés, rejetés, mis en exécution, dépassés. Canal à part, réglable seul. */
+    static final String CANAL_BUDGETS = "budgets";
     private static final String CLE_JETON = "jeton_push";
 
     private Notifications() {
@@ -23,8 +25,14 @@ final class Notifications {
         NotificationChannel canal = new NotificationChannel(CANAL, "Notes de frais", NotificationManager.IMPORTANCE_HIGH);
         canal.setDescription("Notes à vérifier ou à approuver, décisions sur vos notes");
         canal.setShowBadge(true);   // pastille sur l'icône de l'application
+        NotificationChannel budgets = new NotificationChannel(CANAL_BUDGETS, "Budgets", NotificationManager.IMPORTANCE_HIGH);
+        budgets.setDescription("Budgets à approuver ou à mettre en exécution, décisions et dépassements budgétaires");
+        budgets.setShowBadge(true);
         NotificationManager gestionnaire = contexte.getSystemService(NotificationManager.class);
-        if (gestionnaire != null) gestionnaire.createNotificationChannel(canal);
+        if (gestionnaire != null) {
+            gestionnaire.createNotificationChannel(canal);
+            gestionnaire.createNotificationChannel(budgets);
+        }
     }
 
     /** Jeton connu (vide si Firebase ne l'a pas encore donné). */
@@ -76,7 +84,14 @@ final class Notifications {
         return contexte.getSharedPreferences(MainActivity.PREFERENCES, Context.MODE_PRIVATE).getInt(CLE_BADGE, 0);
     }
 
+    /** Canal d'une notification d'après la page qu'elle ouvre : les budgets à part, le reste avec les notes de frais. */
+    static String canalDe(String lien) {
+        return lien != null && (lien.equals("/budgets") || lien.startsWith("/budgets/") || lien.startsWith("/budgets?"))
+            ? CANAL_BUDGETS : CANAL;
+    }
+
     static void afficher(Context contexte, String titre, String message, String lien, int numero) {
+        creerCanal(contexte);   // notification reçue avant la première ouverture de cette version
         // Une notification de plus en attendant le vrai nombre (relu aussitôt par Widgets.rafraichir).
         int nombre = badge(contexte) + 1;
         badge(contexte, nombre);
@@ -87,7 +102,7 @@ final class Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         android.app.Notification.Builder n = Build.VERSION.SDK_INT >= 26
-            ? new android.app.Notification.Builder(contexte, CANAL)
+            ? new android.app.Notification.Builder(contexte, canalDe(lien))
             : new android.app.Notification.Builder(contexte);
         n.setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF0F6E56)

@@ -7,10 +7,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PushServiceTest {
 
     @Test
-    void seules_les_notifications_des_notes_de_frais_vont_au_telephone() {
+    void seules_les_notifications_des_notes_de_frais_et_des_budgets_vont_au_telephone() {
         assertThat(PushService.concerneLeTelephone("/notes-frais/42")).isTrue();
         assertThat(PushService.concerneLeTelephone("/notes-frais")).isTrue();
-        assertThat(PushService.concerneLeTelephone("/budgets/3")).isFalse();
+        assertThat(PushService.concerneLeTelephone("/budgets/3")).isTrue();
+        assertThat(PushService.concerneLeTelephone("/budgets")).isTrue();
+        assertThat(PushService.concerneLeTelephone("/budgets/projets")).isFalse();
+        assertThat(PushService.concerneLeTelephone("/budgets/services")).isFalse();
+        assertThat(PushService.concerneLeTelephone("/budgetsX")).isFalse();
         assertThat(PushService.concerneLeTelephone("/restaurant/stock")).isFalse();
         assertThat(PushService.concerneLeTelephone("/notes-fraisX")).isFalse();
         assertThat(PushService.concerneLeTelephone(null)).isFalse();

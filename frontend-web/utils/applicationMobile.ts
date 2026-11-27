@@ -1,5 +1,5 @@
 // Application Android MBSC Finapp (17/11/2026) : le site, ouvert dans la vue web de l'application, y sert à valider les
-// notes de frais et à consulter le tableau de bord, les notes de frais et la comptabilité. Le caissier y tient en plus
+// notes de frais et à consulter le tableau de bord, les notes de frais, la comptabilité et les budgets. Le caissier y tient en plus
 // la trésorerie (caisse, banque et mobile money si leur module est activé, avec leurs journaux), la vente, les clients
 // et les fournisseurs : il encaisse, décaisse et vend depuis son téléphone.
 //
@@ -42,6 +42,9 @@ export function pontApplicationMobile(): PontApplicationMobile | null {
 const PAGES_DE_SAISIE = [
   '/notes-frais/parametres-priorite',
   '/comptabilite/solde-ouverture',
+  // Budgets : l'élaboration (projets à budgéter, services) se fait sur le site.
+  '/budgets/projets',
+  '/budgets/services',
 ]
 
 /**
@@ -67,7 +70,9 @@ export function routePermiseDansApplication(chemin: string, roles: string[] = []
   if (roles.includes('DA') && c === '/notes-frais/parametres-priorite') return true
   if (PAGES_DE_SAISIE.some(p => sous(c, p))) return false
   if (/\/(nouvelle|nouveau|modifier|creer)(\/|$)/.test(c)) return false
-  return sous(c, '/dashboard') || sous(c, '/notes-frais') || sous(c, '/comptabilite')
+  // Budgets (27/11/2026) : liste, budget consolidé et suivi de chaque budget ; décisions du circuit (soumettre, approuver,
+  // rejeter, mettre en exécution, clôturer), le serveur refusant le reste (ApplicationMobileFilter.DECISIONS_BUDGET).
+  return sous(c, '/dashboard') || sous(c, '/notes-frais') || sous(c, '/comptabilite') || sous(c, '/budgets')
 }
 
 /** Accueil dans l'application : une page que le rôle peut ouvrir (même règle que les gardes de ces pages). */

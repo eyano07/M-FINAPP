@@ -19,8 +19,8 @@ android {
         applicationId 'cd.mbsc.finapp'
         minSdk 24
         targetSdk 34
-        versionCode 12
-        versionName '2.14'
+        versionCode 13
+        versionName '2.15'
     }
 
     signingConfigs {
