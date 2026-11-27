@@ -53,20 +53,26 @@ class ComptesProjetServiceTest {
     }
 
     @Test
-    void regroupement_du_projet_puis_un_compte_imputable_par_besoin() {
-        CompteOHADA projet = service.compteDuProjet("6588", "Puits");
-        assertThat(projet.getNumero()).isEqualTo("658802");   // 658801 est pris par un autre compte
-        assertThat(projet.getLibelle()).isEqualTo("Projet Puits");
-        assertThat(projet.isImputable()).isFalse();
-        assertThat(service.compteDuProjet("6588", "puits")).isSameAs(projet);   // retrouvé, pas recréé
-
-        CompteOHADA ciment = service.compteDuBesoin(projet, "Puits", "Ciment 50 kg");
-        CompteOHADA sable = service.compteDuBesoin(projet, "Puits", "Sable");
+    void besoin_sous_un_regroupement_projets_partage_sans_nom_de_projet() {
+        CompteOHADA ciment = service.compteDuBesoin("6588", "Ciment 50 kg");
+        CompteOHADA sable = service.compteDuBesoin("6588", " Sable ");
+        // 658801 est un compte ordinaire (imputable) : le regroupement « Projets » est ouvert en 658802.
+        assertThat(plan.get("658802").getLibelle()).isEqualTo("Projets");
+        assertThat(plan.get("658802").isImputable()).isFalse();
         assertThat(ciment.getNumero()).isEqualTo("65880201");
         assertThat(sable.getNumero()).isEqualTo("65880202");
-        assertThat(ciment.getLibelle()).isEqualTo("Projet Puits — Ciment 50 kg");
+        assertThat(ciment.getLibelle()).isEqualTo("Projet — Ciment 50 kg");
+        assertThat(sable.getLibelle()).isEqualTo("Projet — Sable");
         assertThat(ciment.isImputable()).isTrue();
-        assertThat(ciment.getParent()).isSameAs(projet);
+        assertThat(ciment.getParent()).isSameAs(plan.get("658802"));
         assertThat(ciment.getClasse()).isEqualTo(6);
+    }
+
+    @Test
+    void un_ancien_regroupement_projet_est_reutilise() {
+        plan.put("658801", CompteOHADA.builder().id(3L).numero("658801").libelle("Projets").imputable(false)
+            .type(TypeCompte.CHARGE).classe(6).build());
+        plan.put("65880101", CompteOHADA.builder().id(4L).numero("65880101").libelle("Projet — Riz").type(TypeCompte.CHARGE).classe(6).build());
+        assertThat(service.compteDuBesoin("6588", "Harricot").getNumero()).isEqualTo("65880102");
     }
 }

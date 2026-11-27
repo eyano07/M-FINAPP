@@ -34,7 +34,7 @@ import java.util.Map;
 
 /**
  * Projets (V167), côté comptable : à partir de la liste de besoins envoyée par la logistique, le comptable (ou le DFIN)
- * crée un sous-compte « Projet … » par besoin (6588 pour un achat divers ; 6058 ou un compte 21 à 24 pour une
+ * crée un sous-compte « Projet — <désignation> » par besoin (6588 pour un achat divers ; 6058 ou un compte 21 à 24 pour une
  * acquisition), puis le budget SECONDAIRE du projet en brouillon, une ligne par sous-compte. Il le soumet ensuite depuis
  * la page du budget : le DA l'approuve, le DFIN le met en exécution (circuit des budgets, inchangé).
  */
@@ -103,7 +103,6 @@ public class ProjetBudgetService {
             throw new IllegalArgumentException("Ce projet n'a aucun besoin.");
         }
 
-        Map<String, CompteOHADA> compteDuProjet = new HashMap<>();
         List<LigneBudgetRequest> lignes = new ArrayList<>();
         for (ProjetService.Article a : articles) {
             ChoixBesoin c = choix.get(a.id());
@@ -117,8 +116,7 @@ public class ProjetBudgetService {
                 throw new IllegalArgumentException("« " + a.designation() + " » : une acquisition s'impute à 6058 ou à un compte "
                     + "d'immobilisation 21 à 24 (pas " + parent + ").");
             }
-            CompteOHADA regroupement = compteDuProjet.computeIfAbsent(parent, x -> comptesProjet.compteDuProjet(x, p.nom()));
-            CompteOHADA compte = comptesProjet.compteDuBesoin(regroupement, p.nom(), a.designation());
+            CompteOHADA compte = comptesProjet.compteDuBesoin(parent, a.designation());
             jdbc.update("""
                 update projet_articles set nature = ?, compte_parent = ?, quantite_prevue = ?, prix_estime_usd = ?, compte_id = ?
                 where id = ?
