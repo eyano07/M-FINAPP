@@ -82,6 +82,8 @@ const items: NavItem[] = [
   // doublaient « GL par compte » et « Balance de vérification » de la rubrique Comptabilité.
   // Budgets : le caissier les consulte en lecture seule (26/11/2026) ; seuls le comptable, le DFIN et le DA y agissent.
   { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] },
+  // Projets (27/11/2026) : listes de besoins de la logistique, d'où le comptable tire le budget secondaire du projet.
+  { title: 'Projets à budgéter', icon: 'mdi-briefcase-plus-outline', to: '/budgets/projets', module: 'BUDGET', roles: ['COMPTABLE', 'DFIN'] },
   // Services (départements) et leur responsable : enveloppes des budgets, suivi des dépenses par service.
   { title: 'Services budgétaires', icon: 'mdi-account-group-outline', to: '/budgets/services', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] },
 ]
@@ -156,6 +158,8 @@ const logistiqueItems: NavItem[] = [
   // ecrans, qui lui renverraient 403.
   { title: 'Mouvements', icon: 'mdi-swap-horizontal-bold', to: '/logistique/mouvements', module: 'LOGISTIQUE', roles: ['LOGISTIQUE', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'RESP_CUISINE', 'RESP_BAR', 'ADMIN'] },
   { title: 'État du stock', icon: 'mdi-clipboard-list-outline', to: '/logistique/stock', module: 'LOGISTIQUE', roles: LOGISTIQUE_AVEC_RESTAURANT },
+  // Projets (27/11/2026) : besoins, budget du projet et fiche de stock projet, séparée du stock global (sans écriture).
+  { title: 'Projets', icon: 'mdi-briefcase-outline', to: '/logistique/projets', module: 'LOGISTIQUE', roles: LOGISTIQUE_HORS_CAISSIER },
   // Minerais : suivi camion par camion, chaque chargement ayant son propre
   // prix de vente (voir pages/logistique/minerais.vue).
   { title: 'Camions de minerais', icon: 'mdi-dump-truck', to: '/logistique/minerais', module: 'MINE', roles: LOGISTIQUE_HORS_CAISSIER },

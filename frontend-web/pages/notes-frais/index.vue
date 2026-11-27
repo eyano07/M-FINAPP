@@ -238,6 +238,23 @@ async function chargerBudgetsSecondaires() {
   }
 }
 /** Budget secondaire envoyé au serveur : seulement pour une dépense explicitement rattachée à un budget secondaire. */
+// Comptes « Projet … » (27/11/2026) : une ligne sur un compte de projet présélectionne le budget secondaire du projet
+// (sinon la note passerait hors budget : ces comptes ne figurent pas au budget principal).
+interface CompteProjet { numero: string, projetId: number | null, budgetId: number | null }
+const comptesProjet = ref<CompteProjet[]>([])
+onMounted(async () => {
+  try { comptesProjet.value = await api<CompteProjet[]>('/notes-frais/comptes-projet') } catch { comptesProjet.value = [] }
+})
+watch(() => form.lignes.map((l: any) => l.compteImputation).join('|'), () => {
+  if (form.sens !== 'DECAISSEMENT' || form.typeBudget !== 'PRINCIPAL') return
+  const budget = form.lignes
+    .map((l: any) => comptesProjet.value.find(c => c.numero === l.compteImputation)?.budgetId)
+    .find((b: number | null | undefined) => b && budgetsSecondaires.value.some(x => x.id === b))
+  if (budget) {
+    form.typeBudget = 'SECONDAIRE'
+    form.budgetSecondaireId = budget
+  }
+})
 const budgetSecondaireEnvoye = computed(() =>
   form.sens === 'DECAISSEMENT' && form.typeBudget === 'SECONDAIRE' ? form.budgetSecondaireId : null)
 /** Dépense déclarée hors budget par le demandeur. */
@@ -450,6 +467,7 @@ function corpsNote() {
       articleNom: l.achatMarchandise ? l.articleNom : null,
       soumisTva: l.soumisTva,
       amortissable: !l.achatMarchandise && /^2[1-4]/.test(l.compteImputation || '') ? l.amortissable !== false : null,
+      quantiteProjet: !l.achatMarchandise && l.quantiteProjet ? Number(l.quantiteProjet) : null,
     })),
   }
 }
@@ -527,6 +545,7 @@ async function creerNote(executerEnsuite: boolean) {
           articleNom: l.achatMarchandise ? l.articleNom : null,
           soumisTva: l.soumisTva,
           amortissable: !l.achatMarchandise && /^2[1-4]/.test(l.compteImputation || '') ? l.amortissable !== false : null,
+          quantiteProjet: !l.achatMarchandise && l.quantiteProjet ? Number(l.quantiteProjet) : null,
         })),
       },
     })

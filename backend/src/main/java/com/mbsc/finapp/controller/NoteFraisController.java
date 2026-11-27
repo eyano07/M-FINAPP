@@ -49,6 +49,7 @@ import java.util.List;
 public class NoteFraisController {
 
     private final NoteFraisService service;
+    private final com.mbsc.finapp.service.projet.ProjetService projets;
     private final ParametresPrioriteNoteService parametresPriorite;
     private final RetourFondsService retourFonds;
     /** Copie en ligne d'un serveur local (V133) : les actions du circuit y sont mises en attente, puis relayees. */
@@ -99,6 +100,12 @@ public class NoteFraisController {
      * Explique a l'utilisateur courant quelles notes il voit : selon son role,
      * certaines notes ne lui sont pas accessibles (voir {@code RegleVisibiliteNote}).
      */
+    /** Comptes « Projet … » : quantité sur la ligne, budget du projet présélectionné (V167). */
+    @GetMapping("/comptes-projet")
+    public java.util.List<com.mbsc.finapp.service.projet.ProjetService.CompteProjet> comptesProjet() {
+        return projets.comptesProjet();
+    }
+
     @GetMapping("/budgets-secondaires")
     public java.util.List<com.mbsc.finapp.service.ControleBudgetaireService.BudgetSecondaireDisponible> budgetsSecondaires() {
         return service.budgetsSecondaires();

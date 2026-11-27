@@ -126,6 +126,10 @@ public class LigneNoteFrais {
     @Column(name = "amortissable")
     private Boolean amortissable;
 
+    /** Quantité achetée sur un compte « Projet … » : entre dans la fiche de stock du projet au paiement (V167). */
+    @Column(name = "quantite_projet", precision = 15, scale = 3)
+    private BigDecimal quantiteProjet;
+
     public BigDecimal montantHtTotal() {
         if (achatMarchandise && quantiteMarchandise != null) {
             return montant.multiply(quantiteMarchandise).setScale(2, java.math.RoundingMode.HALF_UP);

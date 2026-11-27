@@ -85,7 +85,7 @@ class RetourFondsServiceTest {
 
     private final RetourFondsService service = new RetourFondsService(noteRepository, retourRepository, camionRepository,
         chargeCamionRepository, stockNiveauRepository, emballageRepository, currentUser, conversion, comptabilite, references, stockService,
-        restaurantService, notifications);
+        restaurantService, notifications, mock(com.mbsc.finapp.service.projet.ProjetStockService.class));
 
     private final User emetteur = User.builder().id(10L).prenom("Rita").nom("Kabila").email("rest@test").actif(true).build();
     private final User caissier = User.builder().id(20L).prenom("Cyril").nom("Mwamba").email("caisse@test").actif(true).build();

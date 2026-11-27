@@ -111,6 +111,8 @@ public class RetourFondsService {
     private final StockService stockService;
     private final RestaurantService restaurantService;
     private final NotificationService notificationService;
+    /** Fiche de stock projet (V167) : la part rendue d'un achat « Projet … » en sort. */
+    private final com.mbsc.finapp.service.projet.ProjetStockService projetStock;
 
     // ---------------------------------------------------------------------
     // Emetteur : preparation, demande, retrait
@@ -286,6 +288,9 @@ public class RetourFondsService {
             .tauxJournalier(taux)
             .build();
         TransactionCaisse encaissement = comptabilite.enregistrerEncaissementMultiLigne(transaction, credits, libelle, conversion);
+        Map<Long, BigDecimal> htRendu = new java.util.HashMap<>();
+        parts.forEach(p -> htRendu.merge(p.ligneId(), p.ht(), BigDecimal::add));
+        projetStock.apresRetourFondsInterne(note, htRendu, caissier.getEmail());
         LocalDate date = encaissement.getDateOperation().atZone(com.mbsc.finapp.config.FuseauEntreprise.ZONE).toLocalDate();
         String motifStock = "Retour d'achat — " + note.getReference();
 

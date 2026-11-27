@@ -34,6 +34,8 @@ public class AcquisitionNoteService {
 
     private final PatrimoineService patrimoine;
     private final ConversionDeviseService conversion;
+    /** Fiche de stock projet (V167) : achats « Projet … » payés, et acquisitions de projet affectées à leur projet. */
+    private final com.mbsc.finapp.service.projet.ProjetStockService projetStock;
 
     @Transactional
     public void apresPaiementInterne(NoteFrais note, User auteur, BigDecimal taux) {
@@ -56,9 +58,12 @@ public class AcquisitionNoteService {
                 "Acquis par la note " + note.getReference(), compte, null, null, aujourdhui, aujourdhui, valeur,
                 BigDecimal.ZERO, categorie.dureeMoisParDefaut(), ModeAmortissement.LINEAIRE, null, null,
                 note.getBeneficiaire(), null, false, null, null), auteur);
+            projetStock.lierImmobilisation(fiche.id(), l.getCompteImputation());
             log.info("Immobilisation {} créée au paiement de la note {} ({} USD, compte {})", fiche.reference(),
                 note.getReference(), valeur, compte);
         }
+        // Achats et acquisitions « Projet … » : fiche de stock du projet (séparée du stock global, sans écriture).
+        projetStock.apresPaiementInterne(note, auteur, taux);
     }
 
     /** Catégorie dont le compte par défaut est le plus long préfixe du compte de la ligne (2442x -> informatique). */

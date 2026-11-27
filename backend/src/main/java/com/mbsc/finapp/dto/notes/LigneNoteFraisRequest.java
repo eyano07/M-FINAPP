@@ -55,12 +55,22 @@ public record LigneNoteFraisRequest(
     Boolean echangeConsigne,
     Boolean fraisApproche,
     /** Compte d'immobilisation (21 à 24) : bien amortissable ? Oui si absent (V160). */
-    Boolean amortissable
+    Boolean amortissable,
+    /** Quantité achetée sur un compte « Projet … » (fiche de stock du projet, V167). */
+    BigDecimal quantiteProjet
 ) {
+    public LigneNoteFraisRequest(BigDecimal montant, String compteImputation, String description, Boolean achatMarchandise,
+                                 BigDecimal quantiteMarchandise, Long articleId, String articleNom, Long entrepotId,
+                                 Boolean soumisTva, String compteTva, Boolean echangeConsigne, Boolean fraisApproche,
+                                 Boolean amortissable) {
+        this(montant, compteImputation, description, achatMarchandise, quantiteMarchandise, articleId, articleNom,
+            entrepotId, soumisTva, compteTva, echangeConsigne, fraisApproche, amortissable, null);
+    }
+
     public LigneNoteFraisRequest(BigDecimal montant, String compteImputation, String description, Boolean achatMarchandise,
                                  BigDecimal quantiteMarchandise, Long articleId, String articleNom, Long entrepotId,
                                  Boolean soumisTva, String compteTva, Boolean echangeConsigne, Boolean fraisApproche) {
         this(montant, compteImputation, description, achatMarchandise, quantiteMarchandise, articleId, articleNom,
-            entrepotId, soumisTva, compteTva, echangeConsigne, fraisApproche, null);
+            entrepotId, soumisTva, compteTva, echangeConsigne, fraisApproche, null, null);
     }
 }
