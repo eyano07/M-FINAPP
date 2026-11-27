@@ -419,10 +419,12 @@ const classeEcart = (section: string, v: number) => {
           <li>Les comptes « Projet — … » ne sont liés à <strong>aucun projet</strong> : un compte créé pour un projet peut servir à d’autres.</li>
           <li>Une note de frais sur un compte prévu par ce budget s’y rattache <strong>automatiquement</strong> (aucun choix de budget à la saisie) ;
             le montant de la ligne = quantité × prix unitaire prévu ici.</li>
-          <li><strong>Engagé</strong> : la note est approuvée mais pas encore payée, puis, une fois payée, le bien attend dans le
-            <strong>stock des projets</strong> chez le logisticien, sans être affecté.</li>
-          <li><strong>Exécuté</strong> (réalisé) : le logisticien a <strong>affecté</strong> le bien à ce projet. Un transfert vers un autre
-            projet déplace l’exécution sur le budget de ce projet.</li>
+          <li>Une note payée n’entre pas dans le budget du projet : le bien est stocké automatiquement dans le <strong>stock des
+            projets</strong> chez le logisticien, même si la note précise le projet.</li>
+          <li><strong>Engagé</strong> : le bien est disponible dans le stock des projets, pas encore affecté (une note approuvée mais
+            pas encore payée ne compte pas).</li>
+          <li><strong>Exécuté</strong> (réalisé) : le logisticien a <strong>affecté</strong> le bien à ce projet. L’affectation est
+            définitive : un bien affecté à un projet ne peut plus être affecté à un autre.</li>
         </ul>
       </v-alert>
 
