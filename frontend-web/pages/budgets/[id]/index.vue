@@ -569,7 +569,7 @@ const classeEcart = (section: string, v: number) => {
         <div class="bs-kpi" style="border-top-color: #f59e0b">
           <div class="bs-kpi__tete"><v-icon icon="mdi-alert-octagon-outline" size="18" color="#f59e0b" /> Hors budget</div>
           <div class="bs-kpi__ligne"><span>Dépenses non budgétées</span><strong>{{ fmtEntier(horsBudgetCharges) }}</strong></div>
-          <div class="bs-kpi__ligne"><span>Notes justifiées hors budget</span><strong>{{ suivi.notesHorsBudget.length }}</strong></div>
+          <div class="bs-kpi__ligne"><span>Notes justifiées hors budget</span><strong>{{ suivi.notesHorsBudget.filter((n: any) => !n.regulariseePar).length }}</strong></div>
         </div>
       </div>
 
@@ -920,7 +920,12 @@ const classeEcart = (section: string, v: number) => {
               <td>{{ n.objet }}</td>
               <td class="text-caption">{{ n.serviceNom || '—' }}</td>
               <td class="text-end text-no-wrap">{{ fmtMontant(n.montant) }} {{ n.devise }}</td>
-              <td><v-chip size="x-small" :color="statutControle(n.statutBudget).color" variant="tonal">{{ statutControle(n.statutBudget).label }}</v-chip></td>
+              <td>
+                <v-chip v-if="n.regulariseePar" size="x-small" color="success" variant="tonal" prepend-icon="mdi-check-circle-outline"
+                  :title="`Contrôlée « ${statutControle(n.statutBudget).label} » à sa validation ; le budget rectifié la couvre désormais.`">
+                  Régularisée par {{ n.regulariseePar }}</v-chip>
+                <v-chip v-else size="x-small" :color="statutControle(n.statutBudget).color" variant="tonal">{{ statutControle(n.statutBudget).label }}</v-chip>
+              </td>
               <td class="text-caption">{{ n.justification }}</td>
               <td class="text-caption">{{ statutNoteMeta(n.statut).label }}</td>
             </tr>
