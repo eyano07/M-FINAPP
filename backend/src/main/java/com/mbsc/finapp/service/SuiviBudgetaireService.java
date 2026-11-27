@@ -313,9 +313,10 @@ public class SuiviBudgetaireService {
     }
 
     /**
-     * Budget d'un projet (V169) : une ligne sur un compte « Projet — … » est EXÉCUTÉE quand le logisticien affecte le bien
-     * au projet, et ENGAGÉE tant que le bien payé attend dans le stock commun des projets (en plus des notes approuvées
-     * non payées). Le paiement d'une note sur ces comptes n'en est donc pas le réalisé : il remplit le stock commun.
+     * Budget d'un projet (V169) : une ligne sur un compte « Projet — … » est ENGAGÉE tant que le bien payé est disponible
+     * dans le stock des projets, sans être affecté, et EXÉCUTÉE quand le logisticien l'affecte au projet. Ni une note
+     * approuvée non payée, ni le paiement lui-même ne comptent sur ces lignes : payé, le bien entre dans le stock des
+     * projets, même si la note précise le projet.
      * Renvoie vrai si un mouvement tombe dans la période.
      */
     private boolean executerParLeStockDuProjet(Budget budget, ImputationBudgetaire imputation, Map<String, BigDecimal[]> realise,
@@ -343,13 +344,15 @@ public class SuiviBudgetaireService {
                 serieRealise[mois - 1] = recu[mois - 1];
                 surLaPeriode |= recu[mois - 1].signum() != 0 || enAttente[mois - 1].signum() != 0;
             }
+            BigDecimal[] serieEngage = MoteurBudgetaire.zeros();
+            for (int mois = debut; mois <= fin; mois++) serieEngage[mois - 1] = enAttente[mois - 1];
             if (consolidee != null && consolidee.equals(numero)) {
                 realise.put(consolidee, serieRealise.clone());
-                for (int mois = debut; mois <= fin; mois++) ajouter(engage.get(consolidee), mois, enAttente[mois - 1]);
+                engage.put(consolidee, serieEngage.clone());
             }
             if (realiseEnveloppe.containsKey(enveloppe)) {
                 realiseEnveloppe.put(enveloppe, serieRealise.clone());
-                for (int mois = debut; mois <= fin; mois++) ajouter(engageEnveloppe.get(enveloppe), mois, enAttente[mois - 1]);
+                engageEnveloppe.put(enveloppe, serieEngage.clone());
             }
         }
         return surLaPeriode;

@@ -96,7 +96,7 @@ public class ProjetService {
 
     public record BesoinsRequest(@NotNull @Valid List<BesoinRequest> besoins) { }
 
-    /** SORTIE (utilisation sur le projet), AJUSTEMENT (+/- après comptage), TRANSFERT (vers un autre projet). */
+    /** SORTIE (utilisation sur le projet), AJUSTEMENT (+/- après comptage). TRANSFERT est refusé : l'affectation est définitive. */
     public record MouvementRequest(@NotNull Long articleId, @NotNull @Pattern(regexp = "SORTIE|AJUSTEMENT|TRANSFERT") String type,
                                    @NotNull BigDecimal quantite, Long projetCibleId, LocalDate date,
                                    @Size(max = 500) String commentaire) { }
@@ -294,18 +294,8 @@ public class ProjetService {
                 if (a.solde().compareTo(q) < 0) throw stockInsuffisant(a);
                 inserer(a.id(), date, "SORTIE", q.negate(), valeurDe(a, q).negate(), null, r.commentaire(), auteur);
             }
-            default -> {   // TRANSFERT vers un autre projet
-                exigerPositive(q);
-                if (a.solde().compareTo(q) < 0) throw stockInsuffisant(a);
-                if (r.projetCibleId() == null || r.projetCibleId().equals(projetId)) {
-                    throw new IllegalArgumentException("Choisissez le projet qui reçoit le transfert.");
-                }
-                Projet cible = projet(r.projetCibleId());
-                Long articleCible = articleDuTransfert(cible.id(), a);
-                BigDecimal valeur = valeurDe(a, q);
-                inserer(a.id(), date, "TRANSFERT_SORTIE", q.negate(), valeur.negate(), articleCible, r.commentaire(), auteur);
-                inserer(articleCible, date, "TRANSFERT_ENTREE", q, valeur, a.id(), r.commentaire(), auteur);
-            }
+            // TRANSFERT : un bien affecté à un projet ne peut plus être affecté à un autre (27/11/2026).
+            default -> throw new IllegalArgumentException("Un bien affecté à un projet ne peut plus être affecté à un autre projet.");
         }
         return consulter(projetId);
     }
@@ -344,6 +334,12 @@ public class ProjetService {
     @Transactional
     public Acquisition affecterAcquisition(Long immobilisationId, AffectationRequest r) {
         if (r.projetId() != null) projet(r.projetId());
+        // Affectation définitive : une acquisition déjà affectée à un projet n'en change plus.
+        Long actuel = jdbc.query("select projet_id from immobilisations where id = ?", (rs, i) -> (Long) rs.getObject(1), immobilisationId)
+            .stream().findFirst().orElse(null);
+        if (actuel != null) {
+            throw new IllegalArgumentException("Cette acquisition est déjà affectée à un projet : elle ne peut plus en changer.");
+        }
         int n = jdbc.update("update immobilisations set projet_id = ? where id = ?", r.projetId(), immobilisationId);
         if (n == 0) throw RessourceIntrouvableException.of("Immobilisation", immobilisationId);
         return jdbc.query(SELECT_ACQUISITION + " where i.id = ?", ACQUISITION, immobilisationId).get(0);
@@ -415,15 +411,14 @@ public class ProjetService {
             """, (rs, i) -> new NoteLiee(rs.getLong("id"), rs.getString("reference"), rs.getString("objet"), rs.getString("statut"),
             rs.getBigDecimal("montant") == null ? BigDecimal.ZERO : rs.getBigDecimal("montant").setScale(2, RoundingMode.HALF_UP)),
             taux, p.budgetId() == null ? -1L : p.budgetId());
-        // Engagé : notes approuvées non payées, plus les biens payés qui attendent dans le stock commun des projets sur
-        // les comptes de ce projet (pas encore affectés par le logisticien).
+        // Engagé : les biens payés disponibles dans le stock des projets sur les comptes de ce projet, pas encore affectés
+        // (une note approuvée non payée ne compte pas).
         BigDecimal enAttente = jdbc.queryForObject("""
             select coalesce(sum(m.montant_usd), 0) from projet_mouvements m join projet_articles a on a.id = m.article_id
             where a.projet_id is null
               and a.compte_id in (select compte_id from projet_articles where projet_id = ? and compte_id is not null)
             """, BigDecimal.class, p.id());
-        BigDecimal engage = notes.stream().filter(n -> "VALIDEE_DA".equals(n.statut()) || "TRANSMISE_CAISSE".equals(n.statut()))
-            .map(NoteLiee::montantUsd).reduce(BigDecimal.ZERO, BigDecimal::add).add(enAttente);
+        BigDecimal engage = enAttente;
         BigDecimal paye = p.payeUsd();
         BigDecimal reference = prevuBudget != null ? prevuBudget : p.prevuUsd();
         return new Depenses(prevuBudget, p.prevuUsd(), engage, paye, reference.subtract(engage).subtract(paye), notes);

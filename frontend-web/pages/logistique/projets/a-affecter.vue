@@ -67,9 +67,10 @@ const totalValeur = computed(() => articles.value.reduce((t, a) => t + Number(a.
       <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/logistique/projets">Projets</v-btn>
     </div>
     <v-alert type="info" variant="tonal" density="compact" class="mb-4" icon="mdi-information-outline">
-      Un compte « Projet — … » n'appartient à aucun projet : au paiement d'une note, le bien arrive ici. Tant qu'il attend, il est
-      <strong>engagé</strong> au budget du projet ; une fois <strong>affecté</strong>, il est <strong>exécuté</strong> sur le budget du
-      projet qui le reçoit. Un bien affecté peut ensuite être transféré à un autre projet depuis la fiche du projet.
+      Un compte « Projet — … » n'appartient à aucun projet : au paiement d'une note, le bien arrive ici automatiquement, même si la
+      note précise le projet. Tant qu'il est disponible ici, il est <strong>engagé</strong> au budget du projet ; une fois
+      <strong>affecté</strong>, il est <strong>exécuté</strong> sur le budget du projet qui le reçoit. L'affectation est
+      <strong>définitive</strong> : un bien affecté ne peut plus être affecté à un autre projet.
     </v-alert>
     <v-alert v-if="erreur" type="error" variant="tonal" class="mb-4" closable @click:close="erreur = ''">{{ erreur }}</v-alert>
     <v-alert v-if="succes" type="success" variant="tonal" class="mb-4" closable @click:close="succes = ''">{{ succes }}</v-alert>

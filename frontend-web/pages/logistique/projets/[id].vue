@@ -165,7 +165,7 @@ const STATUTS: Record<string, { libelle: string, couleur: string }> = {
   CLOTURE: { libelle: 'Clôturé', couleur: 'deep-purple' },
 }
 const TYPES: Record<string, string> = {
-  ACHAT: 'Achat payé', SORTIE: 'Sortie', TRANSFERT_SORTIE: 'Transfert sortant', TRANSFERT_ENTREE: 'Transfert entrant',
+  ACHAT: 'Achat payé', AFFECTATION: 'Affecté au projet', AFFECTATION_SORTIE: 'Affecté (sortie du stock)', SORTIE: 'Sortie', TRANSFERT_SORTIE: 'Transfert sortant', TRANSFERT_ENTREE: 'Transfert entrant',
   RETOUR_FONDS: 'Retour de fonds', AJUSTEMENT: 'Ajustement',
 }
 const fmt = (v: number | null | undefined) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v || 0))
@@ -220,8 +220,8 @@ const totalValeur = computed(() => (detail.value?.articles || []).reduce((t, a) 
     <div class="kpis mb-4">
       <div class="kpi"><span>Prévu</span><strong>{{ fmt(detail.depenses.prevuBudget ?? detail.depenses.prevuBesoins) }}</strong>
         <small>{{ detail.depenses.prevuBudget != null ? 'au budget' : 'besoins estimés' }}</small></div>
-      <div class="kpi"><span>Engagé</span><strong>{{ fmt(detail.depenses.engage) }}</strong><small>notes validées non payées</small></div>
-      <div class="kpi"><span>Payé</span><strong>{{ fmt(detail.depenses.paye) }}</strong><small>achats entrés au stock</small></div>
+      <div class="kpi"><span>Engagé</span><strong>{{ fmt(detail.depenses.engage) }}</strong><small>biens disponibles dans le stock des projets</small></div>
+      <div class="kpi"><span>Exécuté</span><strong>{{ fmt(detail.depenses.paye) }}</strong><small>biens affectés au projet</small></div>
       <div class="kpi" :class="{ 'kpi--negatif': detail.depenses.reste < 0 }"><span>Reste</span><strong>{{ fmt(detail.depenses.reste) }}</strong><small>USD</small></div>
       <div class="kpi"><span>Valeur en stock</span><strong>{{ fmt(totalValeur) }}</strong><small>USD</small></div>
     </div>
@@ -273,7 +273,7 @@ const totalValeur = computed(() => (detail.value?.articles || []).reduce((t, a) 
     <!-- Fiche de stock -->
     <v-card v-show="onglet === 'stock'" class="classroom-card mb-4 bloc bloc--imprime">
       <div class="pa-4 pb-2 bloc-titre">Fiche de stock projet</div>
-      <p class="px-4 text-caption text-medium-emphasis">Entrées : achats payés sur les comptes « Projet … » du projet. Séparée du stock global : aucune variation de stock, aucune écriture.</p>
+      <p class="px-4 text-caption text-medium-emphasis">Entrées : biens affectés au projet depuis le stock des projets (affectation définitive). Séparée du stock global : aucune variation de stock, aucune écriture.</p>
       <v-table density="compact">
         <thead><tr><th>Désignation</th><th>Compte</th><th class="text-end">Prévu</th><th class="text-end">Entrées</th><th class="text-end">Sorties</th><th class="text-end">Solde</th><th class="text-end">Valeur (USD)</th><th v-if="peutEcrire" class="no-print" /></tr></thead>
         <tbody>
@@ -289,7 +289,6 @@ const totalValeur = computed(() => (detail.value?.articles || []).reduce((t, a) 
             <td class="text-end">{{ fmt(a.valeurUsd) }}</td>
             <td v-if="peutEcrire" class="no-print text-no-wrap">
               <v-btn size="small" variant="text" :disabled="a.solde <= 0" @click="ouvrirMouvement(a, 'SORTIE')">Sortie</v-btn>
-              <v-btn size="small" variant="text" :disabled="a.solde <= 0" @click="ouvrirMouvement(a, 'TRANSFERT')">Transfert</v-btn>
               <v-btn size="small" variant="text" @click="ouvrirMouvement(a, 'AJUSTEMENT')">Ajuster</v-btn>
             </td>
           </tr>
@@ -327,7 +326,7 @@ const totalValeur = computed(() => (detail.value?.articles || []).reduce((t, a) 
           <tr v-for="a in detail.acquisitions" :key="a.id">
             <td>{{ a.reference }}</td><td>{{ a.libelle }}</td><td class="text-caption">{{ a.compte }}</td>
             <td>{{ fmtDate(a.dateAcquisition) }}</td><td class="text-end">{{ fmt(a.valeurUsd) }}</td>
-            <td v-if="peutEcrire" class="no-print"><v-btn size="small" variant="text" color="error" @click="affecterAcquisition(a.id, null)">Retirer</v-btn></td>
+            <td v-if="peutEcrire" class="no-print" />
           </tr>
         </tbody>
       </v-table>
