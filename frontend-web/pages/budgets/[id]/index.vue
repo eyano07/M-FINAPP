@@ -423,8 +423,10 @@ const classeEcart = (section: string, v: number) => {
             projets</strong> chez le logisticien, même si la note précise le projet.</li>
           <li><strong>Engagé</strong> : le bien est disponible dans le stock des projets, pas encore affecté (une note approuvée mais
             pas encore payée ne compte pas).</li>
-          <li><strong>Exécuté</strong> (réalisé) : le logisticien a <strong>affecté</strong> le bien à ce projet. L’affectation est
-            définitive : un bien affecté à un projet ne peut plus être affecté à un autre.</li>
+          <li><strong>Exécuté</strong> (réalisé) : le logisticien a <strong>affecté</strong> le bien à ce projet. Un bien ne passe pas
+            directement à un autre projet.</li>
+          <li><strong>Retour</strong> (chantier fermé, surplus) : le bien revient dans le stock des projets ; l’exécuté de ce projet
+            diminue de sa valeur et le bien redevient engagé, réaffectable à un autre projet.</li>
         </ul>
       </v-alert>
 

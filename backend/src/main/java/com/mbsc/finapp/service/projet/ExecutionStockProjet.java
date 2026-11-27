@@ -12,8 +12,8 @@ import java.util.Map;
 /**
  * Exécution du budget d'un projet d'après le stock des projets (V169), mois par mois, en USD, par compte « Projet — … » :
  * <ul>
- *   <li><b>Reçu</b> (réalisé) : valeur des biens affectés au projet par le logisticien (affectations, transferts reçus
- *       moins transferts envoyés ; achats entrés directement dans le projet avant le stock commun, retours de fonds).</li>
+ *   <li><b>Reçu</b> (réalisé) : valeur des biens affectés au projet par le logisticien, moins ceux qu'il a retournés au
+ *       stock des projets (chantier fermé, surplus) ; anciens transferts, achats entrés directement, retours de fonds.</li>
  *   <li><b>En attente</b> (engagé) : valeur des biens payés qui attendent dans le stock commun des projets, pas encore
  *       affectés.</li>
  * </ul>
@@ -39,7 +39,7 @@ public class ExecutionStockProjet {
             join projet_articles a on a.id = m.article_id
             join comptes_ohada c on c.id = a.compte_id
             where a.projet_id = ? and extract(year from m.date_mouvement) = ?
-              and m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE')
+              and m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE', 'RETOUR_STOCK')
             group by c.numero, mois
             """, rs -> {
             ajouter(recu, rs.getString("numero"), rs.getInt("mois"), rs.getBigDecimal("montant"));
