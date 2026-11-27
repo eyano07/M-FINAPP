@@ -59,7 +59,12 @@ public class ProjetService {
     public record Article(Long id, Long projetId, String designation, String unite, BigDecimal quantitePrevue,
                           BigDecimal prixEstimeUsd, String nature, String compteParent, Long compteId, String compteNumero,
                           String compteLibelle, BigDecimal entrees, BigDecimal sorties, BigDecimal solde, BigDecimal valeurUsd,
-                          BigDecimal payeUsd) { }
+                          BigDecimal payeUsd, boolean amortissable) {
+        /** Acquisition (bien durable) : pas de sortie ; elle revient au stock des projets à la fin du projet. */
+        public boolean estAcquisition() {
+            return "ACQUISITION".equals(nature);
+        }
+    }
 
     public record Mouvement(Long id, Long articleId, String designation, LocalDate date, String type, BigDecimal quantite,
                             BigDecimal montantUsd, Long noteId, String noteReference, String projetLie, String commentaire,
@@ -132,7 +137,11 @@ public class ProjetService {
                coalesce(-sum(m.quantite) filter (where m.quantite < 0), 0) as sorties,
                coalesce(sum(m.quantite), 0) as solde,
                coalesce(sum(m.montant_usd), 0) as valeur,
-               coalesce(sum(m.montant_usd) filter (where m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE', 'RETOUR_STOCK')), 0) as paye
+               coalesce(sum(m.montant_usd) filter (where m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE', 'RETOUR_STOCK')), 0) as paye,
+               -- Acquisition amortie : un achat payé sur ce compte a créé une fiche d'immobilisation amortissable.
+               exists (select 1 from projet_mouvements m2 join projet_articles a2 on a2.id = m2.article_id
+                       join lignes_note_frais l on l.id = m2.ligne_note_id
+                       where a2.compte_id = a.compte_id and m2.type = 'ACHAT' and l.amortissable) as amortissable
         from projet_articles a left join comptes_ohada c on c.id = a.compte_id
         left join projet_mouvements m on m.article_id = a.id
         """;
@@ -141,7 +150,7 @@ public class ProjetService {
         rs.getString("designation"), rs.getString("unite"), rs.getBigDecimal("quantite_prevue"), rs.getBigDecimal("prix_estime_usd"),
         rs.getString("nature"), rs.getString("compte_parent"), (Long) rs.getObject("compte_id"), rs.getString("compte_numero"),
         rs.getString("compte_libelle"), rs.getBigDecimal("entrees"), rs.getBigDecimal("sorties"), rs.getBigDecimal("solde"),
-        rs.getBigDecimal("valeur"), rs.getBigDecimal("paye"));
+        rs.getBigDecimal("valeur"), rs.getBigDecimal("paye"), rs.getBoolean("amortissable"));
 
     // ---------------------------------------------------------------------
     // Lecture
@@ -293,6 +302,10 @@ public class ProjetService {
                 inserer(a.id(), date, "AJUSTEMENT", q, valeurDe(a, q), null, r.commentaire(), auteur);
             }
             case "SORTIE" -> {
+                if (a.estAcquisition()) {
+                    throw new IllegalArgumentException("« " + a.designation() + " » est une acquisition : elle ne sort pas, elle "
+                        + "revient au stock des projets à la fin ou à l'arrêt du projet (Retour).");
+                }
                 exigerPositive(q);
                 if (a.solde().compareTo(q) < 0) throw stockInsuffisant(a);
                 inserer(a.id(), date, "SORTIE", q.negate(), valeurDe(a, q).negate(), null, r.commentaire(), auteur);
@@ -302,6 +315,10 @@ public class ProjetService {
                 // l'exécuté de ce projet diminue de sa valeur.
                 exigerPositive(q);
                 if (a.solde().compareTo(q) < 0) throw stockInsuffisant(a);
+                if (a.estAcquisition() && a.amortissable()) {
+                    throw new IllegalArgumentException("« " + a.designation() + " » est une immobilisation amortie : elle reste "
+                        + "au projet et ne revient pas au stock des projets.");
+                }
                 if (a.compteId() == null) {
                     throw new IllegalArgumentException("« " + a.designation() + " » n'a pas de compte « Projet — … » : il ne peut pas "
                         + "revenir au stock des projets.");
