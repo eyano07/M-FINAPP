@@ -13,7 +13,9 @@ interface Projet {
 }
 interface Article {
   id: number, designation: string, unite: string | null, quantitePrevue: number, prixEstimeUsd: number, nature: 'ACHAT' | 'ACQUISITION',
-  compteNumero: string | null, compteLibelle: string | null, entrees: number, sorties: number, solde: number, valeurUsd: number, payeUsd: number
+  compteNumero: string | null, compteLibelle: string | null, entrees: number, sorties: number, solde: number, valeurUsd: number, payeUsd: number,
+  /** Acquisition amortie (fiche d'immobilisation amortissable) : elle ne revient pas au stock des projets. */
+  amortissable: boolean
 }
 interface Mouvement {
   id: number, designation: string, date: string, type: string, quantite: number, montantUsd: number, noteId: number | null,
@@ -288,9 +290,11 @@ const totalValeur = computed(() => (detail.value?.articles || []).reduce((t, a) 
             <td class="text-end font-weight-bold">{{ fmtQ(a.solde) }}</td>
             <td class="text-end">{{ fmt(a.valeurUsd) }}</td>
             <td v-if="peutEcrire" class="no-print text-no-wrap">
-              <v-btn size="small" variant="text" :disabled="a.solde <= 0" @click="ouvrirMouvement(a, 'SORTIE')">Sortie</v-btn>
+              <!-- Une acquisition ne sort pas : elle revient au stock des projets à la fin du projet (si elle n'est pas amortie). -->
+              <v-btn v-if="a.nature !== 'ACQUISITION'" size="small" variant="text" :disabled="a.solde <= 0" @click="ouvrirMouvement(a, 'SORTIE')">Sortie</v-btn>
               <v-btn size="small" variant="text" @click="ouvrirMouvement(a, 'AJUSTEMENT')">Ajuster</v-btn>
-              <v-btn size="small" variant="text" color="warning" :disabled="a.solde <= 0" @click="ouvrirMouvement(a, 'RETOUR')">Retour</v-btn>
+              <v-btn v-if="!(a.nature === 'ACQUISITION' && a.amortissable)" size="small" variant="text" color="warning" :disabled="a.solde <= 0" @click="ouvrirMouvement(a, 'RETOUR')">Retour</v-btn>
+              <span v-else class="text-caption text-medium-emphasis ml-2" title="Immobilisation amortie : elle reste au projet">Amortie</span>
             </td>
           </tr>
         </tbody>
