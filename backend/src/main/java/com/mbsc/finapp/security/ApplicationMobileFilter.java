@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * requêtes) qui modifie des données est refusée (403, code {@value #CODE}), sauf : la connexion et les jetons, son
  * propre compte ({@code /profil} : mot de passe, double authentification, préférences), les notifications,
  * l'inscription du téléphone aux notifications push, les décisions sur une note (vérifier, transmettre, approuver,
- * rejeter, observation, priorité), pour le caissier les saisies de {@link #SAISIES_CAISSIER}, pour le comptable
+ * rejeter, observation, priorité) et sur un budget ({@link #DECISIONS_BUDGET}), pour le caissier les saisies de {@link #SAISIES_CAISSIER}, pour le comptable
  * celles de {@link #SAISIES_COMPTABLE}, pour le DFIN les corrections de {@link #CORRECTIONS_DFIN} et pour le DA les
  * seuils de priorité ({@value #SEUILS_PRIORITE}) en plus de ses décisions (valider, rejeter, observation, priorité).
  * Les droits de chaque rôle s'appliquent ensuite comme sur le site : ce filtre ne fait que retirer des possibilités.
@@ -41,6 +41,14 @@ public class ApplicationMobileFilter extends OncePerRequestFilter {
     /** Décisions du circuit de validation d'une note de frais. */
     public static final Pattern DECISIONS_NOTE =
         Pattern.compile("^/notes-frais/\\d+/(verifier|transmettre|valider|rejeter|observation|priorite)$");
+
+    /**
+     * Décisions du circuit d'un budget (27/11/2026) : soumettre (comptable, DFIN), approuver et rejeter (DA), mettre en
+     * exécution et clôturer (DFIN). L'élaboration (création, modification, révision, suppression) reste sur le site ;
+     * BudgetService vérifie le rôle et le statut.
+     */
+    public static final Pattern DECISIONS_BUDGET =
+        Pattern.compile("^/budgets/\\d+/(soumettre|approuver|rejeter|demarrer|cloturer)$");
 
     /**
      * Caissier (17/11/2026) : encaisser et décaisser en caisse, en banque et en mobile money (opérations, achats,
@@ -67,7 +75,7 @@ public class ApplicationMobileFilter extends OncePerRequestFilter {
     /** Suggestion du compte comptable par l'IA, demandée par les formulaires de caisse, de banque et de mobile money. */
     private static final String SUGGESTION_COMPTE = "/ia/suggestion-compte";
 
-    private static final String MESSAGE = "L'application mobile sert à valider les notes de frais, à consulter les "
+    private static final String MESSAGE = "L'application mobile sert à valider les notes de frais et les budgets, à consulter les "
         + "données et, pour le caissier, à encaisser, décaisser et vendre. Cette action se fait sur le site, depuis un "
         + "ordinateur.";
 
@@ -112,6 +120,6 @@ public class ApplicationMobileFilter extends OncePerRequestFilter {
         if (comptable && SAISIES_COMPTABLE.matcher(chemin).matches()) return true;
         if (dfin && methode.equals("PUT") && CORRECTIONS_DFIN.matcher(chemin).matches()) return true;
         if (da && methode.equals("PUT") && chemin.equals(SEUILS_PRIORITE)) return true;
-        return methode.equals("POST") && DECISIONS_NOTE.matcher(chemin).matches();
+        return methode.equals("POST") && (DECISIONS_NOTE.matcher(chemin).matches() || DECISIONS_BUDGET.matcher(chemin).matches());
     }
 }

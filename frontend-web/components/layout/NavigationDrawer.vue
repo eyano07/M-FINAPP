@@ -82,6 +82,8 @@ const items: NavItem[] = [
   // doublaient « GL par compte » et « Balance de vérification » de la rubrique Comptabilité.
   // Budgets : le caissier les consulte en lecture seule (26/11/2026) ; seuls le comptable, le DFIN et le DA y agissent.
   { title: 'Budgets', icon: 'mdi-chart-box-outline', to: '/budgets', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] },
+  // Tous les budgets en exécution (principal et projets) additionnés compte par compte.
+  { title: 'Budget consolidé', icon: 'mdi-sigma', to: '/budgets/consolide', module: 'BUDGET', roles: ['ADMIN', 'DFIN', 'DA', 'DG', 'COMPTABLE', 'CAISSIER'] },
   // Projets (27/11/2026) : listes de besoins de la logistique, d'où le comptable tire le budget secondaire du projet.
   { title: 'Projets à budgéter', icon: 'mdi-briefcase-plus-outline', to: '/budgets/projets', module: 'BUDGET', roles: ['COMPTABLE', 'DFIN'] },
   // Services (départements) et leur responsable : enveloppes des budgets, suivi des dépenses par service.

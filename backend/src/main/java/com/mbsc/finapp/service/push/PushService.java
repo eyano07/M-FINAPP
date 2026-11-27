@@ -107,9 +107,19 @@ public class PushService {
     // Envoi
     // ---------------------------------------------------------------------
 
-    /** Les notifications portées sur les téléphones : celles qui mènent à une note de frais. */
+    /**
+     * Les notifications portées sur les téléphones : celles qui mènent à une note de frais ou, depuis le 27/11/2026, à un
+     * budget (à approuver, approuvé, rejeté, en exécution, dépassé), pages ouvertes dans l'application. Les projets à
+     * budgéter et les services, élaborés sur le site, restent hors du téléphone.
+     */
     static boolean concerneLeTelephone(String lien) {
-        return lien != null && (lien.equals("/notes-frais") || lien.startsWith("/notes-frais/") || lien.startsWith("/notes-frais?"));
+        if (lien == null) return false;
+        if (sous(lien, "/notes-frais")) return true;
+        return sous(lien, "/budgets") && !sous(lien, "/budgets/projets") && !sous(lien, "/budgets/services");
+    }
+
+    private static boolean sous(String lien, String racine) {
+        return lien.equals(racine) || lien.startsWith(racine + "/") || lien.startsWith(racine + "?");
     }
 
     /** Envoie la notification aux téléphones du destinataire une fois la transaction validée (rien si elle échoue). */
