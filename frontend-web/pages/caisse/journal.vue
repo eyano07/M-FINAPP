@@ -79,6 +79,8 @@ async function changerDevise(nouvelle: DeviseCaisse) {
 
 // Les montants sont ceux de la réponse du serveur, dans SA devise (et non celle du bouton, qui peut avoir changé
 // pendant qu'une réponse est en route).
+// Les opérations les plus récentes en premier (le serveur les renvoie dans l'ordre chronologique).
+const piecesRecentes = computed(() => [...(journal.value?.pieces ?? [])].reverse())
 const deviseAffichee = computed<DeviseCaisse>(() => journal.value?.devise ?? devise.value)
 const fmt = (montant: number) => fmtMontantCaisse(montant, deviseAffichee.value)
 const unite = computed(() => uniteCaisse(deviseAffichee.value))
@@ -91,7 +93,7 @@ const fmtTaux = (t: number) => new Intl.NumberFormat('fr-FR', { maximumFractionD
     <div class="page-head">
       <div>
         <h1 class="page-title">Journal de caisse</h1>
-        <p class="page-sub">Écritures comptabilisées par la caisse, en ordre chronologique</p>
+        <p class="page-sub">Écritures comptabilisées par la caisse, de la plus récente à la plus ancienne</p>
       </div>
       <div class="page-head-actions">
         <CaisseBasculeDevise :model-value="devise" :disabled="loading" @update:model-value="changerDevise" />
@@ -167,7 +169,7 @@ const fmtTaux = (t: number) => new Intl.NumberFormat('fr-FR', { maximumFractionD
         <div class="text-medium-emphasis">Aucune écriture de caisse sur cette période.</div>
       </v-card>
 
-      <CommunPiecesJournal v-else :pieces="journal.pieces" :fmt="fmt" />
+      <CommunPiecesJournal v-else :pieces="piecesRecentes" :fmt="fmt" />
     </template>
   </div>
 </template>

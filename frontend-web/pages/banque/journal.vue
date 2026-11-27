@@ -34,6 +34,8 @@ const api = useApi()
 const loading = ref(false)
 const erreur = ref('')
 const journal = ref<LivreJournal | null>(null)
+// Les opérations les plus récentes en premier (le serveur les renvoie dans l'ordre chronologique).
+const piecesRecentes = computed(() => [...(journal.value?.pieces ?? [])].reverse())
 
 // Période par défaut : l'exercice choisi dans la barre du haut (jusqu'à aujourd'hui pour l'exercice en cours).
 const exerciceConsulte = useExerciceStore()
@@ -69,7 +71,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
     <div class="page-head">
       <div>
         <h1 class="page-title">Journal de banque</h1>
-        <p class="page-sub">Écritures comptabilisées par la banque, en ordre chronologique</p>
+        <p class="page-sub">Écritures comptabilisées par la banque, de la plus récente à la plus ancienne</p>
       </div>
       <div class="page-head-actions">
         <v-btn variant="outlined" color="primary" prepend-icon="mdi-refresh" rounded="lg" @click="charger">
@@ -112,7 +114,7 @@ const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : ''
         <div class="text-medium-emphasis">Aucune écriture bancaire sur cette période.</div>
       </v-card>
 
-      <CommunPiecesJournal v-else :pieces="journal.pieces" :fmt="fmtUSD" />
+      <CommunPiecesJournal v-else :pieces="piecesRecentes" :fmt="fmtUSD" />
     </template>
   </div>
 </template>
