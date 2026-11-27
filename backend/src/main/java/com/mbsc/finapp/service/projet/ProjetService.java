@@ -96,8 +96,11 @@ public class ProjetService {
 
     public record BesoinsRequest(@NotNull @Valid List<BesoinRequest> besoins) { }
 
-    /** SORTIE (utilisation sur le projet), AJUSTEMENT (+/- après comptage). TRANSFERT est refusé : l'affectation est définitive. */
-    public record MouvementRequest(@NotNull Long articleId, @NotNull @Pattern(regexp = "SORTIE|AJUSTEMENT|TRANSFERT") String type,
+    /**
+     * SORTIE (utilisation sur le projet), AJUSTEMENT (+/- après comptage), RETOUR (au stock des projets : chantier fermé,
+     * surplus). TRANSFERT direct vers un autre projet est refusé.
+     */
+    public record MouvementRequest(@NotNull Long articleId, @NotNull @Pattern(regexp = "SORTIE|AJUSTEMENT|RETOUR|TRANSFERT") String type,
                                    @NotNull BigDecimal quantite, Long projetCibleId, LocalDate date,
                                    @Size(max = 500) String commentaire) { }
 
@@ -113,7 +116,7 @@ public class ProjetService {
                (select count(*) from projet_articles a where a.projet_id = p.id) as nb,
                (select coalesce(sum(a.quantite_prevue * a.prix_estime_usd), 0) from projet_articles a where a.projet_id = p.id) as prevu,
                (select coalesce(sum(m.montant_usd), 0) from projet_mouvements m join projet_articles a on a.id = m.article_id
-                 where a.projet_id = p.id and m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE')) as paye
+                 where a.projet_id = p.id and m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE', 'RETOUR_STOCK')) as paye
         from projets p left join budgets b on b.id = p.budget_id
         """;
 
@@ -129,7 +132,7 @@ public class ProjetService {
                coalesce(-sum(m.quantite) filter (where m.quantite < 0), 0) as sorties,
                coalesce(sum(m.quantite), 0) as solde,
                coalesce(sum(m.montant_usd), 0) as valeur,
-               coalesce(sum(m.montant_usd) filter (where m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE')), 0) as paye
+               coalesce(sum(m.montant_usd) filter (where m.type in ('ACHAT', 'RETOUR_FONDS', 'AFFECTATION', 'TRANSFERT_ENTREE', 'TRANSFERT_SORTIE', 'RETOUR_STOCK')), 0) as paye
         from projet_articles a left join comptes_ohada c on c.id = a.compte_id
         left join projet_mouvements m on m.article_id = a.id
         """;
@@ -294,8 +297,25 @@ public class ProjetService {
                 if (a.solde().compareTo(q) < 0) throw stockInsuffisant(a);
                 inserer(a.id(), date, "SORTIE", q.negate(), valeurDe(a, q).negate(), null, r.commentaire(), auteur);
             }
-            // TRANSFERT : un bien affecté à un projet ne peut plus être affecté à un autre (27/11/2026).
-            default -> throw new IllegalArgumentException("Un bien affecté à un projet ne peut plus être affecté à un autre projet.");
+            case "RETOUR" -> {
+                // Retour au stock des projets : le bien redevient disponible (réaffectable à n'importe quel projet) et
+                // l'exécuté de ce projet diminue de sa valeur.
+                exigerPositive(q);
+                if (a.solde().compareTo(q) < 0) throw stockInsuffisant(a);
+                if (a.compteId() == null) {
+                    throw new IllegalArgumentException("« " + a.designation() + " » n'a pas de compte « Projet — … » : il ne peut pas "
+                        + "revenir au stock des projets.");
+                }
+                Long commun = articleDuStockCommun(a);
+                BigDecimal valeur = valeurDe(a, q);
+                Projet p = projet(projetId);
+                inserer(a.id(), date, "RETOUR_STOCK", q.negate(), valeur.negate(), commun,
+                    vide(r.commentaire()) == null ? "Retour au stock des projets" : r.commentaire(), auteur);
+                inserer(commun, date, "RETOUR_STOCK_ENTREE", q, valeur, a.id(), "Retour du projet " + p.code() + " — " + p.nom(), auteur);
+            }
+            // TRANSFERT direct : refusé (27/11/2026) ; le bien revient au stock des projets, puis le logisticien le réaffecte.
+            default -> throw new IllegalArgumentException("Un bien affecté à un projet ne passe pas directement à un autre projet : "
+                + "retournez-le au stock des projets, puis affectez-le.");
         }
         return consulter(projetId);
     }
@@ -310,7 +330,7 @@ public class ProjetService {
     public Article affecterArticle(Long articleId, AffectationRequest r) {
         Article a = article(articleId);
         if (a.projetId() != null) {
-            throw new IllegalArgumentException("Cet article est déjà dans un projet : transférez-le depuis la fiche du projet.");
+            throw new IllegalArgumentException("Cet article est déjà dans un projet : retournez-le d'abord au stock des projets.");
         }
         if (r.projetId() == null) {
             throw new IllegalArgumentException("Choisissez le projet qui reçoit le bien.");
@@ -434,6 +454,15 @@ public class ProjetService {
     }
 
     /** Article du projet cible qui reçoit le transfert : même désignation, sinon créé (sans compte : pas un achat). */
+    /** Article du stock commun des projets (sans projet) sur le compte de l'article, créé au besoin. */
+    private Long articleDuStockCommun(Article a) {
+        return jdbc.query("select id from projet_articles where compte_id = ? and projet_id is null", (rs, i) -> rs.getLong(1), a.compteId())
+            .stream().findFirst()
+            .orElseGet(() -> jdbc.queryForObject("""
+                insert into projet_articles (projet_id, designation, unite, nature, compte_id) values (null, ?, ?, ?, ?) returning id
+                """, Long.class, a.designation(), a.unite(), a.nature(), a.compteId()));
+    }
+
     /** Article du projet qui reçoit : même compte « Projet — … » (sinon même désignation), créé au besoin. */
     private Long articleDuTransfert(Long projetCibleId, Article source) {
         return jdbc.query("""

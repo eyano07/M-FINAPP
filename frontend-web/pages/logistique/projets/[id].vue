@@ -84,10 +84,10 @@ async function enregistrerBesoins(puisEnvoyer = false) {
 }
 
 // ── Mouvements de stock ──────────────────────────────────────────────────
-const mv = reactive({ ouvert: false, type: 'SORTIE' as 'SORTIE' | 'AJUSTEMENT' | 'TRANSFERT', article: null as Article | null,
+const mv = reactive({ ouvert: false, type: 'SORTIE' as 'SORTIE' | 'AJUSTEMENT' | 'RETOUR' | 'TRANSFERT', article: null as Article | null,
   quantite: null as number | null, projetCibleId: null as number | null, commentaire: '', enCours: false })
-function ouvrirMouvement(a: Article, type: 'SORTIE' | 'AJUSTEMENT' | 'TRANSFERT') {
-  Object.assign(mv, { ouvert: true, type, article: a, quantite: null, projetCibleId: null, commentaire: '' })
+function ouvrirMouvement(a: Article, type: 'SORTIE' | 'AJUSTEMENT' | 'RETOUR' | 'TRANSFERT') {
+  Object.assign(mv, { ouvert: true, type, article: a, quantite: type === 'RETOUR' ? Number(a.solde) : null, projetCibleId: null, commentaire: '' })
 }
 const autresProjets = computed(() => tous.value.filter(p => p.id !== id.value && p.statut !== 'CLOTURE'))
 async function enregistrerMouvement() {
@@ -165,7 +165,7 @@ const STATUTS: Record<string, { libelle: string, couleur: string }> = {
   CLOTURE: { libelle: 'Clôturé', couleur: 'deep-purple' },
 }
 const TYPES: Record<string, string> = {
-  ACHAT: 'Achat payé', AFFECTATION: 'Affecté au projet', AFFECTATION_SORTIE: 'Affecté (sortie du stock)', SORTIE: 'Sortie', TRANSFERT_SORTIE: 'Transfert sortant', TRANSFERT_ENTREE: 'Transfert entrant',
+  ACHAT: 'Achat payé', AFFECTATION: 'Affecté au projet', AFFECTATION_SORTIE: 'Affecté (sortie du stock)', RETOUR_STOCK: 'Retour au stock des projets', RETOUR_STOCK_ENTREE: 'Retour d’un projet', SORTIE: 'Sortie', TRANSFERT_SORTIE: 'Transfert sortant', TRANSFERT_ENTREE: 'Transfert entrant',
   RETOUR_FONDS: 'Retour de fonds', AJUSTEMENT: 'Ajustement',
 }
 const fmt = (v: number | null | undefined) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v || 0))
@@ -273,7 +273,7 @@ const totalValeur = computed(() => (detail.value?.articles || []).reduce((t, a) 
     <!-- Fiche de stock -->
     <v-card v-show="onglet === 'stock'" class="classroom-card mb-4 bloc bloc--imprime">
       <div class="pa-4 pb-2 bloc-titre">Fiche de stock projet</div>
-      <p class="px-4 text-caption text-medium-emphasis">Entrées : biens affectés au projet depuis le stock des projets (affectation définitive). Séparée du stock global : aucune variation de stock, aucune écriture.</p>
+      <p class="px-4 text-caption text-medium-emphasis">Entrées : biens affectés au projet depuis le stock des projets. Sorties : biens utilisés, ajustements négatifs, retours au stock des projets. Séparée du stock global : aucune variation de stock, aucune écriture.</p>
       <v-table density="compact">
         <thead><tr><th>Désignation</th><th>Compte</th><th class="text-end">Prévu</th><th class="text-end">Entrées</th><th class="text-end">Sorties</th><th class="text-end">Solde</th><th class="text-end">Valeur (USD)</th><th v-if="peutEcrire" class="no-print" /></tr></thead>
         <tbody>
@@ -290,6 +290,7 @@ const totalValeur = computed(() => (detail.value?.articles || []).reduce((t, a) 
             <td v-if="peutEcrire" class="no-print text-no-wrap">
               <v-btn size="small" variant="text" :disabled="a.solde <= 0" @click="ouvrirMouvement(a, 'SORTIE')">Sortie</v-btn>
               <v-btn size="small" variant="text" @click="ouvrirMouvement(a, 'AJUSTEMENT')">Ajuster</v-btn>
+              <v-btn size="small" variant="text" color="warning" :disabled="a.solde <= 0" @click="ouvrirMouvement(a, 'RETOUR')">Retour</v-btn>
             </td>
           </tr>
         </tbody>
@@ -350,9 +351,13 @@ const totalValeur = computed(() => (detail.value?.articles || []).reduce((t, a) 
     <!-- Mouvement -->
     <v-dialog v-model="mv.ouvert" max-width="480">
       <v-card v-if="mv.article" rounded="xl">
-        <v-card-title class="pt-4 px-5">{{ mv.type === 'SORTIE' ? 'Sortie' : mv.type === 'TRANSFERT' ? 'Transfert vers un autre projet' : 'Ajustement' }} — {{ mv.article.designation }}</v-card-title>
+        <v-card-title class="pt-4 px-5">{{ mv.type === 'SORTIE' ? 'Sortie' : mv.type === 'RETOUR' ? 'Retour au stock des projets' : 'Ajustement' }} — {{ mv.article.designation }}</v-card-title>
         <v-card-text class="px-5">
           <p class="text-body-2 mb-3">En stock : <strong>{{ fmtQ(mv.article.solde) }} {{ mv.article.unite || '' }}</strong></p>
+          <v-alert v-if="mv.type === 'RETOUR'" type="info" variant="tonal" density="compact" class="mb-3">
+            Le bien quitte ce projet (chantier fermé, surplus) et revient dans le stock des projets : son exécuté diminue d'autant,
+            et le logisticien pourra l'affecter à un autre projet.
+          </v-alert>
           <v-text-field v-model.number="mv.quantite" type="number" :label="mv.type === 'AJUSTEMENT' ? 'Quantité (+ ou −)' : 'Quantité *'" variant="outlined" density="comfortable" class="mb-3" />
           <v-select v-if="mv.type === 'TRANSFERT'" v-model="mv.projetCibleId" :items="autresProjets" item-value="id" :item-title="(p: Projet) => `${p.code} — ${p.nom}`" label="Projet qui reçoit *" variant="outlined" density="comfortable" class="mb-3" />
           <v-textarea v-model="mv.commentaire" label="Commentaire" rows="2" variant="outlined" density="comfortable" />
