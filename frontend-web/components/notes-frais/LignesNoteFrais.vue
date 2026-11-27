@@ -10,6 +10,8 @@ export interface LigneNoteFraisForm {
   soumisTva: boolean
   /** Compte d'immobilisation (21 à 24) : le bien s'amortit-il ? Oui par défaut ; null hors immobilisation. */
   amortissable?: boolean | null
+  /** Compte « Projet … » : quantité achetée, portée à la fiche de stock du projet au paiement (27/11/2026). */
+  quantiteProjet?: number | null
 }
 
 /** Compte d'immobilisation corporelle ou incorporelle (21 à 24) : le paiement crée la fiche du bien. */
@@ -97,6 +99,17 @@ onMounted(chargerTauxTva)
 
 const articlesOptions = computed(() =>
   articlesDispo.value.map(a => `${a.libelle}`))
+
+// Comptes « Projet … » (27/11/2026) : une ligne qui en porte un demande la quantité achetée (fiche de stock du projet).
+interface CompteProjet { numero: string, libelle: string, projetId: number | null, projetNom: string | null, budgetId: number | null }
+const comptesProjet = ref(new Map<string, CompteProjet>())
+onMounted(async () => {
+  if (estEncaissement.value) return
+  try {
+    const liste = await api<CompteProjet[]>('/notes-frais/comptes-projet')
+    comptesProjet.value = new Map(liste.map(c => [c.numero, c]))
+  } catch { /* sans la liste, la ligne reste une dépense ordinaire (quantité 1 au paiement) */ }
+})
 
 const lignes = computed({
   get: () => props.modelValue,
@@ -214,7 +227,9 @@ function onCompteChange(index: number, val: string | null) {
   // Compte d'immobilisation : amortissable par défaut ; autre compte : la question ne se pose pas.
   const immo = estCompteImmobilisation(val)
   const amortissable = immo ? (lignes.value[index]?.amortissable ?? true) : null
-  majChamps(index, { compteImputation: val, amortissable })
+  // Compte « Projet … » : quantité (1 par défaut) pour la fiche de stock du projet.
+  const quantiteProjet = val && comptesProjet.value.has(val) ? (lignes.value[index]?.quantiteProjet ?? 1) : null
+  majChamps(index, { compteImputation: val, amortissable, quantiteProjet })
   const appliquee = iaAppliquee.value[index]
   if (appliquee && val !== appliquee.compteNumero) {
     delete iaAppliquee.value[index]
@@ -319,6 +334,24 @@ function fmt(v: number) {
       />
 
       <div class="lignes-note__options">
+        <div v-if="!ligne.achatMarchandise && ligne.compteImputation && comptesProjet.has(ligne.compteImputation)" class="lignes-note__toggle-row">
+          <v-text-field
+            :model-value="ligne.quantiteProjet"
+            label="Quantité achetée"
+            type="number"
+            min="0"
+            variant="outlined"
+            density="compact"
+            hide-details
+            style="max-width: 170px"
+            @update:model-value="majChamp(index, 'quantiteProjet', $event ? Number($event) : null)"
+          />
+          <span class="lignes-note__compte-auto">
+            <v-icon icon="mdi-briefcase-outline" size="14" class="mr-1" />
+            Au paiement, l'achat entre dans la fiche de stock du projet
+            « {{ comptesProjet.get(ligne.compteImputation)?.projetNom || 'à affecter' }} » (le montant est le total de la ligne).
+          </span>
+        </div>
         <div v-if="!ligne.achatMarchandise && estCompteImmobilisation(ligne.compteImputation)" class="lignes-note__toggle-row">
           <v-switch
             :model-value="ligne.amortissable !== false"

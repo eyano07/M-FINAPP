@@ -914,6 +914,10 @@ public class NoteFraisService {
                 .fraisApproche(fraisApproche)
                 .amortissable(!achatMarchandise && compteImputation != null && compteImputation.getNumero().matches("2[1-4].*")
                     ? !Boolean.FALSE.equals(l.amortissable()) : null)
+                // Compte « Projet … » : la quantité achetée entre dans la fiche de stock du projet au paiement (V167).
+                .quantiteProjet(!achatMarchandise && compteImputation != null
+                    && com.mbsc.finapp.service.projet.ComptesProjetService.estCompteProjet(compteImputation.getLibelle())
+                    && l.quantiteProjet() != null && l.quantiteProjet().signum() > 0 ? l.quantiteProjet() : null)
                 .soumisTva(soumisTva)
                 // Le compte de TVA n'est pas choisi par l'utilisateur : il
                 // découle du sens de la note (récupérable ou collectée).

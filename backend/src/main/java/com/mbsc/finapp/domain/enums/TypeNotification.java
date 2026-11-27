@@ -58,5 +58,9 @@ public enum TypeNotification {
     /** Brouillon comptabilise par le DFIN : le comptable qui l'a saisi est prevenu. */
     PIECE_COMPTABILISEE,
     /** Comptabilisation annulee retablie par le DFIN ou l'administrateur : le comptable qui l'avait annulee est prevenu. */
-    PIECE_RESTAUREE
+    PIECE_RESTAUREE,
+    /** Projets (V167) : liste de besoins envoyée au comptable, retournée, budget créé. */
+    PROJET_A_BUDGETER,
+    PROJET_RETOURNE,
+    PROJET_BUDGETE
 }
