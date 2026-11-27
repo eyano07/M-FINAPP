@@ -61,8 +61,11 @@ async function charger() {
 }
 onMounted(charger)
 
-const exercices = computed(() => [...new Set(budgets.value.map(b => b.exercice))].sort((a, b) => b - a))
-const affiches = computed(() => budgets.value.filter(b => !filtreExercice.value || b.exercice === filtreExercice.value))
+// Un budget remplacé par sa révision n'est plus affiché : il reste consultable depuis la révision qui le remplace.
+const visibles = computed(() => budgets.value.filter(b => b.statut !== 'REMPLACE'))
+const exercices = computed(() => [...new Set(visibles.value.map(b => b.exercice))].sort((a, b) => b - a))
+const affiches = computed(() => visibles.value.filter(b => !filtreExercice.value || b.exercice === filtreExercice.value))
+const aDesBudgetsEnExecution = computed(() => budgets.value.some(b => b.statut === 'EN_EXECUTION'))
 // Budget qui contrôle les notes de frais du mois en cours : annuel, ou de la période qui contient ce mois.
 const aujourdhui = new Date()
 const moisCourant = aujourdhui.getMonth() + 1
@@ -90,6 +93,7 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'CLOTURE'].includes(b.
         <p class="page-sub">Budgets de l’exercice, d’un semestre, d’un trimestre ou d’un mois, ventilés par mois et répartis au besoin par service, élaborés par {{ rolesStore.libelle('DFIN') }}, approuvés par {{ rolesStore.libelle('DA') }}, suivis sur le grand livre</p>
       </div>
       <div class="d-flex flex-wrap ga-2">
+        <v-btn v-if="aDesBudgetsEnExecution" variant="tonal" color="primary" prepend-icon="mdi-sigma" height="44" to="/budgets/consolide">Budget consolidé</v-btn>
         <v-btn variant="tonal" prepend-icon="mdi-account-group-outline" height="44" to="/budgets/services">Services</v-btn>
         <v-btn v-if="peutElaborer" color="primary" prepend-icon="mdi-plus" height="44" to="/budgets/nouveau">Nouveau budget</v-btn>
       </div>
@@ -196,7 +200,7 @@ const aEteExecute = (b: BudgetResume) => ['EN_EXECUTION', 'CLOTURE'].includes(b.
     </v-row>
 
     <v-empty-state
-      v-if="!loading && budgets.length === 0"
+      v-if="!loading && visibles.length === 0"
       icon="mdi-chart-box-outline"
       title="Aucun budget"
       text="Aucun budget prévisionnel n'a encore été créé."
