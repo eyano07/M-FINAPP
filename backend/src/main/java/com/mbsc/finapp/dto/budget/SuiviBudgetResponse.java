@@ -121,7 +121,12 @@ public record SuiviBudgetResponse(
         String justification,
         String createurNom,
         Instant dateCreation,
-        String serviceNom
+        String serviceNom,
+        /**
+         * Budget en vigueur (référence) qui couvre désormais la dépense, après une révision : la note n'est plus en
+         * dépassement ni hors budget ; null sinon. Le statut d'origine reste la trace de la validation motivée du DA.
+         */
+        String regulariseePar
     ) {}
 
     /**

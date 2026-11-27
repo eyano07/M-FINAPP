@@ -10,6 +10,7 @@ import com.mbsc.finapp.domain.enums.Devise;
 import com.mbsc.finapp.domain.enums.StatutControleBudget;
 import com.mbsc.finapp.domain.enums.StatutNote;
 import com.mbsc.finapp.domain.enums.TypeCompte;
+import com.mbsc.finapp.domain.enums.StatutBudget;
 import com.mbsc.finapp.dto.budget.SuiviBudgetResponse;
 import com.mbsc.finapp.dto.budget.SuiviBudgetResponse.CompteHorsBudget;
 import com.mbsc.finapp.dto.budget.SuiviBudgetResponse.Depassement;
@@ -355,7 +356,8 @@ public class SuiviBudgetaireService {
             .map(n -> new NoteHorsBudget(n.getId(), n.getReference(), n.getObjet(), n.getMontant(),
                 n.getDevise() == null ? null : n.getDevise().name(), n.getStatut().name(),
                 n.getStatutBudget().name(), n.getJustificationBudget(), nom(n), n.getDateCreation(),
-                n.getService() == null ? null : n.getService().getNom()))
+                n.getService() == null ? null : n.getService().getNom(),
+                regularisee(n, budget, exec.imputation(), lignes) ? budget.getReference() : null))
             .toList();
 
         List<SuiviService> services = suiviDesServices(budget, exec, catalogueServices(),
@@ -749,6 +751,39 @@ public class SuiviBudgetaireService {
             return 0;
         }
         return aujourdhui.getYear() > exercice ? 12 : aujourdhui.getMonthValue();
+    }
+
+    /**
+     * Note contrôlée en dépassement ou hors budget, que le budget affiché (en vigueur : en exécution ou clôturé) couvre
+     * désormais, après une révision : chacune de ses dépenses budgétaires tombe sur une ligne du budget qui n'est pas en
+     * dépassement. Une note déclarée hors budget, ou d'un autre budget (principal / secondaire), ne l'est jamais.
+     */
+    static boolean regularisee(NoteFrais n, Budget budget, ImputationBudgetaire imputation, List<LigneSuivi> lignes) {
+        if (n.isHorsBudget() || (budget.getStatut() != StatutBudget.EN_EXECUTION && budget.getStatut() != StatutBudget.CLOTURE)) {
+            return false;
+        }
+        Long ligneeNote = n.getBudgetSecondaire() == null ? null : n.getBudgetSecondaire().racineId();
+        Long ligneeBudget = budget.estSecondaire() ? budget.racineId() : null;
+        if (!Objects.equals(ligneeNote, ligneeBudget)) {
+            return false;
+        }
+        Map<String, LigneSuivi> parCompte = new HashMap<>();
+        lignes.forEach(l -> parCompte.put(l.compteNumero(), l));
+        boolean auMoinsUne = false;
+        for (LigneNoteFrais l : n.getLignes()) {
+            String numero = l.getCompteImputation() == null ? COMPTE_REPLI : l.getCompteImputation().getNumero();
+            if (!MoteurBudgetaire.estDepenseBudgetaire(numero, classe(numero),
+                    l.getCompteImputation() == null ? TypeCompte.CHARGE : l.getCompteImputation().getType())) {
+                continue;
+            }
+            String consolidee = imputation.ligneConsolidee(numero);
+            LigneSuivi ligne = consolidee == null ? null : parCompte.get(consolidee);
+            if (ligne == null || (ligne.depassement() != null && ligne.depassement().signum() > 0)) {
+                return false;
+            }
+            auMoinsUne = true;
+        }
+        return auMoinsUne;
     }
 
     static Integer classe(String numero) {
